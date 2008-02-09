@@ -1,104 +1,574 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+#define END_OF_STREAM (-2)
+//#define FAIL(x) (-1)
+static int FAIL(const char *reason)
+{
+    printf("%s FAIL.\n", reason);
+    return -1;
+} // FAIL
+
 
 #define SWAP32(x) (x)
-typedef unsigned int uint;
-typedef unsigned char uint8;
-typedef unsigned int uint32;
+typedef unsigned int uint;  // this is a printf() helper. don't use for code.
+typedef uint8_t uint8;
+typedef uint32_t uint32;
 
-// This enum complements of Filip Navara's public domain dev-cpp d3d9 header.
-typedef enum
+typedef int (*parse_instruction_function)(const uint32 *argtokens);
+
+static int parse_NOP(const uint32 *argtokens)
 {
-    OPCODE_NOP = 0,
-    OPCODE_MOV = 1,
-    OPCODE_ADD = 2,
-    OPCODE_SUB = 3,
-    OPCODE_MAD = 4,
-    OPCODE_MUL = 5,
-    OPCODE_RCP = 6,
-    OPCODE_RSQ = 7,
-    OPCODE_DP3 = 8,
-    OPCODE_DP4 = 9,
-    OPCODE_MIN = 10,
-    OPCODE_MAX = 11,
-    OPCODE_SLT = 12,
-    OPCODE_SGE = 13,
-    OPCODE_EXP = 14,
-    OPCODE_LOG = 15,
-    OPCODE_LIT = 16,
-    OPCODE_DST = 17,
-    OPCODE_LRP = 18,
-    OPCODE_FRC = 19,
-    OPCODE_M4x4 = 20,
-    OPCODE_M4x3 = 21,
-    OPCODE_M3x4 = 22,
-    OPCODE_M3x3 = 23,
-    OPCODE_M3x2 = 24,
-    OPCODE_CALL = 25,
-    OPCODE_CALLNZ = 26,
-    OPCODE_LOOP = 27,
-    OPCODE_RET = 28,
-    OPCODE_ENDLOOP = 29,
-    OPCODE_LABEL = 30,
-    OPCODE_DCL = 31,
-    OPCODE_POW = 32,
-    OPCODE_CRS = 33,
-    OPCODE_SGN = 34,
-    OPCODE_ABS = 35,
-    OPCODE_NRM = 36,
-    OPCODE_SINCOS = 37,
-    OPCODE_REP = 38,
-    OPCODE_ENDREP = 39,
-    OPCODE_IF = 40,
-    OPCODE_IFC = 41,
-    OPCODE_ELSE = 42,
-    OPCODE_ENDIF = 43,
-    OPCODE_BREAK = 44,
-    OPCODE_BREAKC = 45,
-    OPCODE_MOVA = 46,
-    OPCODE_DEFB = 47,
-    OPCODE_DEFI = 48,
-    OPCODE_TEXCOORD = 64,
-    OPCODE_TEXKILL = 65,
-    OPCODE_TEX = 66,
-    OPCODE_TEXBEM = 67,
-    OPCODE_TEXBEML = 68,
-    OPCODE_TEXREG2AR = 69,
-    OPCODE_TEXREG2GB = 70,
-    OPCODE_TEXM3x2PAD = 71,
-    OPCODE_TEXM3x2TEX = 72,
-    OPCODE_TEXM3x3PAD = 73,
-    OPCODE_TEXM3x3TEX = 74,
-    OPCODE_RESERVED0 = 75,
-    OPCODE_TEXM3x3SPEC = 76,
-    OPCODE_TEXM3x3VSPEC = 77,
-    OPCODE_EXPP = 78,
-    OPCODE_LOGP = 79,
-    OPCODE_CND = 80,
-    OPCODE_DEF = 81,
-    OPCODE_TEXREG2RGB = 82,
-    OPCODE_TEXDP3TEX = 83,
-    OPCODE_TEXM3x2DEPTH = 84,
-    OPCODE_TEXDP3 = 85,
-    OPCODE_TEXM3x3 = 86,
-    OPCODE_TEXDEPTH = 87,
-    OPCODE_CMP = 88,
-    OPCODE_BEM = 89,
-    OPCODE_DP2ADD = 90,
-    OPCODE_DSX = 91,
-    OPCODE_DSY = 92,
-    OPCODE_TEXLDD = 93,
-    OPCODE_SETP = 94,
-    OPCODE_TEXLDL = 95,
-    OPCODE_BREAKP = 96,
-    OPCODE_PHASE = 0xfffd,
-} OpcodeVal;
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_NOP
+
+static int parse_MOV(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MOV
+
+static int parse_ADD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ADD
+
+static int parse_SUB(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SUB
+
+static int parse_MAD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MAD
+
+static int parse_MUL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MUL
+
+static int parse_RCP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_RCP
+
+static int parse_RSQ(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_RSQ
+
+static int parse_DP3(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DP3
+
+static int parse_DP4(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DP4
+
+static int parse_MIN(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MIN
+
+static int parse_MAX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MAX
+
+static int parse_SLT(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SLT
+
+static int parse_SGE(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SGE
+
+static int parse_EXP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_EXP
+
+static int parse_LOG(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LOG
+
+static int parse_LIT(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LIT
+
+static int parse_DST(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DST
+
+static int parse_LRP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LRP
+
+static int parse_FRC(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_FRC
+
+static int parse_M4X4(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_M4X4
+
+static int parse_M4X3(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_M4X3
+
+static int parse_M3X4(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_M3X4
+
+static int parse_M3X3(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_M3X3
+
+static int parse_M3X2(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_M3X2
+
+static int parse_CALL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_CALL
+
+static int parse_CALLNZ(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_CALLNZ
+
+static int parse_LOOP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LOOP
+
+static int parse_RET(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_RET
+
+static int parse_ENDLOOP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ENDLOOP
+
+static int parse_LABEL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LABEL
+
+static int parse_DCL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DCL
+
+static int parse_POW(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_POW
+
+static int parse_CRS(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_CRS
+
+static int parse_SGN(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SGN
+
+static int parse_ABS(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ABS
+
+static int parse_NRM(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_NRM
+
+static int parse_SINCOS(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SINCOS
+
+static int parse_REP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_REP
+
+static int parse_ENDREP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ENDREP
+
+static int parse_IF(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_IF
+
+static int parse_IFC(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_IFC
+
+static int parse_ELSE(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ELSE
+
+static int parse_ENDIF(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_ENDIF
+
+static int parse_BREAK(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_BREAK
+
+static int parse_BREAKC(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_BREAKC
+
+static int parse_MOVA(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_MOVA
+
+static int parse_DEFB(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DEFB
+
+static int parse_DEFI(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DEFI
+
+static int parse_TEXCOORD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXCOORD
+
+static int parse_TEXKILL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXKILL
+
+static int parse_TEX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEX
+
+static int parse_TEXBEM(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXBEM
+
+static int parse_TEXBEML(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXBEML
+
+static int parse_TEXREG2AR(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXREG2AR
+
+static int parse_TEXREG2GB(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXREG2GB
+
+static int parse_TEXM3X2PAD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X2PAD
+
+static int parse_TEXM3X2TEX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X2TEX
+
+static int parse_TEXM3X3PAD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X3PAD
+
+static int parse_TEXM3X3TEX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X3TEX
+
+static int parse_RESERVED0(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_RESERVED0
+
+static int parse_TEXM3X3SPEC(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X3SPEC
+
+static int parse_TEXM3X3VSPEC(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X3VSPEC
+
+static int parse_EXPP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_EXPP
+
+static int parse_LOGP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_LOGP
+
+static int parse_CND(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_CND
+
+static int parse_DEF(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DEF
+
+static int parse_TEXREG2RGB(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXREG2RGB
+
+static int parse_TEXDP3TEX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXDP3TEX
+
+static int parse_TEXM3X2DEPTH(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X2DEPTH
+
+static int parse_TEXDP3(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXDP3
+
+static int parse_TEXM3X3(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXM3X3
+
+static int parse_TEXDEPTH(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXDEPTH
+
+static int parse_CMP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_CMP
+
+static int parse_BEM(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_BEM
+
+static int parse_DP2ADD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DP2ADD
+
+static int parse_DSX(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DSX
+
+static int parse_DSY(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_DSY
+
+static int parse_TEXLDD(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXLDD
+
+static int parse_SETP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_SETP
+
+static int parse_TEXLDL(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_TEXLDL
+
+static int parse_BREAKP(const uint32 *argtokens)
+{
+    return FAIL("unimplemented.");  // !!! FIXME
+} // parse_BREAKP
+
+static int parse_RESERVED(const uint32 *argtokens)
+{
+    return FAIL("Tried to use RESERVED opcode.");
+} // parse_BREAKP
+
+
+
+
+typedef struct
+{
+    const char *opcode_string;
+    int arg_tokens;
+    //uint32 shader_requirements;
+    parse_instruction_function parser;
+} Instruction;
+
+// These have to be in the right order! This array is indexed by the value
+//  of the instruction token.
+static Instruction instructions[] = {
+    #define INSTRUCTION(op, args) { #op, args, parse_##op }
+    INSTRUCTION(NOP, 0),
+    INSTRUCTION(MOV, 2),
+    INSTRUCTION(ADD, 3),
+    INSTRUCTION(SUB, 3),
+    INSTRUCTION(MAD, 4),
+    INSTRUCTION(MUL, 3),
+    INSTRUCTION(RCP, 2),
+    INSTRUCTION(RSQ, 2),
+    INSTRUCTION(DP3, 3),
+    INSTRUCTION(DP4, 3),
+    INSTRUCTION(MIN, 3),
+    INSTRUCTION(MAX, 3),
+    INSTRUCTION(SLT, 3),
+    INSTRUCTION(SGE, 3),
+    INSTRUCTION(EXP, 2),
+    INSTRUCTION(LOG, 2),
+    INSTRUCTION(LIT, 2),
+    INSTRUCTION(DST, 3),
+    INSTRUCTION(LRP, 4),
+    INSTRUCTION(FRC, 2),
+    INSTRUCTION(M4X4, 3),
+    INSTRUCTION(M4X3, 3),
+    INSTRUCTION(M3X4, 3),
+    INSTRUCTION(M3X3, 3),
+    INSTRUCTION(M3X2, 3),
+    INSTRUCTION(CALL, 1),
+    INSTRUCTION(CALLNZ, 2),
+    INSTRUCTION(LOOP, 2),
+    INSTRUCTION(RET, 0),
+    INSTRUCTION(ENDLOOP, 0),
+    INSTRUCTION(LABEL, 1),
+    INSTRUCTION(DCL, -1),
+    INSTRUCTION(POW, 3),
+    INSTRUCTION(CRS, 3),
+    INSTRUCTION(SGN, 4),
+    INSTRUCTION(ABS, 2),
+    INSTRUCTION(NRM, 2),
+    INSTRUCTION(SINCOS, 4),
+    INSTRUCTION(REP, 1),
+    INSTRUCTION(ENDREP, 0),
+    INSTRUCTION(IF, 1),
+    INSTRUCTION(IFC, 2),
+    INSTRUCTION(ELSE, 0),
+    INSTRUCTION(ENDIF, 0),
+    INSTRUCTION(BREAK, 0),
+    INSTRUCTION(BREAKC, 2),
+    INSTRUCTION(MOVA, 2),
+    INSTRUCTION(DEFB, 2),
+    INSTRUCTION(DEFI, 5),
+    INSTRUCTION(TEXCOORD, -1),
+    INSTRUCTION(TEXKILL, 1),
+    INSTRUCTION(TEX, -1),
+    INSTRUCTION(TEXBEM, 2),
+    INSTRUCTION(TEXBEML, 2),
+    INSTRUCTION(TEXREG2AR, 2),
+    INSTRUCTION(TEXREG2GB, 2),
+    INSTRUCTION(TEXM3X2PAD, 2),
+    INSTRUCTION(TEXM3X2TEX, 2),
+    INSTRUCTION(TEXM3X3PAD, 2),
+    INSTRUCTION(TEXM3X3TEX, 2),
+    INSTRUCTION(RESERVED, 0),
+    INSTRUCTION(TEXM3X3SPEC, 3),
+    INSTRUCTION(TEXM3X3VSPEC, 2),
+    INSTRUCTION(EXPP, 2),
+    INSTRUCTION(LOGP, 2),
+    INSTRUCTION(CND, 4),
+    INSTRUCTION(DEF, 5),
+    INSTRUCTION(TEXREG2RGB, 2),
+    INSTRUCTION(TEXDP3TEX, 2),
+    INSTRUCTION(TEXM3X2DEPTH, 2),
+    INSTRUCTION(TEXDP3, 2),
+    INSTRUCTION(TEXM3X3, 2),
+    INSTRUCTION(TEXDEPTH, 1),
+    INSTRUCTION(CMP, 4),
+    INSTRUCTION(BEM, 3),
+    INSTRUCTION(DP2ADD, 4),
+    INSTRUCTION(DSX, 2),
+    INSTRUCTION(DSY, 2),
+    INSTRUCTION(TEXLDD, 5),
+    INSTRUCTION(SETP, 3),
+    INSTRUCTION(TEXLDL, 3),
+    INSTRUCTION(BREAKP, 1),  // src
+    #undef INSTRUCTION
+};
+
+
+static int parse_instruction_token(const uint32 *tokens, const uint32 tokencount)
+{
+    const uint32 token = SWAP32(*tokens);
+    const uint32 opcode = (token & 0xFFFF);
+    const uint32 controls = ((token >> 16) & 0xFF);
+    const uint32 insttoks = ((token >> 24) & 0x0F);
+    const int coissue = (token & 0x40000000) ? 1 : 0;
+    const int predicated = (token & 0x10000000) ? 1 : 0;
+    const Instruction *instruction = &instructions[opcode];
+
+    if ( opcode >= (sizeof (instructions) / sizeof (instructions[0])) )
+        return 0;  // not an instruction token, or just not handled here.
+
+    if ((token & 0x80000000) != 0)
+        return FAIL("instruction token high bit must be zero.");  // so says msdn.
+
+    printf("%s\n", instruction->opcode_string);
+
+    if (instruction->arg_tokens >= 0)
+    {
+        if (instruction->arg_tokens != insttoks)
+            return FAIL("unexpected number of tokens for instruction.");
+        else if (tokencount <= instruction->arg_tokens)
+            return FAIL("not enough tokens left in shader for instruction.");
+    } // if
+
+return insttoks + 1;
+//    return instruction->parser(tokens + 1);
+} // parse_instruction_token
 
 
 static int parse_version_token(const uint32 *tokens, const uint32 tokencount)
 {
     if (tokencount == 0)
-        return -1;  // no tokens at all?
+        return FAIL("Expected version token, got none at all.");
 
     const uint32 token = SWAP32(*tokens);
     const uint32 shadertype = ((token >> 16) & 0xFFFF);
@@ -110,7 +580,7 @@ static int parse_version_token(const uint32 *tokens, const uint32 tokencount)
     else if (shadertype == 0xFFFE)
         printf("Vertex shader\n");
     else
-        return -1;  // geometry shader? Unsupported at the moment. FAIL.
+        return FAIL("geometry shader? Unsupported at the moment.");
 
     printf("Version %u.%u\n", (uint) major, (uint) minor);
 
@@ -124,7 +594,7 @@ static int parse_comment_token(const uint32 *tokens, const uint32 tokencount)
     if ((token & 0xFFFF) != 0xFFFE)
         return 0;  // not a comment token.
     else if ((token & 0x80000000) != 0)
-        return -1;  // msdn docs say high bit must be zero. FAIL.
+        return FAIL("comment token high bit must be zero.");  // so says msdn.
 
     const uint32 commenttoks = ((token >> 16) & 0xFFFF);
     const uint32 commentlen = commenttoks * sizeof (uint32);
@@ -149,123 +619,27 @@ static int parse_end_token(const uint32 *tokens, const uint32 tokencount)
 
     printf("END\n");
 
-    // we _must_ be last. If so, eat the token. Otherwise: FAIL.
-    return (tokencount == 1) ? 1 : -1;
+    if (tokencount != 1)  // we _must_ be last. If not: FAIL.
+        FAIL("end token before end of stream");
+
+    return END_OF_STREAM;
 } // parse_end_token
 
 
-static int parse_instruction_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_phase_token(const uint32 *tokens, const uint32 tokencount)
 {
-    const uint32 token = SWAP32(*tokens);
-    const uint32 opcode = (token & 0xFFFF);
-    const uint32 controls = ((token >> 16) & 0xFF);
-    const uint32 insttoks = ((token >> 24) & 0x0F);
-    const int coissue = (token & 0x40000000) ? 1 : 0;
-    const int predicated = (token & 0x10000000) ? 1 : 0;
-
-    if ((token & 0x80000000) != 0)
-        return -1;  // msdn docs say high bit must be zero. FAIL.
-
-    #define PARSE_OP(op) printf("OPCODE %s\n", #op);
-    //case OPCODE_##op:
-    //    parse_op_##op(tokens+1, opcode, controls, insttoks, coissue, predicated);
-    //    break;
-
-    PARSE_OP(NOP);
-    PARSE_OP(MOV);
-    PARSE_OP(ADD);
-    PARSE_OP(SUB);
-    PARSE_OP(MAD);
-    PARSE_OP(MUL);
-    PARSE_OP(RCP);
-    PARSE_OP(RSQ);
-    PARSE_OP(DP3);
-    PARSE_OP(DP4);
-    PARSE_OP(MIN);
-    PARSE_OP(MAX);
-    PARSE_OP(SLT);
-    PARSE_OP(SGE);
-    PARSE_OP(EXP);
-    PARSE_OP(LOG);
-    PARSE_OP(LIT);
-    PARSE_OP(DST);
-    PARSE_OP(LRP);
-    PARSE_OP(FRC);
-    PARSE_OP(M4x4);
-    PARSE_OP(M4x3);
-    PARSE_OP(M3x4);
-    PARSE_OP(M3x3);
-    PARSE_OP(M3x2);
-    PARSE_OP(CALL);
-    PARSE_OP(CALLNZ);
-    PARSE_OP(LOOP);
-    PARSE_OP(RET);
-    PARSE_OP(ENDLOOP);
-    PARSE_OP(LABEL);
-    PARSE_OP(DCL);
-    PARSE_OP(POW);
-    PARSE_OP(CRS);
-    PARSE_OP(SGN);
-    PARSE_OP(ABS);
-    PARSE_OP(NRM);
-    PARSE_OP(SINCOS);
-    PARSE_OP(REP);
-    PARSE_OP(ENDREP);
-    PARSE_OP(IF);
-    PARSE_OP(IFC);
-    PARSE_OP(ELSE);
-    PARSE_OP(ENDIF);
-    PARSE_OP(BREAK);
-    PARSE_OP(BREAKC);
-    PARSE_OP(MOVA);
-    PARSE_OP(DEFB);
-    PARSE_OP(DEFI);
-    PARSE_OP(TEXCOORD);
-    PARSE_OP(TEXKILL);
-    PARSE_OP(TEX);
-    PARSE_OP(TEXBEM);
-    PARSE_OP(TEXBEML);
-    PARSE_OP(TEXREG2AR);
-    PARSE_OP(TEXREG2GB);
-    PARSE_OP(TEXM3x2PAD);
-    PARSE_OP(TEXM3x2TEX);
-    PARSE_OP(TEXM3x3PAD);
-    PARSE_OP(TEXM3x3TEX);
-    PARSE_OP(RESERVED0);
-    PARSE_OP(TEXM3x3SPEC);
-    PARSE_OP(TEXM3x3VSPEC);
-    PARSE_OP(EXPP);
-    PARSE_OP(LOGP);
-    PARSE_OP(CND);
-    PARSE_OP(DEF);
-    PARSE_OP(TEXREG2RGB);
-    PARSE_OP(TEXDP3TEX);
-    PARSE_OP(TEXM3x2DEPTH);
-    PARSE_OP(TEXDP3);
-    PARSE_OP(TEXM3x3);
-    PARSE_OP(TEXDEPTH);
-    PARSE_OP(CMP);
-    PARSE_OP(BEM);
-    PARSE_OP(DP2ADD);
-    PARSE_OP(DSX);
-    PARSE_OP(DSY);
-    PARSE_OP(TEXLDD);
-    PARSE_OP(SETP);
-    PARSE_OP(TEXLDL);
-    PARSE_OP(BREAKP);
-    PARSE_OP(PHASE);
-
-    #undef PARSE_OP
-} // parse_instruction_token
+    if (SWAP32(*tokens) != 0x0000FFFD)    // phase token is always 0x0000FFFD.
+        return 0;  // not us, eat no tokens.
+    return FAIL("not sure what this thing is yet.");
+} // parse_phase_token
 
 
 static int parse_token(const uint32 *tokens, const uint32 tokencount)
 {
-    int retval = -1;
     int rc = 0;
 
     if (tokencount == 0)
-        return -1;  // shouldn't happen, but just in case...
+        return FAIL("unexpected end of shader.");
 
     if ((rc = parse_comment_token(tokens, tokencount)) != 0)
         return rc;
@@ -273,10 +647,13 @@ static int parse_token(const uint32 *tokens, const uint32 tokencount)
     if ((rc = parse_end_token(tokens, tokencount)) != 0)
         return rc;
 
+    if ((rc = parse_phase_token(tokens, tokencount)) != 0)
+        return rc;
+
     if ((rc = parse_instruction_token(tokens, tokencount)) != 0)
         return rc;
 
-    return -1;  // nothing handled this? FAIL.
+    return FAIL("unknown token");
 } // parse_token
 
 
@@ -287,14 +664,14 @@ int D3D2GLSL_parse(const uint8 *tokenbuf, const uint32 bufsize)
     int rc = parse_version_token(tokens, tokencount);
 
     // parse out the rest of the tokens after the version token...
-    while ((rc > 0) && (tokencount > 0))
+    while (rc > 0)
     {
         tokens += rc;
         tokencount -= rc;
         rc = parse_token(tokens, tokencount);
     } // while
 
-    return ((rc <= 0) || (tokencount > 0)) ? 0 : 1;
+    return (rc == END_OF_STREAM);
 } // D3D2GLSL_parse
 
 
