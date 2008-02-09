@@ -11,10 +11,25 @@ static int FAIL(const char *reason)
 } // FAIL
 
 
-#define SWAP32(x) (x)
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
+
+#if ((defined __GNUC__) && (defined __POWERPC__))
+    static inline uint32 SWAP32(uint32 x)
+    {
+        __asm__ __volatile__("lwbrx %0,0,%1" : "=r" (x) : "r" (&x));
+        return x;
+    } // SWAP32
+#elif defined(__POWERPC__)
+    static inline uint32 SWAP32(uint32 x)
+    {
+        return ( (((x) >> 24) & 0x000000FF) | (((x) >>  8) & 0x0000FF00) |
+                 (((x) <<  8) & 0x00FF0000) | (((x) << 24) & 0xFF000000) );
+    } // SWAP32
+#else
+#   define SWAP32(x) (x)
+#endif
 
 typedef int (*parse_instruction_function)(const uint32 *argtokens);
 
