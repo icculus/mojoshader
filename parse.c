@@ -1,19 +1,23 @@
+/**
+ * d3d2glsl; generate GLSL programs from bytecode of compiled Direct3D shaders.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
+// Shader bytecode format is described at MSDN:
+//  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 
-#define END_OF_STREAM (-2)
-//#define FAIL(x) (-1)
-static int FAIL(const char *reason)
-{
-    printf("%s FAIL.\n", reason);
-    return -1;
-} // FAIL
-
-
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
+
+// Byteswap magic...
 
 #if ((defined __GNUC__) && (defined __POWERPC__))
     static inline uint32 SWAP32(uint32 x)
@@ -30,6 +34,20 @@ typedef uint32_t uint32;
 #else
 #   define SWAP32(x) (x)
 #endif
+
+
+// Special-case return values from the parsing pipeline...
+
+#define END_OF_STREAM (-2)
+//#define FAIL(x) (-1)
+static int FAIL(const char *reason)
+{
+    printf("%s FAIL.\n", reason);
+    return -1;
+} // FAIL
+
+
+// one function for each opcode...
 
 typedef int (*parse_instruction_function)(const uint32 *argtokens);
 
@@ -450,6 +468,7 @@ static int parse_RESERVED(const uint32 *argtokens)
 
 
 
+// Lookup table for instruction opcodes...
 
 typedef struct
 {
@@ -563,6 +582,8 @@ static Instruction instructions[] = {
     #undef INSTRUCTION
 };
 
+
+// parse various token types...
 
 static int parse_instruction_token(const uint32 *tokens, const uint32 tokencount)
 {
@@ -687,6 +708,8 @@ static int parse_token(const uint32 *tokens, const uint32 tokencount)
 } // parse_token
 
 
+// API entry point...
+
 int D3D2GLSL_parse(const uint8 *tokenbuf, const uint32 bufsize)
 {
     const uint32 *tokens = (const uint32 *) tokenbuf;
@@ -703,25 +726,6 @@ int D3D2GLSL_parse(const uint8 *tokenbuf, const uint32 bufsize)
 
     return (rc == END_OF_STREAM);
 } // D3D2GLSL_parse
-
-
-int main(int argc, char **argv)
-{
-    if (argv[1] != NULL)
-    {
-        FILE *io = fopen(argv[1], "rb");
-        if (io != NULL)
-        {
-            uint8 *buf = (uint8 *) malloc(1000000);
-            int rc = fread(buf, 1, 1000000, io);
-            fclose(io);
-            D3D2GLSL_parse(buf, rc);
-            free(buf);
-        } // if
-    } // if
-
-    return 0;
-} // main
 
 // end of parse.c ...
 
