@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#include "d3d2glsl.h"
+
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
@@ -710,7 +712,7 @@ static int parse_token(const uint32 *tokens, const uint32 tokencount)
 
 // API entry point...
 
-int D3D2GLSL_parse(const uint8 *tokenbuf, const uint32 bufsize)
+int D3D2GLSL_parse(const unsigned char *tokenbuf, const unsigned int bufsize)
 {
     const uint32 *tokens = (const uint32 *) tokenbuf;
     uint32 tokencount = bufsize / sizeof (uint32);

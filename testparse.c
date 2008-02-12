@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "d3d2glsl.h"
 
 int main(int argc, char **argv)
@@ -8,7 +9,7 @@ int main(int argc, char **argv)
         FILE *io = fopen(argv[1], "rb");
         if (io != NULL)
         {
-            uint8 *buf = (uint8 *) malloc(1000000);
+            unsigned char *buf = (unsigned char *) malloc(1000000);
             int rc = fread(buf, 1, 1000000, io);
             fclose(io);
             D3D2GLSL_parse(buf, rc);
