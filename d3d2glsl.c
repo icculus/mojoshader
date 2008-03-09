@@ -10,6 +10,7 @@
 //  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
 
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -18,6 +19,16 @@
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
+
+// Context...this is state that changes as we parse through a shader...
+typedef struct D3D2GLSL_context
+{
+    const uint32 *tokens;
+    uint32 tokencount;
+    char buffers[128][5];  // scratch buffers we cycle through.
+    int bufidx;  // current scratch buffer.
+} D3D2GLSL_context;
+
 
 // Byteswap magic...
 
@@ -51,419 +62,419 @@ static int FAIL(const char *reason)
 
 // one function for each opcode...
 
-typedef int (*parse_instruction_function)(const uint32 *argtokens);
+typedef int (*parse_instruction_function)(D3D2GLSL_context *ctx);
 
-static int parse_NOP(const uint32 *argtokens)
+static int parse_NOP(D3D2GLSL_context *ctx)
 {
-    return FAIL("unimplemented.");  // !!! FIXME
+    return 1;  // no-op is a no-op.   :)
 } // parse_NOP
 
-static int parse_MOV(const uint32 *argtokens)
+static int parse_MOV(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MOV
 
-static int parse_ADD(const uint32 *argtokens)
+static int parse_ADD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ADD
 
-static int parse_SUB(const uint32 *argtokens)
+static int parse_SUB(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SUB
 
-static int parse_MAD(const uint32 *argtokens)
+static int parse_MAD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MAD
 
-static int parse_MUL(const uint32 *argtokens)
+static int parse_MUL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MUL
 
-static int parse_RCP(const uint32 *argtokens)
+static int parse_RCP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_RCP
 
-static int parse_RSQ(const uint32 *argtokens)
+static int parse_RSQ(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_RSQ
 
-static int parse_DP3(const uint32 *argtokens)
+static int parse_DP3(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DP3
 
-static int parse_DP4(const uint32 *argtokens)
+static int parse_DP4(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DP4
 
-static int parse_MIN(const uint32 *argtokens)
+static int parse_MIN(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MIN
 
-static int parse_MAX(const uint32 *argtokens)
+static int parse_MAX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MAX
 
-static int parse_SLT(const uint32 *argtokens)
+static int parse_SLT(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SLT
 
-static int parse_SGE(const uint32 *argtokens)
+static int parse_SGE(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SGE
 
-static int parse_EXP(const uint32 *argtokens)
+static int parse_EXP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_EXP
 
-static int parse_LOG(const uint32 *argtokens)
+static int parse_LOG(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LOG
 
-static int parse_LIT(const uint32 *argtokens)
+static int parse_LIT(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LIT
 
-static int parse_DST(const uint32 *argtokens)
+static int parse_DST(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DST
 
-static int parse_LRP(const uint32 *argtokens)
+static int parse_LRP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LRP
 
-static int parse_FRC(const uint32 *argtokens)
+static int parse_FRC(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_FRC
 
-static int parse_M4X4(const uint32 *argtokens)
+static int parse_M4X4(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_M4X4
 
-static int parse_M4X3(const uint32 *argtokens)
+static int parse_M4X3(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_M4X3
 
-static int parse_M3X4(const uint32 *argtokens)
+static int parse_M3X4(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_M3X4
 
-static int parse_M3X3(const uint32 *argtokens)
+static int parse_M3X3(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_M3X3
 
-static int parse_M3X2(const uint32 *argtokens)
+static int parse_M3X2(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_M3X2
 
-static int parse_CALL(const uint32 *argtokens)
+static int parse_CALL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_CALL
 
-static int parse_CALLNZ(const uint32 *argtokens)
+static int parse_CALLNZ(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_CALLNZ
 
-static int parse_LOOP(const uint32 *argtokens)
+static int parse_LOOP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LOOP
 
-static int parse_RET(const uint32 *argtokens)
+static int parse_RET(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_RET
 
-static int parse_ENDLOOP(const uint32 *argtokens)
+static int parse_ENDLOOP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ENDLOOP
 
-static int parse_LABEL(const uint32 *argtokens)
+static int parse_LABEL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LABEL
 
-static int parse_DCL(const uint32 *argtokens)
+static int parse_DCL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DCL
 
-static int parse_POW(const uint32 *argtokens)
+static int parse_POW(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_POW
 
-static int parse_CRS(const uint32 *argtokens)
+static int parse_CRS(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_CRS
 
-static int parse_SGN(const uint32 *argtokens)
+static int parse_SGN(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SGN
 
-static int parse_ABS(const uint32 *argtokens)
+static int parse_ABS(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ABS
 
-static int parse_NRM(const uint32 *argtokens)
+static int parse_NRM(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_NRM
 
-static int parse_SINCOS(const uint32 *argtokens)
+static int parse_SINCOS(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SINCOS
 
-static int parse_REP(const uint32 *argtokens)
+static int parse_REP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_REP
 
-static int parse_ENDREP(const uint32 *argtokens)
+static int parse_ENDREP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ENDREP
 
-static int parse_IF(const uint32 *argtokens)
+static int parse_IF(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_IF
 
-static int parse_IFC(const uint32 *argtokens)
+static int parse_IFC(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_IFC
 
-static int parse_ELSE(const uint32 *argtokens)
+static int parse_ELSE(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ELSE
 
-static int parse_ENDIF(const uint32 *argtokens)
+static int parse_ENDIF(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_ENDIF
 
-static int parse_BREAK(const uint32 *argtokens)
+static int parse_BREAK(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_BREAK
 
-static int parse_BREAKC(const uint32 *argtokens)
+static int parse_BREAKC(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_BREAKC
 
-static int parse_MOVA(const uint32 *argtokens)
+static int parse_MOVA(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_MOVA
 
-static int parse_DEFB(const uint32 *argtokens)
+static int parse_DEFB(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DEFB
 
-static int parse_DEFI(const uint32 *argtokens)
+static int parse_DEFI(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DEFI
 
-static int parse_TEXCOORD(const uint32 *argtokens)
+static int parse_TEXCOORD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXCOORD
 
-static int parse_TEXKILL(const uint32 *argtokens)
+static int parse_TEXKILL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXKILL
 
-static int parse_TEX(const uint32 *argtokens)
+static int parse_TEX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEX
 
-static int parse_TEXBEM(const uint32 *argtokens)
+static int parse_TEXBEM(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXBEM
 
-static int parse_TEXBEML(const uint32 *argtokens)
+static int parse_TEXBEML(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXBEML
 
-static int parse_TEXREG2AR(const uint32 *argtokens)
+static int parse_TEXREG2AR(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXREG2AR
 
-static int parse_TEXREG2GB(const uint32 *argtokens)
+static int parse_TEXREG2GB(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXREG2GB
 
-static int parse_TEXM3X2PAD(const uint32 *argtokens)
+static int parse_TEXM3X2PAD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X2PAD
 
-static int parse_TEXM3X2TEX(const uint32 *argtokens)
+static int parse_TEXM3X2TEX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X2TEX
 
-static int parse_TEXM3X3PAD(const uint32 *argtokens)
+static int parse_TEXM3X3PAD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X3PAD
 
-static int parse_TEXM3X3TEX(const uint32 *argtokens)
+static int parse_TEXM3X3TEX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X3TEX
 
-static int parse_RESERVED0(const uint32 *argtokens)
+static int parse_RESERVED0(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_RESERVED0
 
-static int parse_TEXM3X3SPEC(const uint32 *argtokens)
+static int parse_TEXM3X3SPEC(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X3SPEC
 
-static int parse_TEXM3X3VSPEC(const uint32 *argtokens)
+static int parse_TEXM3X3VSPEC(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X3VSPEC
 
-static int parse_EXPP(const uint32 *argtokens)
+static int parse_EXPP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_EXPP
 
-static int parse_LOGP(const uint32 *argtokens)
+static int parse_LOGP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_LOGP
 
-static int parse_CND(const uint32 *argtokens)
+static int parse_CND(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_CND
 
-static int parse_DEF(const uint32 *argtokens)
+static int parse_DEF(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DEF
 
-static int parse_TEXREG2RGB(const uint32 *argtokens)
+static int parse_TEXREG2RGB(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXREG2RGB
 
-static int parse_TEXDP3TEX(const uint32 *argtokens)
+static int parse_TEXDP3TEX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXDP3TEX
 
-static int parse_TEXM3X2DEPTH(const uint32 *argtokens)
+static int parse_TEXM3X2DEPTH(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X2DEPTH
 
-static int parse_TEXDP3(const uint32 *argtokens)
+static int parse_TEXDP3(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXDP3
 
-static int parse_TEXM3X3(const uint32 *argtokens)
+static int parse_TEXM3X3(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXM3X3
 
-static int parse_TEXDEPTH(const uint32 *argtokens)
+static int parse_TEXDEPTH(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXDEPTH
 
-static int parse_CMP(const uint32 *argtokens)
+static int parse_CMP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_CMP
 
-static int parse_BEM(const uint32 *argtokens)
+static int parse_BEM(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_BEM
 
-static int parse_DP2ADD(const uint32 *argtokens)
+static int parse_DP2ADD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DP2ADD
 
-static int parse_DSX(const uint32 *argtokens)
+static int parse_DSX(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DSX
 
-static int parse_DSY(const uint32 *argtokens)
+static int parse_DSY(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_DSY
 
-static int parse_TEXLDD(const uint32 *argtokens)
+static int parse_TEXLDD(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXLDD
 
-static int parse_SETP(const uint32 *argtokens)
+static int parse_SETP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_SETP
 
-static int parse_TEXLDL(const uint32 *argtokens)
+static int parse_TEXLDL(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_TEXLDL
 
-static int parse_BREAKP(const uint32 *argtokens)
+static int parse_BREAKP(D3D2GLSL_context *ctx)
 {
     return FAIL("unimplemented.");  // !!! FIXME
 } // parse_BREAKP
 
-static int parse_RESERVED(const uint32 *argtokens)
+static int parse_RESERVED(D3D2GLSL_context *ctx)
 {
     return FAIL("Tried to use RESERVED opcode.");
 } // parse_BREAKP
@@ -587,9 +598,9 @@ static Instruction instructions[] = {
 
 // parse various token types...
 
-static int parse_instruction_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_instruction_token(D3D2GLSL_context *ctx)
 {
-    const uint32 token = SWAP32(*tokens);
+    const uint32 token = SWAP32(*(ctx->tokens));
     const uint32 opcode = (token & 0xFFFF);
     const uint32 controls = ((token >> 16) & 0xFF);
     const uint32 insttoks = ((token >> 24) & 0x0F);
@@ -609,21 +620,21 @@ static int parse_instruction_token(const uint32 *tokens, const uint32 tokencount
     {
         if (instruction->arg_tokens != insttoks)
             return FAIL("unexpected number of tokens for instruction.");
-        else if (tokencount <= instruction->arg_tokens)
+        else if (ctx->tokencount <= instruction->arg_tokens)
             return FAIL("not enough tokens left in shader for instruction.");
     } // if
 
 return insttoks + 1;
-//    return instruction->parser(tokens + 1);
+//    return instruction->parser(ctx, tokens + 1);
 } // parse_instruction_token
 
 
-static int parse_version_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_version_token(D3D2GLSL_context *ctx)
 {
-    if (tokencount == 0)
+    if (ctx->tokencount == 0)
         return FAIL("Expected version token, got none at all.");
 
-    const uint32 token = SWAP32(*tokens);
+    const uint32 token = SWAP32(*(ctx->tokens));
     const uint32 shadertype = ((token >> 16) & 0xFFFF);
     const uint32 major = ((token >> 8) & 0xFF);
     const uint32 minor = (token & 0xFF);
@@ -641,9 +652,9 @@ static int parse_version_token(const uint32 *tokens, const uint32 tokencount)
 } // parse_version_token
 
 
-static int parse_comment_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_comment_token(D3D2GLSL_context *ctx)
 {
-    const uint32 token = SWAP32(*tokens);
+    const uint32 token = SWAP32(*(ctx->tokens));
     if ((token & 0xFFFF) != 0xFFFE)
         return 0;  // not a comment token.
     else if ((token & 0x80000000) != 0)
@@ -655,7 +666,7 @@ static int parse_comment_token(const uint32 *tokens, const uint32 tokencount)
             (uint) commenttoks, (uint) commentlen);
 
     uint32 i = 0;
-    const char *comment = (const char *) (tokens+1);
+    const char *comment = (const char *) (ctx->tokens+1);
     while (i < commentlen)
         fputc(comment[i++], stdout);
 
@@ -665,45 +676,45 @@ static int parse_comment_token(const uint32 *tokens, const uint32 tokencount)
 } // parse_comment_token
 
 
-static int parse_end_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_end_token(D3D2GLSL_context *ctx)
 {
-    if (SWAP32(*tokens) != 0x0000FFFF)      // end token is always 0x0000FFFF.
+    if (SWAP32(*(ctx->tokens)) != 0x0000FFFF)   // end token always 0x0000FFFF.
         return 0;  // not us, eat no tokens.
 
     printf("END\n");
 
-    if (tokencount != 1)  // we _must_ be last. If not: FAIL.
-        FAIL("end token before end of stream");
+    if (ctx->tokencount != 1)  // we _must_ be last. If not: FAIL.
+        return FAIL("end token before end of stream");
 
     return END_OF_STREAM;
 } // parse_end_token
 
 
-static int parse_phase_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_phase_token(D3D2GLSL_context *ctx)
 {
-    if (SWAP32(*tokens) != 0x0000FFFD)    // phase token is always 0x0000FFFD.
+    if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
     return FAIL("not sure what this thing is yet.");
 } // parse_phase_token
 
 
-static int parse_token(const uint32 *tokens, const uint32 tokencount)
+static int parse_token(D3D2GLSL_context *ctx)
 {
     int rc = 0;
 
-    if (tokencount == 0)
+    if (ctx->tokencount == 0)
         return FAIL("unexpected end of shader.");
 
-    if ((rc = parse_comment_token(tokens, tokencount)) != 0)
+    if ((rc = parse_comment_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_end_token(tokens, tokencount)) != 0)
+    if ((rc = parse_end_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_phase_token(tokens, tokencount)) != 0)
+    if ((rc = parse_phase_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_instruction_token(tokens, tokencount)) != 0)
+    if ((rc = parse_instruction_token(ctx)) != 0)
         return rc;
 
     return FAIL("unknown token");
@@ -714,16 +725,20 @@ static int parse_token(const uint32 *tokens, const uint32 tokencount)
 
 int D3D2GLSL_parse(const unsigned char *tokenbuf, const unsigned int bufsize)
 {
-    const uint32 *tokens = (const uint32 *) tokenbuf;
-    uint32 tokencount = bufsize / sizeof (uint32);
-    int rc = parse_version_token(tokens, tokencount);
+    D3D2GLSL_context ctx;
+    int rc = 0;
+
+    memset(&ctx, '\0', sizeof (D3D2GLSL_context));
+    ctx.tokens = (const uint32 *) tokenbuf;
+    ctx.tokencount = bufsize / sizeof (uint32);
+    rc = parse_version_token(&ctx);
 
     // parse out the rest of the tokens after the version token...
     while (rc > 0)
     {
-        tokens += rc;
-        tokencount -= rc;
-        rc = parse_token(tokens, tokencount);
+        ctx.tokens += rc;
+        ctx.tokencount -= rc;
+        rc = parse_token(&ctx);
     } // while
 
     return (rc == END_OF_STREAM);
