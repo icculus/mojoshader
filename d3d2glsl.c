@@ -38,7 +38,7 @@ typedef struct D3D2GLSL_context
     char *output;
     uint32 output_len;
     char *failstr;
-    char buffers[D3D2GLSL_SCRATCH_BUFFER_SIZE][D3D2GLSL_SCRATCH_BUFFERS];
+    char buffers[D3D2GLSL_SCRATCH_BUFFERS][D3D2GLSL_SCRATCH_BUFFER_SIZE];
     int bufidx;  // current scratch buffer.
 } D3D2GLSL_context;
 
