@@ -37,12 +37,39 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
 
+// predeclare.
+typedef struct D3D2GLSL_context D3D2GLSL_context;
+
+// one emit function for each opcode in each profile.
+typedef void (*emit_function)(D3D2GLSL_context *ctx);
+
+// one emit function for comments in each profile.
+typedef void (*emit_comment)(D3D2GLSL_context *ctx, const char *str);
+
+// one emit function for starting output in each profile.
+typedef void (*emit_start)(D3D2GLSL_context *ctx, uint32 shadertype,
+                           uint32 major, uint32 minor);
+
+// one emit function for ending output in each profile.
+typedef void (*emit_end)(D3D2GLSL_context *ctx);
+
+// one state function for each opcode where we have state machine updates.
+typedef int (*state_function)(D3D2GLSL_context *ctx);
+
+typedef struct
+{
+    const char *name;
+    emit_start start_emitter;
+    emit_end end_emitter;
+    emit_comment comment_emitter;
+} D3D2GLSL_profile;
+
 
 #define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
 #define D3D2GLSL_SCRATCH_BUFFERS 5
 
 // Context...this is state that changes as we parse through a shader...
-typedef struct D3D2GLSL_context
+struct D3D2GLSL_context
 {
     const uint32 *tokens;
     uint32 tokencount;
@@ -51,26 +78,8 @@ typedef struct D3D2GLSL_context
     char *failstr;
     char buffers[D3D2GLSL_SCRATCH_BUFFERS][D3D2GLSL_SCRATCH_BUFFER_SIZE];
     int bufidx;  // current scratch buffer.
-    int profile;
-} D3D2GLSL_context;
-
-
-typedef void (*emit_comment)(D3D2GLSL_context *ctx, const char *str);
-
-typedef struct
-{
-    const char *name;
-    int supported;
-    emit_comment comment_emitter;  // !!! FIXME: put this elsewhere
-} D3D2GLSL_Profile;
-
-static void emit_D3D_comment(D3D2GLSL_context *ctx, const char *str); // !!! FIXME: put this elsewhere
-static void emit_GLSL_comment(D3D2GLSL_context *ctx, const char *str); // !!! FIXME: put this elsewhere
-
-static const D3D2GLSL_Profile profiles[] =
-{
-    { "d3d", SUPPORT_PROFILE_D3D, emit_D3D_comment },
-    { "glsl", SUPPORT_PROFILE_GLSL, emit_GLSL_comment },
+    int profileidx;
+    const D3D2GLSL_profile *profile;
 };
 
 
@@ -170,19 +179,30 @@ static int parse_destination_token(D3D2GLSL_context *ctx)
 } // parse_destination_token
 
 
-// one emit function for each opcode in each profile.
-
-typedef void (*emit_function)(D3D2GLSL_context *ctx);
-
-
 #define AT_LEAST_ONE_PROFILE 0
 
 #if !SUPPORT_PROFILE_D3D
-#define PROFILE_EMITTER_D3D(op) NULL
+#define PROFILE_EMITTER_D3D(op)
 #else
 #undef AT_LEAST_ONE_PROFILE
 #define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_D3D(op) emit_D3D_##op
+#define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
+
+static void emit_D3D_start(D3D2GLSL_context *ctx, uint32 shadertype,
+                           uint32 major, uint32 minor)
+{
+    if (shadertype == 0xFFFF)  // pixel shader.
+        output_line(ctx, "ps_%u_%u", (uint) major, (uint) minor);
+    else if (shadertype == 0xFFFE)  // vertex shader.
+        output_line(ctx, "vs_%u_%u", (uint) major, (uint) minor);
+    else
+        fail(ctx, "Unsupported in this profile.");
+} // emit_D3D_start
+
+static void emit_D3D_end(D3D2GLSL_context *ctx)
+{
+    output_line(ctx, "END");
+} // emit_D3D_end
 
 static void emit_D3D_comment(D3D2GLSL_context *ctx, const char *str)
 {
@@ -604,11 +624,26 @@ static void emit_D3D_RESERVED(D3D2GLSL_context *ctx)
 
 
 #if !SUPPORT_PROFILE_GLSL
-#define PROFILE_EMITTER_GLSL(op) NULL
+#define PROFILE_EMITTER_GLSL(op)
 #else
 #undef AT_LEAST_ONE_PROFILE
 #define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op
+#define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
+
+static void emit_GLSL_start(D3D2GLSL_context *ctx, uint32 shadertype,
+                            uint32 major, uint32 minor)
+{
+    output_line(ctx, "// %s shader, version %u.%u",
+                (shadertype == 0xFFFF) ? "Pixel" :
+                (shadertype == 0xFFFE) ? "Vertex" :
+                "Unknown", major, minor);
+    output_line(ctx, "void main() {");
+} // emit_GLSL_start
+
+static void emit_GLSL_end(D3D2GLSL_context *ctx)
+{
+    output_line(ctx, "}");
+} // emit_GLSL_end
 
 static void emit_GLSL_comment(D3D2GLSL_context *ctx, const char *str)
 {
@@ -1033,15 +1068,31 @@ static void emit_GLSL_RESERVED(D3D2GLSL_context *ctx)
 #error No profiles are supported. Fix your build.
 #endif
 
+static const D3D2GLSL_profile profiles[] =
+{
+#if SUPPORT_PROFILE_D3D
+    { "d3d", emit_D3D_start, emit_D3D_end, emit_D3D_comment },
+#endif
+#if SUPPORT_PROFILE_GLSL
+    { "glsl", emit_GLSL_start, emit_GLSL_end, emit_GLSL_comment },
+#endif
+};
+
+// The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
+#define PROFILE_EMITTERS(op) { \
+     PROFILE_EMITTER_D3D(op) \
+     PROFILE_EMITTER_GLSL(op) \
+}
 
 
-// one parse function for each opcode where we have state machine updates.
-typedef int (*state_function)(D3D2GLSL_context *ctx);
+
+// State machine functions...
 
 static int state_RESERVED(D3D2GLSL_context *ctx)
 {
     return fail(ctx, "Tried to use RESERVED opcode.");
 } // state_RESERVED
+
 
 
 // Lookup table for instruction opcodes...
@@ -1061,15 +1112,8 @@ static Instruction instructions[] = {
     // INSTRUCTION_STATE means this opcode has to update the state machine
     //  (we're entering an ELSE block, etc). INSTRUCTION means there's no
     //  state, just go straight to the emitters.
-    // The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
-    #define INSTRUCTION_STATE(op, args) { \
-        #op, args, state_##op, \
-        { PROFILE_EMITTER_D3D(op), PROFILE_EMITTER_GLSL(op), } \
-    }
-    #define INSTRUCTION(op, args) { \
-        #op, args, NULL, \
-        { PROFILE_EMITTER_D3D(op), PROFILE_EMITTER_GLSL(op), } \
-    }
+    #define INSTRUCTION_STATE(op, args) { #op, args, state_##op, PROFILE_EMITTERS(op) }
+    #define INSTRUCTION(op, args) { #op, args, NULL, PROFILE_EMITTERS(op) }
     INSTRUCTION(NOP, 0),
     INSTRUCTION(MOV, 2),
     INSTRUCTION(ADD, 3),
@@ -1183,7 +1227,7 @@ static int parse_instruction_token(D3D2GLSL_context *ctx)
     const int coissue = (token & 0x40000000) ? 1 : 0;
     const int predicated = (token & 0x10000000) ? 1 : 0;
     const Instruction *instruction = &instructions[opcode];
-    const emit_function emitter = instruction->emitter[ctx->profile];
+    const emit_function emitter = instruction->emitter[ctx->profileidx];
     int retval = FAIL;
 
     if ( opcode >= (sizeof (instructions) / sizeof (instructions[0])) )
@@ -1214,7 +1258,8 @@ static int parse_instruction_token(D3D2GLSL_context *ctx)
     else
         retval = insttoks + 1;
 
-    emitter(ctx);  // call the profile's emitter.
+    if (ctx->failstr == NULL)  // only do this if there wasn't a previous fail.
+        emitter(ctx);  // call the profile's emitter.
 
     return retval;
 } // parse_instruction_token
@@ -1230,15 +1275,11 @@ static int parse_version_token(D3D2GLSL_context *ctx)
     const uint32 major = ((token >> 8) & 0xFF);
     const uint32 minor = (token & 0xFF);
 
-    if (shadertype == 0xFFFF)
-        output_line(ctx, "Pixel shader");
-    else if (shadertype == 0xFFFE)
-        output_line(ctx, "Vertex shader");
-    else
+    // 0xFFFF == pixel shader, 0xFFFE == vertex shader
+    if ((shadertype != 0xFFFF) && (shadertype != 0xFFFE))
         return fail(ctx, "geometry shader? Unsupported at the moment.");
 
-    output_line(ctx, "Version %u.%u", (uint) major, (uint) minor);
-
+    ctx->profile->start_emitter(ctx, shadertype, major, minor);
     return 1;  // ate one token.
 } // parse_version_token
 
@@ -1250,20 +1291,23 @@ static int parse_comment_token(D3D2GLSL_context *ctx)
         return 0;  // not a comment token.
     else if ((token & 0x80000000) != 0)
         return fail(ctx, "comment token high bit must be zero.");  // so says msdn.
+    else
+    {
+        const uint32 commenttoks = ((token >> 16) & 0xFFFF);
+        const uint32 commentlen = commenttoks * sizeof (uint32);
 
-    const uint32 commenttoks = ((token >> 16) & 0xFFFF);
-    const uint32 commentlen = commenttoks * sizeof (uint32);
-    output_line(ctx, "Comment (%u tokens, %u bytes): ",
-                (uint) commenttoks, (uint) commentlen);
+        // !!! FIXME: I'd rather not malloc() here.
+        char *str = (char *) malloc(commentlen + 1);
+        memcpy(str, (const char *) (ctx->tokens+1), commentlen);
+        str[commentlen] = '\0';
+        ctx->profile->comment_emitter(ctx, str);
+        free(str);
 
-    // !!! FIXME: I'd rather not malloc() here.
-    char *str = (char *) malloc(commentlen + 1);
-    memcpy(str, (const char *) (ctx->tokens+1), commentlen);
-    str[commentlen] = '\0';
-    profiles[ctx->profile].comment_emitter(ctx, str);
-    free(str);
+        return commenttoks + 1;  // comment data plus the initial token.
+    } // else
 
-    return commenttoks + 1;  // comment data plus the initial token.
+    // shouldn't hit this.
+    return failf(ctx, "Logic error at %s:%d", __FILE__, __LINE__);
 } // parse_comment_token
 
 
@@ -1272,10 +1316,10 @@ static int parse_end_token(D3D2GLSL_context *ctx)
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFF)   // end token always 0x0000FFFF.
         return 0;  // not us, eat no tokens.
 
-    output_line(ctx, "END");
-
     if (ctx->tokencount != 1)  // we _must_ be last. If not: fail.
         return fail(ctx, "end token before end of stream");
+
+    ctx->profile->end_emitter(ctx);
 
     return END_OF_STREAM;
 } // parse_end_token
@@ -1327,30 +1371,31 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
     memset(&ctx, '\0', sizeof (D3D2GLSL_context));
     ctx.tokens = (const uint32 *) tokenbuf;
     ctx.tokencount = bufsize / sizeof (uint32);
-    ctx.profile = -1;
     for (i = 0; i < STATICARRAYLEN(profiles); i++)
     {
         const char *name = profiles[i].name;
         if (strcmp(name, profile) == 0)
         {
-            if (profiles[i].supported)
-                ctx.profile = i;
+            ctx.profile = &profiles[i];
+            ctx.profileidx = i;
             break;
         } // if
     } // for
 
-    if (ctx.profile < 0)
-        return 0;  // !!! FIXME: fail()?
-
-    rc = parse_version_token(&ctx);
-
-    // parse out the rest of the tokens after the version token...
-    while (rc > 0)
+    if (ctx.profile == NULL)
+        failf(&ctx, "Profile '%s' is unknown or unsupported", profile);
+    else
     {
-        ctx.tokens += rc;
-        ctx.tokencount -= rc;
-        rc = parse_token(&ctx);
-    } // while
+        rc = parse_version_token(&ctx);
+
+        // parse out the rest of the tokens after the version token...
+        while (rc > 0)
+        {
+            ctx.tokens += rc;
+            ctx.tokencount -= rc;
+            rc = parse_token(&ctx);
+        } // while
+    } // else
 
     // !!! FIXME: temp
     if (ctx.output != NULL)
