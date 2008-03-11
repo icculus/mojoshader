@@ -15,7 +15,8 @@ extern "C" {
 
 /* !!! FIXME: documentation. */
 /* !!! FIXME: this needs to change to return a buffer of GLSL code. */
-int D3D2GLSL_parse(const unsigned char *tokenbuf, const unsigned int bufsize);
+int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
+                   const unsigned int bufsize);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,7 @@ int main(int argc, char **argv)
             unsigned char *buf = (unsigned char *) malloc(1000000);
             int rc = fread(buf, 1, 1000000, io);
             fclose(io);
-            D3D2GLSL_parse(buf, rc);
+            D3D2GLSL_parse("d3d", buf, rc);
             free(buf);
         } // if
     } // if
