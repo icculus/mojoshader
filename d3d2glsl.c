@@ -47,8 +47,7 @@ typedef void (*emit_function)(D3D2GLSL_context *ctx);
 typedef void (*emit_comment)(D3D2GLSL_context *ctx, const char *str);
 
 // one emit function for starting output in each profile.
-typedef void (*emit_start)(D3D2GLSL_context *ctx, uint32 shadertype,
-                           uint32 major, uint32 minor);
+typedef void (*emit_start)(D3D2GLSL_context *ctx);
 
 // one emit function for ending output in each profile.
 typedef void (*emit_end)(D3D2GLSL_context *ctx);
@@ -63,6 +62,15 @@ typedef struct
     emit_end end_emitter;
     emit_comment comment_emitter;
 } D3D2GLSL_profile;
+
+
+typedef enum
+{
+    SHADER_TYPE_UNKNOWN = -1,
+    SHADER_TYPE_PIXEL,
+    SHADER_TYPE_VERTEX,
+    SHADER_TYPE_TOTAL
+} D3D2GLSL_shaderType;
 
 
 #define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
@@ -80,6 +88,9 @@ struct D3D2GLSL_context
     int bufidx;  // current scratch buffer.
     int profileidx;
     const D3D2GLSL_profile *profile;
+    D3D2GLSL_shaderType shader_type;
+    uint32 major_ver;
+    uint32 minor_ver;
 };
 
 
@@ -172,13 +183,6 @@ static int output_line(D3D2GLSL_context *ctx, const char *fmt, ...)
 } // output_line
 
 
-static int parse_destination_token(D3D2GLSL_context *ctx)
-{
-    const uint32 token = SWAP32(*(ctx->tokens));
-    const uint32 regnum = (token & 0x7ff);  // bits 0 through 10
-} // parse_destination_token
-
-
 #define AT_LEAST_ONE_PROFILE 0
 
 #if !SUPPORT_PROFILE_D3D
@@ -188,15 +192,111 @@ static int parse_destination_token(D3D2GLSL_context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
-static void emit_D3D_start(D3D2GLSL_context *ctx, uint32 shadertype,
-                           uint32 major, uint32 minor)
+static int parse_destination_token(D3D2GLSL_context *ctx)
 {
-    if (shadertype == 0xFFFF)  // pixel shader.
-        output_line(ctx, "ps_%u_%u", (uint) major, (uint) minor);
-    else if (shadertype == 0xFFFE)  // vertex shader.
-        output_line(ctx, "vs_%u_%u", (uint) major, (uint) minor);
+    const uint32 token = SWAP32(*(ctx->tokens));
+    const uint32 regnum = (token & 0x7ff);  // bits 0 through 10
+    const uint32 relative = ((token >> 13) & 0x1); // bit 13
+    const uint32 reserved1 = ((token >> 14) & 0x3); // bits 14 through 15
+    const uint32 writemask = ((token >> 16) & 0xF); // bits 16 through 19
+    const uint32 result_mod = ((token >> 20) & 0xF); // bits 20 through 23
+    const uint32 result_shift = ((token >> 24) & 0xF); // bits 24 through 27
+    const uint32 regtype = ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+    const uint32 reserved2 = ((token >> 31) & 0x1); // bit 31
+
+    if (reserved1 != 0)
+        return fail(ctx, "Reserved bit #1 in destination token must be zero");
+
+    if (reserved2 != 1)
+        return fail(ctx, "Reserved bit #2 in destination token must be one");
+
+    if (relative)
+    {
+        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+            return fail(ctx, "Relative addressing in non-vertex shader");
+        else if (ctx->major_ver < 3)
+            return fail(ctx, "Relative addressing in vertex shader version < 3.0");
+        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+    } // if
+
+    if (result_shift != 0)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Result shift scale in non-pixel shader");
+        else if (ctx->major_ver >= 2)
+            return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
+    } // if
+
+    if (result_mod & 0x1)  // Saturate (vertex shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+            return fail(ctx, "Saturate result mod in non-vertex shader");
+    } // if
+
+    if (result_mod & 0x2)  // Partial precision (pixel shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Partial precision result mod in non-pixel shader");
+    } // if
+
+    if (result_mod & 0x4)  // Centroid (pixel shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Centroid result mod in non-pixel shader");
+    } // if
+
+    return 1;
+} // parse_destination_token
+
+
+static int parse_source_token(D3D2GLSL_context *ctx)
+{
+    const uint32 token = SWAP32(*(ctx->tokens));
+    const uint32 regnum = (token & 0x7ff);  // bits 0 through 10
+    const uint32 relative = ((token >> 13) & 0x1); // bit 13
+    const uint32 reserved1 = ((token >> 14) & 0x3); // bits 14 through 15
+    const uint32 swizzle_x = ((token >> 16) & 0x3); // bits 16 through 17
+    const uint32 swizzle_y = ((token >> 18) & 0x3); // bits 18 through 19
+    const uint32 swizzle_z = ((token >> 20) & 0x3); // bits 20 through 21
+    const uint32 swizzle_w = ((token >> 22) & 0x3); // bits 22 through 23
+    const uint32 src_mod = ((token >> 24) & 0xF); // bits 24 through 27
+    const uint32 regtype = ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+    const uint32 reserved2 = ((token >> 31) & 0x1); // bit 31
+
+    if (reserved1 != 0)
+        return fail(ctx, "Reserved bit #1 in source token must be zero");
+
+    if (reserved2 != 1)
+        return fail(ctx, "Reserved bit #2 in source token must be one");
+
+    if (relative)
+    {
+        if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
+            return fail(ctx, "Relative addressing in pixel shader version < 3.0");
+        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+    } // if
+
+    if (src_mod >= 0xE)
+        return fail(ctx, "Unknown source modifier");
+
+    return 1;
+} // parse_source_token
+
+
+
+static void emit_D3D_start(D3D2GLSL_context *ctx)
+{
+    const uint major = (uint) ctx->major_ver;
+    const uint minor = (uint) ctx->minor_ver;
+    if (ctx->shader_type == SHADER_TYPE_PIXEL)
+        output_line(ctx, "ps_%u_%u", major, minor);
+    else if (ctx->shader_type == SHADER_TYPE_VERTEX)
+        output_line(ctx, "vs_%u_%u", major, minor);
     else
-        fail(ctx, "Unsupported in this profile.");
+    {
+        failf(ctx, "Shader type %u unsupported in this profile.",
+              (uint) ctx->shader_type);
+    } // else
 } // emit_D3D_start
 
 static void emit_D3D_end(D3D2GLSL_context *ctx)
@@ -216,7 +316,8 @@ static void emit_D3D_NOP(D3D2GLSL_context *ctx)
 
 static void emit_D3D_MOV(D3D2GLSL_context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // dst, src
+    
 } // emit_D3D_MOV
 
 static void emit_D3D_ADD(D3D2GLSL_context *ctx)
@@ -630,13 +731,20 @@ static void emit_D3D_RESERVED(D3D2GLSL_context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
 
-static void emit_GLSL_start(D3D2GLSL_context *ctx, uint32 shadertype,
-                            uint32 major, uint32 minor)
+static void emit_GLSL_start(D3D2GLSL_context *ctx)
 {
-    output_line(ctx, "// %s shader, version %u.%u",
-                (shadertype == 0xFFFF) ? "Pixel" :
-                (shadertype == 0xFFFE) ? "Vertex" :
-                "Unknown", major, minor);
+    const uint major = (uint) ctx->major_ver;
+    const uint minor = (uint) ctx->minor_ver;
+    if (ctx->shader_type == SHADER_TYPE_PIXEL)
+        output_line(ctx, "// Pixel shader, version %u.%u", major, minor);
+    else if (ctx->shader_type == SHADER_TYPE_VERTEX)
+        output_line(ctx, "// Vertex shader, version %u.%u", major, minor);
+    else
+    {
+        failf(ctx, "Shader type %u unsupported in this profile.",
+              (uint) ctx->shader_type);
+    } // else
+
     output_line(ctx, "void main() {");
 } // emit_GLSL_start
 
@@ -1236,6 +1344,9 @@ static int parse_instruction_token(D3D2GLSL_context *ctx)
     if ((token & 0x80000000) != 0)
         return fail(ctx, "instruction token high bit must be zero.");  // so says msdn.
 
+    if (coissue)  // !!! FIXME: I'm not sure what this means, yet.
+        return fail(ctx, "coissue instructions unsupported");
+
     if (instruction->arg_tokens >= 0)
     {
         if (instruction->arg_tokens != insttoks)
@@ -1272,14 +1383,19 @@ static int parse_version_token(D3D2GLSL_context *ctx)
 
     const uint32 token = SWAP32(*(ctx->tokens));
     const uint32 shadertype = ((token >> 16) & 0xFFFF);
-    const uint32 major = ((token >> 8) & 0xFF);
-    const uint32 minor = (token & 0xFF);
+
+    ctx->major_ver = (uint32) ((token >> 8) & 0xFF);
+    ctx->minor_ver = (uint32) (token & 0xFF);
 
     // 0xFFFF == pixel shader, 0xFFFE == vertex shader
-    if ((shadertype != 0xFFFF) && (shadertype != 0xFFFE))
-        return fail(ctx, "geometry shader? Unsupported at the moment.");
+    if (shadertype == 0xFFFF)
+        ctx->shader_type = SHADER_TYPE_PIXEL;
+    else if (shadertype == 0xFFFE)
+        ctx->shader_type = SHADER_TYPE_VERTEX;
+    else
+        return fail(ctx, "Unsupported shader type or not a shader at all");
 
-    ctx->profile->start_emitter(ctx, shadertype, major, minor);
+    ctx->profile->start_emitter(ctx);
     return 1;  // ate one token.
 } // parse_version_token
 
@@ -1386,6 +1502,7 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
         failf(&ctx, "Profile '%s' is unknown or unsupported", profile);
     else
     {
+        // Version token always comes first.
         rc = parse_version_token(&ctx);
 
         // parse out the rest of the tokens after the version token...
