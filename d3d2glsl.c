@@ -6,6 +6,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: I keep changing coding styles for symbols and typedefs.
+
 // Shader bytecode format is described at MSDN:
 //  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
 
@@ -17,6 +19,9 @@
 
 #include "d3d2glsl.h"
 
+
+// You get all the profiles unless you go out of your way to disable them.
+
 #ifndef SUPPORT_PROFILE_D3D
 #define SUPPORT_PROFILE_D3D 1
 #endif
@@ -25,6 +30,13 @@
 #define SUPPORT_PROFILE_GLSL 1
 #endif
 
+
+// Get basic wankery out of the way here...
+
+typedef unsigned int uint;  // this is a printf() helper. don't use for code.
+typedef uint8_t uint8;
+typedef uint32_t uint32;
+
 #ifdef __GNUC__
 #define ISPRINTF(x,y) __attribute__((format (printf, x, y)))
 #else
@@ -32,67 +44,6 @@
 #endif
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
-
-typedef unsigned int uint;  // this is a printf() helper. don't use for code.
-typedef uint8_t uint8;
-typedef uint32_t uint32;
-
-// predeclare.
-typedef struct D3D2GLSL_context D3D2GLSL_context;
-
-// one emit function for each opcode in each profile.
-typedef void (*emit_function)(D3D2GLSL_context *ctx);
-
-// one emit function for comments in each profile.
-typedef void (*emit_comment)(D3D2GLSL_context *ctx, const char *str);
-
-// one emit function for starting output in each profile.
-typedef void (*emit_start)(D3D2GLSL_context *ctx);
-
-// one emit function for ending output in each profile.
-typedef void (*emit_end)(D3D2GLSL_context *ctx);
-
-// one state function for each opcode where we have state machine updates.
-typedef int (*state_function)(D3D2GLSL_context *ctx);
-
-typedef struct
-{
-    const char *name;
-    emit_start start_emitter;
-    emit_end end_emitter;
-    emit_comment comment_emitter;
-} D3D2GLSL_profile;
-
-
-typedef enum
-{
-    SHADER_TYPE_UNKNOWN = -1,
-    SHADER_TYPE_PIXEL,
-    SHADER_TYPE_VERTEX,
-    SHADER_TYPE_TOTAL
-} D3D2GLSL_shaderType;
-
-
-#define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
-#define D3D2GLSL_SCRATCH_BUFFERS 10
-
-// Context...this is state that changes as we parse through a shader...
-struct D3D2GLSL_context
-{
-    const uint32 *tokens;
-    uint32 tokencount;
-    char *output;
-    uint32 output_len;
-    char *failstr;
-    char buffers[D3D2GLSL_SCRATCH_BUFFERS][D3D2GLSL_SCRATCH_BUFFER_SIZE];
-    int bufidx;  // current scratch buffer.
-    int profileidx;
-    const D3D2GLSL_profile *profile;
-    D3D2GLSL_shaderType shader_type;
-    uint32 major_ver;
-    uint32 minor_ver;
-};
-
 
 
 // Byteswap magic...
@@ -114,10 +65,81 @@ struct D3D2GLSL_context
 #endif
 
 
-static inline char *get_scratch_buffer(D3D2GLSL_context *ctx)
+// predeclare.
+typedef struct Context Context;
+
+// one emit function for each opcode in each profile.
+typedef void (*emit_function)(Context *ctx);
+
+// one emit function for comments in each profile.
+typedef void (*emit_comment)(Context *ctx, const char *str);
+
+// one emit function for starting output in each profile.
+typedef void (*emit_start)(Context *ctx);
+
+// one emit function for ending output in each profile.
+typedef void (*emit_end)(Context *ctx);
+
+// one state function for each opcode where we have state machine updates.
+typedef int (*state_function)(Context *ctx);
+
+typedef struct
 {
-    ctx->bufidx = (ctx->bufidx + 1) % D3D2GLSL_SCRATCH_BUFFERS;
-    return ctx->buffers[ctx->bufidx];
+    const char *name;
+    emit_start start_emitter;
+    emit_end end_emitter;
+    emit_comment comment_emitter;
+} D3D2GLSL_profile;
+
+
+typedef enum
+{
+    SHADER_TYPE_UNKNOWN = -1,
+    SHADER_TYPE_PIXEL,
+    SHADER_TYPE_VERTEX,
+    SHADER_TYPE_TOTAL
+} D3D2GLSL_shaderType;
+
+
+// A simple linked list of strings, so we can build the final output without
+//  realloc()ing for each new line, and easily insert lines into the middle
+//  of the output without much trouble.
+typedef struct OutputList
+{
+    char *str;
+    struct OutputList *next;
+} OutputList;
+
+#define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
+#define D3D2GLSL_SCRATCH_BUFFERS 10
+
+// Context...this is state that changes as we parse through a shader...
+struct Context
+{
+    D3D2GLSL_malloc malloc;
+    D3D2GLSL_free free;
+    const uint32 *tokens;
+    uint32 tokencount;
+    OutputList output;
+    OutputList *output_tail;
+    int output_len; // total strlen; prevents walking the list just to malloc.
+    const char *endline;
+    int endline_len;
+    const char *failstr;
+    char scratch[D3D2GLSL_SCRATCH_BUFFERS][D3D2GLSL_SCRATCH_BUFFER_SIZE];
+    int scratchidx;  // current scratch buffer.
+    int profileid;
+    const D3D2GLSL_profile *profile;
+    D3D2GLSL_shaderType shader_type;
+    uint32 major_ver;
+    uint32 minor_ver;
+};
+
+
+static inline char *get_scratch_buffer(Context *ctx)
+{
+    ctx->scratchidx = (ctx->scratchidx + 1) % D3D2GLSL_SCRATCH_BUFFERS;
+    return ctx->scratch[ctx->scratchidx];
 } // get_scratch_buffer
 
 
@@ -125,60 +147,93 @@ static inline char *get_scratch_buffer(D3D2GLSL_context *ctx)
 #define FAIL (-1)
 #define END_OF_STREAM (-2)
 
-static int failf(D3D2GLSL_context *ctx, const char *fmt, ...) ISPRINTF(2,3);
-static int failf(D3D2GLSL_context *ctx, const char *fmt, ...)
+static const char *out_of_mem_string = "Out of memory";
+static inline int out_of_memory(Context *ctx)
+{
+    if (ctx->failstr == NULL)
+        ctx->failstr = out_of_mem_string;  // fail() would call malloc().
+    return FAIL;
+} // out_of_memory
+
+
+static int failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
+static int failf(Context *ctx, const char *fmt, ...)
 {
     if (ctx->failstr == NULL)  // don't change existing error.
     {
-        char *buffer = get_scratch_buffer(ctx);
+        char *scratch = get_scratch_buffer(ctx);
         va_list ap;
         va_start(ap, fmt);
-        vsnprintf(buffer, D3D2GLSL_SCRATCH_BUFFER_SIZE, fmt, ap);
+        const int len = vsnprintf(scratch,D3D2GLSL_SCRATCH_BUFFER_SIZE,fmt,ap);
         va_end(ap);
 
-        ctx->failstr = (char *) malloc(strlen(buffer) + 1);
-        if (ctx->failstr != NULL)
-            strcpy(ctx->failstr, buffer);
+        char *failstr = (char *) ctx->malloc(len + 1);
+        if (failstr == NULL)
+            out_of_memory(ctx);
+        else
+        {
+            // see comments about scratch buffer overflow in output_line().
+            if (len < D3D2GLSL_SCRATCH_BUFFER_SIZE)
+                strcpy(failstr, scratch);  // copy it over.
+            else
+            {
+                va_start(ap, fmt);
+                vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
+                va_end(ap);
+            } // else
+            ctx->failstr = failstr;
+        } // else
     } // if
 
     return FAIL;
 } // failf
 
 
-static inline int fail(D3D2GLSL_context *ctx, const char *reason)
+static inline int fail(Context *ctx, const char *reason)
 {
     return failf(ctx, "%s", reason);
 } // fail
 
 
-static int output_line(D3D2GLSL_context *ctx, const char *fmt, ...) ISPRINTF(2,3);
-static int output_line(D3D2GLSL_context *ctx, const char *fmt, ...)
+static int output_line(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
+static int output_line(Context *ctx, const char *fmt, ...)
 {
     if (ctx->failstr != NULL)
         return FAIL;  // we failed previously, don't go on...
 
-    char *buffer = get_scratch_buffer(ctx);
+    OutputList *item = (OutputList *) ctx->malloc(sizeof (OutputList));
+    if (item == NULL)
+        return out_of_memory(ctx);
+
+    char *scratch = get_scratch_buffer(ctx);
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(buffer, D3D2GLSL_SCRATCH_BUFFER_SIZE, fmt, ap);
+    const int len = vsnprintf(scratch, D3D2GLSL_SCRATCH_BUFFER_SIZE, fmt, ap);
     va_end(ap);
 
-    if (len >= D3D2GLSL_SCRATCH_BUFFER_SIZE)
+    item->str = (char *) ctx->malloc(len + 1);
+    if (item->str == NULL)
     {
-        return failf(ctx, "Internal bug--String is too big (%d vs %d bytes).",
-                     (int) len, (int) D3D2GLSL_SCRATCH_BUFFER_SIZE);
+        free(item);
+        return out_of_memory(ctx);
     } // if
 
-    const size_t newlen = ctx->output_len + len + 1;
-    char *ptr = (char *) realloc(ctx->output, newlen+1);
-    if (ptr == NULL)
-        return fail(ctx, "Out of memory");
+    // If we overflowed our scratch buffer, that's okay. We were going to
+    //  allocate anyhow...the scratch buffer just lets us avoid a second
+    //  run of vsnprintf().
+    if (len < D3D2GLSL_SCRATCH_BUFFER_SIZE)
+        strcpy(item->str, scratch);  // copy it over.
+    else
+    {
+        va_start(ap, fmt);
+        vsnprintf(item->str, len + 1, fmt, ap);  // rebuild it.
+        va_end(ap);
+    } // else
 
-    memcpy(ptr + ctx->output_len, buffer, len);
-    ptr[newlen-1] = '\n';
-    ptr[newlen] = '\0';
-    ctx->output = ptr;
-    ctx->output_len = newlen;
+    item->next = NULL;
+    ctx->output_tail->next = item;
+    ctx->output_tail = item;
+    ctx->output_len += len + ctx->endline_len;
     return 0;
 } // output_line
 
@@ -193,7 +248,7 @@ typedef struct
     int regtype;
 } DestTokenInfo;
 
-static int parse_destination_token(D3D2GLSL_context *ctx, DestTokenInfo *info)
+static int parse_destination_token(Context *ctx, DestTokenInfo *info)
 {
     if (ctx->failstr != NULL)
         return FAIL;  // already failed elsewhere.
@@ -272,7 +327,7 @@ typedef struct
     int regtype;
 } SrcTokenInfo;
 
-static int parse_source_token(D3D2GLSL_context *ctx, SrcTokenInfo *info)
+static int parse_source_token(Context *ctx, SrcTokenInfo *info)
 {
     if (ctx->failstr != NULL)
         return FAIL;  // already failed elsewhere.
@@ -316,6 +371,7 @@ static int parse_source_token(D3D2GLSL_context *ctx, SrcTokenInfo *info)
 } // parse_source_token
 
 
+// if SUPPORT_PROFILE_* isn't defined, we assume an implicit desire to support.
 #define AT_LEAST_ONE_PROFILE 0
 
 #if !SUPPORT_PROFILE_D3D
@@ -325,7 +381,7 @@ static int parse_source_token(D3D2GLSL_context *ctx, SrcTokenInfo *info)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
-static char *get_D3D_destination(D3D2GLSL_context *ctx)
+static char *get_D3D_destination(Context *ctx)
 {
     char *retval = NULL;
     DestTokenInfo info;
@@ -340,7 +396,7 @@ static char *get_D3D_destination(D3D2GLSL_context *ctx)
 } // get_D3D_destination
 
 
-static char *get_D3D_source(D3D2GLSL_context *ctx)
+static char *get_D3D_source(Context *ctx)
 {
     char *retval = NULL;
     SrcTokenInfo info;
@@ -355,7 +411,7 @@ static char *get_D3D_source(D3D2GLSL_context *ctx)
 } // get_D3D_source
 
 
-static void emit_D3D_start(D3D2GLSL_context *ctx)
+static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
@@ -371,19 +427,19 @@ static void emit_D3D_start(D3D2GLSL_context *ctx)
 } // emit_D3D_start
 
 
-static void emit_D3D_end(D3D2GLSL_context *ctx)
+static void emit_D3D_end(Context *ctx)
 {
     output_line(ctx, "END");
 } // emit_D3D_end
 
 
-static void emit_D3D_comment(D3D2GLSL_context *ctx, const char *str)
+static void emit_D3D_comment(Context *ctx, const char *str)
 {
     output_line(ctx, "; %s", str);
 } // emit_D3D_comment
 
 
-static void emit_D3D_RESERVED(D3D2GLSL_context *ctx)
+static void emit_D3D_RESERVED(Context *ctx)
 {
     // do nothing; fails in the state machine.
 } // emit_D3D_RESERVED
@@ -392,21 +448,21 @@ static void emit_D3D_RESERVED(D3D2GLSL_context *ctx)
 // Generic D3D opcode emitters. A list of macros generate all the entry points
 //  that call into these...
 
-static void emit_D3D_opcode_d(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
     const char *dst1 = get_D3D_destination(ctx);
     output_line(ctx, "%s %s", opcode, dst1);
 } // emit_D3D_opcode_d
 
 
-static void emit_D3D_opcode_s(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
     const char *src1 = get_D3D_destination(ctx);
     output_line(ctx, "%s %s", opcode, src1);
 } // emit_D3D_opcode_s
 
 
-static void emit_D3D_opcode_ss(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
 {
     const char *src1 = get_D3D_destination(ctx);
     const char *src2 = get_D3D_destination(ctx);
@@ -414,7 +470,7 @@ static void emit_D3D_opcode_ss(D3D2GLSL_context *ctx, const char *opcode)
 } // emit_D3D_opcode_s
 
 
-static void emit_D3D_opcode_ds(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 {
     const char *dst1 = get_D3D_destination(ctx);
     const char *src1 = get_D3D_source(ctx);
@@ -422,7 +478,7 @@ static void emit_D3D_opcode_ds(D3D2GLSL_context *ctx, const char *opcode)
 } // emit_D3D_opcode_ds
 
 
-static void emit_D3D_opcode_dss(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
 {
     const char *dst1 = get_D3D_destination(ctx);
     const char *src1 = get_D3D_source(ctx);
@@ -431,7 +487,7 @@ static void emit_D3D_opcode_dss(D3D2GLSL_context *ctx, const char *opcode)
 } // emit_D3D_opcode_dss
 
 
-static void emit_D3D_opcode_dsss(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
 {
     const char *dst1 = get_D3D_destination(ctx);
     const char *src1 = get_D3D_source(ctx);
@@ -441,7 +497,7 @@ static void emit_D3D_opcode_dsss(D3D2GLSL_context *ctx, const char *opcode)
 } // emit_D3D_opcode_dsss
 
 
-static void emit_D3D_opcode_dssss(D3D2GLSL_context *ctx, const char *opcode)
+static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
 {
     const char *dst1 = get_D3D_destination(ctx);
     const char *src1 = get_D3D_source(ctx);
@@ -453,35 +509,35 @@ static void emit_D3D_opcode_dssss(D3D2GLSL_context *ctx, const char *opcode)
 
 
 #define EMIT_D3D_OPCODE_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         output_line(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_D_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_d(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_S_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_s(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_SS_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_ss(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_DS_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_ds(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_DSS_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_dss(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_DSSS_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_dsss(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_DSSSS_FUNC(op) \
-    static void emit_D3D_##op(D3D2GLSL_context *ctx) { \
+    static void emit_D3D_##op(Context *ctx) { \
         emit_D3D_opcode_dssss(ctx, #op); \
     }
 
@@ -587,7 +643,7 @@ EMIT_D3D_OPCODE_DS_FUNC(BREAKP)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
 
-static void emit_GLSL_start(D3D2GLSL_context *ctx)
+static void emit_GLSL_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
@@ -604,422 +660,422 @@ static void emit_GLSL_start(D3D2GLSL_context *ctx)
     output_line(ctx, "void main() {");
 } // emit_GLSL_start
 
-static void emit_GLSL_end(D3D2GLSL_context *ctx)
+static void emit_GLSL_end(Context *ctx)
 {
     output_line(ctx, "}");
 } // emit_GLSL_end
 
-static void emit_GLSL_comment(D3D2GLSL_context *ctx, const char *str)
+static void emit_GLSL_comment(Context *ctx, const char *str)
 {
     output_line(ctx, "// %s", str);
 } // emit_GLSL_comment
 
-static void emit_GLSL_NOP(D3D2GLSL_context *ctx)
+static void emit_GLSL_NOP(Context *ctx)
 {
     // no-op is a no-op.  :)
 } // emit_GLSL_NOP
 
-static void emit_GLSL_MOV(D3D2GLSL_context *ctx)
+static void emit_GLSL_MOV(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MOV
 
-static void emit_GLSL_ADD(D3D2GLSL_context *ctx)
+static void emit_GLSL_ADD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ADD
 
-static void emit_GLSL_SUB(D3D2GLSL_context *ctx)
+static void emit_GLSL_SUB(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SUB
 
-static void emit_GLSL_MAD(D3D2GLSL_context *ctx)
+static void emit_GLSL_MAD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MAD
 
-static void emit_GLSL_MUL(D3D2GLSL_context *ctx)
+static void emit_GLSL_MUL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MUL
 
-static void emit_GLSL_RCP(D3D2GLSL_context *ctx)
+static void emit_GLSL_RCP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_RCP
 
-static void emit_GLSL_RSQ(D3D2GLSL_context *ctx)
+static void emit_GLSL_RSQ(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_RSQ
 
-static void emit_GLSL_DP3(D3D2GLSL_context *ctx)
+static void emit_GLSL_DP3(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DP3
 
-static void emit_GLSL_DP4(D3D2GLSL_context *ctx)
+static void emit_GLSL_DP4(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DP4
 
-static void emit_GLSL_MIN(D3D2GLSL_context *ctx)
+static void emit_GLSL_MIN(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MIN
 
-static void emit_GLSL_MAX(D3D2GLSL_context *ctx)
+static void emit_GLSL_MAX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MAX
 
-static void emit_GLSL_SLT(D3D2GLSL_context *ctx)
+static void emit_GLSL_SLT(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SLT
 
-static void emit_GLSL_SGE(D3D2GLSL_context *ctx)
+static void emit_GLSL_SGE(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SGE
 
-static void emit_GLSL_EXP(D3D2GLSL_context *ctx)
+static void emit_GLSL_EXP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_EXP
 
-static void emit_GLSL_LOG(D3D2GLSL_context *ctx)
+static void emit_GLSL_LOG(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LOG
 
-static void emit_GLSL_LIT(D3D2GLSL_context *ctx)
+static void emit_GLSL_LIT(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LIT
 
-static void emit_GLSL_DST(D3D2GLSL_context *ctx)
+static void emit_GLSL_DST(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DST
 
-static void emit_GLSL_LRP(D3D2GLSL_context *ctx)
+static void emit_GLSL_LRP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LRP
 
-static void emit_GLSL_FRC(D3D2GLSL_context *ctx)
+static void emit_GLSL_FRC(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_FRC
 
-static void emit_GLSL_M4X4(D3D2GLSL_context *ctx)
+static void emit_GLSL_M4X4(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_M4X4
 
-static void emit_GLSL_M4X3(D3D2GLSL_context *ctx)
+static void emit_GLSL_M4X3(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_M4X3
 
-static void emit_GLSL_M3X4(D3D2GLSL_context *ctx)
+static void emit_GLSL_M3X4(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_M3X4
 
-static void emit_GLSL_M3X3(D3D2GLSL_context *ctx)
+static void emit_GLSL_M3X3(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_M3X3
 
-static void emit_GLSL_M3X2(D3D2GLSL_context *ctx)
+static void emit_GLSL_M3X2(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_M3X2
 
-static void emit_GLSL_CALL(D3D2GLSL_context *ctx)
+static void emit_GLSL_CALL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_CALL
 
-static void emit_GLSL_CALLNZ(D3D2GLSL_context *ctx)
+static void emit_GLSL_CALLNZ(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_CALLNZ
 
-static void emit_GLSL_LOOP(D3D2GLSL_context *ctx)
+static void emit_GLSL_LOOP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LOOP
 
-static void emit_GLSL_RET(D3D2GLSL_context *ctx)
+static void emit_GLSL_RET(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_RET
 
-static void emit_GLSL_ENDLOOP(D3D2GLSL_context *ctx)
+static void emit_GLSL_ENDLOOP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ENDLOOP
 
-static void emit_GLSL_LABEL(D3D2GLSL_context *ctx)
+static void emit_GLSL_LABEL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LABEL
 
-static void emit_GLSL_DCL(D3D2GLSL_context *ctx)
+static void emit_GLSL_DCL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DCL
 
-static void emit_GLSL_POW(D3D2GLSL_context *ctx)
+static void emit_GLSL_POW(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_POW
 
-static void emit_GLSL_CRS(D3D2GLSL_context *ctx)
+static void emit_GLSL_CRS(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_CRS
 
-static void emit_GLSL_SGN(D3D2GLSL_context *ctx)
+static void emit_GLSL_SGN(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SGN
 
-static void emit_GLSL_ABS(D3D2GLSL_context *ctx)
+static void emit_GLSL_ABS(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ABS
 
-static void emit_GLSL_NRM(D3D2GLSL_context *ctx)
+static void emit_GLSL_NRM(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_NRM
 
-static void emit_GLSL_SINCOS(D3D2GLSL_context *ctx)
+static void emit_GLSL_SINCOS(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SINCOS
 
-static void emit_GLSL_REP(D3D2GLSL_context *ctx)
+static void emit_GLSL_REP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_REP
 
-static void emit_GLSL_ENDREP(D3D2GLSL_context *ctx)
+static void emit_GLSL_ENDREP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ENDREP
 
-static void emit_GLSL_IF(D3D2GLSL_context *ctx)
+static void emit_GLSL_IF(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_IF
 
-static void emit_GLSL_IFC(D3D2GLSL_context *ctx)
+static void emit_GLSL_IFC(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_IFC
 
-static void emit_GLSL_ELSE(D3D2GLSL_context *ctx)
+static void emit_GLSL_ELSE(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ELSE
 
-static void emit_GLSL_ENDIF(D3D2GLSL_context *ctx)
+static void emit_GLSL_ENDIF(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_ENDIF
 
-static void emit_GLSL_BREAK(D3D2GLSL_context *ctx)
+static void emit_GLSL_BREAK(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_BREAK
 
-static void emit_GLSL_BREAKC(D3D2GLSL_context *ctx)
+static void emit_GLSL_BREAKC(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_BREAKC
 
-static void emit_GLSL_MOVA(D3D2GLSL_context *ctx)
+static void emit_GLSL_MOVA(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_MOVA
 
-static void emit_GLSL_DEFB(D3D2GLSL_context *ctx)
+static void emit_GLSL_DEFB(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DEFB
 
-static void emit_GLSL_DEFI(D3D2GLSL_context *ctx)
+static void emit_GLSL_DEFI(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DEFI
 
-static void emit_GLSL_TEXCOORD(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXCOORD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXCOORD
 
-static void emit_GLSL_TEXKILL(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXKILL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXKILL
 
-static void emit_GLSL_TEX(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEX
 
-static void emit_GLSL_TEXBEM(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXBEM(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXBEM
 
-static void emit_GLSL_TEXBEML(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXBEML(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXBEML
 
-static void emit_GLSL_TEXREG2AR(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXREG2AR(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2AR
 
-static void emit_GLSL_TEXREG2GB(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXREG2GB(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2GB
 
-static void emit_GLSL_TEXM3X2PAD(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X2PAD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2PAD
 
-static void emit_GLSL_TEXM3X2TEX(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X2TEX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2TEX
 
-static void emit_GLSL_TEXM3X3PAD(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X3PAD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3PAD
 
-static void emit_GLSL_TEXM3X3TEX(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X3TEX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3TEX
 
-static void emit_GLSL_TEXM3X3SPEC(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3SPEC
 
-static void emit_GLSL_TEXM3X3VSPEC(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3VSPEC
 
-static void emit_GLSL_EXPP(D3D2GLSL_context *ctx)
+static void emit_GLSL_EXPP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_EXPP
 
-static void emit_GLSL_LOGP(D3D2GLSL_context *ctx)
+static void emit_GLSL_LOGP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_LOGP
 
-static void emit_GLSL_CND(D3D2GLSL_context *ctx)
+static void emit_GLSL_CND(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_CND
 
-static void emit_GLSL_DEF(D3D2GLSL_context *ctx)
+static void emit_GLSL_DEF(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DEF
 
-static void emit_GLSL_TEXREG2RGB(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXREG2RGB(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2RGB
 
-static void emit_GLSL_TEXDP3TEX(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXDP3TEX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDP3TEX
 
-static void emit_GLSL_TEXM3X2DEPTH(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X2DEPTH(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2DEPTH
 
-static void emit_GLSL_TEXDP3(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXDP3(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDP3
 
-static void emit_GLSL_TEXM3X3(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXM3X3(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3
 
-static void emit_GLSL_TEXDEPTH(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXDEPTH(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDEPTH
 
-static void emit_GLSL_CMP(D3D2GLSL_context *ctx)
+static void emit_GLSL_CMP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_CMP
 
-static void emit_GLSL_BEM(D3D2GLSL_context *ctx)
+static void emit_GLSL_BEM(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_BEM
 
-static void emit_GLSL_DP2ADD(D3D2GLSL_context *ctx)
+static void emit_GLSL_DP2ADD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DP2ADD
 
-static void emit_GLSL_DSX(D3D2GLSL_context *ctx)
+static void emit_GLSL_DSX(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DSX
 
-static void emit_GLSL_DSY(D3D2GLSL_context *ctx)
+static void emit_GLSL_DSY(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_DSY
 
-static void emit_GLSL_TEXLDD(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXLDD(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXLDD
 
-static void emit_GLSL_SETP(D3D2GLSL_context *ctx)
+static void emit_GLSL_SETP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_SETP
 
-static void emit_GLSL_TEXLDL(D3D2GLSL_context *ctx)
+static void emit_GLSL_TEXLDL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXLDL
 
-static void emit_GLSL_BREAKP(D3D2GLSL_context *ctx)
+static void emit_GLSL_BREAKP(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_BREAKP
 
-static void emit_GLSL_RESERVED(D3D2GLSL_context *ctx)
+static void emit_GLSL_RESERVED(Context *ctx)
 {
     // do nothing; fails in the state machine.
 } // emit_GLSL_RESERVED
@@ -1052,7 +1108,7 @@ static const D3D2GLSL_profile profiles[] =
 
 // State machine functions...
 
-static int state_RESERVED(D3D2GLSL_context *ctx)
+static int state_RESERVED(Context *ctx)
 {
     return fail(ctx, "Tried to use RESERVED opcode.");
 } // state_RESERVED
@@ -1182,7 +1238,7 @@ static Instruction instructions[] = {
 
 // parse various token types...
 
-static int parse_instruction_token(D3D2GLSL_context *ctx)
+static int parse_instruction_token(Context *ctx)
 {
     const uint32 *start_tokens = ctx->tokens;
     const uint32 start_tokencount = ctx->tokencount;
@@ -1193,7 +1249,7 @@ static int parse_instruction_token(D3D2GLSL_context *ctx)
     const int coissue = (token & 0x40000000) ? 1 : 0;
     const int predicated = (token & 0x10000000) ? 1 : 0;
     const Instruction *instruction = &instructions[opcode];
-    const emit_function emitter = instruction->emitter[ctx->profileidx];
+    const emit_function emitter = instruction->emitter[ctx->profileid];
     int retval = FAIL;
 
     if ( opcode >= (sizeof (instructions) / sizeof (instructions[0])) )
@@ -1237,7 +1293,7 @@ static int parse_instruction_token(D3D2GLSL_context *ctx)
 } // parse_instruction_token
 
 
-static int parse_version_token(D3D2GLSL_context *ctx)
+static int parse_version_token(Context *ctx)
 {
     if (ctx->tokencount == 0)
         return fail(ctx, "Expected version token, got none at all.");
@@ -1261,7 +1317,7 @@ static int parse_version_token(D3D2GLSL_context *ctx)
 } // parse_version_token
 
 
-static int parse_comment_token(D3D2GLSL_context *ctx)
+static int parse_comment_token(Context *ctx)
 {
     const uint32 token = SWAP32(*(ctx->tokens));
     if ((token & 0xFFFF) != 0xFFFE)
@@ -1271,14 +1327,15 @@ static int parse_comment_token(D3D2GLSL_context *ctx)
     else
     {
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
-        const uint32 commentlen = commenttoks * sizeof (uint32);
-
-        // !!! FIXME: I'd rather not malloc() here.
-        char *str = (char *) malloc(commentlen + 1);
-        memcpy(str, (const char *) (ctx->tokens+1), commentlen);
-        str[commentlen] = '\0';
+        const uint32 len = commenttoks * sizeof (uint32);
+        const int needmalloc = (len >= D3D2GLSL_SCRATCH_BUFFER_SIZE);
+        char *str = ((needmalloc) ? (char *) ctx->malloc(len + 1) :
+                        get_scratch_buffer(ctx));
+        memcpy(str, (const char *) (ctx->tokens+1), len);
+        str[len] = '\0';
         ctx->profile->comment_emitter(ctx, str);
-        free(str);
+        if (needmalloc)
+            ctx->free(str);
 
         return commenttoks + 1;  // comment data plus the initial token.
     } // else
@@ -1288,7 +1345,7 @@ static int parse_comment_token(D3D2GLSL_context *ctx)
 } // parse_comment_token
 
 
-static int parse_end_token(D3D2GLSL_context *ctx)
+static int parse_end_token(Context *ctx)
 {
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFF)   // end token always 0x0000FFFF.
         return 0;  // not us, eat no tokens.
@@ -1302,7 +1359,7 @@ static int parse_end_token(D3D2GLSL_context *ctx)
 } // parse_end_token
 
 
-static int parse_phase_token(D3D2GLSL_context *ctx)
+static int parse_phase_token(Context *ctx)
 {
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
@@ -1310,7 +1367,7 @@ static int parse_phase_token(D3D2GLSL_context *ctx)
 } // parse_phase_token
 
 
-static int parse_token(D3D2GLSL_context *ctx)
+static int parse_token(Context *ctx)
 {
     int rc = 0;
 
@@ -1336,54 +1393,142 @@ static int parse_token(D3D2GLSL_context *ctx)
 } // parse_token
 
 
-// API entry point...
+static void *internal_malloc(int bytes) { return malloc(bytes); }
+static void internal_free(void *ptr) { free(ptr); }
 
-int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
-                   const unsigned int bufsize)
+
+static int find_profile_id(const char *profile)
 {
-    D3D2GLSL_context ctx;
-    int rc = 0;
-    int i = 0;
-
-    memset(&ctx, '\0', sizeof (D3D2GLSL_context));
-    ctx.tokens = (const uint32 *) tokenbuf;
-    ctx.tokencount = bufsize / sizeof (uint32);
+    int i;
     for (i = 0; i < STATICARRAYLEN(profiles); i++)
     {
         const char *name = profiles[i].name;
         if (strcmp(name, profile) == 0)
-        {
-            ctx.profile = &profiles[i];
-            ctx.profileidx = i;
-            break;
-        } // if
+            return i;
+    } // for
+    return -1;  // no match.
+} // find_profile_id
+
+
+static Context *build_context(const char *profile,
+                                       const unsigned char *tokenbuf,
+                                       const unsigned int bufsize,
+                                       D3D2GLSL_malloc m, D3D2GLSL_free f)
+{
+    if (m == NULL) m = internal_malloc;
+    if (f == NULL) f = internal_free;
+
+    Context *ctx = m(sizeof (Context));
+    if (ctx == NULL)
+        return NULL;
+
+    memset(ctx, '\0', sizeof (Context));
+    ctx->malloc = m;
+    ctx->free = f;
+    ctx->tokens = (const uint32 *) tokenbuf;
+    ctx->tokencount = bufsize / sizeof (uint32);
+    ctx->endline = "\n";
+    ctx->endline_len = 1;  // !!! FIXME: do "\r\n" on Windows?
+    ctx->output.str = NULL;
+    ctx->output.next = NULL;
+    ctx->output_tail = &ctx->output;
+
+    const int profileid = find_profile_id(profile);
+    ctx->profileid = profileid;
+    if (profileid >= 0)  // we'll fail later, but we still need the context!
+        ctx->profile = &profiles[profileid];
+
+    return ctx;
+} // build_context
+
+
+static void destroy_context(Context *ctx)
+{
+    OutputList *item = ctx->output.next;
+    while (item != NULL)
+    {
+        OutputList *next = item->next;
+        ctx->free(item->str);
+        ctx->free(item);
+        item = next;
     } // for
 
-    if (ctx.profile == NULL)
-        failf(&ctx, "Profile '%s' is unknown or unsupported", profile);
+    if (ctx->failstr != out_of_mem_string)
+        ctx->free((void *) ctx->failstr);
+    ctx->free(ctx);
+} // destroy_context
+
+
+static char *build_output(Context *ctx)
+{
+    char *retval = (char *) ctx->malloc(ctx->output_len + 1);
+    if (retval == NULL)
+        out_of_memory(ctx);
     else
     {
+        const char *endline = ctx->endline;
+        const size_t endline_len = ctx->endline_len;
+        char *wptr = retval;
+        OutputList *item = ctx->output.next;
+        while (item != NULL)
+        {
+            const size_t len = strlen(item->str);
+            memcpy(wptr, item->str, len);
+            wptr += len;
+            memcpy(wptr, endline, endline_len);
+            wptr += endline_len;
+            item = item->next;
+        } // while
+        *wptr = '\0';
+    } // else
+
+    return retval;
+} // build_output
+
+
+// API entry point...
+
+int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
+                   const unsigned int bufsize, D3D2GLSL_malloc m,
+                   D3D2GLSL_free f)
+{
+    int rc = FAIL;
+
+    Context *ctx = build_context(profile, tokenbuf, bufsize, m, f);
+    if (ctx == NULL)
+        return 0;  // !!! FIXME: error string?
+
+    if (ctx->profile == NULL)
+        failf(ctx, "Profile '%s' is unknown or unsupported", profile);
+
+    if (ctx->failstr == NULL)  // only go on if there was no previous error...
+    {
         // Version token always comes first.
-        rc = parse_version_token(&ctx);
+        rc = parse_version_token(ctx);
 
         // parse out the rest of the tokens after the version token...
         while (rc > 0)
         {
-            ctx.tokens += rc;
-            ctx.tokencount -= rc;
-            rc = parse_token(&ctx);
+            ctx->tokens += rc;
+            ctx->tokencount -= rc;
+            rc = parse_token(ctx);
         } // while
-    } // else
+    } // if
 
-    // !!! FIXME: temp
-    if (ctx.output != NULL)
-        printf("%s\n", ctx.output);
+    if (ctx->failstr == NULL)
+    {
+        char *str = build_output(ctx);
+        if (str != NULL)
+        {
+            printf("OUTPUT:\n%s\n", str);  // !!! FIXME: report to caller.
+            ctx->free(str);
+        } // if
+    } // if
 
-    if (ctx.failstr != NULL)
-        printf("FAIL: %s\n", ctx.failstr);
+    if (ctx->failstr != NULL)
+        printf("FAIL: %s\n", ctx->failstr);
 
-    free(ctx.failstr);
-    free(ctx.output);
+    destroy_context(ctx);
 
     return (rc == END_OF_STREAM);
 } // D3D2GLSL_parse

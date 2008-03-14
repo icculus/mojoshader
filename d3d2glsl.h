@@ -13,10 +13,14 @@
 extern "C" {
 #endif
 
+typedef void *(*D3D2GLSL_malloc)(int bytes);
+typedef void (*D3D2GLSL_free)(void *ptr);
+
 /* !!! FIXME: documentation. */
 /* !!! FIXME: this needs to change to return a buffer of GLSL code. */
 int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
-                   const unsigned int bufsize);
+                   const unsigned int bufsize, D3D2GLSL_malloc m,
+                   D3D2GLSL_free f);
 
 #ifdef __cplusplus
 }
