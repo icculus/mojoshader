@@ -415,10 +415,19 @@ static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
+
     if (ctx->shader_type == SHADER_TYPE_PIXEL)
         output_line(ctx, "ps_%u_%u", major, minor);
     else if (ctx->shader_type == SHADER_TYPE_VERTEX)
-        output_line(ctx, "vs_%u_%u", major, minor);
+    {
+        char minorstr[16];
+        if (minor == 0xFF)
+            strcpy(minorstr, "sw");
+        else
+            snprintf(minorstr, sizeof (minorstr), "%u", (uint) minor);
+
+        output_line(ctx, "vs_%u_%s", major, minorstr);
+    } // else if
     else
     {
         failf(ctx, "Shader type %u unsupported in this profile.",
@@ -1515,7 +1524,7 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
         } // while
     } // if
 
-    if (ctx->failstr == NULL)
+//    if (ctx->failstr == NULL)
     {
         char *str = build_output(ctx);
         if (str != NULL)
