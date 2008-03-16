@@ -197,6 +197,7 @@ typedef struct
     const uint32 *token;   // this is the unmolested token in the stream.
     int regnum;
     int relative;
+    int swizzle;  // xyzw (all four, not split out).
     int swizzle_x;
     int swizzle_y;
     int swizzle_z;
@@ -1312,6 +1313,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->token = ctx->tokens;
     info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
     info->relative = (int) ((token >> 13) & 0x1); // bit 13
+    info->swizzle = (int) ((token >> 16) & 0xF); // bits 16 through 23
     info->swizzle_x = (int) ((token >> 16) & 0x3); // bits 16 through 17
     info->swizzle_y = (int) ((token >> 18) & 0x3); // bits 18 through 19
     info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
@@ -1323,7 +1325,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
 
     if (reserved1 != 0x0)
-        return fail(ctx, "Reserved bit #1 in source token must be zero");
+        return fail(ctx, "Reserved bits #1 in source token must be zero");
 
     if (reserved2 != 0x1)
         return fail(ctx, "Reserved bit #2 in source token must be one");
@@ -1579,6 +1581,8 @@ static int parse_instruction_token(Context *ctx)
     } // if
 
     // Update the context with instruction's arguments.
+    ctx->tokens++;
+    ctx->tokencount--;
     if (instruction->parse_args(ctx) == FAIL)
         return FAIL;
 
