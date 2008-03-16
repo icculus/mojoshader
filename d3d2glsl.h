@@ -13,6 +13,18 @@
 extern "C" {
 #endif
 
+/*
+ * const int compiled_against = D3D2GLSL_VERSION;
+ * const int linked_against = D3D2GLSL_version();
+ */
+#define D3D2GLSL_VERSION 1
+int D3D2GLSL_version(void);
+
+/*
+ * These allocators work just like the C runtime's malloc() and free()
+ *  (in fact, they use malloc() and free() internally if you don't
+ *  specify your own allocator).
+ */
 typedef void *(*D3D2GLSL_malloc)(int bytes);
 typedef void (*D3D2GLSL_free)(void *ptr);
 

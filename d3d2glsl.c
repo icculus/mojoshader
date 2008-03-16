@@ -19,6 +19,11 @@
 
 #include "d3d2glsl.h"
 
+// This is the highest shader version we currently support.
+
+#define MAX_SHADER_MAJOR 3
+#define MAX_SHADER_MINOR 0
+
 
 // You get all the profiles unless you go out of your way to disable them.
 
@@ -65,6 +70,16 @@ typedef uint32_t uint32;
 #endif
 
 
+// Shader model version magic.
+static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
+{
+    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
+} // version_ui32
+
+#define SHADER_VERSION_SUPPORTED(maj, min) \
+    (ver_ui32(maj, min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR))
+
+
 // predeclare.
 typedef struct Context Context;
 
@@ -79,6 +94,9 @@ typedef void (*emit_start)(Context *ctx);
 
 // one emit function for ending output in each profile.
 typedef void (*emit_end)(Context *ctx);
+
+// one args function for each possible sequence of opcode arguments.
+typedef int (*args_function)(Context *ctx);
 
 // one state function for each opcode where we have state machine updates.
 typedef int (*state_function)(Context *ctx);
@@ -110,6 +128,30 @@ typedef struct OutputList
     struct OutputList *next;
 } OutputList;
 
+
+typedef struct
+{
+    int regnum;
+    int relative;
+    int writemask;
+    int result_mod;
+    int result_shift;
+    int regtype;
+} DestArgInfo;
+
+typedef struct
+{
+    int regnum;
+    int relative;
+    int swizzle_x;
+    int swizzle_y;
+    int swizzle_z;
+    int swizzle_w;
+    int src_mod;
+    int regtype;
+} SourceArgInfo;
+
+
 #define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
 #define D3D2GLSL_SCRATCH_BUFFERS 10
 
@@ -133,6 +175,8 @@ struct Context
     D3D2GLSL_shaderType shader_type;
     uint32 major_ver;
     uint32 minor_ver;
+    DestArgInfo dest_args[1];
+    SourceArgInfo source_args[4];
 };
 
 
@@ -238,138 +282,6 @@ static int output_line(Context *ctx, const char *fmt, ...)
 } // output_line
 
 
-typedef struct
-{
-    int regnum;
-    int relative;
-    int writemask;
-    int result_mod;
-    int result_shift;
-    int regtype;
-} DestTokenInfo;
-
-static int parse_destination_token(Context *ctx, DestTokenInfo *info)
-{
-    if (ctx->failstr != NULL)
-        return FAIL;  // already failed elsewhere.
-
-    if (ctx->tokencount == 0)
-        return fail(ctx, "Out of tokens in destination parameter");
-
-    const uint32 token = SWAP32(*(ctx->tokens));
-    const int reserved1 = (int) ((token >> 14) & 0x3); // bits 14 through 15
-    const int reserved2 = (int) ((token >> 31) & 0x1); // bit 31
-
-    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
-    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
-
-    info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
-    info->relative = (int) ((token >> 13) & 0x1); // bit 13
-    info->writemask = (int) ((token >> 16) & 0xF); // bits 16 through 19
-    info->result_mod = (int) ((token >> 20) & 0xF); // bits 20 through 23
-    info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27
-    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
-
-    if (reserved1 != 0x0)
-        return fail(ctx, "Reserved bit #1 in destination token must be zero");
-
-    if (reserved2 != 0x1)
-        return fail(ctx, "Reserved bit #2 in destination token must be one");
-
-    if (info->relative)
-    {
-        if (ctx->shader_type != SHADER_TYPE_VERTEX)
-            return fail(ctx, "Relative addressing in non-vertex shader");
-        else if (ctx->major_ver < 3)
-            return fail(ctx, "Relative addressing in vertex shader version < 3.0");
-        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
-    } // if
-
-    if (info->result_shift != 0)
-    {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
-            return fail(ctx, "Result shift scale in non-pixel shader");
-        else if (ctx->major_ver >= 2)
-            return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
-    } // if
-
-    if (info->result_mod & 0x1)  // Saturate (vertex shaders only)
-    {
-        if (ctx->shader_type != SHADER_TYPE_VERTEX)
-            return fail(ctx, "Saturate result mod in non-vertex shader");
-    } // if
-
-    if (info->result_mod & 0x2)  // Partial precision (pixel shaders only)
-    {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
-            return fail(ctx, "Partial precision result mod in non-pixel shader");
-    } // if
-
-    if (info->result_mod & 0x4)  // Centroid (pixel shaders only)
-    {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
-            return fail(ctx, "Centroid result mod in non-pixel shader");
-    } // if
-
-    return 1;
-} // parse_destination_token
-
-
-typedef struct
-{
-    int regnum;
-    int relative;
-    int swizzle_x;
-    int swizzle_y;
-    int swizzle_z;
-    int swizzle_w;
-    int src_mod;
-    int regtype;
-} SrcTokenInfo;
-
-static int parse_source_token(Context *ctx, SrcTokenInfo *info)
-{
-    if (ctx->failstr != NULL)
-        return FAIL;  // already failed elsewhere.
-
-    if (ctx->tokencount == 0)
-        return fail(ctx, "Out of tokens in source parameter");
-
-    const uint32 token = SWAP32(*(ctx->tokens));
-    const int reserved1 = (int) ((token >> 14) & 0x3); // bits 14 through 15
-    const int reserved2 = (int) ((token >> 31) & 0x1); // bit 31
-
-    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
-    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
-
-    info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
-    info->relative = (int) ((token >> 13) & 0x1); // bit 13
-    info->swizzle_x = (int) ((token >> 16) & 0x3); // bits 16 through 17
-    info->swizzle_y = (int) ((token >> 18) & 0x3); // bits 18 through 19
-    info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
-    info->swizzle_w = (int) ((token >> 22) & 0x3); // bits 22 through 23
-    info->src_mod = (int) ((token >> 24) & 0xF); // bits 24 through 27
-    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
-
-    if (reserved1 != 0x0)
-        return fail(ctx, "Reserved bit #1 in source token must be zero");
-
-    if (reserved2 != 0x1)
-        return fail(ctx, "Reserved bit #2 in source token must be one");
-
-    if (info->relative)
-    {
-        if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
-            return fail(ctx, "Relative addressing in pixel shader version < 3.0");
-        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
-    } // if
-
-    if (info->src_mod >= 0xE)
-        return fail(ctx, "Unknown source modifier");
-
-    return 1;
-} // parse_source_token
-
 
 // if SUPPORT_PROFILE_* isn't defined, we assume an implicit desire to support.
 #define AT_LEAST_ONE_PROFILE 0
@@ -381,34 +293,36 @@ static int parse_source_token(Context *ctx, SrcTokenInfo *info)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
-static char *get_D3D_destination(Context *ctx)
+static char *make_D3D_destarg_string(Context *ctx, const int idx)
 {
     char *retval = NULL;
-    DestTokenInfo info;
-    const int eaten = parse_destination_token(ctx, &info);
-    if ((eaten < 1) || (ctx->failstr != NULL))
+    if (idx >= STATICARRAYLEN(ctx->dest_args))
+    {
+        fail(ctx, "Too many destination args");
         return "";
+    } // if
 
     retval = get_scratch_buffer(ctx);
     strcpy(retval, "DST");  // !!! FIXME
 
     return retval;
-} // get_D3D_destination
+} // make_D3D_destarg_string
 
 
-static char *get_D3D_source(Context *ctx)
+static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 {
     char *retval = NULL;
-    SrcTokenInfo info;
-    const int eaten = parse_source_token(ctx, &info);
-    if ((eaten < 1) || (ctx->failstr != NULL))
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
         return "";
+    } // if
 
     retval = get_scratch_buffer(ctx);
     strcpy(retval, "SRC");  // !!! FIXME
 
     return retval;
-} // get_D3D_source
+} // make_D3D_sourcearg_string
 
 
 static void emit_D3D_start(Context *ctx)
@@ -459,61 +373,61 @@ static void emit_D3D_RESERVED(Context *ctx)
 
 static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
-    const char *dst1 = get_D3D_destination(ctx);
-    output_line(ctx, "%s %s", opcode, dst1);
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    output_line(ctx, "%s %s", opcode, dst0);
 } // emit_D3D_opcode_d
 
 
 static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
-    const char *src1 = get_D3D_destination(ctx);
-    output_line(ctx, "%s %s", opcode, src1);
+    const char *src0 = make_D3D_destarg_string(ctx, 0);
+    output_line(ctx, "%s %s", opcode, src0);
 } // emit_D3D_opcode_s
 
 
 static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
 {
-    const char *src1 = get_D3D_destination(ctx);
-    const char *src2 = get_D3D_destination(ctx);
-    output_line(ctx, "%s %s, %s", opcode, src1, src2);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s %s, %s", opcode, src0, src1);
 } // emit_D3D_opcode_s
 
 
 static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 {
-    const char *dst1 = get_D3D_destination(ctx);
-    const char *src1 = get_D3D_source(ctx);
-    output_line(ctx, "%s %s, %s", opcode, dst1, src1);
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s %s, %s", opcode, dst0, src0);
 } // emit_D3D_opcode_ds
 
 
 static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
 {
-    const char *dst1 = get_D3D_destination(ctx);
-    const char *src1 = get_D3D_source(ctx);
-    const char *src2 = get_D3D_source(ctx);
-    output_line(ctx, "%s %s, %s, %s", opcode, dst1, src1, src2);
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s %s, %s, %s", opcode, dst0, src0, src1);
 } // emit_D3D_opcode_dss
 
 
 static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
 {
-    const char *dst1 = get_D3D_destination(ctx);
-    const char *src1 = get_D3D_source(ctx);
-    const char *src2 = get_D3D_source(ctx);
-    const char *src3 = get_D3D_source(ctx);
-    output_line(ctx, "%s %s, %s, %s, %s", opcode, dst1, src1, src2, src3);
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    const char *src2 = make_D3D_sourcearg_string(ctx, 2);
+    output_line(ctx, "%s %s, %s, %s, %s", opcode, dst0, src0, src1, src2);
 } // emit_D3D_opcode_dsss
 
 
 static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
 {
-    const char *dst1 = get_D3D_destination(ctx);
-    const char *src1 = get_D3D_source(ctx);
-    const char *src2 = get_D3D_source(ctx);
-    const char *src3 = get_D3D_source(ctx);
-    const char *src4 = get_D3D_source(ctx);
-    output_line(ctx,"%s %s, %s, %s, %s, %s",opcode,dst1,src1,src2,src3,src4);
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    const char *src2 = make_D3D_sourcearg_string(ctx, 2);
+    const char *src3 = make_D3D_sourcearg_string(ctx, 3);
+    output_line(ctx,"%s %s, %s, %s, %s, %s",opcode,dst0,src0,src1,src2,src3);
 } // emit_D3D_opcode_dssss
 
 
@@ -577,7 +491,7 @@ EMIT_D3D_OPCODE_DSS_FUNC(M3X3)
 EMIT_D3D_OPCODE_DSS_FUNC(M3X2)
 EMIT_D3D_OPCODE_S_FUNC(CALL)
 EMIT_D3D_OPCODE_SS_FUNC(CALLNZ)
-EMIT_D3D_OPCODE_S_FUNC(LOOP)
+EMIT_D3D_OPCODE_SS_FUNC(LOOP)
 EMIT_D3D_OPCODE_FUNC(RET)
 EMIT_D3D_OPCODE_FUNC(ENDLOOP)
 EMIT_D3D_OPCODE_S_FUNC(LABEL)
@@ -630,7 +544,7 @@ EMIT_D3D_OPCODE_DS_FUNC(DSY)
 EMIT_D3D_OPCODE_DSSSS_FUNC(TEXLDD)
 EMIT_D3D_OPCODE_DSS_FUNC(SETP)
 EMIT_D3D_OPCODE_DSS_FUNC(TEXLDL)
-EMIT_D3D_OPCODE_DS_FUNC(BREAKP)
+EMIT_D3D_OPCODE_S_FUNC(BREAKP)
 
 #undef EMIT_D3D_OPCODE_FUNC
 #undef EMIT_D3D_OPCODE_D_FUNC
@@ -1123,6 +1037,182 @@ static int state_RESERVED(Context *ctx)
 } // state_RESERVED
 
 
+static int parse_destination_token(Context *ctx, DestArgInfo *info)
+{
+    if (ctx->failstr != NULL)
+        return FAIL;  // already failed elsewhere.
+
+    if (ctx->tokencount == 0)
+        return fail(ctx, "Out of tokens in destination parameter");
+
+    const uint32 token = SWAP32(*(ctx->tokens));
+    const int reserved1 = (int) ((token >> 14) & 0x3); // bits 14 through 15
+    const int reserved2 = (int) ((token >> 31) & 0x1); // bit 31
+
+    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
+    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+
+    info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
+    info->relative = (int) ((token >> 13) & 0x1); // bit 13
+    info->writemask = (int) ((token >> 16) & 0xF); // bits 16 through 19
+    info->result_mod = (int) ((token >> 20) & 0xF); // bits 20 through 23
+    info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27
+    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+
+    if (reserved1 != 0x0)
+        return fail(ctx, "Reserved bit #1 in destination token must be zero");
+
+    if (reserved2 != 0x1)
+        return fail(ctx, "Reserved bit #2 in destination token must be one");
+
+    if (info->relative)
+    {
+        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+            return fail(ctx, "Relative addressing in non-vertex shader");
+        else if (ctx->major_ver < 3)
+            return fail(ctx, "Relative addressing in vertex shader version < 3.0");
+        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+    } // if
+
+    if (info->result_shift != 0)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Result shift scale in non-pixel shader");
+        else if (ctx->major_ver >= 2)
+            return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
+    } // if
+
+    if (info->result_mod & 0x1)  // Saturate (vertex shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+            return fail(ctx, "Saturate result mod in non-vertex shader");
+    } // if
+
+    if (info->result_mod & 0x2)  // Partial precision (pixel shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Partial precision result mod in non-pixel shader");
+    } // if
+
+    if (info->result_mod & 0x4)  // Centroid (pixel shaders only)
+    {
+        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+            return fail(ctx, "Centroid result mod in non-pixel shader");
+    } // if
+
+    return 1;
+} // parse_destination_token
+
+
+static int parse_source_token(Context *ctx, SourceArgInfo *info)
+{
+    if (ctx->failstr != NULL)
+        return FAIL;  // already failed elsewhere.
+
+    if (ctx->tokencount == 0)
+        return fail(ctx, "Out of tokens in source parameter");
+
+    const uint32 token = SWAP32(*(ctx->tokens));
+    const int reserved1 = (int) ((token >> 14) & 0x3); // bits 14 through 15
+    const int reserved2 = (int) ((token >> 31) & 0x1); // bit 31
+
+    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
+    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+
+    info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
+    info->relative = (int) ((token >> 13) & 0x1); // bit 13
+    info->swizzle_x = (int) ((token >> 16) & 0x3); // bits 16 through 17
+    info->swizzle_y = (int) ((token >> 18) & 0x3); // bits 18 through 19
+    info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
+    info->swizzle_w = (int) ((token >> 22) & 0x3); // bits 22 through 23
+    info->src_mod = (int) ((token >> 24) & 0xF); // bits 24 through 27
+    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+
+    if (reserved1 != 0x0)
+        return fail(ctx, "Reserved bit #1 in source token must be zero");
+
+    if (reserved2 != 0x1)
+        return fail(ctx, "Reserved bit #2 in source token must be one");
+
+    if (info->relative)
+    {
+        if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
+            return fail(ctx, "Relative addressing in pixel shader version < 3.0");
+        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+    } // if
+
+    if (info->src_mod >= 0xE)
+        return fail(ctx, "Unknown source modifier");
+
+    return 1;
+} // parse_source_token
+
+
+static int parse_args_NULL(Context *ctx)
+{
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_NULL
+
+
+static int parse_args_D(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_D
+
+
+static int parse_args_S(Context *ctx)
+{
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_S
+
+
+static int parse_args_SS(Context *ctx)
+{
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_SS
+
+
+static int parse_args_DS(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DS
+
+
+static int parse_args_DSS(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DSS
+
+
+static int parse_args_DSSS(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DSSS
+
+
+static int parse_args_DSSSS(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
+    if (parse_source_token(ctx, &ctx->source_args[3]) == FAIL) return FAIL;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DSSSS
+
 
 // Lookup table for instruction opcodes...
 
@@ -1131,118 +1221,125 @@ typedef struct
     const char *opcode_string;
     int arg_tokens;
     //uint32 shader_requirements;
+    args_function parse_args;
     state_function state;
     emit_function emitter[STATICARRAYLEN(profiles)];
 } Instruction;
 
 // These have to be in the right order! This array is indexed by the value
 //  of the instruction token.
-static Instruction instructions[] = {
+static Instruction instructions[] =
+{
     // INSTRUCTION_STATE means this opcode has to update the state machine
     //  (we're entering an ELSE block, etc). INSTRUCTION means there's no
     //  state, just go straight to the emitters.
-    #define INSTRUCTION_STATE(op, args) { #op, args, state_##op, PROFILE_EMITTERS(op) }
-    #define INSTRUCTION(op, args) { #op, args, NULL, PROFILE_EMITTERS(op) }
-    INSTRUCTION(NOP, 0),
-    INSTRUCTION(MOV, 2),
-    INSTRUCTION(ADD, 3),
-    INSTRUCTION(SUB, 3),
-    INSTRUCTION(MAD, 4),
-    INSTRUCTION(MUL, 3),
-    INSTRUCTION(RCP, 2),
-    INSTRUCTION(RSQ, 2),
-    INSTRUCTION(DP3, 3),
-    INSTRUCTION(DP4, 3),
-    INSTRUCTION(MIN, 3),
-    INSTRUCTION(MAX, 3),
-    INSTRUCTION(SLT, 3),
-    INSTRUCTION(SGE, 3),
-    INSTRUCTION(EXP, 2),
-    INSTRUCTION(LOG, 2),
-    INSTRUCTION(LIT, 2),
-    INSTRUCTION(DST, 3),
-    INSTRUCTION(LRP, 4),
-    INSTRUCTION(FRC, 2),
-    INSTRUCTION(M4X4, 3),
-    INSTRUCTION(M4X3, 3),
-    INSTRUCTION(M3X4, 3),
-    INSTRUCTION(M3X3, 3),
-    INSTRUCTION(M3X2, 3),
-    INSTRUCTION(CALL, 1),
-    INSTRUCTION(CALLNZ, 2),
-    INSTRUCTION(LOOP, 2),
-    INSTRUCTION(RET, 0),
-    INSTRUCTION(ENDLOOP, 0),
-    INSTRUCTION(LABEL, 1),
-    INSTRUCTION(DCL, -1),
-    INSTRUCTION(POW, 3),
-    INSTRUCTION(CRS, 3),
-    INSTRUCTION(SGN, 4),
-    INSTRUCTION(ABS, 2),
-    INSTRUCTION(NRM, 2),
-    INSTRUCTION(SINCOS, 4),
-    INSTRUCTION(REP, 1),
-    INSTRUCTION(ENDREP, 0),
-    INSTRUCTION(IF, 1),
-    INSTRUCTION(IFC, 2),
-    INSTRUCTION(ELSE, 0),
-    INSTRUCTION(ENDIF, 0),
-    INSTRUCTION(BREAK, 0),
-    INSTRUCTION(BREAKC, 2),
-    INSTRUCTION(MOVA, 2),
-    INSTRUCTION(DEFB, 2),
-    INSTRUCTION(DEFI, 5),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION(TEXCOORD, -1),
-    INSTRUCTION(TEXKILL, 1),
-    INSTRUCTION(TEX, -1),
-    INSTRUCTION(TEXBEM, 2),
-    INSTRUCTION(TEXBEML, 2),
-    INSTRUCTION(TEXREG2AR, 2),
-    INSTRUCTION(TEXREG2GB, 2),
-    INSTRUCTION(TEXM3X2PAD, 2),
-    INSTRUCTION(TEXM3X2TEX, 2),
-    INSTRUCTION(TEXM3X3PAD, 2),
-    INSTRUCTION(TEXM3X3TEX, 2),
-    INSTRUCTION_STATE(RESERVED, 0),
-    INSTRUCTION(TEXM3X3SPEC, 3),
-    INSTRUCTION(TEXM3X3VSPEC, 2),
-    INSTRUCTION(EXPP, 2),
-    INSTRUCTION(LOGP, 2),
-    INSTRUCTION(CND, 4),
-    INSTRUCTION(DEF, 5),
-    INSTRUCTION(TEXREG2RGB, 2),
-    INSTRUCTION(TEXDP3TEX, 2),
-    INSTRUCTION(TEXM3X2DEPTH, 2),
-    INSTRUCTION(TEXDP3, 2),
-    INSTRUCTION(TEXM3X3, 2),
-    INSTRUCTION(TEXDEPTH, 1),
-    INSTRUCTION(CMP, 4),
-    INSTRUCTION(BEM, 3),
-    INSTRUCTION(DP2ADD, 4),
-    INSTRUCTION(DSX, 2),
-    INSTRUCTION(DSY, 2),
-    INSTRUCTION(TEXLDD, 5),
-    INSTRUCTION(SETP, 3),
-    INSTRUCTION(TEXLDL, 3),
-    INSTRUCTION(BREAKP, 1),  // src
+    #define INSTRUCTION_STATE(op, args, argsseq) { \
+        #op, args, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
+    }
+    #define INSTRUCTION(op, args, argsseq) { \
+        #op, args, parse_args_##argsseq, NULL, PROFILE_EMITTERS(op) \
+    }
+    INSTRUCTION(NOP, 0, NULL),
+    INSTRUCTION(MOV, 2, DS),
+    INSTRUCTION(ADD, 3, DSS),
+    INSTRUCTION(SUB, 3, DSS),
+    INSTRUCTION(MAD, 4, DSSS),
+    INSTRUCTION(MUL, 3, DSS),
+    INSTRUCTION(RCP, 2, DS),
+    INSTRUCTION(RSQ, 2, DS),
+    INSTRUCTION(DP3, 3, DSS),
+    INSTRUCTION(DP4, 3, DSS),
+    INSTRUCTION(MIN, 3, DSS),
+    INSTRUCTION(MAX, 3, DSS),
+    INSTRUCTION(SLT, 3, DSS),
+    INSTRUCTION(SGE, 3, DSS),
+    INSTRUCTION(EXP, 2, DS),
+    INSTRUCTION(LOG, 2, DS),
+    INSTRUCTION(LIT, 2, DS),
+    INSTRUCTION(DST, 3, DSS),
+    INSTRUCTION(LRP, 4, DSSS),
+    INSTRUCTION(FRC, 2, DS),
+    INSTRUCTION(M4X4, 3, DSS),
+    INSTRUCTION(M4X3, 3, DSS),
+    INSTRUCTION(M3X4, 3, DSS),
+    INSTRUCTION(M3X3, 3, DSS),
+    INSTRUCTION(M3X2, 3, DSS),
+    INSTRUCTION(CALL, 1, S),
+    INSTRUCTION(CALLNZ, 2, SS),
+    INSTRUCTION(LOOP, 2, SS),
+    INSTRUCTION(RET, 0, NULL),
+    INSTRUCTION(ENDLOOP, 0, NULL),
+    INSTRUCTION(LABEL, 1, S),
+    INSTRUCTION(DCL, -1, NULL),
+    INSTRUCTION(POW, 3, DSS),
+    INSTRUCTION(CRS, 3, DSS),
+    INSTRUCTION(SGN, 4, DSSS),
+    INSTRUCTION(ABS, 2, DS),
+    INSTRUCTION(NRM, 2, DS),
+    INSTRUCTION(SINCOS, 4, NULL),
+    INSTRUCTION(REP, 1, S),
+    INSTRUCTION(ENDREP, 0, NULL),
+    INSTRUCTION(IF, 1, S),
+    INSTRUCTION(IFC, 2, SS),
+    INSTRUCTION(ELSE, 0, NULL),
+    INSTRUCTION(ENDIF, 0, NULL),
+    INSTRUCTION(BREAK, 0, NULL),
+    INSTRUCTION(BREAKC, 2, SS),
+    INSTRUCTION(MOVA, 2, DS),
+    INSTRUCTION(DEFB, 2, NULL),
+    INSTRUCTION(DEFI, 5, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION(TEXCOORD, -1, NULL),
+    INSTRUCTION(TEXKILL, 1, D),
+    INSTRUCTION(TEX, -1, NULL),
+    INSTRUCTION(TEXBEM, 2, DS),
+    INSTRUCTION(TEXBEML, 2, DS),
+    INSTRUCTION(TEXREG2AR, 2, DS),
+    INSTRUCTION(TEXREG2GB, 2, DS),
+    INSTRUCTION(TEXM3X2PAD, 2, DS),
+    INSTRUCTION(TEXM3X2TEX, 2, DS),
+    INSTRUCTION(TEXM3X3PAD, 2, DS),
+    INSTRUCTION(TEXM3X3TEX, 2, DS),
+    INSTRUCTION_STATE(RESERVED, 0, NULL),
+    INSTRUCTION(TEXM3X3SPEC, 3, DSS),
+    INSTRUCTION(TEXM3X3VSPEC, 2, DS),
+    INSTRUCTION(EXPP, 2, DS),
+    INSTRUCTION(LOGP, 2, DS),
+    INSTRUCTION(CND, 4, DSSS),
+    INSTRUCTION(DEF, 5, NULL),
+    INSTRUCTION(TEXREG2RGB, 2, DS),
+    INSTRUCTION(TEXDP3TEX, 2, DS),
+    INSTRUCTION(TEXM3X2DEPTH, 2, DS),
+    INSTRUCTION(TEXDP3, 2, DS),
+    INSTRUCTION(TEXM3X3, 2, DS),
+    INSTRUCTION(TEXDEPTH, 1, D),
+    INSTRUCTION(CMP, 4, DSSS),
+    INSTRUCTION(BEM, 3, DSS),
+    INSTRUCTION(DP2ADD, 4, DSSS),
+    INSTRUCTION(DSX, 2, DS),
+    INSTRUCTION(DSY, 2, DS),
+    INSTRUCTION(TEXLDD, 5, DSSSS),
+    INSTRUCTION(SETP, 3, DSS),
+    INSTRUCTION(TEXLDL, 3, DSS),
+    INSTRUCTION(BREAKP, 1, S),  // src
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
 };
+
 
 
 // parse various token types...
@@ -1287,16 +1384,21 @@ static int parse_instruction_token(Context *ctx)
         } // else if
     } // if
 
+    // Update the context with instruction's arguments.
+    if (instruction->parse_args(ctx) == FAIL)
+        return FAIL;
+
+    // parse_args() moves these forward for convenience...reset them.
+    ctx->tokens = start_tokens;
+    ctx->tokencount = start_tokencount;
+
     if (instruction->state != NULL)  // update state machine
         retval = instruction->state(ctx);
     else
         retval = insttoks + 1;
 
-    if (ctx->failstr == NULL)  // only do this if there wasn't a previous fail.
+    if (retval != FAIL)  // only do this if there wasn't a previous fail.
         emitter(ctx);  // call the profile's emitter.
-
-    ctx->tokens = start_tokens;  // in case emitters ate anything.
-    ctx->tokencount = start_tokencount;  // in case emitters ate anything.
 
     return retval;
 } // parse_instruction_token
@@ -1309,17 +1411,25 @@ static int parse_version_token(Context *ctx)
 
     const uint32 token = SWAP32(*(ctx->tokens));
     const uint32 shadertype = ((token >> 16) & 0xFFFF);
-
-    ctx->major_ver = (uint32) ((token >> 8) & 0xFF);
-    ctx->minor_ver = (uint32) (token & 0xFF);
+    const uint32 major = (uint32) ((token >> 8) & 0xFF);
+    const uint32 minor = (uint32) (token & 0xFF);
 
     // 0xFFFF == pixel shader, 0xFFFE == vertex shader
     if (shadertype == 0xFFFF)
         ctx->shader_type = SHADER_TYPE_PIXEL;
     else if (shadertype == 0xFFFE)
         ctx->shader_type = SHADER_TYPE_VERTEX;
-    else
+    else  // geometry shader? Bogus data?
         return fail(ctx, "Unsupported shader type or not a shader at all");
+
+    ctx->major_ver = major;
+    ctx->minor_ver = minor;
+
+    if (!SHADER_VERSION_SUPPORTED(major, minor))
+    {
+        return failf(ctx, "Shader Model %u.%u is currently unsupported.",
+                     (uint) major, (uint) minor);
+    } // if
 
     ctx->profile->start_emitter(ctx);
     return 1;  // ate one token.
@@ -1542,5 +1652,11 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
     return (rc == END_OF_STREAM);
 } // D3D2GLSL_parse
 
-// end of parse.c ...
+
+int D3D2GLSL_version(void)
+{
+    return D3D2GLSL_VERSION;
+} // D3D2GLSL_version
+
+// end of d3d2glsl.c ...
 
