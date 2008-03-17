@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "d3d2glsl.h"
 
@@ -175,6 +176,26 @@ typedef struct OutputList
 #define MOD_SATURATE 0x01
 #define MOD_PP 0x02
 #define MOD_CENTROID 0x04
+
+// source modifiers.
+typedef enum
+{
+    SRCMOD_NONE,
+    SRCMOD_NEGATE,
+    SRCMOD_BIAS,
+    SRCMOD_BIASNEGATE,
+    SRCMOD_SIGN,
+    SRCMOD_SIGNNEGATE,
+    SRCMOD_COMPLEMENT,
+    SRCMOD_X2,
+    SRCMOD_X2NEGATE,
+    SRCMOD_DZ,
+    SRCMOD_DW,
+    SRCMOD_ABS,
+    SRCMOD_ABSNEGATE,
+    SRCMOD_NOT,
+    SRCMOD_TOTAL
+} D3D2GLSL_sourceMod;
 
 
 typedef struct
@@ -348,6 +369,108 @@ static int output_line(Context *ctx, const char *fmt, ...)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
+static const char *get_D3D_register_string(Context *ctx,
+                                           D3D2GLSL_registerType regtype,
+                                           int regnum, char *regnum_str,
+                                           size_t regnum_size)
+{
+    const char *retval = NULL;
+
+    snprintf(regnum_str, regnum_size, "%u", (uint) regnum);
+
+    switch (regtype)
+    {
+        case REGISTER_TYPE_TEMP:
+            retval = "r";
+            break;
+
+        case REGISTER_TYPE_INPUT:
+            retval = "v";
+            break;
+
+        case REGISTER_TYPE_CONST:
+        case REGISTER_TYPE_CONST2:
+        case REGISTER_TYPE_CONST3:
+        case REGISTER_TYPE_CONST4:
+            retval = "c";
+            break;
+
+        case REGISTER_TYPE_ADDR:  // (or REGISTER_TYPE_TEXTURE, same value.)
+            retval = (ctx->shader_type == SHADER_TYPE_VERTEX) ? "a" : "t";
+            break;
+
+        case REGISTER_TYPE_RASTOUT:
+            switch ((D3D2GLSL_rastoutType) regnum)
+            {
+                case RASTOUT_TYPE_POSITION: retval = "oPos"; break;
+                case RASTOUT_TYPE_FOG: retval = "oFog"; break;
+                case RASTOUT_TYPE_POINT_SIZE: retval = "oPts"; break;
+            } // switch
+            regnum_str[0] = '\0';  // no number for this register type.
+            break;
+
+        case REGISTER_TYPE_ATTROUT:
+            retval = "oD";
+            break;
+
+        case REGISTER_TYPE_TEXCRDOUT: // (or REGISTER_TYPE_OUTPUT, same value.)
+            if ((ctx->shader_type==SHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
+                retval = "o";
+            else
+                retval = "oT";
+            break;
+
+        case REGISTER_TYPE_CONSTINT:
+            retval = "i";
+            break;
+
+        case REGISTER_TYPE_COLOROUT:
+            retval = "oC";
+            break;
+
+        case REGISTER_TYPE_DEPTHOUT:
+            retval = "oDepth";
+            regnum_str[0] = '\0';  // no number for this register type.
+            break;
+
+        case REGISTER_TYPE_SAMPLER:
+            retval = "s";
+            break;
+
+        case REGISTER_TYPE_CONSTBOOL:
+            retval = "b";
+            break;
+
+        case REGISTER_TYPE_LOOP:
+            retval = "aL";
+            regnum_str[0] = '\0';  // no number for this register type.
+            break;
+
+        // !!! FIXME: don't know what the asm string is for this..
+        // case REGISTER_TYPE_TEMPFLOAT16:
+
+        case REGISTER_TYPE_MISCTYPE:
+            switch ((D3D2GLSL_misctypeType) regnum)
+            {
+                case MISCTYPE_TYPE_POSITION: retval = "vPos"; break;
+                case MISCTYPE_TYPE_FACE: retval = "vFace"; break;
+            } // switch
+            regnum_str[0] = '\0';  // no number for this register type.
+            break;
+
+        case REGISTER_TYPE_LABEL:
+            retval = "l";
+            break;
+
+        case REGISTER_TYPE_PREDICATE:
+            retval = "p";
+            break;
+    } // switch
+
+    return retval;
+} // get_D3D_register_string
+
+
 static char *make_D3D_destarg_string(Context *ctx, const int idx)
 {
     if (idx >= STATICARRAYLEN(ctx->dest_args))
@@ -374,103 +497,10 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
 
     char regnum_str[16];
-    snprintf(regnum_str, sizeof (regnum_str), "%u", (uint) arg->regnum);
-
-    static const char *regtypes[] = {
-        "r", "v", "c", NULL, NULL, "oD", NULL, "i", "oC", "oDepth",
-        "s", "c", "c", "c", "b", "aL", NULL, NULL, "l", "p"
-    };
-
-    const char *regtype_str = NULL;
-    switch ((D3D2GLSL_registerType) arg->regtype)
-    {
-        case REGISTER_TYPE_TEMP:
-            regtype_str = "r";
-            break;
-
-        case REGISTER_TYPE_INPUT:
-            regtype_str = "v";
-            break;
-
-        case REGISTER_TYPE_CONST:
-        case REGISTER_TYPE_CONST2:
-        case REGISTER_TYPE_CONST3:
-        case REGISTER_TYPE_CONST4:
-            regtype_str = "c";
-            break;
-
-        case REGISTER_TYPE_ADDR:  // (or REGISTER_TYPE_TEXTURE, same value.)
-            regtype_str = (ctx->shader_type == SHADER_TYPE_VERTEX) ? "a" : "t";
-            break;
-
-        case REGISTER_TYPE_RASTOUT:
-            switch ((D3D2GLSL_rastoutType) arg->regnum)
-            {
-                case RASTOUT_TYPE_POSITION: regtype_str = "oPos"; break;
-                case RASTOUT_TYPE_FOG: regtype_str = "oFog"; break;
-                case RASTOUT_TYPE_POINT_SIZE: regtype_str = "oPts"; break;
-            } // switch
-            regnum_str[0] = '\0';  // no number for this register type.
-            break;
-
-        case REGISTER_TYPE_ATTROUT:
-            regtype_str = "oD";
-            break;
-
-        case REGISTER_TYPE_TEXCRDOUT: // (or REGISTER_TYPE_OUTPUT, same value.)
-            if ((ctx->shader_type==SHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
-                regtype_str = "o";
-            else
-                regtype_str = "oT";
-            break;
-
-        case REGISTER_TYPE_CONSTINT:
-            regtype_str = "i";
-            break;
-
-        case REGISTER_TYPE_COLOROUT:
-            regtype_str = "oC";
-            break;
-
-        case REGISTER_TYPE_DEPTHOUT:
-            regtype_str = "oDepth";
-            regnum_str[0] = '\0';  // no number for this register type.
-            break;
-
-        case REGISTER_TYPE_SAMPLER:
-            regtype_str = "s";
-            break;
-
-        case REGISTER_TYPE_CONSTBOOL:
-            regtype_str = "b";
-            break;
-
-        case REGISTER_TYPE_LOOP:
-            regtype_str = "aL";
-            regnum_str[0] = '\0';  // no number for this register type.
-            break;
-
-        // !!! FIXME: don't know what the asm string is for this..
-        // case REGISTER_TYPE_TEMPFLOAT16:
-
-        case REGISTER_TYPE_MISCTYPE:
-            switch ((D3D2GLSL_misctypeType) arg->regnum)
-            {
-                case MISCTYPE_TYPE_POSITION: regtype_str = "vPos"; break;
-                case MISCTYPE_TYPE_FACE: regtype_str = "vFace"; break;
-            } // switch
-            regnum_str[0] = '\0';  // no number for this register type.
-            break;
-
-        case REGISTER_TYPE_LABEL:
-            regtype_str = "l";
-            break;
-
-        case REGISTER_TYPE_PREDICATE:
-            regtype_str = "p";
-            break;
-    } // switch
-
+    const char *regtype_str = get_D3D_register_string(ctx,
+                                        (D3D2GLSL_registerType) arg->regtype,
+                                        arg->regnum, regnum_str,
+                                        sizeof (regnum_str));
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
@@ -485,10 +515,9 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 
     // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s",
+    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
              regtype_str, regnum_str, dot_str, x_str, y_str, z_str, w_str);
-
     return retval;
 } // make_D3D_destarg_string
 
@@ -501,9 +530,101 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
         return "";
     } // if
 
-    char *retval = get_scratch_buffer(ctx);
-    strcpy(retval, "SRC");  // !!! FIXME
+    const SourceArgInfo *arg = &ctx->source_args[idx];
 
+    const char *premod_str = "";
+    const char *postmod_str = "";
+    switch ((D3D2GLSL_sourceMod) arg->src_mod)
+    {
+        case SRCMOD_NEGATE:
+            premod_str = "-";
+            break;
+
+        case SRCMOD_BIASNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_BIAS:
+            postmod_str = "_bias";
+            break;
+
+        case SRCMOD_SIGNNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_SIGN:
+            postmod_str = "_bx2";
+            break;
+
+        case SRCMOD_COMPLEMENT:
+            premod_str = "1-";
+            break;
+
+        case SRCMOD_X2NEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_X2:
+            postmod_str = "_x2";
+            break;
+
+        case SRCMOD_DZ:
+            postmod_str = "_dz";
+            break;
+
+        case SRCMOD_DW:
+            postmod_str = "_dw";
+            break;
+
+        case SRCMOD_ABSNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_ABS:
+            postmod_str = "_abs";
+            break;
+
+        case SRCMOD_NOT:
+            premod_str = "!";
+            break;
+    } // switch
+
+
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx,
+                                        (D3D2GLSL_registerType) arg->regtype,
+                                        arg->regnum, regnum_str,
+                                        sizeof (regnum_str));
+
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown source register type.");
+        return "";
+    } // if
+
+    char swizzle_str[6];
+    int i = 0;
+    if (arg->swizzle != 0xE4)  // E4 == 11100100 ... 3 2 1 0. No swizzle.
+    {
+        static const char channel[] = { 'x', 'y', 'z', 'w' };
+        swizzle_str[i++] = '.';
+
+        if ( (arg->swizzle_x == arg->swizzle_y) &&
+             (arg->swizzle_x == arg->swizzle_z) &&
+             (arg->swizzle_x == arg->swizzle_w) )
+        {
+            swizzle_str[i++] = channel[arg->swizzle_x];  // syntactic sugar.
+        } // if
+        else
+        {
+            swizzle_str[i++] = channel[arg->swizzle_x];
+            swizzle_str[i++] = channel[arg->swizzle_y];
+            swizzle_str[i++] = channel[arg->swizzle_z];
+            swizzle_str[i++] = channel[arg->swizzle_w];
+        } // else
+    } // if
+    swizzle_str[i] = '\0';
+    assert(i < sizeof (swizzle_str));
+
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s",
+             premod_str, regtype_str, postmod_str, swizzle_str);
     return retval;
 } // make_D3D_sourcearg_string
 
@@ -512,24 +633,28 @@ static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
+    const char *shadertype_str = NULL;
+    char minor_str[16];
+
+    if (minor == 0xFF)
+        strcpy(minor_str, "sw");
+    else if (minor == 0x1)  // apparently this is "vs_2_x". Weird.
+        strcpy(minor_str, "x");
+    else
+        snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
 
     if (ctx->shader_type == SHADER_TYPE_PIXEL)
-        output_line(ctx, "ps_%u_%u", major, minor);
+        shadertype_str = "ps";
     else if (ctx->shader_type == SHADER_TYPE_VERTEX)
-    {
-        char minorstr[16];
-        if (minor == 0xFF)
-            strcpy(minorstr, "sw");
-        else
-            snprintf(minorstr, sizeof (minorstr), "%u", (uint) minor);
-
-        output_line(ctx, "vs_%u_%s", major, minorstr);
-    } // else if
+        shadertype_str = "vs";
     else
     {
         failf(ctx, "Shader type %u unsupported in this profile.",
               (uint) ctx->shader_type);
+        return;
     } // else
+
+    output_line(ctx, "%s_%u_%s", shadertype_str, major, minor_str);
 } // emit_D3D_start
 
 
@@ -1235,7 +1360,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->token = ctx->tokens;
     info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
     info->relative = (int) ((token >> 13) & 0x1); // bit 13
-    info->writemask = (int) ((token >> 16) & 0xF); // bit 16
+    info->writemask = (int) ((token >> 16) & 0xF); // bits 16 through 19
     info->writemask0 = (int) ((token >> 16) & 0x1); // bit 16
     info->writemask1 = (int) ((token >> 17) & 0x1); // bit 17
     info->writemask2 = (int) ((token >> 18) & 0x1); // bit 18
@@ -1337,7 +1462,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
 
-    if (info->src_mod >= 0xE)
+    if ( ((D3D2GLSL_sourceMod) info->src_mod) >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
     return 1;
