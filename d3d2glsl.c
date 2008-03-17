@@ -601,7 +601,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 
     char swizzle_str[6];
     int i = 0;
-    if (arg->swizzle != 0xE4)  // E4 == 11100100 ... 3 2 1 0. No swizzle.
+    if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
     {
         static const char channel[] = { 'x', 'y', 'z', 'w' };
         swizzle_str[i++] = '.';
@@ -1433,7 +1433,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->token = ctx->tokens;
     info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
     info->relative = (int) ((token >> 13) & 0x1); // bit 13
-    info->swizzle = (int) ((token >> 16) & 0xF); // bits 16 through 23
+    info->swizzle = (int) ((token >> 16) & 0xFF); // bits 16 through 23
     info->swizzle_x = (int) ((token >> 16) & 0x3); // bits 16 through 17
     info->swizzle_y = (int) ((token >> 18) & 0x3); // bits 18 through 19
     info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
