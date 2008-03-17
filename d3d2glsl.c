@@ -663,7 +663,7 @@ static void emit_D3D_start(Context *ctx)
 
 static void emit_D3D_end(Context *ctx)
 {
-    output_line(ctx, "END");
+    output_line(ctx, "end");
 } // emit_D3D_end
 
 
@@ -682,9 +682,22 @@ static void emit_D3D_RESERVED(Context *ctx)
 // Generic D3D opcode emitters. A list of macros generate all the entry points
 //  that call into these...
 
+static char *lowercase(char *dst, const char *src)
+{
+    int i = 0;
+    do
+    {
+        const char ch = src[i];
+        dst[i] = (((ch >= 'A') && (ch <= 'Z')) ? (ch - ('A' - 'a')) : ch);
+    } while (src[i++]);
+    return dst;
+} // lowercase
+
+
 static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
     const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s", opcode, dst0);
 } // emit_D3D_opcode_d
 
@@ -692,6 +705,7 @@ static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
     const char *src0 = make_D3D_destarg_string(ctx, 0);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s %s", opcode, src0);
 } // emit_D3D_opcode_s
 
@@ -700,6 +714,7 @@ static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
 {
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s %s, %s", opcode, src0, src1);
 } // emit_D3D_opcode_s
 
@@ -708,6 +723,7 @@ static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 {
     const char *dst0 = make_D3D_destarg_string(ctx, 0);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s, %s", opcode, dst0, src0);
 } // emit_D3D_opcode_ds
 
@@ -717,6 +733,7 @@ static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
     const char *dst0 = make_D3D_destarg_string(ctx, 0);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s, %s, %s", opcode, dst0, src0, src1);
 } // emit_D3D_opcode_dss
 
@@ -727,6 +744,7 @@ static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     const char *src2 = make_D3D_sourcearg_string(ctx, 2);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s, %s, %s, %s", opcode, dst0, src0, src1, src2);
 } // emit_D3D_opcode_dsss
 
@@ -738,13 +756,21 @@ static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     const char *src2 = make_D3D_sourcearg_string(ctx, 2);
     const char *src3 = make_D3D_sourcearg_string(ctx, 3);
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst0,src0,src1,src2,src3);
+} // emit_D3D_opcode_dssss
+
+
+static void emit_D3D_opcode(Context *ctx, const char *opcode)
+{
+    opcode = lowercase(get_scratch_buffer(ctx), opcode);
+    output_line(ctx, "%s", opcode);
 } // emit_D3D_opcode_dssss
 
 
 #define EMIT_D3D_OPCODE_FUNC(op) \
     static void emit_D3D_##op(Context *ctx) { \
-        output_line(ctx, #op); \
+        emit_D3D_opcode(ctx, #op); \
     }
 #define EMIT_D3D_OPCODE_D_FUNC(op) \
     static void emit_D3D_##op(Context *ctx) { \
@@ -873,21 +899,21 @@ static const char *get_D3D_comparison_string(Context *ctx)
 static void emit_D3D_BREAKC(Context *ctx)
 {
     char op[16];
-    snprintf(op, sizeof (op), "BREAK%s", get_D3D_comparison_string(ctx));
+    snprintf(op, sizeof (op), "break%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_ss(ctx, op);
 } // emit_D3D_BREAKC
 
 static void emit_D3D_IFC(Context *ctx)
 {
     char op[16];
-    snprintf(op, sizeof (op), "IF%s", get_D3D_comparison_string(ctx));
+    snprintf(op, sizeof (op), "if%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_ss(ctx, op);
 } // emit_D3D_IFC
 
 static void emit_D3D_SETP(Context *ctx)
 {
     char op[16];
-    snprintf(op, sizeof (op), "SETP%s", get_D3D_comparison_string(ctx));
+    snprintf(op, sizeof (op), "setp%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_dss(ctx, op);
 } // emit_D3D_SETP
 
