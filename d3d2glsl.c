@@ -508,17 +508,24 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
         return "";
     } // if
 
-    const char *dot_str = (arg->writemask != 0) ? "." : "";
-    const char *x_str = (arg->writemask0 != 0) ? "x" : "";
-    const char *y_str = (arg->writemask1 != 0) ? "y" : "";
-    const char *z_str = (arg->writemask2 != 0) ? "z" : "";
-    const char *w_str = (arg->writemask3 != 0) ? "w" : "";
+    char writemask_str[6];
+    int i = 0;
+    if (arg->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    {
+        writemask_str[i++] = '.';
+        if (arg->writemask0) writemask_str[i++] = 'x';
+        if (arg->writemask1) writemask_str[i++] = 'y';
+        if (arg->writemask2) writemask_str[i++] = 'z';
+        if (arg->writemask3) writemask_str[i++] = 'w';
+    } // if
+    writemask_str[i] = '\0';
+    assert(i < sizeof (writemask_str));
 
     // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s%s",
+    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
-             regtype_str, regnum_str, dot_str, x_str, y_str, z_str, w_str);
+             regtype_str, regnum_str, writemask_str);
     return retval;
 } // make_D3D_destarg_string
 
