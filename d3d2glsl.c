@@ -873,14 +873,14 @@ static const char *get_D3D_comparison_string(Context *ctx)
 static void emit_D3D_BREAKC(Context *ctx)
 {
     char op[16];
-    snprintf(op, sizeof (op), "BREAKC%s", get_D3D_comparison_string(ctx));
+    snprintf(op, sizeof (op), "BREAK%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_ss(ctx, op);
 } // emit_D3D_BREAKC
 
 static void emit_D3D_IFC(Context *ctx)
 {
     char op[16];
-    snprintf(op, sizeof (op), "IFC%s", get_D3D_comparison_string(ctx));
+    snprintf(op, sizeof (op), "IF%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_ss(ctx, op);
 } // emit_D3D_IFC
 
