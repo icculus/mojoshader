@@ -254,6 +254,7 @@ struct Context
     DestArgInfo dest_args[1];
     SourceArgInfo source_args[4];
     uint32 instruction_count;
+    uint32 instruction_controls;
 };
 
 
@@ -815,11 +816,9 @@ EMIT_D3D_OPCODE_DS_FUNC(SINCOS)
 EMIT_D3D_OPCODE_S_FUNC(REP)
 EMIT_D3D_OPCODE_FUNC(ENDREP)
 EMIT_D3D_OPCODE_S_FUNC(IF)
-EMIT_D3D_OPCODE_SS_FUNC(IFC)
 EMIT_D3D_OPCODE_FUNC(ELSE)
 EMIT_D3D_OPCODE_FUNC(ENDIF)
 EMIT_D3D_OPCODE_FUNC(BREAK)
-EMIT_D3D_OPCODE_SS_FUNC(BREAKC)
 EMIT_D3D_OPCODE_DS_FUNC(MOVA)
 EMIT_D3D_OPCODE_FUNC(DEFB) // !!! FIXME!
 EMIT_D3D_OPCODE_FUNC(DEFI) // !!! FIXME!
@@ -852,9 +851,46 @@ EMIT_D3D_OPCODE_DSSS_FUNC(DP2ADD)
 EMIT_D3D_OPCODE_DS_FUNC(DSX)
 EMIT_D3D_OPCODE_DS_FUNC(DSY)
 EMIT_D3D_OPCODE_DSSSS_FUNC(TEXLDD)
-EMIT_D3D_OPCODE_DSS_FUNC(SETP)
 EMIT_D3D_OPCODE_DSS_FUNC(TEXLDL)
 EMIT_D3D_OPCODE_S_FUNC(BREAKP)
+
+// special cases for comparison opcodes...
+static const char *get_D3D_comparison_string(Context *ctx)
+{
+    static const char *comps[] = {
+        "", "_gt", "_eq", "_ge", "_lt", "_ne", "_le"
+    };
+
+    if (ctx->instruction_controls >= STATICARRAYLEN(comps))
+    {
+        fail(ctx, "unknown comparison control");
+        return "";
+    } // if
+
+    return comps[ctx->instruction_controls];
+} // get_D3D_comparison_string
+
+static void emit_D3D_BREAKC(Context *ctx)
+{
+    char op[16];
+    snprintf(op, sizeof (op), "BREAKC%s", get_D3D_comparison_string(ctx));
+    emit_D3D_opcode_ss(ctx, op);
+} // emit_D3D_BREAKC
+
+static void emit_D3D_IFC(Context *ctx)
+{
+    char op[16];
+    snprintf(op, sizeof (op), "IFC%s", get_D3D_comparison_string(ctx));
+    emit_D3D_opcode_ss(ctx, op);
+} // emit_D3D_IFC
+
+static void emit_D3D_SETP(Context *ctx)
+{
+    char op[16];
+    snprintf(op, sizeof (op), "SETP%s", get_D3D_comparison_string(ctx));
+    emit_D3D_opcode_dss(ctx, op);
+} // emit_D3D_SETP
+
 
 #undef EMIT_D3D_OPCODE_FUNC
 #undef EMIT_D3D_OPCODE_D_FUNC
@@ -1690,24 +1726,33 @@ static int parse_instruction_token(Context *ctx)
     if (coissue)  // !!! FIXME: I'm not sure what this means, yet.
         return fail(ctx, "coissue instructions unsupported");
 
-    if (instruction->arg_tokens >= 0)
+    if (ctx->major_ver < 2)
     {
-        if (instruction->arg_tokens != insttoks)
-        {
-            return failf(ctx,
-                    "unexpected number of tokens (%u) for instruction '%s'.",
-                    (uint) insttoks, instruction->opcode_string);
-        } // if
-        else if (ctx->tokencount <= instruction->arg_tokens)
-        {
-            return failf(ctx,
-                    "need more tokens (need %u, got %u) for instruction '%s'.",
-                    (uint) instruction->arg_tokens, (uint) ctx->tokencount,
-                    instruction->opcode_string);
-        } // else if
+        if (insttoks != 0)  // this is a reserved field in shaders < 2.0 ...
+            return fail(ctx, "instruction token count must be zero");
     } // if
+    else
+    {
+        if (instruction->arg_tokens >= 0)
+        {
+            if (instruction->arg_tokens != insttoks)
+            {
+                return failf(ctx,
+                        "unexpected tokens count (%u) for opcode '%s'.",
+                        (uint) insttoks, instruction->opcode_string);
+            } // if
+            else if (ctx->tokencount <= instruction->arg_tokens)
+            {
+                return failf(ctx,
+                        "need more tokens (need %u, got %u) for opcode '%s'.",
+                        (uint) instruction->arg_tokens, (uint) ctx->tokencount,
+                        instruction->opcode_string);
+            } // else if
+        } // if
+    } // else
 
     ctx->instruction_count++;
+    ctx->instruction_controls = controls;
 
     // Update the context with instruction's arguments.
     ctx->tokens++;
@@ -1722,7 +1767,12 @@ static int parse_instruction_token(Context *ctx)
     if (instruction->state != NULL)  // update state machine
         retval = instruction->state(ctx);
     else
+    {
+        // !!! FIXME
+        //assert(instruction->arg_tokens >= 0);
+        //retval = instruction->arg_tokens + 1;
         retval = insttoks + 1;
+    } // else
 
     if (retval != FAIL)  // only do this if there wasn't a previous fail.
         emitter(ctx);  // call the profile's emitter.
@@ -1969,6 +2019,8 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
             printf("OUTPUT:\n%s\n", str);  // !!! FIXME: report to caller.
             ctx->free(str);
         } // if
+
+        printf("INSTRUCTION COUNT: %u\n", (uint) ctx->instruction_count);
     } // if
 
     if (ctx->failstr != NULL)
