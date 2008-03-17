@@ -253,6 +253,7 @@ struct Context
     uint32 minor_ver;
     DestArgInfo dest_args[1];
     SourceArgInfo source_args[4];
+    uint32 instruction_count;
 };
 
 
@@ -604,20 +605,14 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     {
         static const char channel[] = { 'x', 'y', 'z', 'w' };
         swizzle_str[i++] = '.';
+        swizzle_str[i++] = channel[arg->swizzle_x];
+        swizzle_str[i++] = channel[arg->swizzle_y];
+        swizzle_str[i++] = channel[arg->swizzle_z];
+        swizzle_str[i++] = channel[arg->swizzle_w];
 
-        if ( (arg->swizzle_x == arg->swizzle_y) &&
-             (arg->swizzle_x == arg->swizzle_z) &&
-             (arg->swizzle_x == arg->swizzle_w) )
-        {
-            swizzle_str[i++] = channel[arg->swizzle_x];  // syntactic sugar.
-        } // if
-        else
-        {
-            swizzle_str[i++] = channel[arg->swizzle_x];
-            swizzle_str[i++] = channel[arg->swizzle_y];
-            swizzle_str[i++] = channel[arg->swizzle_z];
-            swizzle_str[i++] = channel[arg->swizzle_w];
-        } // else
+        // .xyzz is the same as .xyz, .z is the same as .zzzz, etc.
+        while (swizzle_str[i-1] == swizzle_str[i-2])
+            i--;
     } // if
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
@@ -1704,6 +1699,8 @@ static int parse_instruction_token(Context *ctx)
                     instruction->opcode_string);
         } // else if
     } // if
+
+    ctx->instruction_count++;
 
     // Update the context with instruction's arguments.
     ctx->tokens++;
