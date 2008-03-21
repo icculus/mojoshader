@@ -8,6 +8,9 @@
 
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
 
+// !!! FIXME: do DEF* and DCL_* opcodes have to come before instructions?
+// !!! FIXME:  my reading of the msdn spec suggests no.
+
 // Shader bytecode format is described at MSDN:
 //  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
 
@@ -42,6 +45,7 @@
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
+typedef int32_t int32;
 
 #ifdef __GNUC__
 #define ISPRINTF(x,y) __attribute__((format (printf, x, y)))
@@ -144,7 +148,7 @@ typedef enum
     REGISTER_TYPE_LABEL = 18,
     REGISTER_TYPE_PREDICATE = 19,
     REGISTER_TYPE_MAX = 19
-} D3D2GLSL_registerType;
+} registerType;
 
 typedef enum
 {
@@ -160,6 +164,31 @@ typedef enum
     MISCTYPE_TYPE_FACE = 1,
     MISCTYPE_TYPE_MAX = 1
 } D3D2GLSL_misctypeType;
+
+typedef enum
+{
+    DECLUSAGE_POSITION = 0,
+    DECLUSAGE_BLENDWEIGHT = 1,
+    DECLUSAGE_BLENDINDICES = 2,
+    DECLUSAGE_NORMAL = 3,
+    DECLUSAGE_PSIZE = 4,
+    DECLUSAGE_TEXCOORD = 5,
+    DECLUSAGE_TANGENT = 6,
+    DECLUSAGE_BINORMAL = 7,
+    DECLUSAGE_TESSFACTOR = 8,
+    DECLUSAGE_POSITIONT = 9,
+    DECLUSAGE_COLOR = 10,
+    DECLUSAGE_FOG = 11,
+    DECLUSAGE_DEPTH = 12,
+    DECLUSAGE_SAMPLE = 13
+} D3D2GLSL_declusageType;
+
+typedef enum
+{
+    TEXTURE_TYPE_2D = 2,
+    TEXTURE_TYPE_CUBE = 3,
+    TEXTURE_TYPE_VOLUME = 4,
+} D3D2GLSL_samplerTextureType;
 
 
 // A simple linked list of strings, so we can build the final output without
@@ -253,6 +282,7 @@ struct Context
     uint32 minor_ver;
     DestArgInfo dest_args[1];
     SourceArgInfo source_args[4];
+    uint32 dwords[4];
     uint32 instruction_count;
     uint32 instruction_controls;
 };
@@ -372,13 +402,12 @@ static int output_line(Context *ctx, const char *fmt, ...)
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
 static const char *get_D3D_register_string(Context *ctx,
-                                           D3D2GLSL_registerType regtype,
+                                           registerType regtype,
                                            int regnum, char *regnum_str,
                                            size_t regnum_size)
 {
     const char *retval = NULL;
-
-    snprintf(regnum_str, regnum_size, "%u", (uint) regnum);
+    int has_number = 1;
 
     switch (regtype)
     {
@@ -391,10 +420,22 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REGISTER_TYPE_CONST:
+            retval = "c";
+            break;
+
         case REGISTER_TYPE_CONST2:
+            retval = "c";
+            regnum += 2048;
+            break;
+
         case REGISTER_TYPE_CONST3:
+            retval = "c";
+            regnum += 4096;
+            break;
+
         case REGISTER_TYPE_CONST4:
             retval = "c";
+            regnum += 6144;
             break;
 
         case REGISTER_TYPE_ADDR:  // (or REGISTER_TYPE_TEXTURE, same value.)
@@ -408,7 +449,7 @@ static const char *get_D3D_register_string(Context *ctx,
                 case RASTOUT_TYPE_FOG: retval = "oFog"; break;
                 case RASTOUT_TYPE_POINT_SIZE: retval = "oPts"; break;
             } // switch
-            regnum_str[0] = '\0';  // no number for this register type.
+            has_number = 0;
             break;
 
         case REGISTER_TYPE_ATTROUT:
@@ -432,7 +473,7 @@ static const char *get_D3D_register_string(Context *ctx,
 
         case REGISTER_TYPE_DEPTHOUT:
             retval = "oDepth";
-            regnum_str[0] = '\0';  // no number for this register type.
+            has_number = 0;
             break;
 
         case REGISTER_TYPE_SAMPLER:
@@ -445,7 +486,7 @@ static const char *get_D3D_register_string(Context *ctx,
 
         case REGISTER_TYPE_LOOP:
             retval = "aL";
-            regnum_str[0] = '\0';  // no number for this register type.
+            has_number = 0;
             break;
 
         // !!! FIXME: don't know what the asm string is for this..
@@ -457,7 +498,7 @@ static const char *get_D3D_register_string(Context *ctx,
                 case MISCTYPE_TYPE_POSITION: retval = "vPos"; break;
                 case MISCTYPE_TYPE_FACE: retval = "vFace"; break;
             } // switch
-            regnum_str[0] = '\0';  // no number for this register type.
+            has_number = 0;
             break;
 
         case REGISTER_TYPE_LABEL:
@@ -468,6 +509,11 @@ static const char *get_D3D_register_string(Context *ctx,
             retval = "p";
             break;
     } // switch
+
+    if (has_number)
+        snprintf(regnum_str, regnum_size, "%u", (uint) regnum);
+    else
+        regnum_str[0] = '\0';
 
     return retval;
 } // get_D3D_register_string
@@ -500,7 +546,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx,
-                                        (D3D2GLSL_registerType) arg->regtype,
+                                        (registerType) arg->regtype,
                                         arg->regnum, regnum_str,
                                         sizeof (regnum_str));
     if (regtype_str == NULL)
@@ -597,7 +643,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx,
-                                        (D3D2GLSL_registerType) arg->regtype,
+                                        (registerType) arg->regtype,
                                         arg->regnum, regnum_str,
                                         sizeof (regnum_str));
 
@@ -832,7 +878,6 @@ EMIT_D3D_OPCODE_SS_FUNC(LOOP)
 EMIT_D3D_OPCODE_FUNC(RET)
 EMIT_D3D_OPCODE_FUNC(ENDLOOP)
 EMIT_D3D_OPCODE_S_FUNC(LABEL)
-EMIT_D3D_OPCODE_FUNC(DCL)  // !!! FIXME!
 EMIT_D3D_OPCODE_DSS_FUNC(POW)
 EMIT_D3D_OPCODE_DSS_FUNC(CRS)
 EMIT_D3D_OPCODE_DSSS_FUNC(SGN)
@@ -846,8 +891,6 @@ EMIT_D3D_OPCODE_FUNC(ELSE)
 EMIT_D3D_OPCODE_FUNC(ENDIF)
 EMIT_D3D_OPCODE_FUNC(BREAK)
 EMIT_D3D_OPCODE_DS_FUNC(MOVA)
-EMIT_D3D_OPCODE_FUNC(DEFB) // !!! FIXME!
-EMIT_D3D_OPCODE_FUNC(DEFI) // !!! FIXME!
 EMIT_D3D_OPCODE_FUNC(TEXCOORD) // !!! FIXME!
 EMIT_D3D_OPCODE_D_FUNC(TEXKILL)
 EMIT_D3D_OPCODE_FUNC(TEX) // !!! FIXME!
@@ -864,7 +907,6 @@ EMIT_D3D_OPCODE_DS_FUNC(TEXM3X3VSPEC)
 EMIT_D3D_OPCODE_DS_FUNC(EXPP)
 EMIT_D3D_OPCODE_DS_FUNC(LOGP)
 EMIT_D3D_OPCODE_DSSS_FUNC(CND)
-EMIT_D3D_OPCODE_FUNC(DEF) // !!! FIXME!
 EMIT_D3D_OPCODE_DS_FUNC(TEXREG2RGB)
 EMIT_D3D_OPCODE_DS_FUNC(TEXDP3TEX)
 EMIT_D3D_OPCODE_DS_FUNC(TEXM3X2DEPTH)
@@ -916,6 +958,72 @@ static void emit_D3D_SETP(Context *ctx)
     snprintf(op, sizeof (op), "setp%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_dss(ctx, op);
 } // emit_D3D_SETP
+
+static void emit_D3D_DEF(Context *ctx)
+{
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const float *x = (const float *) ctx->dwords; // !!! FIXME: could be int?
+    output_line(ctx, "def%s, %f, %f, %f, %f", dst0, x[0], x[1], x[2], x[3]);
+} // emit_D3D_DEF
+
+static void emit_D3D_DEFI(Context *ctx)
+{
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const int32 *x = (const int32 *) ctx->dwords;
+    output_line(ctx, "defi%s, %d, %d, %d, %d", dst0,
+                (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
+} // emit_D3D_DEFI
+
+static void emit_D3D_DEFB(Context *ctx)
+{
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    output_line(ctx, "defb%s, %s", dst0, ctx->dwords ? "true" : "false");
+} // emit_D3D_DEFB
+
+
+static void emit_D3D_DCL(Context *ctx)
+{
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const DestArgInfo *arg = &ctx->dest_args[0];
+    const char *usage_str = "";
+    char index_str[16] = { '\0' };
+
+    if (ctx->shader_type == SHADER_TYPE_VERTEX)
+    {
+        static const char *usagestrs[] = {
+            "_position", "_blendweight", "_blendindices", "_normal",
+            "_psize", "_texcoord", "_tangent", "_binormal", "_tessfactor",
+            "_positiont", "_color", "_fog", "_depth", "_sample"
+        };
+
+        const uint32 usage = ctx->dwords[0];
+        const uint32 index = ctx->dwords[1];
+
+        if (usage >= STATICARRAYLEN(usagestrs))
+        {
+            fail(ctx, "unknown DCL usage");
+            return;
+        } // if
+
+        usage_str = usagestrs[usage];
+
+        if (index != 0)
+            snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+    } // if
+
+    else if (arg->regtype == REGISTER_TYPE_SAMPLER)
+    {
+        switch ((const D3D2GLSL_samplerTextureType) ctx->dwords[0])
+        {
+            case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+            case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+            case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+            default: fail(ctx, "unknown sampler texture type"); return;
+        } // switch
+    } // else if
+
+    output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
+} // emit_D3D_DCL
 
 
 #undef EMIT_D3D_OPCODE_FUNC
@@ -1400,17 +1508,10 @@ static const D3D2GLSL_profile profiles[] =
 }
 
 
-
-// State machine functions...
-
-static int state_RESERVED(Context *ctx)
-{
-    return fail(ctx, "Tried to use RESERVED opcode.");
-} // state_RESERVED
-
-
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
+    // !!! FIXME: recheck against the spec for ranges (like RASTOUT values, etc).
+
     if (ctx->failstr != NULL)
         return FAIL;  // already failed elsewhere.
 
@@ -1431,7 +1532,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->writemask3 = (int) ((token >> 19) & 0x1); // bit 19
     info->result_mod = (int) ((token >> 20) & 0xF); // bits 20 through 23
     info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27
-    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 8) & 0x18);  // bits 28-30, 11-12
 
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
@@ -1539,6 +1640,205 @@ static int parse_args_NULL(Context *ctx)
 } // parse_args_NULL
 
 
+static int parse_args_DEF(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+        return FAIL;
+
+    switch ((registerType) ctx->dest_args[0].regtype)
+    {
+        case REGISTER_TYPE_CONST:
+        case REGISTER_TYPE_CONST2:
+        case REGISTER_TYPE_CONST3:
+        case REGISTER_TYPE_CONST4:
+            break;
+
+        default:
+            return fail(ctx, "DEF token using invalid register");
+    } // switch
+
+    // !!! FIXME: msdn says this can be float or int...how do we differentiate?
+    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
+    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
+    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
+    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DEF
+
+
+static int parse_args_DEFI(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+        return FAIL;
+
+    if (((registerType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTINT)
+        return fail(ctx, "DEFI token using invalid register");
+
+    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
+    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
+    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
+    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DEFI
+
+
+static int parse_args_DEFB(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+        return FAIL;
+
+    if (((registerType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTBOOL)
+        return fail(ctx, "DEFB token using invalid register");
+
+    ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DEFB
+
+
+
+static int parse_args_DCL(Context *ctx)
+{
+    int unsupported = 0;
+    const uint32 token = SWAP32(*(ctx->tokens));
+    const D3D2GLSL_declusageType usage = (D3D2GLSL_declusageType)(token & 0xF);
+    const int reserved1 = (int) ((token >> 31) & 0x1); // bit 31
+    uint32 reserved_mask = 0x00000000;
+
+    if (reserved1 != 0x1)
+        return fail(ctx, "Bit #31 in DCL token must be one");
+
+    ctx->tokens++;
+    ctx->tokencount--;
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+        return FAIL;
+
+    const registerType regtype = (registerType) ctx->dest_args[0].regtype;
+    if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
+    {
+        if (regtype == REGISTER_TYPE_INPUT)
+            reserved_mask = 0x7FFFFFFF;
+
+        else if (regtype == REGISTER_TYPE_MISCTYPE)
+        {
+            const D3D2GLSL_misctypeType mt = (D3D2GLSL_misctypeType) ctx->dest_args[0].regnum;
+            if (mt == MISCTYPE_TYPE_POSITION)
+                reserved_mask = 0x7FFFFFFF;
+            else if (mt == MISCTYPE_TYPE_FACE)
+            {
+                reserved_mask = 0x7FFFFFFF;
+                if (ctx->dest_args[0].writemask != 0xF)
+                    return fail(ctx, "DCL face writemask must be full");
+                else if (ctx->dest_args[0].result_mod != 0)
+                    return fail(ctx, "DCL face result modifier must be zero");
+                else if (ctx->dest_args[0].result_shift != 0)
+                    return fail(ctx, "DCL face shift scale must be zero");
+            } // else if
+            else
+            {
+                unsupported = 1;
+            } // else
+        } // else if
+
+        else if (regtype == REGISTER_TYPE_TEXTURE)
+        {
+            const uint32 usage = (token & 0xF);
+            const uint32 index = ((token >> 16) & 0xF);
+            if (usage == DECLUSAGE_TEXCOORD)
+            {
+                if (index > 7)
+                    return fail(ctx, "DCL texcoord usage must have 0-7 index");
+            } // if
+            else if (usage == DECLUSAGE_COLOR)
+            {
+                if (index != 0)
+                    return fail(ctx, "DCL color usage must have 0 index");
+            } // else if
+            else
+            {
+                return fail(ctx, "Invalid DCL texture usage");
+            } // else
+
+            reserved_mask = 0x7FF0FFE0;
+            ctx->dwords[0] = usage;
+            ctx->dwords[1] = index;
+        } // else if
+
+        else if (regtype == REGISTER_TYPE_SAMPLER)
+        {
+            reserved_mask = 0x7FFFFFF;
+            ctx->dwords[0] = ((token >> 27) & 0xF);  // samplerTextureType
+        } // else if
+
+        else
+        {
+            unsupported = 1;
+        } // else
+    } // if
+
+    else if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver >= 2))
+    {
+        if (regtype == REGISTER_TYPE_INPUT)
+            reserved_mask = 0x7FFFFFFF;
+        else if (regtype == REGISTER_TYPE_TEXTURE)
+            reserved_mask = 0x7FFFFFFF;
+        else if (regtype == REGISTER_TYPE_SAMPLER)
+        {
+            reserved_mask = 0x7FFFFFF;
+            ctx->dwords[0] = ((token >> 27) & 0xF);  // samplerTextureType
+        } // else if
+        else
+        {
+            unsupported = 1;
+        } // else
+    } // if
+
+    else if ((ctx->shader_type == SHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
+    {
+        if ((regtype==REGISTER_TYPE_INPUT) || (regtype==REGISTER_TYPE_OUTPUT))
+        {
+            const uint32 usage = (token & 0xF);
+            const uint32 index = ((token >> 16) & 0xF);
+            reserved_mask = 0x7FF0FFE0;
+            ctx->dwords[0] = usage;
+            ctx->dwords[1] = index;
+        } // if
+        else
+        {
+            unsupported = 1;
+        } // else
+    } // else if
+
+    else if ((ctx->shader_type == SHADER_TYPE_VERTEX) && (ctx->major_ver >= 2))
+    {
+        if (regtype == REGISTER_TYPE_INPUT)
+        {
+            const uint32 usage = (token & 0xF);
+            const uint32 index = ((token >> 16) & 0xF);
+            reserved_mask = 0x7FF0FFE0;
+            ctx->dwords[0] = usage;
+            ctx->dwords[1] = index;
+        } // if
+        else
+        {
+            unsupported = 1;
+        } // else
+    } // else if
+
+    else
+    {
+        unsupported = 1;
+    } // else
+
+    if (unsupported)
+        return fail(ctx, "invalid DCL register type for this shader model");
+
+    if ((token & reserved_mask) != 0)
+        return fail(ctx, "reserved bits in DCL dword aren't zero");
+
+    return ((ctx->failstr != NULL) ? FAIL : 0);
+} // parse_args_DCL
+
+
 static int parse_args_D(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
@@ -1599,13 +1899,20 @@ static int parse_args_DSSSS(Context *ctx)
 } // parse_args_DSSSS
 
 
+// State machine functions...
+
+static int state_RESERVED(Context *ctx)
+{
+    return fail(ctx, "Tried to use RESERVED opcode.");
+} // state_RESERVED
+
+
 // Lookup table for instruction opcodes...
 
 typedef struct
 {
     const char *opcode_string;
     int arg_tokens;
-    //uint32 shader_requirements;
     args_function parse_args;
     state_function state;
     emit_function emitter[STATICARRAYLEN(profiles)];
@@ -1655,7 +1962,7 @@ static Instruction instructions[] =
     INSTRUCTION(RET, 0, NULL),
     INSTRUCTION(ENDLOOP, 0, NULL),
     INSTRUCTION(LABEL, 1, S),
-    INSTRUCTION(DCL, -1, NULL),
+    INSTRUCTION(DCL, 2, DCL),
     INSTRUCTION(POW, 3, DSS),
     INSTRUCTION(CRS, 3, DSS),
     INSTRUCTION(SGN, 4, DSSS),
@@ -1671,8 +1978,8 @@ static Instruction instructions[] =
     INSTRUCTION(BREAK, 0, NULL),
     INSTRUCTION(BREAKC, 2, SS),
     INSTRUCTION(MOVA, 2, DS),
-    INSTRUCTION(DEFB, 2, NULL),
-    INSTRUCTION(DEFI, 5, NULL),
+    INSTRUCTION(DEFB, 2, DEFB),
+    INSTRUCTION(DEFI, 5, DEFI),
     INSTRUCTION_STATE(RESERVED, 0, NULL),
     INSTRUCTION_STATE(RESERVED, 0, NULL),
     INSTRUCTION_STATE(RESERVED, 0, NULL),
@@ -1705,7 +2012,7 @@ static Instruction instructions[] =
     INSTRUCTION(EXPP, 2, DS),
     INSTRUCTION(LOGP, 2, DS),
     INSTRUCTION(CND, 4, DSSS),
-    INSTRUCTION(DEF, 5, NULL),
+    INSTRUCTION(DEF, 5, DEF),
     INSTRUCTION(TEXREG2RGB, 2, DS),
     INSTRUCTION(TEXDP3TEX, 2, DS),
     INSTRUCTION(TEXM3X2DEPTH, 2, DS),
@@ -1757,25 +2064,22 @@ static int parse_instruction_token(Context *ctx)
         if (insttoks != 0)  // this is a reserved field in shaders < 2.0 ...
             return fail(ctx, "instruction token count must be zero");
     } // if
-    else
+
+    else if (instruction->arg_tokens >= 0)
     {
-        if (instruction->arg_tokens >= 0)
+        if (instruction->arg_tokens != insttoks)
         {
-            if (instruction->arg_tokens != insttoks)
-            {
-                return failf(ctx,
-                        "unexpected tokens count (%u) for opcode '%s'.",
+            return failf(ctx, "unexpected tokens count (%u) for opcode '%s'.",
                         (uint) insttoks, instruction->opcode_string);
-            } // if
-            else if (ctx->tokencount <= instruction->arg_tokens)
-            {
-                return failf(ctx,
+        } // if
+        else if (ctx->tokencount <= instruction->arg_tokens)
+        {
+            return failf(ctx,
                         "need more tokens (need %u, got %u) for opcode '%s'.",
                         (uint) instruction->arg_tokens, (uint) ctx->tokencount,
                         instruction->opcode_string);
-            } // else if
-        } // if
-    } // else
+        } // else if
+    } // else if
 
     ctx->instruction_count++;
     ctx->instruction_controls = controls;
