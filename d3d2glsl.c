@@ -977,7 +977,7 @@ static void emit_D3D_DEFI(Context *ctx)
 static void emit_D3D_DEFB(Context *ctx)
 {
     const char *dst0 = make_D3D_destarg_string(ctx, 0);
-    output_line(ctx, "defb%s, %s", dst0, ctx->dwords ? "true" : "false");
+    output_line(ctx, "defb%s, %s", dst0, ctx->dwords[0] ? "true" : "false");
 } // emit_D3D_DEFB
 
 
