@@ -1,5 +1,6 @@
 /**
- * d3d2glsl; generate GLSL programs from bytecode of compiled Direct3D shaders.
+ * MojoShader; generate shader programs from bytecode of compiled
+ *  Direct3D shaders.
  *
  * Please see the file LICENSE.txt in the source's root directory.
  *
@@ -21,7 +22,7 @@
 #include <stdarg.h>
 #include <assert.h>
 
-#include "d3d2glsl.h"
+#include "mojoshader.h"
 
 // This is the highest shader version we currently support.
 
@@ -263,8 +264,8 @@ typedef struct
 // Context...this is state that changes as we parse through a shader...
 struct Context
 {
-    D3D2GLSL_malloc malloc;
-    D3D2GLSL_free free;
+    MOJOSHADER_malloc malloc;
+    MOJOSHADER_free free;
     const uint32 *tokens;
     uint32 tokencount;
     OutputList output;
@@ -2272,7 +2273,7 @@ static int find_profile_id(const char *profile)
 static Context *build_context(const char *profile,
                                        const unsigned char *tokenbuf,
                                        const unsigned int bufsize,
-                                       D3D2GLSL_malloc m, D3D2GLSL_free f)
+                                       MOJOSHADER_malloc m, MOJOSHADER_free f)
 {
     if (m == NULL) m = internal_malloc;
     if (f == NULL) f = internal_free;
@@ -2347,9 +2348,9 @@ static char *build_output(Context *ctx)
 
 // API entry point...
 
-int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
-                   const unsigned int bufsize, D3D2GLSL_malloc m,
-                   D3D2GLSL_free f)
+int MOJOSHADER_parse(const char *profile, const unsigned char *tokenbuf,
+                   const unsigned int bufsize, MOJOSHADER_malloc m,
+                   MOJOSHADER_free f)
 {
     int rc = FAIL;
 
@@ -2392,13 +2393,13 @@ int D3D2GLSL_parse(const char *profile, const unsigned char *tokenbuf,
     destroy_context(ctx);
 
     return (rc == END_OF_STREAM);
-} // D3D2GLSL_parse
+} // MOJOSHADER_parse
 
 
-int D3D2GLSL_version(void)
+int MOJOSHADER_version(void)
 {
-    return D3D2GLSL_VERSION;
-} // D3D2GLSL_version
+    return MOJOSHADER_VERSION;
+} // MOJOSHADER_version
 
-// end of d3d2glsl.c ...
+// end of mojoshader.c ...
 

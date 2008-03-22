@@ -1,5 +1,6 @@
-PROJECT(d3d2glsl)
-ADD_EXECUTABLE(testparse testparse.c d3d2glsl.c)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.4)
+PROJECT(MojoShader)
+ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
 
 # End of CMakeLists.txt ...
 
