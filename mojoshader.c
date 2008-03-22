@@ -763,7 +763,7 @@ static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s %s, %s", opcode, src0, src1);
-} // emit_D3D_opcode_s
+} // emit_D3D_opcode_ss
 
 
 static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
