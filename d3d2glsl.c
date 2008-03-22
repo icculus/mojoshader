@@ -112,7 +112,7 @@ typedef struct
     emit_start start_emitter;
     emit_end end_emitter;
     emit_comment comment_emitter;
-} D3D2GLSL_profile;
+} Profile;
 
 
 typedef enum
@@ -121,7 +121,7 @@ typedef enum
     SHADER_TYPE_PIXEL,
     SHADER_TYPE_VERTEX,
     SHADER_TYPE_TOTAL
-} D3D2GLSL_shaderType;
+} ShaderType;
 
 typedef enum
 {
@@ -148,7 +148,7 @@ typedef enum
     REGISTER_TYPE_LABEL = 18,
     REGISTER_TYPE_PREDICATE = 19,
     REGISTER_TYPE_MAX = 19
-} registerType;
+} RegisterType;
 
 typedef enum
 {
@@ -156,14 +156,14 @@ typedef enum
     RASTOUT_TYPE_FOG = 1,
     RASTOUT_TYPE_POINT_SIZE = 2,
     RASTOUT_TYPE_MAX = 2
-} D3D2GLSL_rastoutType;
+} RastOutType;
 
 typedef enum
 {
     MISCTYPE_TYPE_POSITION = 0,
     MISCTYPE_TYPE_FACE = 1,
     MISCTYPE_TYPE_MAX = 1
-} D3D2GLSL_misctypeType;
+} MiscTypeType;
 
 typedef enum
 {
@@ -181,14 +181,14 @@ typedef enum
     DECLUSAGE_FOG = 11,
     DECLUSAGE_DEPTH = 12,
     DECLUSAGE_SAMPLE = 13
-} D3D2GLSL_declusageType;
+} DeclUsageType;
 
 typedef enum
 {
     TEXTURE_TYPE_2D = 2,
     TEXTURE_TYPE_CUBE = 3,
     TEXTURE_TYPE_VOLUME = 4,
-} D3D2GLSL_samplerTextureType;
+} TextureType;
 
 
 // A simple linked list of strings, so we can build the final output without
@@ -224,7 +224,7 @@ typedef enum
     SRCMOD_ABSNEGATE,
     SRCMOD_NOT,
     SRCMOD_TOTAL
-} D3D2GLSL_sourceMod;
+} SourceMod;
 
 
 typedef struct
@@ -257,8 +257,8 @@ typedef struct
 } SourceArgInfo;
 
 
-#define D3D2GLSL_SCRATCH_BUFFER_SIZE 256
-#define D3D2GLSL_SCRATCH_BUFFERS 10
+#define SCRATCH_BUFFER_SIZE 256
+#define SCRATCH_BUFFERS 10
 
 // Context...this is state that changes as we parse through a shader...
 struct Context
@@ -273,11 +273,11 @@ struct Context
     const char *endline;
     int endline_len;
     const char *failstr;
-    char scratch[D3D2GLSL_SCRATCH_BUFFERS][D3D2GLSL_SCRATCH_BUFFER_SIZE];
+    char scratch[SCRATCH_BUFFERS][SCRATCH_BUFFER_SIZE];
     int scratchidx;  // current scratch buffer.
     int profileid;
-    const D3D2GLSL_profile *profile;
-    D3D2GLSL_shaderType shader_type;
+    const Profile *profile;
+    ShaderType shader_type;
     uint32 major_ver;
     uint32 minor_ver;
     DestArgInfo dest_args[1];
@@ -290,7 +290,7 @@ struct Context
 
 static inline char *get_scratch_buffer(Context *ctx)
 {
-    ctx->scratchidx = (ctx->scratchidx + 1) % D3D2GLSL_SCRATCH_BUFFERS;
+    ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
     return ctx->scratch[ctx->scratchidx];
 } // get_scratch_buffer
 
@@ -316,7 +316,7 @@ static int failf(Context *ctx, const char *fmt, ...)
         char *scratch = get_scratch_buffer(ctx);
         va_list ap;
         va_start(ap, fmt);
-        const int len = vsnprintf(scratch,D3D2GLSL_SCRATCH_BUFFER_SIZE,fmt,ap);
+        const int len = vsnprintf(scratch,SCRATCH_BUFFER_SIZE,fmt,ap);
         va_end(ap);
 
         char *failstr = (char *) ctx->malloc(len + 1);
@@ -325,7 +325,7 @@ static int failf(Context *ctx, const char *fmt, ...)
         else
         {
             // see comments about scratch buffer overflow in output_line().
-            if (len < D3D2GLSL_SCRATCH_BUFFER_SIZE)
+            if (len < SCRATCH_BUFFER_SIZE)
                 strcpy(failstr, scratch);  // copy it over.
             else
             {
@@ -360,7 +360,7 @@ static int output_line(Context *ctx, const char *fmt, ...)
     char *scratch = get_scratch_buffer(ctx);
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(scratch, D3D2GLSL_SCRATCH_BUFFER_SIZE, fmt, ap);
+    const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
     va_end(ap);
 
     item->str = (char *) ctx->malloc(len + 1);
@@ -373,7 +373,7 @@ static int output_line(Context *ctx, const char *fmt, ...)
     // If we overflowed our scratch buffer, that's okay. We were going to
     //  allocate anyhow...the scratch buffer just lets us avoid a second
     //  run of vsnprintf().
-    if (len < D3D2GLSL_SCRATCH_BUFFER_SIZE)
+    if (len < SCRATCH_BUFFER_SIZE)
         strcpy(item->str, scratch);  // copy it over.
     else
     {
@@ -402,7 +402,7 @@ static int output_line(Context *ctx, const char *fmt, ...)
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
 static const char *get_D3D_register_string(Context *ctx,
-                                           registerType regtype,
+                                           RegisterType regtype,
                                            int regnum, char *regnum_str,
                                            size_t regnum_size)
 {
@@ -443,7 +443,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REGISTER_TYPE_RASTOUT:
-            switch ((D3D2GLSL_rastoutType) regnum)
+            switch ((RastOutType) regnum)
             {
                 case RASTOUT_TYPE_POSITION: retval = "oPos"; break;
                 case RASTOUT_TYPE_FOG: retval = "oFog"; break;
@@ -493,7 +493,7 @@ static const char *get_D3D_register_string(Context *ctx,
         // case REGISTER_TYPE_TEMPFLOAT16:
 
         case REGISTER_TYPE_MISCTYPE:
-            switch ((D3D2GLSL_misctypeType) regnum)
+            switch ((MiscTypeType) regnum)
             {
                 case MISCTYPE_TYPE_POSITION: retval = "vPos"; break;
                 case MISCTYPE_TYPE_FACE: retval = "vFace"; break;
@@ -546,7 +546,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx,
-                                        (registerType) arg->regtype,
+                                        (RegisterType) arg->regtype,
                                         arg->regnum, regnum_str,
                                         sizeof (regnum_str));
     if (regtype_str == NULL)
@@ -570,7 +570,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 
     // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
              regtype_str, regnum_str, writemask_str);
     return retval;
@@ -589,7 +589,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 
     const char *premod_str = "";
     const char *postmod_str = "";
-    switch ((D3D2GLSL_sourceMod) arg->src_mod)
+    switch ((SourceMod) arg->src_mod)
     {
         case SRCMOD_NEGATE:
             premod_str = "-";
@@ -643,7 +643,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx,
-                                        (registerType) arg->regtype,
+                                        (RegisterType) arg->regtype,
                                         arg->regnum, regnum_str,
                                         sizeof (regnum_str));
 
@@ -672,7 +672,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     assert(i < sizeof (swizzle_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, D3D2GLSL_SCRATCH_BUFFER_SIZE, "%s%s%s%s",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s",
              premod_str, regtype_str, postmod_str, swizzle_str);
     return retval;
 } // make_D3D_sourcearg_string
@@ -1046,7 +1046,7 @@ static void emit_D3D_DCL(Context *ctx)
 
     else if (arg->regtype == REGISTER_TYPE_SAMPLER)
     {
-        switch ((const D3D2GLSL_samplerTextureType) ctx->dwords[0])
+        switch ((const TextureType) ctx->dwords[0])
         {
             case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
             case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
@@ -1524,7 +1524,7 @@ static void emit_GLSL_RESERVED(Context *ctx)
 #error No profiles are supported. Fix your build.
 #endif
 
-static const D3D2GLSL_profile profiles[] =
+static const Profile profiles[] =
 {
 #if SUPPORT_PROFILE_D3D
     { "d3d", emit_D3D_start, emit_D3D_end, emit_D3D_comment },
@@ -1660,7 +1660,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
 
-    if ( ((D3D2GLSL_sourceMod) info->src_mod) >= SRCMOD_TOTAL )
+    if ( ((SourceMod) info->src_mod) >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
     return 1;
@@ -1678,7 +1678,7 @@ static int parse_args_DEF(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    switch ((registerType) ctx->dest_args[0].regtype)
+    switch ((RegisterType) ctx->dest_args[0].regtype)
     {
         case REGISTER_TYPE_CONST:
         case REGISTER_TYPE_CONST2:
@@ -1704,7 +1704,7 @@ static int parse_args_DEFI(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    if (((registerType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTINT)
+    if (((RegisterType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTINT)
         return fail(ctx, "DEFI token using invalid register");
 
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
@@ -1720,7 +1720,7 @@ static int parse_args_DEFB(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    if (((registerType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTBOOL)
+    if (((RegisterType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTBOOL)
         return fail(ctx, "DEFB token using invalid register");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
@@ -1733,7 +1733,7 @@ static int parse_args_DCL(Context *ctx)
 {
     int unsupported = 0;
     const uint32 token = SWAP32(*(ctx->tokens));
-    const D3D2GLSL_declusageType usage = (D3D2GLSL_declusageType)(token & 0xF);
+    const DeclUsageType usage = (DeclUsageType)(token & 0xF);
     const int reserved1 = (int) ((token >> 31) & 0x1); // bit 31
     uint32 reserved_mask = 0x00000000;
 
@@ -1745,7 +1745,7 @@ static int parse_args_DCL(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    const registerType regtype = (registerType) ctx->dest_args[0].regtype;
+    const RegisterType regtype = (RegisterType) ctx->dest_args[0].regtype;
     if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
     {
         if (regtype == REGISTER_TYPE_INPUT)
@@ -1753,7 +1753,7 @@ static int parse_args_DCL(Context *ctx)
 
         else if (regtype == REGISTER_TYPE_MISCTYPE)
         {
-            const D3D2GLSL_misctypeType mt = (D3D2GLSL_misctypeType) ctx->dest_args[0].regnum;
+            const MiscTypeType mt = (MiscTypeType) ctx->dest_args[0].regnum;
             if (mt == MISCTYPE_TYPE_POSITION)
                 reserved_mask = 0x7FFFFFFF;
             else if (mt == MISCTYPE_TYPE_FACE)
@@ -1799,7 +1799,7 @@ static int parse_args_DCL(Context *ctx)
         else if (regtype == REGISTER_TYPE_SAMPLER)
         {
             reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ((token >> 27) & 0xF);  // samplerTextureType
+            ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
         } // else if
 
         else
@@ -1817,7 +1817,7 @@ static int parse_args_DCL(Context *ctx)
         else if (regtype == REGISTER_TYPE_SAMPLER)
         {
             reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ((token >> 27) & 0xF);  // samplerTextureType
+            ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
         } // else if
         else
         {
@@ -2187,7 +2187,7 @@ static int parse_comment_token(Context *ctx)
     {
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
         const uint32 len = commenttoks * sizeof (uint32);
-        const int needmalloc = (len >= D3D2GLSL_SCRATCH_BUFFER_SIZE);
+        const int needmalloc = (len >= SCRATCH_BUFFER_SIZE);
         char *str = ((needmalloc) ? (char *) ctx->malloc(len + 1) :
                         get_scratch_buffer(ctx));
         memcpy(str, (const char *) (ctx->tokens+1), len);
