@@ -959,11 +959,44 @@ static void emit_D3D_SETP(Context *ctx)
     emit_D3D_opcode_dss(ctx, op);
 } // emit_D3D_SETP
 
+// !!! FIXME: this is sort of nasty.
+static void floatstr(Context *ctx, char *buf, size_t bufsize, float f)
+{
+    const size_t len = snprintf(buf, bufsize, "%f", f);
+    if (len >= bufsize)
+        fail(ctx, "BUG: internal buffer is too small");
+    else
+    {
+        char *end = buf + len;
+        char *ptr = strchr(buf, '.');
+        if (ptr == NULL)
+            return;  // done.
+
+        while (--end != ptr)
+        {
+            if (*end != '0')
+            {
+                end++;
+                break;
+            } // if
+        } // while
+        *end = '\0';  // chop extra '0' or all decimal places off.
+    } // else
+} // floatstr
+
 static void emit_D3D_DEF(Context *ctx)
 {
     const char *dst0 = make_D3D_destarg_string(ctx, 0);
-    const float *x = (const float *) ctx->dwords; // !!! FIXME: could be int?
-    output_line(ctx, "def%s, %f, %f, %f, %f", dst0, x[0], x[1], x[2], x[3]);
+    const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
+    char val0[32];
+    char val1[32];
+    char val2[32];
+    char val3[32];
+    floatstr(ctx, val0, sizeof (val0), val[0]);
+    floatstr(ctx, val1, sizeof (val1), val[1]);
+    floatstr(ctx, val2, sizeof (val2), val[2]);
+    floatstr(ctx, val3, sizeof (val3), val[3]);
+    output_line(ctx, "def%s, %s, %s, %s, %s", dst0, val0, val1, val2, val3);
 } // emit_D3D_DEF
 
 static void emit_D3D_DEFI(Context *ctx)
