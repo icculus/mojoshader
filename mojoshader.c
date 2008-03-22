@@ -673,8 +673,8 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     assert(i < sizeof (swizzle_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s",
-             premod_str, regtype_str, postmod_str, swizzle_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
+             premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
     return retval;
 } // make_D3D_sourcearg_string
 
