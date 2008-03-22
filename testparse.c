@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "d3d2glsl.h"
+#include "mojoshader.h"
 
 int main(int argc, char **argv)
 {
+    printf("Compiled against version %d\n", MOJOSHADER_VERSION);
+    printf("Linked against version %d\n", MOJOSHADER_version());
+
     if (argv[1] != NULL)
     {
         FILE *io = fopen(argv[1], "rb");
@@ -12,7 +15,7 @@ int main(int argc, char **argv)
             unsigned char *buf = (unsigned char *) malloc(1000000);
             int rc = fread(buf, 1, 1000000, io);
             fclose(io);
-            D3D2GLSL_parse("d3d", buf, rc, NULL, NULL);
+            MOJOSHADER_parse("d3d", buf, rc, NULL, NULL);
             free(buf);
         } // if
     } // if
