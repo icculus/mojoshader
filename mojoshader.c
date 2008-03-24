@@ -271,6 +271,7 @@ struct Context
     OutputList output;
     OutputList *output_tail;
     int output_len; // total strlen; prevents walking the list just to malloc.
+    int indent;
     const char *endline;
     int endline_len;
     const char *failstr;
@@ -359,9 +360,12 @@ static int output_line(Context *ctx, const char *fmt, ...)
         return out_of_memory(ctx);
 
     char *scratch = get_scratch_buffer(ctx);
+
+    const int indent = ctx->indent;
+    memset(scratch, '\t', indent);
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
+    const int len = vsnprintf(scratch+indent, SCRATCH_BUFFER_SIZE-indent, fmt, ap) + indent;
     va_end(ap);
 
     item->str = (char *) ctx->malloc(len + 1);
@@ -378,8 +382,9 @@ static int output_line(Context *ctx, const char *fmt, ...)
         strcpy(item->str, scratch);  // copy it over.
     else
     {
+        memset(item->str, '\t', indent);
         va_start(ap, fmt);
-        vsnprintf(item->str, len + 1, fmt, ap);  // rebuild it.
+        vsnprintf(item->str+indent, len + 1, fmt, ap);  // rebuild it.
         va_end(ap);
     } // else
 
@@ -1080,6 +1085,36 @@ static void emit_D3D_DCL(Context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
 
+static char *make_GLSL_destarg_string(Context *ctx, const int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->dest_args))
+    {
+        fail(ctx, "Too many destination args");
+        return "";
+    } // if
+
+    //const DestArgInfo *arg = &ctx->dest_args[idx];
+
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "dst%d", idx);
+    return retval;
+} // make_GLSL_destarg_string
+
+
+static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
+        return "";
+    } // if
+
+    //const SourceArgInfo *arg = &ctx->source_args[idx];
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "src%d", idx);
+    return retval;
+} // make_GLSL_sourcearg_string
+
 static void emit_GLSL_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
@@ -1095,10 +1130,12 @@ static void emit_GLSL_start(Context *ctx)
     } // else
 
     output_line(ctx, "void main() {");
+    ctx->indent++;
 } // emit_GLSL_start
 
 static void emit_GLSL_end(Context *ctx)
 {
+    ctx->indent--;
     output_line(ctx, "}");
 } // emit_GLSL_end
 
@@ -1114,77 +1151,120 @@ static void emit_GLSL_NOP(Context *ctx)
 
 static void emit_GLSL_MOV(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = %s;", dst0, src0);
 } // emit_GLSL_MOV
 
 static void emit_GLSL_ADD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = %s + %s;", dst0, src0, src1);
 } // emit_GLSL_ADD
 
 static void emit_GLSL_SUB(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = %s - %s;", dst0, src0, src1);
 } // emit_GLSL_SUB
 
 static void emit_GLSL_MAD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
+    output_line(ctx, "%s = (%s * %s) + %s;", dst0, src0, src1, src2);
 } // emit_GLSL_MAD
 
 static void emit_GLSL_MUL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = %s * %s;", dst0, src0, src1);
 } // emit_GLSL_MUL
 
 static void emit_GLSL_RCP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = 1.0 / %s;", dst0, src0);
 } // emit_GLSL_RCP
 
 static void emit_GLSL_RSQ(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = inversesqrt(%s);", dst0, src0);
 } // emit_GLSL_RSQ
 
 static void emit_GLSL_DP3(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = dot(vec3(%s), vec3(%s));", dst0, src0, src1);
 } // emit_GLSL_DP3
 
 static void emit_GLSL_DP4(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = dot(vec4(%s), vec4(%s));", dst0, src0, src1);
 } // emit_GLSL_DP4
 
 static void emit_GLSL_MIN(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = min(%s, %s);", dst0, src0, src1);
 } // emit_GLSL_MIN
 
 static void emit_GLSL_MAX(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = max(%s, %s);", dst0, src0, src1);
 } // emit_GLSL_MAX
 
 static void emit_GLSL_SLT(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    // !!! FIXME: need to cast from bvec to vec...
+    output_line(ctx, "%s = lessThan(%s, %s);", dst0, src0, src1);
 } // emit_GLSL_SLT
 
 static void emit_GLSL_SGE(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    // !!! FIXME: need to cast from bvec to vec...
+    output_line(ctx, "%s = greaterThanEqual(%s, %s);", dst0, src0, src1);
 } // emit_GLSL_SGE
 
 static void emit_GLSL_EXP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = exp2(%s);", dst0, src0);
 } // emit_GLSL_EXP
 
 static void emit_GLSL_LOG(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = log2(%s);", dst0, src0);
 } // emit_GLSL_LOG
 
 static void emit_GLSL_LIT(Context *ctx)
