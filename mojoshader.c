@@ -76,16 +76,6 @@ typedef int32_t int32;
 #endif
 
 
-// Shader model version magic.
-static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
-{
-    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
-} // version_ui32
-
-#define SHADER_VERSION_SUPPORTED(maj, min) \
-    (ver_ui32(maj, min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR))
-
-
 // predeclare.
 typedef struct Context Context;
 
@@ -290,6 +280,24 @@ struct Context
 };
 
 
+// Shader model version magic.
+static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
+{
+    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
+} // version_ui32
+
+static int shader_version_supported(uint8 maj, uint8 min)
+{
+    return (ver_ui32(maj,min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR));
+} // shader_version_supported
+
+static int shader_version_atleast(const Context *ctx, uint8 maj, uint8 min)
+{
+    return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
+} // shader_version_atleast
+
+
+
 static inline char *get_scratch_buffer(Context *ctx)
 {
     ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
@@ -299,7 +307,8 @@ static inline char *get_scratch_buffer(Context *ctx)
 
 // Special-case return values from the parsing pipeline...
 #define FAIL (-1)
-#define END_OF_STREAM (-2)
+#define NOFAIL (-2)
+#define END_OF_STREAM (-3)
 
 static const char *out_of_mem_string = "Out of memory";
 static inline int out_of_memory(Context *ctx)
@@ -397,6 +406,31 @@ static int output_line(Context *ctx, const char *fmt, ...)
     return 0;
 } // output_line
 
+
+// !!! FIXME: this is sort of nasty.
+static void floatstr(Context *ctx, char *buf, size_t bufsize, float f)
+{
+    const size_t len = snprintf(buf, bufsize, "%f", f);
+    if (len >= bufsize)
+        fail(ctx, "BUG: internal buffer is too small");
+    else
+    {
+        char *end = buf + len;
+        char *ptr = strchr(buf, '.');
+        if (ptr == NULL)
+            return;  // done.
+
+        while (--end != ptr)
+        {
+            if (*end != '0')
+            {
+                end++;
+                break;
+            } // if
+        } // while
+        *end = '\0';  // chop extra '0' or all decimal places off.
+    } // else
+} // floatstr
 
 
 // if SUPPORT_PROFILE_* isn't defined, we assume an implicit desire to support.
@@ -899,9 +933,7 @@ EMIT_D3D_OPCODE_FUNC(ELSE)
 EMIT_D3D_OPCODE_FUNC(ENDIF)
 EMIT_D3D_OPCODE_FUNC(BREAK)
 EMIT_D3D_OPCODE_DS_FUNC(MOVA)
-EMIT_D3D_OPCODE_FUNC(TEXCOORD) // !!! FIXME!
 EMIT_D3D_OPCODE_D_FUNC(TEXKILL)
-EMIT_D3D_OPCODE_FUNC(TEX) // !!! FIXME!
 EMIT_D3D_OPCODE_DS_FUNC(TEXBEM)
 EMIT_D3D_OPCODE_DS_FUNC(TEXBEML)
 EMIT_D3D_OPCODE_DS_FUNC(TEXREG2AR)
@@ -966,31 +998,6 @@ static void emit_D3D_SETP(Context *ctx)
     snprintf(op, sizeof (op), "setp%s", get_D3D_comparison_string(ctx));
     emit_D3D_opcode_dss(ctx, op);
 } // emit_D3D_SETP
-
-// !!! FIXME: this is sort of nasty.
-static void floatstr(Context *ctx, char *buf, size_t bufsize, float f)
-{
-    const size_t len = snprintf(buf, bufsize, "%f", f);
-    if (len >= bufsize)
-        fail(ctx, "BUG: internal buffer is too small");
-    else
-    {
-        char *end = buf + len;
-        char *ptr = strchr(buf, '.');
-        if (ptr == NULL)
-            return;  // done.
-
-        while (--end != ptr)
-        {
-            if (*end != '0')
-            {
-                end++;
-                break;
-            } // if
-        } // while
-        *end = '\0';  // chop extra '0' or all decimal places off.
-    } // else
-} // floatstr
 
 static void emit_D3D_DEF(Context *ctx)
 {
@@ -1065,6 +1072,25 @@ static void emit_D3D_DCL(Context *ctx)
 
     output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
 } // emit_D3D_DCL
+
+
+static void emit_D3D_TEXCOORD(Context *ctx)
+{
+    // this opcode looks and acts differently depending on the shader model.
+    if (shader_version_atleast(ctx, 1, 4))
+        emit_D3D_opcode_ds(ctx, "texcrd");
+    else
+        emit_D3D_opcode_d(ctx, "texcoord");
+} // emit_D3D_TEXCOORD
+
+static void emit_D3D_TEX(Context *ctx)
+{
+    // this opcode looks and acts differently depending on the shader model.
+    if (shader_version_atleast(ctx, 1, 4))
+        emit_D3D_opcode_ds(ctx, "tex");
+    else
+        emit_D3D_opcode_d(ctx, "texld");
+} // emit_D3D_TEX
 
 
 #undef EMIT_D3D_OPCODE_FUNC
@@ -1478,6 +1504,11 @@ static void emit_GLSL_DEFI(Context *ctx)
 
 static void emit_GLSL_TEXCOORD(Context *ctx)
 {
+    // this opcode looks and acts differently depending on the shader model.
+    //if (shader_version_atleast(ctx, 1, 4))
+    //    emit_D3D_opcode_ds(ctx, "texcrd");
+    //else
+    //    emit_D3D_opcode_d(ctx, "texcoord");
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXCOORD
 
@@ -1489,6 +1520,11 @@ static void emit_GLSL_TEXKILL(Context *ctx)
 
 static void emit_GLSL_TEX(Context *ctx)
 {
+    // this opcode looks and acts differently depending on the shader model.
+    //if (shader_version_atleast(ctx, 1, 4))
+    //    emit_D3D_opcode_ds(ctx, "tex");
+    //else
+    //    emit_D3D_opcode_d(ctx, "texld");
     fail(ctx, "unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEX
 
@@ -1564,8 +1600,16 @@ static void emit_GLSL_DEF(Context *ctx)
     // !!! FIXME:  (which may be legal in the spec).
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
-    output_line(ctx, "const vec4 %s(%f, %f, %f, %f);",
-                dst0, val[0], val[1], val[2], val[3]);
+    char val0[32];
+    char val1[32];
+    char val2[32];
+    char val3[32];
+    floatstr(ctx, val0, sizeof (val0), val[0]);
+    floatstr(ctx, val1, sizeof (val1), val[1]);
+    floatstr(ctx, val2, sizeof (val2), val[2]);
+    floatstr(ctx, val3, sizeof (val3), val[3]);
+    output_line(ctx, "const vec4 %s(%s, %s, %s, %s);",
+                dst0, val0, val1, val2, val3);
 } // emit_GLSL_DEF
 
 static void emit_GLSL_TEXREG2RGB(Context *ctx)
@@ -1801,7 +1845,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
 static int parse_args_NULL(Context *ctx)
 {
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_NULL
 
 
@@ -1827,7 +1871,7 @@ static int parse_args_DEF(Context *ctx)
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DEF
 
 
@@ -1843,7 +1887,7 @@ static int parse_args_DEFI(Context *ctx)
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DEFI
 
 
@@ -1856,7 +1900,7 @@ static int parse_args_DEFB(Context *ctx)
         return fail(ctx, "DEFB token using invalid register");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DEFB
 
 
@@ -2000,21 +2044,21 @@ static int parse_args_DCL(Context *ctx)
     if ((token & reserved_mask) != 0)
         return fail(ctx, "reserved bits in DCL dword aren't zero");
 
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DCL
 
 
 static int parse_args_D(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_D
 
 
 static int parse_args_S(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_S
 
 
@@ -2022,7 +2066,7 @@ static int parse_args_SS(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_SS
 
 
@@ -2030,7 +2074,7 @@ static int parse_args_DS(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DS
 
 
@@ -2039,7 +2083,7 @@ static int parse_args_DSS(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DSS
 
 
@@ -2049,7 +2093,7 @@ static int parse_args_DSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DSSS
 
 
@@ -2060,8 +2104,21 @@ static int parse_args_DSSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[3]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : 0);
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
 } // parse_args_DSSSS
+
+
+static int parse_args_TEXCOORD(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    if (shader_version_atleast(ctx, 1, 4))
+    {
+        if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL)
+            return FAIL;
+    } // if
+    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+} // parse_args_TEXCOORD
+
 
 
 // State machine functions...
@@ -2071,9 +2128,33 @@ static int state_RESERVED(Context *ctx)
     return fail(ctx, "Tried to use RESERVED opcode.");
 } // state_RESERVED
 
+// !!! FIXME: checking shader type should be a flag in struct Instruction,
+// !!! FIXME:  so we don't have to roll a function for each opcode.
+static int state_TEXKILL(Context *ctx)
+{
+    if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        return fail(ctx, "TEXKILL opcode in a non-pixel shader.");
+    return NOFAIL;
+} // state_TEXKILL
+
+static int state_TEXCOORD(Context *ctx)
+{
+    if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        return fail(ctx, "TEXCOORD opcode in a non-pixel shader.");
+    return (shader_version_atleast(ctx, 1, 4) ? 2 : 1);
+} // state_TEXCOORD
+
+static int state_TEX(Context *ctx)
+{
+    if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        return fail(ctx, "TEX opcode in a non-pixel shader.");
+    return (shader_version_atleast(ctx, 1, 4) ? 2 : 1);
+} // state_TEXCOORD
+
 
 // Lookup table for instruction opcodes...
-
+// !!! FIXME: parse_args should probably report token count, not the
+// !!! FIXME:  state machine.
 typedef struct
 {
     const char *opcode_string;
@@ -2160,9 +2241,9 @@ static Instruction instructions[] =
     INSTRUCTION_STATE(RESERVED, 0, NULL),
     INSTRUCTION_STATE(RESERVED, 0, NULL),
     INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION(TEXCOORD, -1, NULL),
-    INSTRUCTION(TEXKILL, 1, D),
-    INSTRUCTION(TEX, -1, NULL),
+    INSTRUCTION_STATE(TEXCOORD, -1, TEXCOORD),
+    INSTRUCTION_STATE(TEXKILL, 1, D),
+    INSTRUCTION_STATE(TEX, -1, TEXCOORD), // same parse_args logic as TEXCOORD
     INSTRUCTION(TEXBEM, 2, DS),
     INSTRUCTION(TEXBEML, 2, DS),
     INSTRUCTION(TEXREG2AR, 2, DS),
@@ -2213,7 +2294,7 @@ static int parse_instruction_token(Context *ctx)
     const int predicated = (token & 0x10000000) ? 1 : 0;
     const Instruction *instruction = &instructions[opcode];
     const emit_function emitter = instruction->emitter[ctx->profileid];
-    int retval = FAIL;
+    int retval = NOFAIL;
 
     if ( opcode >= (sizeof (instructions) / sizeof (instructions[0])) )
         return 0;  // not an instruction token, or just not handled here.
@@ -2261,12 +2342,14 @@ static int parse_instruction_token(Context *ctx)
 
     if (instruction->state != NULL)  // update state machine
         retval = instruction->state(ctx);
-    else
+
+    if ((retval == FAIL) || (ctx->failstr != NULL))
+        return FAIL;
+
+    if (retval == NOFAIL)  // no special case, use token count.
     {
-        // !!! FIXME
-        //assert(instruction->arg_tokens >= 0);
-        //retval = instruction->arg_tokens + 1;
-        retval = insttoks + 1;
+        assert(instruction->arg_tokens >= 0);
+        retval = instruction->arg_tokens + 1;
     } // else
 
     if (retval != FAIL)  // only do this if there wasn't a previous fail.
@@ -2297,7 +2380,7 @@ static int parse_version_token(Context *ctx)
     ctx->major_ver = major;
     ctx->minor_ver = minor;
 
-    if (!SHADER_VERSION_SUPPORTED(major, minor))
+    if (!shader_version_supported(major, minor))
     {
         return failf(ctx, "Shader Model %u.%u is currently unsupported.",
                      (uint) major, (uint) minor);
