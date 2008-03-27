@@ -362,7 +362,8 @@ static int output_line(Context *ctx, const char *fmt, ...)
     char *scratch = get_scratch_buffer(ctx);
 
     const int indent = ctx->indent;
-    memset(scratch, '\t', indent);
+    if (indent > 0)
+        memset(scratch, '\t', indent);
     va_list ap;
     va_start(ap, fmt);
     const int len = vsnprintf(scratch+indent, SCRATCH_BUFFER_SIZE-indent, fmt, ap) + indent;
@@ -382,7 +383,8 @@ static int output_line(Context *ctx, const char *fmt, ...)
         strcpy(item->str, scratch);  // copy it over.
     else
     {
-        memset(item->str, '\t', indent);
+        if (indent > 0)
+            memset(item->str, '\t', indent);
         va_start(ap, fmt);
         vsnprintf(item->str+indent, len + 1, fmt, ap);  // rebuild it.
         va_end(ap);
@@ -1115,6 +1117,25 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
     return retval;
 } // make_GLSL_sourcearg_string
 
+
+// special cases for comparison opcodes...
+static const char *get_GLSL_comparison_string(Context *ctx)
+{
+    static const char *comps[] = {
+        "", "greaterThan", "equal", "greaterThanEqual", "lessThan",
+        "notEqual", "lessThanEqual"
+    };
+
+    if (ctx->instruction_controls >= STATICARRAYLEN(comps))
+    {
+        fail(ctx, "unknown comparison control");
+        return "";
+    } // if
+
+    return comps[ctx->instruction_controls];
+} // get_D3D_comparison_string
+
+
 static void emit_GLSL_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
@@ -1389,32 +1410,44 @@ static void emit_GLSL_ENDREP(Context *ctx)
 
 static void emit_GLSL_IF(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "if (%s) {", src0);
+    ctx->indent++;
 } // emit_GLSL_IF
 
 static void emit_GLSL_IFC(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "if (%s(%s, %s)) {", comp, src0, src1);
+    ctx->indent++;
 } // emit_GLSL_IFC
 
 static void emit_GLSL_ELSE(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    ctx->indent--;
+    output_line(ctx, "} else {");
+    ctx->indent++;
 } // emit_GLSL_ELSE
 
 static void emit_GLSL_ENDIF(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    ctx->indent--;
+    output_line(ctx, "}");
 } // emit_GLSL_ENDIF
 
 static void emit_GLSL_BREAK(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    output_line(ctx, "break;");
 } // emit_GLSL_BREAK
 
 static void emit_GLSL_BREAKC(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "if (%s(%s, %s)) break;", comp, src0, src1);
 } // emit_GLSL_BREAKC
 
 static void emit_GLSL_MOVA(Context *ctx)
@@ -1439,7 +1472,8 @@ static void emit_GLSL_TEXCOORD(Context *ctx)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    output_line(ctx, "if (any(lessThan(vec3(%s), vec3(0.0)))) discard;", dst0);
 } // emit_GLSL_TEXKILL
 
 static void emit_GLSL_TEX(Context *ctx)
