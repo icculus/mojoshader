@@ -1457,12 +1457,23 @@ static void emit_GLSL_MOVA(Context *ctx)
 
 static void emit_GLSL_DEFB(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: this should really insert at the start of the output,
+    // !!! FIXME:  in case an instruction shows up before a DEF* token
+    // !!! FIXME:  (which may be legal in the spec).
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    output_line(ctx, "const bool %s = %s;",
+                dst0, ctx->dwords[0] ? "true" : "false");
 } // emit_GLSL_DEFB
 
 static void emit_GLSL_DEFI(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: this should really insert at the start of the output,
+    // !!! FIXME:  in case an instruction shows up before a DEF* token
+    // !!! FIXME:  (which may be legal in the spec).
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const int32 *x = (const int32 *) ctx->dwords;
+    output_line(ctx, "const ivec4 %s(%d, %d, %d, %d);",
+                dst0, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
 } // emit_GLSL_DEFI
 
 static void emit_GLSL_TEXCOORD(Context *ctx)
@@ -1548,7 +1559,13 @@ static void emit_GLSL_CND(Context *ctx)
 
 static void emit_GLSL_DEF(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: this should really insert at the start of the output,
+    // !!! FIXME:  in case an instruction shows up before a DEF* token
+    // !!! FIXME:  (which may be legal in the spec).
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
+    output_line(ctx, "const vec4 %s(%f, %f, %f, %f);",
+                dst0, val[0], val[1], val[2], val[3]);
 } // emit_GLSL_DEF
 
 static void emit_GLSL_TEXREG2RGB(Context *ctx)
