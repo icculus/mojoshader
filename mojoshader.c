@@ -56,6 +56,13 @@ typedef int32_t int32;
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
+#ifdef _WINDOWS  // !!! FIXME: bleh
+const char *endline_str = "\r\n";
+#else
+const char *endline_str = "\n";
+#endif
+
+
 
 // Byteswap magic...
 
@@ -2496,8 +2503,8 @@ static Context *build_context(const char *profile,
     ctx->free = f;
     ctx->tokens = (const uint32 *) tokenbuf;
     ctx->tokencount = bufsize / sizeof (uint32);
-    ctx->endline = "\n";
-    ctx->endline_len = 1;  // !!! FIXME: do "\r\n" on Windows?
+    ctx->endline = endline_str;
+    ctx->endline_len = strlen(ctx->endline);
     ctx->output.str = NULL;
     ctx->output.next = NULL;
     ctx->output_tail = &ctx->output;
