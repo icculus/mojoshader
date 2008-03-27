@@ -95,7 +95,7 @@ typedef void (*emit_end)(Context *ctx);
 typedef int (*args_function)(Context *ctx);
 
 // one state function for each opcode where we have state machine updates.
-typedef int (*state_function)(Context *ctx);
+typedef void (*state_function)(Context *ctx);
 
 typedef struct
 {
@@ -106,12 +106,15 @@ typedef struct
 } Profile;
 
 
+// These are enum values, but they also can be used in bitmasks, so we can
+//  test if an opcode is acceptable: if (op->shader_types & ourtype) {} ...
 typedef enum
 {
-    SHADER_TYPE_UNKNOWN = -1,
-    SHADER_TYPE_PIXEL,
-    SHADER_TYPE_VERTEX,
-    SHADER_TYPE_TOTAL
+    SHADER_TYPE_UNKNOWN  = 0,
+    SHADER_TYPE_PIXEL    = (1 << 0),
+    SHADER_TYPE_VERTEX   = (1 << 1),
+    SHADER_TYPE_GEOMETRY = (1 << 2),
+    SHADER_TYPE_ANY = 0xFFFFFFFF
 } ShaderType;
 
 typedef enum
@@ -310,6 +313,12 @@ static inline char *get_scratch_buffer(Context *ctx)
 #define NOFAIL (-2)
 #define END_OF_STREAM (-3)
 
+static inline isfail(const Context *ctx)
+{
+    return (ctx->failstr != NULL);
+} // isfail
+
+
 static const char *out_of_mem_string = "Out of memory";
 static inline int out_of_memory(Context *ctx)
 {
@@ -361,7 +370,7 @@ static inline int fail(Context *ctx, const char *reason)
 static int output_line(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static int output_line(Context *ctx, const char *fmt, ...)
 {
-    if (ctx->failstr != NULL)
+    if (isfail(ctx))
         return FAIL;  // we failed previously, don't go on...
 
     OutputList *item = (OutputList *) ctx->malloc(sizeof (OutputList));
@@ -1721,7 +1730,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
     // !!! FIXME: recheck against the spec for ranges (like RASTOUT values, etc).
 
-    if (ctx->failstr != NULL)
+    if (isfail(ctx))
         return FAIL;  // already failed elsewhere.
 
     if (ctx->tokencount == 0)
@@ -1799,7 +1808,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
 static int parse_source_token(Context *ctx, SourceArgInfo *info)
 {
-    if (ctx->failstr != NULL)
+    if (isfail(ctx))
         return FAIL;  // already failed elsewhere.
 
     if (ctx->tokencount == 0)
@@ -1845,7 +1854,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
 static int parse_args_NULL(Context *ctx)
 {
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return (isfail(ctx) ? FAIL : 0);
 } // parse_args_NULL
 
 
@@ -1871,7 +1880,8 @@ static int parse_args_DEF(Context *ctx)
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+
+    return 5;
 } // parse_args_DEF
 
 
@@ -1887,7 +1897,8 @@ static int parse_args_DEFI(Context *ctx)
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+
+    return 5;
 } // parse_args_DEFI
 
 
@@ -1900,9 +1911,9 @@ static int parse_args_DEFB(Context *ctx)
         return fail(ctx, "DEFB token using invalid register");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
-} // parse_args_DEFB
 
+    return 2;
+} // parse_args_DEFB
 
 
 static int parse_args_DCL(Context *ctx)
@@ -2044,21 +2055,21 @@ static int parse_args_DCL(Context *ctx)
     if ((token & reserved_mask) != 0)
         return fail(ctx, "reserved bits in DCL dword aren't zero");
 
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 2;
 } // parse_args_DCL
 
 
 static int parse_args_D(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 1;
 } // parse_args_D
 
 
 static int parse_args_S(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 1;
 } // parse_args_S
 
 
@@ -2066,7 +2077,7 @@ static int parse_args_SS(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 2;
 } // parse_args_SS
 
 
@@ -2074,7 +2085,7 @@ static int parse_args_DS(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 2;
 } // parse_args_DS
 
 
@@ -2083,7 +2094,7 @@ static int parse_args_DSS(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 3;
 } // parse_args_DSS
 
 
@@ -2093,7 +2104,7 @@ static int parse_args_DSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 4;
 } // parse_args_DSSS
 
 
@@ -2104,7 +2115,7 @@ static int parse_args_DSSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[3]) == FAIL) return FAIL;
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 5;
 } // parse_args_DSSSS
 
 
@@ -2115,49 +2126,26 @@ static int parse_args_TEXCOORD(Context *ctx)
     {
         if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL)
             return FAIL;
+        return 2;
     } // if
-    return ((ctx->failstr != NULL) ? FAIL : NOFAIL);
+    return 1;
 } // parse_args_TEXCOORD
 
 
 
 // State machine functions...
 
-static int state_RESERVED(Context *ctx)
+static void state_RESERVED(Context *ctx)
 {
-    return fail(ctx, "Tried to use RESERVED opcode.");
+    fail(ctx, "Tried to use RESERVED opcode.");
 } // state_RESERVED
-
-// !!! FIXME: checking shader type should be a flag in struct Instruction,
-// !!! FIXME:  so we don't have to roll a function for each opcode.
-static int state_TEXKILL(Context *ctx)
-{
-    if (ctx->shader_type != SHADER_TYPE_PIXEL)
-        return fail(ctx, "TEXKILL opcode in a non-pixel shader.");
-    return NOFAIL;
-} // state_TEXKILL
-
-static int state_TEXCOORD(Context *ctx)
-{
-    if (ctx->shader_type != SHADER_TYPE_PIXEL)
-        return fail(ctx, "TEXCOORD opcode in a non-pixel shader.");
-    return (shader_version_atleast(ctx, 1, 4) ? 2 : 1);
-} // state_TEXCOORD
-
-static int state_TEX(Context *ctx)
-{
-    if (ctx->shader_type != SHADER_TYPE_PIXEL)
-        return fail(ctx, "TEX opcode in a non-pixel shader.");
-    return (shader_version_atleast(ctx, 1, 4) ? 2 : 1);
-} // state_TEXCOORD
 
 
 // Lookup table for instruction opcodes...
-// !!! FIXME: parse_args should probably report token count, not the
-// !!! FIXME:  state machine.
 typedef struct
 {
     const char *opcode_string;
+    ShaderType shader_types;  // mask of shader types that can use this opcode.
     int arg_tokens;
     args_function parse_args;
     state_function state;
@@ -2166,114 +2154,119 @@ typedef struct
 
 // These have to be in the right order! This array is indexed by the value
 //  of the instruction token.
-static Instruction instructions[] =
+static const Instruction instructions[] =
 {
     // INSTRUCTION_STATE means this opcode has to update the state machine
     //  (we're entering an ELSE block, etc). INSTRUCTION means there's no
     //  state, just go straight to the emitters.
-    #define INSTRUCTION_STATE(op, args, argsseq) { \
-        #op, args, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
+    #define INSTRUCTION_STATE(op, args, argsseq, t) { \
+        #op, t, args, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
     }
-    #define INSTRUCTION(op, args, argsseq) { \
-        #op, args, parse_args_##argsseq, NULL, PROFILE_EMITTERS(op) \
+    #define INSTRUCTION(op, args, argsseq, t) { \
+        #op, t, args, parse_args_##argsseq, 0, PROFILE_EMITTERS(op) \
     }
-    INSTRUCTION(NOP, 0, NULL),
-    INSTRUCTION(MOV, 2, DS),
-    INSTRUCTION(ADD, 3, DSS),
-    INSTRUCTION(SUB, 3, DSS),
-    INSTRUCTION(MAD, 4, DSSS),
-    INSTRUCTION(MUL, 3, DSS),
-    INSTRUCTION(RCP, 2, DS),
-    INSTRUCTION(RSQ, 2, DS),
-    INSTRUCTION(DP3, 3, DSS),
-    INSTRUCTION(DP4, 3, DSS),
-    INSTRUCTION(MIN, 3, DSS),
-    INSTRUCTION(MAX, 3, DSS),
-    INSTRUCTION(SLT, 3, DSS),
-    INSTRUCTION(SGE, 3, DSS),
-    INSTRUCTION(EXP, 2, DS),
-    INSTRUCTION(LOG, 2, DS),
-    INSTRUCTION(LIT, 2, DS),
-    INSTRUCTION(DST, 3, DSS),
-    INSTRUCTION(LRP, 4, DSSS),
-    INSTRUCTION(FRC, 2, DS),
-    INSTRUCTION(M4X4, 3, DSS),
-    INSTRUCTION(M4X3, 3, DSS),
-    INSTRUCTION(M3X4, 3, DSS),
-    INSTRUCTION(M3X3, 3, DSS),
-    INSTRUCTION(M3X2, 3, DSS),
-    INSTRUCTION(CALL, 1, S),
-    INSTRUCTION(CALLNZ, 2, SS),
-    INSTRUCTION(LOOP, 2, SS),
-    INSTRUCTION(RET, 0, NULL),
-    INSTRUCTION(ENDLOOP, 0, NULL),
-    INSTRUCTION(LABEL, 1, S),
-    INSTRUCTION(DCL, 2, DCL),
-    INSTRUCTION(POW, 3, DSS),
-    INSTRUCTION(CRS, 3, DSS),
-    INSTRUCTION(SGN, 4, DSSS),
-    INSTRUCTION(ABS, 2, DS),
-    INSTRUCTION(NRM, 2, DS),
-    INSTRUCTION(SINCOS, 4, NULL),
-    INSTRUCTION(REP, 1, S),
-    INSTRUCTION(ENDREP, 0, NULL),
-    INSTRUCTION(IF, 1, S),
-    INSTRUCTION(IFC, 2, SS),
-    INSTRUCTION(ELSE, 0, NULL),
-    INSTRUCTION(ENDIF, 0, NULL),
-    INSTRUCTION(BREAK, 0, NULL),
-    INSTRUCTION(BREAKC, 2, SS),
-    INSTRUCTION(MOVA, 2, DS),
-    INSTRUCTION(DEFB, 2, DEFB),
-    INSTRUCTION(DEFI, 5, DEFI),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION_STATE(TEXCOORD, -1, TEXCOORD),
-    INSTRUCTION_STATE(TEXKILL, 1, D),
-    INSTRUCTION_STATE(TEX, -1, TEXCOORD), // same parse_args logic as TEXCOORD
-    INSTRUCTION(TEXBEM, 2, DS),
-    INSTRUCTION(TEXBEML, 2, DS),
-    INSTRUCTION(TEXREG2AR, 2, DS),
-    INSTRUCTION(TEXREG2GB, 2, DS),
-    INSTRUCTION(TEXM3X2PAD, 2, DS),
-    INSTRUCTION(TEXM3X2TEX, 2, DS),
-    INSTRUCTION(TEXM3X3PAD, 2, DS),
-    INSTRUCTION(TEXM3X3TEX, 2, DS),
-    INSTRUCTION_STATE(RESERVED, 0, NULL),
-    INSTRUCTION(TEXM3X3SPEC, 3, DSS),
-    INSTRUCTION(TEXM3X3VSPEC, 2, DS),
-    INSTRUCTION(EXPP, 2, DS),
-    INSTRUCTION(LOGP, 2, DS),
-    INSTRUCTION(CND, 4, DSSS),
-    INSTRUCTION(DEF, 5, DEF),
-    INSTRUCTION(TEXREG2RGB, 2, DS),
-    INSTRUCTION(TEXDP3TEX, 2, DS),
-    INSTRUCTION(TEXM3X2DEPTH, 2, DS),
-    INSTRUCTION(TEXDP3, 2, DS),
-    INSTRUCTION(TEXM3X3, 2, DS),
-    INSTRUCTION(TEXDEPTH, 1, D),
-    INSTRUCTION(CMP, 4, DSSS),
-    INSTRUCTION(BEM, 3, DSS),
-    INSTRUCTION(DP2ADD, 4, DSSS),
-    INSTRUCTION(DSX, 2, DS),
-    INSTRUCTION(DSY, 2, DS),
-    INSTRUCTION(TEXLDD, 5, DSSSS),
-    INSTRUCTION(SETP, 3, DSS),
-    INSTRUCTION(TEXLDL, 3, DSS),
-    INSTRUCTION(BREAKP, 1, S),  // src
+
+    // !!! FIXME: Some of these SHADER_TYPE_ANYs need to have their scope
+    // !!! FIXME:  reduced to just PIXEL or VERTEX.
+
+    INSTRUCTION(NOP, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(MOV, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(ADD, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(SUB, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(MAD, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(MUL, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(RCP, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(RSQ, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(DP3, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(DP4, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(MIN, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(MAX, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(SLT, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(SGE, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(EXP, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(LOG, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(LIT, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(DST, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(LRP, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(FRC, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(M4X4, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(M4X3, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(M3X4, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(M3X3, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(M3X2, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(CALL, 1, S, SHADER_TYPE_ANY),
+    INSTRUCTION(CALLNZ, 2, SS, SHADER_TYPE_ANY),
+    INSTRUCTION(LOOP, 2, SS, SHADER_TYPE_ANY),
+    INSTRUCTION(RET, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(ENDLOOP, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(LABEL, 1, S, SHADER_TYPE_ANY),
+    INSTRUCTION(DCL, 2, DCL, SHADER_TYPE_ANY),
+    INSTRUCTION(POW, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(CRS, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(SGN, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(ABS, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(NRM, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(SINCOS, 4, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(REP, 1, S, SHADER_TYPE_ANY),
+    INSTRUCTION(ENDREP, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(IF, 1, S, SHADER_TYPE_ANY),
+    INSTRUCTION(IFC, 2, SS, SHADER_TYPE_ANY),
+    INSTRUCTION(ELSE, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(ENDIF, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(BREAK, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(BREAKC, 2, SS, SHADER_TYPE_ANY),
+    INSTRUCTION(MOVA, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(DEFB, 2, DEFB, SHADER_TYPE_ANY),
+    INSTRUCTION(DEFI, 5, DEFI, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXCOORD, -1, TEXCOORD, SHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXKILL, 1, D, SHADER_TYPE_PIXEL),
+    INSTRUCTION(TEX, -1, TEXCOORD, SHADER_TYPE_PIXEL), // same parse_args logic as TEXCOORD
+    INSTRUCTION(TEXBEM, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXBEML, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2AR, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2GB, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2PAD, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2TEX, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3PAD, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3TEX, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3SPEC, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3VSPEC, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(EXPP, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(LOGP, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(CND, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(DEF, 5, DEF, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2RGB, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXDP3TEX, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2DEPTH, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXDP3, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXDEPTH, 1, D, SHADER_TYPE_ANY),
+    INSTRUCTION(CMP, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(BEM, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(DP2ADD, 4, DSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(DSX, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(DSY, 2, DS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXLDD, 5, DSSSS, SHADER_TYPE_ANY),
+    INSTRUCTION(SETP, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(TEXLDL, 3, DSS, SHADER_TYPE_ANY),
+    INSTRUCTION(BREAKP, 1, S, SHADER_TYPE_ANY),  // src
+
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
 };
@@ -2327,32 +2320,34 @@ static int parse_instruction_token(Context *ctx)
         } // else if
     } // else if
 
+    if ((ctx->shader_type & instruction->shader_types) == 0)
+    {
+        return failf(ctx, "opcode '%s' not available in this shader type.",
+                     instruction->opcode_string);
+    } // if
+
     ctx->instruction_count++;
     ctx->instruction_controls = controls;
 
     // Update the context with instruction's arguments.
     ctx->tokens++;
     ctx->tokencount--;
-    if (instruction->parse_args(ctx) == FAIL)
-        return FAIL;
+    retval = instruction->parse_args(ctx);
+    assert((isfail(ctx)) || (retval >= 0));
 
     // parse_args() moves these forward for convenience...reset them.
     ctx->tokens = start_tokens;
     ctx->tokencount = start_tokencount;
 
-    if (instruction->state != NULL)  // update state machine
-        retval = instruction->state(ctx);
-
-    if ((retval == FAIL) || (ctx->failstr != NULL))
-        return FAIL;
-
-    if (retval == NOFAIL)  // no special case, use token count.
+    if (!isfail(ctx))
     {
-        assert(instruction->arg_tokens >= 0);
-        retval = instruction->arg_tokens + 1;
-    } // else
+        if (instruction->state != NULL)
+            instruction->state(ctx);
+    } // if
 
-    if (retval != FAIL)  // only do this if there wasn't a previous fail.
+    if (isfail(ctx))
+        retval = FAIL;
+    else
         emitter(ctx);  // call the profile's emitter.
 
     return retval;
@@ -2445,7 +2440,7 @@ static int parse_token(Context *ctx)
 {
     int rc = 0;
 
-    if (ctx->failstr != NULL)
+    if (isfail(ctx))
         return FAIL;  // just in case...catch previously unhandled fails here.
 
     if (ctx->tokencount == 0)
@@ -2575,7 +2570,7 @@ int MOJOSHADER_parse(const char *profile, const unsigned char *tokenbuf,
     if (ctx->profile == NULL)
         failf(ctx, "Profile '%s' is unknown or unsupported", profile);
 
-    if (ctx->failstr == NULL)  // only go on if there was no previous error...
+    if (!isfail(ctx))
     {
         // Version token always comes first.
         rc = parse_version_token(ctx);
@@ -2589,7 +2584,7 @@ int MOJOSHADER_parse(const char *profile, const unsigned char *tokenbuf,
         } // while
     } // if
 
-//    if (ctx->failstr == NULL)
+//    if (!isfail(ctx))
     {
         char *str = build_output(ctx);
         if (str != NULL)
