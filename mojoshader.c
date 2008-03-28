@@ -185,10 +185,16 @@ typedef enum
 // A simple linked list of strings, so we can build the final output without
 //  realloc()ing for each new line, and easily insert lines into the middle
 //  of the output without much trouble.
-typedef struct OutputList
+typedef struct OutputListNode
 {
     char *str;
-    struct OutputList *next;
+    struct OutputListNode *next;
+} OutputListNode;
+
+typedef struct OutputList
+{
+    OutputListNode head;
+    OutputListNode *tail;
 } OutputList;
 
 
@@ -258,9 +264,11 @@ struct Context
     MOJOSHADER_free free;
     const uint32 *tokens;
     uint32 tokencount;
-    OutputList output;
-    OutputList *output_tail;
-    int output_len; // total strlen; prevents walking the list just to malloc.
+    OutputList *output;
+    OutputList globals;
+    OutputList subroutines;
+    OutputList mainline;
+    int output_len; // total strlen; prevents walking the lists just to malloc.
     int indent;
     const char *endline;
     int endline_len;
@@ -371,10 +379,12 @@ static inline int fail(Context *ctx, const char *reason)
 static int output_line(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static int output_line(Context *ctx, const char *fmt, ...)
 {
+    OutputListNode *item = NULL;
+
     if (isfail(ctx))
         return FAIL;  // we failed previously, don't go on...
 
-    OutputList *item = (OutputList *) ctx->malloc(sizeof (OutputList));
+    item = (OutputListNode *) ctx->malloc(sizeof (OutputListNode));
     if (item == NULL)
         return out_of_memory(ctx);
 
@@ -410,9 +420,11 @@ static int output_line(Context *ctx, const char *fmt, ...)
     } // else
 
     item->next = NULL;
-    ctx->output_tail->next = item;
-    ctx->output_tail = item;
+
+    ctx->output->tail->next = item;
+    ctx->output->tail = item;
     ctx->output_len += len + ctx->endline_len;
+
     return 0;
 } // output_line
 
@@ -2521,9 +2533,10 @@ static Context *build_context(const char *profile,
     ctx->tokencount = bufsize / sizeof (uint32);
     ctx->endline = endline_str;
     ctx->endline_len = strlen(ctx->endline);
-    ctx->output.str = NULL;
-    ctx->output.next = NULL;
-    ctx->output_tail = &ctx->output;
+    ctx->globals.tail = &ctx->globals.head;
+    ctx->subroutines.tail = &ctx->subroutines.head;
+    ctx->mainline.tail = &ctx->mainline.head;
+    ctx->output = &ctx->globals;
 
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
@@ -2536,26 +2549,50 @@ static Context *build_context(const char *profile,
 } // build_context
 
 
+static void free_output_list(MOJOSHADER_free f, OutputListNode *item)
+{
+    while (item != NULL)
+    {
+        OutputListNode *next = item->next;
+        if (item->str != NULL)
+            f(item->str);
+        f(item);
+        item = next;
+    } // while
+} // free_output_list
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
-        OutputList *item = ctx->output.next;
-        while (item != NULL)
-        {
-            OutputList *next = item->next;
-            if (item->str != NULL)
-                f(item->str);
-            f(item);
-            item = next;
-        } // while
-
+        free_output_list(f, ctx->globals.head.next);
+        free_output_list(f, ctx->subroutines.head.next);
+        free_output_list(f, ctx->mainline.head.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr);
         f(ctx);
     } // if
 } // destroy_context
+
+
+static void append_list(char **_wptr, const char *endline,
+                        const size_t endline_len, OutputListNode *item)
+{
+    char *wptr = *_wptr;
+    while (item != NULL)
+    {
+        const size_t len = strlen(item->str);
+        memcpy(wptr, item->str, len);
+        wptr += len;
+        memcpy(wptr, endline, endline_len);
+        wptr += endline_len;
+        item = item->next;
+    } // while
+    *wptr = '\0';
+    *_wptr = wptr;
+} // append_list
 
 
 static char *build_output(Context *ctx)
@@ -2565,20 +2602,12 @@ static char *build_output(Context *ctx)
         out_of_memory(ctx);
     else
     {
-        const char *endline = ctx->endline;
-        const size_t endline_len = ctx->endline_len;
+        const char *endl = ctx->endline;
+        const size_t endllen = ctx->endline_len;
         char *wptr = retval;
-        OutputList *item = ctx->output.next;
-        while (item != NULL)
-        {
-            const size_t len = strlen(item->str);
-            memcpy(wptr, item->str, len);
-            wptr += len;
-            memcpy(wptr, endline, endline_len);
-            wptr += endline_len;
-            item = item->next;
-        } // while
-        *wptr = '\0';
+        append_list(&wptr, endl, endllen, ctx->globals.head.next);
+        append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
+        append_list(&wptr, endl, endllen, ctx->mainline.head.next);
     } // else
 
     return retval;
