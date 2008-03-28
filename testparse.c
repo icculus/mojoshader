@@ -28,7 +28,7 @@ static void Free(void *_ptr)
 #define Free NULL
 #endif
 
-static const char *shader_type(MOJOSHADER_shaderType s)
+static const char *shader_type(const MOJOSHADER_shaderType s)
 {
     switch (s)
     {
@@ -36,9 +36,10 @@ static const char *shader_type(MOJOSHADER_shaderType s)
         case MOJOSHADER_TYPE_PIXEL: return "pixel";
         case MOJOSHADER_TYPE_VERTEX: return "vertex";
         case MOJOSHADER_TYPE_GEOMETRY: return "geometry";
+        default: return "(bogus value?)";
     } // switch
 
-    return "(bogus value?)";
+    return NULL;  // shouldn't hit this.
 } // shader_type
 
 

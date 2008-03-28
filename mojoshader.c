@@ -310,7 +310,7 @@ static inline char *get_scratch_buffer(Context *ctx)
 #define NOFAIL (-2)
 #define END_OF_STREAM (-3)
 
-static inline isfail(const Context *ctx)
+static inline int isfail(const Context *ctx)
 {
     return (ctx->failstr != NULL);
 } // isfail
@@ -542,7 +542,10 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         // !!! FIXME: don't know what the asm string is for this..
-        // case REGISTER_TYPE_TEMPFLOAT16:
+        case REGISTER_TYPE_TEMPFLOAT16:
+            retval = "???";
+            has_number = 0;
+            break;
 
         case REGISTER_TYPE_MISCTYPE:
             switch ((MiscTypeType) regnum)
@@ -690,6 +693,10 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
         case SRCMOD_NOT:
             premod_str = "!";
             break;
+
+        case SRCMOD_NONE:
+        case SRCMOD_TOTAL:
+             break;  // stop compiler whining.
     } // switch
 
 
@@ -1921,7 +1928,6 @@ static int parse_args_DCL(Context *ctx)
 {
     int unsupported = 0;
     const uint32 token = SWAP32(*(ctx->tokens));
-    const DeclUsageType usage = (DeclUsageType)(token & 0xF);
     const int reserved1 = (int) ((token >> 31) & 0x1); // bit 31
     uint32 reserved_mask = 0x00000000;
 
@@ -2299,6 +2305,9 @@ static int parse_instruction_token(Context *ctx)
     if (coissue)  // !!! FIXME: I'm not sure what this means, yet.
         return fail(ctx, "coissue instructions unsupported");
 
+    if (predicated)  // !!! FIXME: I'm not sure what this means, yet.
+        return fail(ctx, "predicated instructions unsupported");
+
     if (ctx->major_ver < 2)
     {
         if (insttoks != 0)  // this is a reserved field in shaders < 2.0 ...
@@ -2357,6 +2366,9 @@ static int parse_instruction_token(Context *ctx)
 
 static int parse_version_token(Context *ctx)
 {
+    if (isfail(ctx))  // catch preexisting errors here.
+        return FAIL;
+
     if (ctx->tokencount == 0)
         return fail(ctx, "Expected version token, got none at all.");
 
@@ -2519,6 +2531,8 @@ static Context *build_context(const char *profile,
         ctx->profile = &profiles[profileid];
     else
         failf(ctx, "Profile '%s' is unknown or unsupported", profile);
+
+    return ctx;
 } // build_context
 
 
@@ -2574,7 +2588,6 @@ static char *build_output(Context *ctx)
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 {
     char *output = NULL;
-    int len = 0;
     MOJOSHADER_parseData *retval;
 
     if ((retval = ctx->malloc(sizeof (MOJOSHADER_parseData))) == NULL)
@@ -2627,19 +2640,16 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     if ((ctx = build_context(profile, tokenbuf, bufsize, m, f)) == NULL)
         return &out_of_mem_data;
 
-    if (!isfail(ctx))
-    {
-        // Version token always comes first.
-        rc = parse_version_token(ctx);
+    // Version token always comes first.
+    rc = parse_version_token(ctx);
 
-        // parse out the rest of the tokens after the version token...
-        while (rc > 0)
-        {
-            ctx->tokens += rc;
-            ctx->tokencount -= rc;
-            rc = parse_token(ctx);
-        } // while
-    } // if
+    // parse out the rest of the tokens after the version token...
+    while ( (rc > 0) && (!isfail(ctx)) )
+    {
+        ctx->tokens += rc;
+        ctx->tokencount -= rc;
+        rc = parse_token(ctx);
+    } // while
 
     retval = build_parsedata(ctx);
     destroy_context(ctx);
