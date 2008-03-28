@@ -112,17 +112,7 @@ typedef struct
     emit_comment comment_emitter;
 } Profile;
 
-
-// These are enum values, but they also can be used in bitmasks, so we can
-//  test if an opcode is acceptable: if (op->shader_types & ourtype) {} ...
-typedef enum
-{
-    SHADER_TYPE_UNKNOWN  = 0,
-    SHADER_TYPE_PIXEL    = (1 << 0),
-    SHADER_TYPE_VERTEX   = (1 << 1),
-    SHADER_TYPE_GEOMETRY = (1 << 2),
-    SHADER_TYPE_ANY = 0xFFFFFFFF
-} ShaderType;
+typedef MOJOSHADER_shaderType ShaderType;
 
 typedef enum
 {
@@ -280,12 +270,12 @@ struct Context
     int profileid;
     const Profile *profile;
     ShaderType shader_type;
-    uint32 major_ver;
-    uint32 minor_ver;
+    uint8 major_ver;
+    uint8 minor_ver;
     DestArgInfo dest_args[1];
     SourceArgInfo source_args[4];
     uint32 dwords[4];
-    uint32 instruction_count;
+    int instruction_count;
     uint32 instruction_controls;
 };
 
@@ -326,11 +316,15 @@ static inline isfail(const Context *ctx)
 } // isfail
 
 
-static const char *out_of_mem_string = "Out of memory";
+static MOJOSHADER_parseData out_of_mem_data = {
+    "Out of memory", 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+};
+
+static const char *out_of_mem_str = "Out of memory";
 static inline int out_of_memory(Context *ctx)
 {
     if (ctx->failstr == NULL)
-        ctx->failstr = out_of_mem_string;  // fail() would call malloc().
+        ctx->failstr = out_of_mem_str;  // fail() would call malloc().
     return FAIL;
 } // out_of_memory
 
@@ -497,7 +491,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REGISTER_TYPE_ADDR:  // (or REGISTER_TYPE_TEXTURE, same value.)
-            retval = (ctx->shader_type == SHADER_TYPE_VERTEX) ? "a" : "t";
+            retval = (ctx->shader_type == MOJOSHADER_TYPE_VERTEX) ? "a" : "t";
             break;
 
         case REGISTER_TYPE_RASTOUT:
@@ -515,7 +509,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REGISTER_TYPE_TEXCRDOUT: // (or REGISTER_TYPE_OUTPUT, same value.)
-            if ((ctx->shader_type==SHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
+            if ((ctx->shader_type==MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
                 retval = "o";
             else
                 retval = "oT";
@@ -750,9 +744,9 @@ static void emit_D3D_start(Context *ctx)
     else
         snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
 
-    if (ctx->shader_type == SHADER_TYPE_PIXEL)
+    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
         shadertype_str = "ps";
-    else if (ctx->shader_type == SHADER_TYPE_VERTEX)
+    else if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
         shadertype_str = "vs";
     else
     {
@@ -1052,7 +1046,7 @@ static void emit_D3D_DCL(Context *ctx)
     const char *usage_str = "";
     char index_str[16] = { '\0' };
 
-    if (ctx->shader_type == SHADER_TYPE_VERTEX)
+    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
         static const char *usagestrs[] = {
             "_position", "_blendweight", "_blendindices", "_normal",
@@ -1182,9 +1176,9 @@ static void emit_GLSL_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
-    if (ctx->shader_type == SHADER_TYPE_PIXEL)
+    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
         output_line(ctx, "// Pixel shader, version %u.%u", major, minor);
-    else if (ctx->shader_type == SHADER_TYPE_VERTEX)
+    else if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
         output_line(ctx, "// Vertex shader, version %u.%u", major, minor);
     else
     {
@@ -1719,10 +1713,10 @@ static void emit_GLSL_RESERVED(Context *ctx)
 static const Profile profiles[] =
 {
 #if SUPPORT_PROFILE_D3D
-    { "d3d", emit_D3D_start, emit_D3D_end, emit_D3D_comment },
+    { MOJOSHADER_PROFILE_D3D, emit_D3D_start, emit_D3D_end, emit_D3D_comment },
 #endif
 #if SUPPORT_PROFILE_GLSL
-    { "glsl", emit_GLSL_start, emit_GLSL_end, emit_GLSL_comment },
+    { MOJOSHADER_PROFILE_GLSL, emit_GLSL_start, emit_GLSL_end, emit_GLSL_comment },
 #endif
 };
 
@@ -1770,7 +1764,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
     if (info->relative)
     {
-        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+        if (ctx->shader_type != MOJOSHADER_TYPE_VERTEX)
             return fail(ctx, "Relative addressing in non-vertex shader");
         else if (ctx->major_ver < 3)
             return fail(ctx, "Relative addressing in vertex shader version < 3.0");
@@ -1780,7 +1774,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     const int s = info->result_shift;
     if (s != 0)
     {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
             return fail(ctx, "Result shift scale in non-pixel shader");
         else if (ctx->major_ver >= 2)
             return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
@@ -1790,19 +1784,19 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
     if (info->result_mod & MOD_SATURATE)  // Saturate (vertex shaders only)
     {
-        if (ctx->shader_type != SHADER_TYPE_VERTEX)
+        if (ctx->shader_type != MOJOSHADER_TYPE_VERTEX)
             return fail(ctx, "Saturate result mod in non-vertex shader");
     } // if
 
     if (info->result_mod & MOD_PP)  // Partial precision (pixel shaders only)
     {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
             return fail(ctx, "Partial precision result mod in non-pixel shader");
     } // if
 
     if (info->result_mod & MOD_CENTROID)  // Centroid (pixel shaders only)
     {
-        if (ctx->shader_type != SHADER_TYPE_PIXEL)
+        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
             return fail(ctx, "Centroid result mod in non-pixel shader");
     } // if
 
@@ -1847,7 +1841,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
     if (info->relative)
     {
-        if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
+        if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
             return fail(ctx, "Relative addressing in pixel shader version < 3.0");
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
@@ -1940,7 +1934,7 @@ static int parse_args_DCL(Context *ctx)
         return FAIL;
 
     const RegisterType regtype = (RegisterType) ctx->dest_args[0].regtype;
-    if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
+    if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
     {
         if (regtype == REGISTER_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
@@ -2002,7 +1996,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // if
 
-    else if ((ctx->shader_type == SHADER_TYPE_PIXEL) && (ctx->major_ver >= 2))
+    else if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 2))
     {
         if (regtype == REGISTER_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
@@ -2019,7 +2013,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // if
 
-    else if ((ctx->shader_type == SHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
+    else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
     {
         if ((regtype==REGISTER_TYPE_INPUT) || (regtype==REGISTER_TYPE_OUTPUT))
         {
@@ -2035,7 +2029,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // else if
 
-    else if ((ctx->shader_type == SHADER_TYPE_VERTEX) && (ctx->major_ver >= 2))
+    else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 2))
     {
         if (regtype == REGISTER_TYPE_INPUT)
         {
@@ -2173,106 +2167,106 @@ static const Instruction instructions[] =
         #op, t, args, parse_args_##argsseq, 0, PROFILE_EMITTERS(op) \
     }
 
-    // !!! FIXME: Some of these SHADER_TYPE_ANYs need to have their scope
+    // !!! FIXME: Some of these MOJOSHADER_TYPE_ANYs need to have their scope
     // !!! FIXME:  reduced to just PIXEL or VERTEX.
 
-    INSTRUCTION(NOP, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(MOV, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(ADD, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(SUB, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(MAD, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(MUL, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(RCP, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(RSQ, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(DP3, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(DP4, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(MIN, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(MAX, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(SLT, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(SGE, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(EXP, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(LOG, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(LIT, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(DST, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(LRP, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(FRC, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(M4X4, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(M4X3, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(M3X4, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(M3X3, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(M3X2, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(CALL, 1, S, SHADER_TYPE_ANY),
-    INSTRUCTION(CALLNZ, 2, SS, SHADER_TYPE_ANY),
-    INSTRUCTION(LOOP, 2, SS, SHADER_TYPE_ANY),
-    INSTRUCTION(RET, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(ENDLOOP, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(LABEL, 1, S, SHADER_TYPE_ANY),
-    INSTRUCTION(DCL, 2, DCL, SHADER_TYPE_ANY),
-    INSTRUCTION(POW, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(CRS, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(SGN, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(ABS, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(NRM, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(SINCOS, 4, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(REP, 1, S, SHADER_TYPE_ANY),
-    INSTRUCTION(ENDREP, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(IF, 1, S, SHADER_TYPE_ANY),
-    INSTRUCTION(IFC, 2, SS, SHADER_TYPE_ANY),
-    INSTRUCTION(ELSE, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(ENDIF, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(BREAK, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(BREAKC, 2, SS, SHADER_TYPE_ANY),
-    INSTRUCTION(MOVA, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(DEFB, 2, DEFB, SHADER_TYPE_ANY),
-    INSTRUCTION(DEFI, 5, DEFI, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXCOORD, -1, TEXCOORD, SHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXKILL, 1, D, SHADER_TYPE_PIXEL),
-    INSTRUCTION(TEX, -1, TEXCOORD, SHADER_TYPE_PIXEL), // same parse_args logic as TEXCOORD
-    INSTRUCTION(TEXBEM, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXBEML, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXREG2AR, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXREG2GB, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X2PAD, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X2TEX, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X3PAD, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X3TEX, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X3SPEC, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X3VSPEC, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(EXPP, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(LOGP, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(CND, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(DEF, 5, DEF, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXREG2RGB, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXDP3TEX, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X2DEPTH, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXDP3, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXM3X3, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXDEPTH, 1, D, SHADER_TYPE_ANY),
-    INSTRUCTION(CMP, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(BEM, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(DP2ADD, 4, DSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(DSX, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(DSY, 2, DS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXLDD, 5, DSSSS, SHADER_TYPE_ANY),
-    INSTRUCTION(SETP, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(TEXLDL, 3, DSS, SHADER_TYPE_ANY),
-    INSTRUCTION(BREAKP, 1, S, SHADER_TYPE_ANY),  // src
+    INSTRUCTION(NOP, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MOV, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ADD, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SUB, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MAD, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MUL, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RCP, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RSQ, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DP3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DP4, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MIN, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MAX, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SLT, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SGE, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(EXP, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LOG, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LIT, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DST, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LRP, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(FRC, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(M4X4, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(M4X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(M3X4, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(M3X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(M3X2, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CALL, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CALLNZ, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LOOP, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RET, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ENDLOOP, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LABEL, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DCL, 2, DCL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(POW, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CRS, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SGN, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ABS, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(NRM, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SINCOS, 4, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(REP, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ENDREP, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(IF, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(IFC, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ELSE, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ENDIF, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(BREAK, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(BREAKC, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MOVA, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DEFB, 2, DEFB, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DEFI, 5, DEFI, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXCOORD, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXKILL, 1, D, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEX, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL), // same parse_args logic as TEXCOORD
+    INSTRUCTION(TEXBEM, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXBEML, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2AR, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2GB, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2PAD, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2TEX, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3PAD, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3TEX, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3SPEC, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3VSPEC, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(EXPP, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LOGP, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CND, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DEF, 5, DEF, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2RGB, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXDP3TEX, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X2DEPTH, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXDP3, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXM3X3, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXDEPTH, 1, D, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CMP, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(BEM, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DP2ADD, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXLDD, 5, DSSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SETP, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXLDL, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(BREAKP, 1, S, MOJOSHADER_TYPE_ANY),  // src
 
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
@@ -2368,14 +2362,14 @@ static int parse_version_token(Context *ctx)
 
     const uint32 token = SWAP32(*(ctx->tokens));
     const uint32 shadertype = ((token >> 16) & 0xFFFF);
-    const uint32 major = (uint32) ((token >> 8) & 0xFF);
-    const uint32 minor = (uint32) (token & 0xFF);
+    const uint8 major = (uint8) ((token >> 8) & 0xFF);
+    const uint8 minor = (uint8) (token & 0xFF);
 
     // 0xFFFF == pixel shader, 0xFFFE == vertex shader
     if (shadertype == 0xFFFF)
-        ctx->shader_type = SHADER_TYPE_PIXEL;
+        ctx->shader_type = MOJOSHADER_TYPE_PIXEL;
     else if (shadertype == 0xFFFE)
-        ctx->shader_type = SHADER_TYPE_VERTEX;
+        ctx->shader_type = MOJOSHADER_TYPE_VERTEX;
     else  // geometry shader? Bogus data?
         return fail(ctx, "Unsupported shader type or not a shader at all");
 
@@ -2405,11 +2399,21 @@ static int parse_comment_token(Context *ctx)
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
         const uint32 len = commenttoks * sizeof (uint32);
         const int needmalloc = (len >= SCRATCH_BUFFER_SIZE);
-        char *str = ((needmalloc) ? (char *) ctx->malloc(len + 1) :
-                        get_scratch_buffer(ctx));
+        char *str = NULL;
+
+        if (!needmalloc)
+            str = get_scratch_buffer(ctx);
+        else
+        {
+            str = (char *) ctx->malloc(len + 1);
+            if (str == NULL)
+                return out_of_memory(ctx);
+        } // else
+
         memcpy(str, (const char *) (ctx->tokens+1), len);
         str[len] = '\0';
         ctx->profile->comment_emitter(ctx, str);
+
         if (needmalloc)
             ctx->free(str);
 
@@ -2487,9 +2491,9 @@ static int find_profile_id(const char *profile)
 
 
 static Context *build_context(const char *profile,
-                                       const unsigned char *tokenbuf,
-                                       const unsigned int bufsize,
-                                       MOJOSHADER_malloc m, MOJOSHADER_free f)
+                              const unsigned char *tokenbuf,
+                              const unsigned int bufsize,
+                              MOJOSHADER_malloc m, MOJOSHADER_free f)
 {
     if (m == NULL) m = internal_malloc;
     if (f == NULL) f = internal_free;
@@ -2511,27 +2515,32 @@ static Context *build_context(const char *profile,
 
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
-    if (profileid >= 0)  // we'll fail later, but we still need the context!
+    if (profileid >= 0)
         ctx->profile = &profiles[profileid];
-
-    return ctx;
+    else
+        failf(ctx, "Profile '%s' is unknown or unsupported", profile);
 } // build_context
 
 
 static void destroy_context(Context *ctx)
 {
-    OutputList *item = ctx->output.next;
-    while (item != NULL)
+    if (ctx != NULL)
     {
-        OutputList *next = item->next;
-        ctx->free(item->str);
-        ctx->free(item);
-        item = next;
-    } // for
+        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
+        OutputList *item = ctx->output.next;
+        while (item != NULL)
+        {
+            OutputList *next = item->next;
+            if (item->str != NULL)
+                f(item->str);
+            f(item);
+            item = next;
+        } // while
 
-    if (ctx->failstr != out_of_mem_string)
-        ctx->free((void *) ctx->failstr);
-    ctx->free(ctx);
+        if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
+            f((void *) ctx->failstr);
+        f(ctx);
+    } // if
 } // destroy_context
 
 
@@ -2562,20 +2571,61 @@ static char *build_output(Context *ctx)
 } // build_output
 
 
+static MOJOSHADER_parseData *build_parsedata(Context *ctx)
+{
+    char *output = NULL;
+    int len = 0;
+    MOJOSHADER_parseData *retval;
+
+    if ((retval = ctx->malloc(sizeof (MOJOSHADER_parseData))) == NULL)
+        return &out_of_mem_data;
+
+    memset(retval, '\0', sizeof (MOJOSHADER_parseData));
+
+    if (!isfail(ctx))
+        output = build_output(ctx);
+
+    // check again, in case build_output ran out of memory.
+    if (isfail(ctx))
+    {
+        if (output != NULL)
+            ctx->free(output);  // just in case.
+        retval->error = ctx->failstr;  // we recycle.  :)
+        ctx->failstr = NULL;  // don't let this get free()'d too soon.
+    } // if
+    else
+    {
+        retval->output = output;
+        retval->output_len = ctx->output_len;
+        retval->instruction_count = ctx->instruction_count;
+        retval->shader_type = ctx->shader_type;
+        retval->major_ver = (int) ctx->major_ver;
+        retval->minor_ver = (int) ctx->minor_ver;
+        retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
+        retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
+    } // else
+
+    return retval;
+} // build_parsedata
+
+
 // API entry point...
 
-int MOJOSHADER_parse(const char *profile, const unsigned char *tokenbuf,
-                   const unsigned int bufsize, MOJOSHADER_malloc m,
-                   MOJOSHADER_free f)
+const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
+                                             const unsigned char *tokenbuf,
+                                             const unsigned int bufsize,
+                                             MOJOSHADER_malloc m,
+                                             MOJOSHADER_free f)
 {
+    MOJOSHADER_parseData *retval = NULL;
+    Context *ctx = NULL;
     int rc = FAIL;
 
-    Context *ctx = build_context(profile, tokenbuf, bufsize, m, f);
-    if (ctx == NULL)
-        return 0;  // !!! FIXME: error string?
+    if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
+        return &out_of_mem_data;  // supply both or neither.
 
-    if (ctx->profile == NULL)
-        failf(ctx, "Profile '%s' is unknown or unsupported", profile);
+    if ((ctx = build_context(profile, tokenbuf, bufsize, m, f)) == NULL)
+        return &out_of_mem_data;
 
     if (!isfail(ctx))
     {
@@ -2591,25 +2641,28 @@ int MOJOSHADER_parse(const char *profile, const unsigned char *tokenbuf,
         } // while
     } // if
 
-//    if (!isfail(ctx))
-    {
-        char *str = build_output(ctx);
-        if (str != NULL)
-        {
-            printf("OUTPUT:\n%s\n", str);  // !!! FIXME: report to caller.
-            ctx->free(str);
-        } // if
-
-        printf("INSTRUCTION COUNT: %u\n", (uint) ctx->instruction_count);
-    } // if
-
-    if (ctx->failstr != NULL)
-        printf("FAIL: %s\n", ctx->failstr);
-
+    retval = build_parsedata(ctx);
     destroy_context(ctx);
-
-    return (rc == END_OF_STREAM);
+    return retval;
 } // MOJOSHADER_parse
+
+
+void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
+{
+    MOJOSHADER_parseData *data = (MOJOSHADER_parseData *) _data;
+    if ((data == NULL) || (data == &out_of_mem_data))
+        return;  // no-op.
+
+    MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
+
+    if (data->output != NULL)  // check for NULL in case of dumb free() impl.
+        f((void *) data->output);
+
+    if ((data->error != NULL) && (data->error != out_of_mem_str))
+        f((void *) data->error);
+
+    f(data);
+} // MOJOSHADER_freeParseData
 
 
 int MOJOSHADER_version(void)
