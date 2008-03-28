@@ -3,7 +3,7 @@
 #include "mojoshader.h"
 
 
-#if DEBUG_MALLOC
+#if MOJOSHADER_DEBUG_MALLOC
 static void *Malloc(int len)
 {
     void *ptr = malloc(len + sizeof (int));
@@ -17,9 +17,8 @@ static void *Malloc(int len)
 
 static void Free(void *_ptr)
 {
-    int *ptr = (((int *) ptr) - 1);
-    int *store = (int *) ptr;
-    int len = *store;
+    int *ptr = (((int *) _ptr) - 1);
+    int len = *ptr;
     printf("free() %d bytes (%p)\n", len, ptr);
     free(ptr);
 } // Free
