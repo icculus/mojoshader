@@ -2602,7 +2602,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (isfail(ctx))
     {
         if (output != NULL)
-            ctx->free(output);  // just in case.
+            ctx->free(output);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -2614,9 +2614,10 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->shader_type = ctx->shader_type;
         retval->major_ver = (int) ctx->major_ver;
         retval->minor_ver = (int) ctx->minor_ver;
-        retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
-        retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
     } // else
+
+    retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
 
     return retval;
 } // build_parsedata
