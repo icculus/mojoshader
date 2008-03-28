@@ -1195,6 +1195,8 @@ static void emit_GLSL_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
+
+    ctx->output = &ctx->globals;
     if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
         output_line(ctx, "// Pixel shader, version %u.%u", major, minor);
     else if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
@@ -1205,6 +1207,7 @@ static void emit_GLSL_start(Context *ctx)
               (uint) ctx->shader_type);
     } // else
 
+    ctx->output = &ctx->mainline;
     output_line(ctx, "void main() {");
     ctx->indent++;
 } // emit_GLSL_start
@@ -1212,6 +1215,7 @@ static void emit_GLSL_start(Context *ctx)
 static void emit_GLSL_end(Context *ctx)
 {
     ctx->indent--;
+    assert(ctx->output == &ctx->mainline);
     output_line(ctx, "}");
 } // emit_GLSL_end
 
@@ -1512,23 +1516,25 @@ static void emit_GLSL_MOVA(Context *ctx)
 
 static void emit_GLSL_DEFB(Context *ctx)
 {
-    // !!! FIXME: this should really insert at the start of the output,
-    // !!! FIXME:  in case an instruction shows up before a DEF* token
-    // !!! FIXME:  (which may be legal in the spec).
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+
+    OutputList *orig_target = ctx->output;
+    ctx->output = &ctx->globals;
     output_line(ctx, "const bool %s = %s;",
                 dst0, ctx->dwords[0] ? "true" : "false");
+    ctx->output = orig_target;
 } // emit_GLSL_DEFB
 
 static void emit_GLSL_DEFI(Context *ctx)
 {
-    // !!! FIXME: this should really insert at the start of the output,
-    // !!! FIXME:  in case an instruction shows up before a DEF* token
-    // !!! FIXME:  (which may be legal in the spec).
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
     const int32 *x = (const int32 *) ctx->dwords;
+
+    OutputList *orig_target = ctx->output;
+    ctx->output = &ctx->globals;
     output_line(ctx, "const ivec4 %s(%d, %d, %d, %d);",
                 dst0, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
+    ctx->output = orig_target;
 } // emit_GLSL_DEFI
 
 static void emit_GLSL_TEXCOORD(Context *ctx)
@@ -1624,9 +1630,6 @@ static void emit_GLSL_CND(Context *ctx)
 
 static void emit_GLSL_DEF(Context *ctx)
 {
-    // !!! FIXME: this should really insert at the start of the output,
-    // !!! FIXME:  in case an instruction shows up before a DEF* token
-    // !!! FIXME:  (which may be legal in the spec).
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
     char val0[32];
@@ -1637,8 +1640,12 @@ static void emit_GLSL_DEF(Context *ctx)
     floatstr(ctx, val1, sizeof (val1), val[1]);
     floatstr(ctx, val2, sizeof (val2), val[2]);
     floatstr(ctx, val3, sizeof (val3), val[3]);
+
+    OutputList *orig_target = ctx->output;
+    ctx->output = &ctx->globals;
     output_line(ctx, "const vec4 %s(%s, %s, %s, %s);",
                 dst0, val0, val1, val2, val3);
+    ctx->output = orig_target;
 } // emit_GLSL_DEF
 
 static void emit_GLSL_TEXREG2RGB(Context *ctx)
