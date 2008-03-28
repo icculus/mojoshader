@@ -64,22 +64,32 @@ int main(int argc, char **argv)
 {
     int i;
 
+    printf("MojoShader testparse\n");
     printf("Compiled against version %d\n", MOJOSHADER_VERSION);
     printf("Linked against version %d\n", MOJOSHADER_version());
+    printf("\n");
 
-    for (i = 1; i < argc; i++)
+    if (argc == 1)
+        printf("No files specified.\n");
+    else
     {
-        FILE *io = fopen(argv[i], "rb");
-        if (io != NULL)
+        for (i = 1; i < argc; i++)
         {
-            unsigned char *buf = (unsigned char *) malloc(1000000);
-            int rc = fread(buf, 1, 1000000, io);
-            fclose(io);
-            do_parse(buf, rc, MOJOSHADER_PROFILE_D3D);
-            do_parse(buf, rc, MOJOSHADER_PROFILE_GLSL);
-            free(buf);
-        } // if
-    } // if
+            FILE *io = fopen(argv[i], "rb");
+            printf("FILE: %s\n", argv[i]);
+            if (io == NULL)
+                printf("fopen('%s') failed.\n", argv[i]);
+            else
+            {
+                unsigned char *buf = (unsigned char *) malloc(1000000);
+                int rc = fread(buf, 1, 1000000, io);
+                fclose(io);
+                do_parse(buf, rc, MOJOSHADER_PROFILE_D3D);
+                do_parse(buf, rc, MOJOSHADER_PROFILE_GLSL);
+                free(buf);
+            } // else
+        } // for
+    } // else
 
     return 0;
 } // main
