@@ -1862,7 +1862,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
 static int parse_args_NULL(Context *ctx)
 {
-    return (isfail(ctx) ? FAIL : 0);
+    return (isfail(ctx) ? FAIL : 1);
 } // parse_args_NULL
 
 
@@ -1889,7 +1889,7 @@ static int parse_args_DEF(Context *ctx)
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
 
-    return 5;
+    return 6;
 } // parse_args_DEF
 
 
@@ -1906,7 +1906,7 @@ static int parse_args_DEFI(Context *ctx)
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
 
-    return 5;
+    return 6;
 } // parse_args_DEFI
 
 
@@ -1920,7 +1920,7 @@ static int parse_args_DEFB(Context *ctx)
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
 
-    return 2;
+    return 3;
 } // parse_args_DEFB
 
 
@@ -2062,21 +2062,21 @@ static int parse_args_DCL(Context *ctx)
     if ((token & reserved_mask) != 0)
         return fail(ctx, "reserved bits in DCL dword aren't zero");
 
-    return 2;
+    return 3;
 } // parse_args_DCL
 
 
 static int parse_args_D(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    return 1;
+    return 2;
 } // parse_args_D
 
 
 static int parse_args_S(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return 1;
+    return 2;
 } // parse_args_S
 
 
@@ -2084,7 +2084,7 @@ static int parse_args_SS(Context *ctx)
 {
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return 2;
+    return 3;
 } // parse_args_SS
 
 
@@ -2092,7 +2092,7 @@ static int parse_args_DS(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return 2;
+    return 3;
 } // parse_args_DS
 
 
@@ -2101,7 +2101,7 @@ static int parse_args_DSS(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return 3;
+    return 4;
 } // parse_args_DSS
 
 
@@ -2111,7 +2111,7 @@ static int parse_args_DSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
-    return 4;
+    return 5;
 } // parse_args_DSSS
 
 
@@ -2122,7 +2122,7 @@ static int parse_args_DSSSS(Context *ctx)
     if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
     if (parse_source_token(ctx, &ctx->source_args[3]) == FAIL) return FAIL;
-    return 5;
+    return 6;
 } // parse_args_DSSSS
 
 
@@ -2133,9 +2133,9 @@ static int parse_args_TEXCOORD(Context *ctx)
     {
         if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL)
             return FAIL;
-        return 2;
+        return 3;
     } // if
-    return 1;
+    return 2;
 } // parse_args_TEXCOORD
 
 
