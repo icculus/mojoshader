@@ -9,8 +9,10 @@
 
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
 
-// !!! FIXME: do DEF* and DCL_* opcodes have to come before instructions?
-// !!! FIXME:  my reading of the msdn spec suggests no.
+// !!! FIXME: do DEF* opcodes have to come before instructions?
+// !!! FIXME:  my reading of the msdn spec suggests no, but it sounds like
+// !!! FIXME:  something they'd require. DCL_* _does_ have to be first.
+
 
 // Shader bytecode format is described at MSDN:
 //  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
@@ -2235,6 +2237,7 @@ static int parse_args_DEFB(Context *ctx)
 } // parse_args_DEFB
 
 
+// !!! FIXME: add a state_DCL() that fails if DCL opcode comes after real instructions.
 static int parse_args_DCL(Context *ctx)
 {
     int unsupported = 0;
