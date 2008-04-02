@@ -2578,7 +2578,7 @@ static int check_label_register(Context *ctx, int arg, const char *opcode)
     if (regtype != REGISTER_TYPE_LABEL)
         return failf(ctx, "%s with a non-label register specified", opcode);
 
-    else if (shader_version_atleast(ctx, 2, 0))
+    else if (!shader_version_atleast(ctx, 2, 0))
         return failf(ctx, "%s not supported in Shader Model 1", opcode);
 
     else if ((shader_version_atleast(ctx, 2, 255)) && (regnum > 2047))
@@ -2594,24 +2594,23 @@ static void state_LABEL(Context *ctx)
 {
     if (ctx->previous_opcode != OPCODE_RET)
         fail(ctx, "LABEL not followed by a RET");
-//    check_label_register(ctx, 0, "LABEL");
+    check_label_register(ctx, 0, "LABEL");
 } // state_LABEL
 
 static void state_CALL(Context *ctx)
 {
     const int l = ctx->source_args[0].regnum;
-// !!! FIXME
-//    if (check_label_register(ctx, 0, "CALL") != FAIL)
+    if (check_label_register(ctx, 0, "CALL") != FAIL)
         set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
 } // state_CALL
 
 static void state_CALLNZ(Context *ctx)
 {
+    const RegisterType rt = ctx->source_args[1].regtype;
     const int l = ctx->source_args[0].regnum;
-// !!! FIXME
-//    if (ctx->source_args[1].regtype != REGISTER_TYPE_CONSTBOOL)
-//        fail(ctx, "CALLNZ argument isn't constbool register");
-//    else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
+    if ((rt != REGISTER_TYPE_CONSTBOOL) && (rt != REGISTER_TYPE_PREDICATE))
+        fail(ctx, "CALLNZ argument isn't constbool or predicate register");
+    else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
         set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
 } // state_CALLNZ
 
@@ -2623,8 +2622,7 @@ static void state_MOVA(Context *ctx)
 
 static void state_LOOP(Context *ctx)
 {
-if (0)  // !!! FIXME
-//    if (ctx->source_args[0].regtype != REGISTER_TYPE_LOOP)
+    if (ctx->source_args[0].regtype != REGISTER_TYPE_LOOP)
         fail(ctx, "LOOP argument isn't loop register");
     else if (ctx->source_args[1].regtype != REGISTER_TYPE_CONSTINT)
         fail(ctx, "LOOP argument isn't constint register");
