@@ -24,6 +24,7 @@
 
 #include "mojoshader.h"
 
+
 // This is the highest shader version we currently support.
 
 #define MAX_SHADER_MAJOR 3
@@ -62,6 +63,9 @@ const char *endline_str = "\r\n";
 const char *endline_str = "\n";
 #endif
 
+
+// we need to reference this by explicit value occasionally.
+#define OPCODE_RET 28
 
 
 // Byteswap magic...
@@ -119,15 +123,15 @@ typedef enum
     REGISTER_TYPE_TEMP = 0,
     REGISTER_TYPE_INPUT = 1,
     REGISTER_TYPE_CONST = 2,
-    REGISTER_TYPE_ADDR = 3,
+    REGISTER_TYPE_ADDRESS = 3,
     REGISTER_TYPE_TEXTURE = 3,  // ALSO 3!
     REGISTER_TYPE_RASTOUT = 4,
     REGISTER_TYPE_ATTROUT = 5,
     REGISTER_TYPE_TEXCRDOUT = 6,
-    REGISTER_TYPE_OUTPUT =  6, // ALSO 6!
-    REGISTER_TYPE_CONSTINT =  7,
-    REGISTER_TYPE_COLOROUT =  8,
-    REGISTER_TYPE_DEPTHOUT =  9,
+    REGISTER_TYPE_OUTPUT = 6,  // ALSO 6!
+    REGISTER_TYPE_CONSTINT = 7,
+    REGISTER_TYPE_COLOROUT = 8,
+    REGISTER_TYPE_DEPTHOUT = 9,
     REGISTER_TYPE_SAMPLER = 10,
     REGISTER_TYPE_CONST2 = 11,
     REGISTER_TYPE_CONST3 = 12,
@@ -236,7 +240,7 @@ typedef struct
     int writemask3;  // w or alpha
     int result_mod;
     int result_shift;
-    int regtype;
+    RegisterType regtype;
 } DestArgInfo;
 
 typedef struct
@@ -250,13 +254,28 @@ typedef struct
     int swizzle_z;
     int swizzle_w;
     int src_mod;
-    int regtype;
+    RegisterType regtype;
 } SourceArgInfo;
+
+
+typedef enum
+{
+    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
+    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 1),
+    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 2),
+    CTX_FLAGS_MASK = 0xFFFFFFFF
+} ContextFlags;
 
 
 #define SCRATCH_BUFFER_SIZE 256
 #define SCRATCH_BUFFERS 10
 
+// !!! FIXME: labels_called and the scratch buffers make this pretty big.
+// !!! FIXME:  might be worth having one set of static scratch buffers that
+// !!! FIXME:  are mutex protected?
+// !!! FIXME: and replace the bit array for labels_called with a linked list?
+// !!! FIXME:  maybe just malloc() the label list, since it can't be more than
+// !!! FIXME:  around (bytes_of_shader / 20) elements in the pathological case?
 // Context...this is state that changes as we parse through a shader...
 struct Context
 {
@@ -266,8 +285,13 @@ struct Context
     uint32 tokencount;
     OutputList *output;
     OutputList globals;
+    OutputList helpers;
     OutputList subroutines;
     OutputList mainline;
+    OutputList ignore;
+    OutputList *output_stack[2];
+    int indent_stack[2];
+    int output_stack_len;
     int output_len; // total strlen; prevents walking the lists just to malloc.
     int indent;
     const char *endline;
@@ -281,14 +305,41 @@ struct Context
     uint8 major_ver;
     uint8 minor_ver;
     DestArgInfo dest_args[1];
-    SourceArgInfo source_args[4];
+    SourceArgInfo source_args[5];
     uint32 dwords[4];
     int instruction_count;
     uint32 instruction_controls;
+    uint32 previous_opcode;
+    ContextFlags flags;
+    uint8 labels_called[256];
+    int loops;
 };
 
 
-// Shader model version magic.
+// jump between output sections in the context...
+
+static inline void push_output(Context *ctx, OutputList *section)
+{
+    assert(ctx->output_stack_len < STATICARRAYLEN(ctx->output_stack));
+    ctx->output_stack[ctx->output_stack_len] = ctx->output;
+    ctx->indent_stack[ctx->output_stack_len] = ctx->indent;
+    ctx->output_stack_len++;
+    ctx->output = section;
+    ctx->indent = 0;
+} // push_output
+
+static inline void pop_output(Context *ctx)
+{
+    assert(ctx->output_stack_len > 0);
+    ctx->output_stack_len--;
+    ctx->output = ctx->output_stack[ctx->output_stack_len];
+    ctx->indent = ctx->indent_stack[ctx->output_stack_len];
+} // pop_output
+
+
+
+// Shader model version magic...
+
 static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
 {
     return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
@@ -304,6 +355,29 @@ static int shader_version_atleast(const Context *ctx, uint8 maj, uint8 min)
     return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
 } // shader_version_atleast
 
+
+// Bit arrays (for storing large arrays of booleans...
+
+static void set_bit_array(uint8 *array, size_t arraylen, int index, int val)
+{
+    const int byteindex = index / 8;
+    const int bitindex = index % 8;
+    assert(byteindex < arraylen);
+
+    if (val)
+        array[byteindex] |= (1 << bitindex);
+    else
+        array[byteindex] &= ~(1 << bitindex);
+} // set_bit_array
+
+static int get_bit_array(const uint8 *array, size_t arraylen, int index)
+{
+    const int byteindex = index / 8;
+    const int bitindex = index % 8;
+    assert(byteindex < arraylen);
+    const uint8 byte = array[byteindex];
+    return (byte & (1 << bitindex)) ? 1 : 0;
+} // get_bit_array
 
 
 static inline char *get_scratch_buffer(Context *ctx)
@@ -384,19 +458,20 @@ static int output_line(Context *ctx, const char *fmt, ...)
     if (isfail(ctx))
         return FAIL;  // we failed previously, don't go on...
 
-    item = (OutputListNode *) ctx->malloc(sizeof (OutputListNode));
-    if (item == NULL)
-        return out_of_memory(ctx);
-
     char *scratch = get_scratch_buffer(ctx);
 
     const int indent = ctx->indent;
     if (indent > 0)
         memset(scratch, '\t', indent);
+
     va_list ap;
     va_start(ap, fmt);
     const int len = vsnprintf(scratch+indent, SCRATCH_BUFFER_SIZE-indent, fmt, ap) + indent;
     va_end(ap);
+
+    item = (OutputListNode *) ctx->malloc(sizeof (OutputListNode));
+    if (item == NULL)
+        return out_of_memory(ctx);
 
     item->str = (char *) ctx->malloc(len + 1);
     if (item->str == NULL)
@@ -427,6 +502,13 @@ static int output_line(Context *ctx, const char *fmt, ...)
 
     return 0;
 } // output_line
+
+
+// this is just to stop gcc whining.
+static inline int output_blank_line(Context *ctx)
+{
+    return output_line(ctx, "%s", "");
+} // output_blank_line
 
 
 // !!! FIXME: this is sort of nasty.
@@ -502,7 +584,7 @@ static const char *get_D3D_register_string(Context *ctx,
             regnum += 6144;
             break;
 
-        case REGISTER_TYPE_ADDR:  // (or REGISTER_TYPE_TEXTURE, same value.)
+        case REGISTER_TYPE_ADDRESS:  // (or REGISTER_TYPE_TEXTURE, same value.)
             retval = (ctx->shader_type == MOJOSHADER_TYPE_VERTEX) ? "a" : "t";
             break;
 
@@ -520,7 +602,7 @@ static const char *get_D3D_register_string(Context *ctx,
             retval = "oD";
             break;
 
-        case REGISTER_TYPE_TEXCRDOUT: // (or REGISTER_TYPE_OUTPUT, same value.)
+        case REGISTER_TYPE_OUTPUT: // (or REGISTER_TYPE_TEXCRDOUT, same value.)
             if ((ctx->shader_type==MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
                 retval = "o";
             else
@@ -612,10 +694,9 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
 
     char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx,
-                                        (RegisterType) arg->regtype,
-                                        arg->regnum, regnum_str,
-                                        sizeof (regnum_str));
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
@@ -713,10 +794,9 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 
 
     char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx,
-                                        (RegisterType) arg->regtype,
-                                        arg->regnum, regnum_str,
-                                        sizeof (regnum_str));
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
 
     if (regtype_str == NULL)
     {
@@ -821,7 +901,7 @@ static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 
 static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
-    const char *src0 = make_D3D_destarg_string(ctx, 0);
+    const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s %s", opcode, src0);
 } // emit_D3D_opcode_s
@@ -1212,11 +1292,12 @@ static void emit_GLSL_start(Context *ctx)
     ctx->indent++;
 } // emit_GLSL_start
 
+static void emit_GLSL_RET(Context *ctx);
 static void emit_GLSL_end(Context *ctx)
 {
-    ctx->indent--;
-    assert(ctx->output == &ctx->mainline);
-    output_line(ctx, "}");
+    // force a RET opcode if we're at the end of the stream without one.
+    if (ctx->previous_opcode != OPCODE_RET)
+        emit_GLSL_RET(ctx);
 } // emit_GLSL_end
 
 static void emit_GLSL_comment(Context *ctx, const char *str)
@@ -1347,59 +1428,196 @@ static void emit_GLSL_LOG(Context *ctx)
     output_line(ctx, "%s = log2(%s);", dst0, src0);
 } // emit_GLSL_LOG
 
+static void emit_GLSL_LIT_helper(Context *ctx)
+{
+    const char *maxp = "127.9961f"; // value from the dx9 reference.
+
+    if (ctx->flags & CTX_FLAGS_GLSL_LIT_OPCODE)
+        return;
+
+    ctx->flags |= CTX_FLAGS_GLSL_LIT_OPCODE;
+
+    push_output(ctx, &ctx->helpers);
+    output_line(ctx, "const vec4 LIT(const vec4 src)");
+    output_line(ctx, "{"); ctx->indent++;
+    output_line(ctx,   "const float power = clamp(src.w, -%s, %s);",maxp,maxp);
+    output_line(ctx,   "vec4 retval(1.0f, 0.0f, 0.0f, 1.0f)");
+    output_line(ctx,   "if (src.x > 0.0f) {"); ctx->indent++;
+    output_line(ctx,     "retval.y = src.x;");
+    output_line(ctx,     "if (src.y > 0.0f) {"); ctx->indent++;
+    output_line(ctx,       "retval.z = pow(src.y, power);"); ctx->indent--;
+    output_line(ctx,     "}"); ctx->indent--;
+    output_line(ctx,   "}");
+    output_line(ctx,   "return retval;"); ctx->indent--;
+    output_line(ctx, "}");
+    output_blank_line(ctx);
+    pop_output(ctx);
+} // emit_GLSL_LIT_helper
+
 static void emit_GLSL_LIT(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    emit_GLSL_LIT_helper(ctx);
+    output_line(ctx, "%s = LIT(%s);", dst0, src0);
 } // emit_GLSL_LIT
+
+static void emit_GLSL_DST_helper(Context *ctx)
+{
+    if (ctx->flags & CTX_FLAGS_GLSL_DST_OPCODE)
+        return;
+
+    ctx->flags |= CTX_FLAGS_GLSL_DST_OPCODE;
+
+    push_output(ctx, &ctx->helpers);
+    output_line(ctx, "const vec4 DST(const vec4 src0, const vec4 src1)");
+    output_line(ctx, "{"); ctx->indent++;
+    output_line(ctx,   "return vec4(1.0f, src0.y * src1.y, src0.z, src1.w);"); ctx->indent--;
+    output_line(ctx, "}");
+    output_blank_line(ctx);
+    pop_output(ctx);
+} // emit_GLSL_DST_helper
 
 static void emit_GLSL_DST(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    emit_GLSL_DST_helper(ctx);
+    output_line(ctx, "%s = DST(%s, %s);", dst0, src0, src1);
 } // emit_GLSL_DST
+
+static void emit_GLSL_LRP_helper(Context *ctx)
+{
+    if (ctx->flags & CTX_FLAGS_GLSL_LRP_OPCODE)
+        return;
+
+    ctx->flags |= CTX_FLAGS_GLSL_LRP_OPCODE;
+
+    push_output(ctx, &ctx->helpers);
+    output_line(ctx, "const vec4 LRP(const vec4 src0, const vec4 src1, const vec4 src2)");
+    output_line(ctx, "{"); ctx->indent++;
+    output_line(ctx,   "return vec4("); ctx->indent++;
+    output_line(ctx,     "src0.x * (src1.x - src2.x) + src2.x,");
+    output_line(ctx,     "src0.y * (src1.y - src2.y) + src2.y,");
+    output_line(ctx,     "src0.z * (src1.z - src2.z) + src2.z,");
+    output_line(ctx,     "src0.w * (src1.w - src2.w) + src2.w"); ctx->indent--;
+    output_line(ctx,   ");"); ctx->indent--;
+    output_line(ctx, "}");
+    output_blank_line(ctx);
+    pop_output(ctx);
+} // emit_GLSL_LRP_helper
 
 static void emit_GLSL_LRP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
+    emit_GLSL_LRP_helper(ctx);
+    output_line(ctx, "%s = LRP(%s, %s, %s);", dst0, src0, src1, src2);
 } // emit_GLSL_LRP
 
 static void emit_GLSL_FRC(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = fract(%s);", dst0, src0);
 } // emit_GLSL_FRC
 
 static void emit_GLSL_M4X4(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
+    const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
+    const char *row3 = make_GLSL_sourcearg_string(ctx, 4);
+
+    output_line(ctx, "%s = vec4(", dst0); ctx->indent++;
+    output_line(ctx,   "dot(%s, %s),", src0, row0);
+    output_line(ctx,   "dot(%s, %s),", src0, row1);
+    output_line(ctx,   "dot(%s, %s),", src0, row2);
+    output_line(ctx,   "dot(%s, %s),", src0, row3); ctx->indent--;
+    output_line(ctx, ");");
 } // emit_GLSL_M4X4
 
 static void emit_GLSL_M4X3(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
+    const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
+
+    output_line(ctx, "%s = vec3(", dst0); ctx->indent++;
+    output_line(ctx,   "dot(%s, %s),", src0, row0);
+    output_line(ctx,   "dot(%s, %s),", src0, row1);
+    output_line(ctx,   "dot(%s, %s),", src0, row2); ctx->indent--;
+    output_line(ctx, ");");
 } // emit_GLSL_M4X3
 
 static void emit_GLSL_M3X4(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
+    const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
+    const char *row3 = make_GLSL_sourcearg_string(ctx, 4);
+
+    output_line(ctx, "%s = vec4(", dst0); ctx->indent++;
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row0);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row1);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row2);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row3); ctx->indent--;
+    output_line(ctx, ");");
 } // emit_GLSL_M3X4
 
 static void emit_GLSL_M3X3(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
+    const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
+
+    output_line(ctx, "%s = vec3(", dst0); ctx->indent++;
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row0);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row1);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row2); ctx->indent--;
+    output_line(ctx, ");");
 } // emit_GLSL_M3X3
 
 static void emit_GLSL_M3X2(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
+
+    output_line(ctx, "%s = vec2(", dst0); ctx->indent++;
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row0);
+    output_line(ctx,   "dot(vec3(%s), vec3(%s)),", src0, row1); ctx->indent--;
+    output_line(ctx, ");");
 } // emit_GLSL_M3X2
 
 static void emit_GLSL_CALL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s();", src0);
 } // emit_GLSL_CALL
 
 static void emit_GLSL_CALLNZ(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "if (%s) { %s(); }", src0, src1);
 } // emit_GLSL_CALLNZ
 
 static void emit_GLSL_LOOP(Context *ctx)
@@ -1409,7 +1627,13 @@ static void emit_GLSL_LOOP(Context *ctx)
 
 static void emit_GLSL_RET(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // thankfully, the MSDN specs say a RET _has_ to end a function...no
+    //  early returns. So if you hit one, you know you can safely close
+    //  a high-level function.
+    ctx->indent--;
+    output_line(ctx, "}");
+    output_blank_line(ctx);
+    ctx->output = &ctx->subroutines;
 } // emit_GLSL_RET
 
 static void emit_GLSL_ENDLOOP(Context *ctx)
@@ -1419,12 +1643,66 @@ static void emit_GLSL_ENDLOOP(Context *ctx)
 
 static void emit_GLSL_LABEL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *labelstr = make_GLSL_sourcearg_string(ctx, 0);
+    const int label = ctx->source_args[0].regnum;
+    assert(ctx->output == &ctx->subroutines);  // not mainline, etc.
+    assert(ctx->indent == 0);  // we shouldn't be in the middle of a function.
+
+    // MSDN specs say CALL* has to come before the LABEL, so we know if we
+    //  can ditch the entire function here as unused.
+    if (!get_bit_array(ctx->labels_called, sizeof (ctx->labels_called), label))
+        ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
+
+    output_line(ctx, "void %s(void)", labelstr);
+    output_line(ctx, "{");
+    ctx->indent++;
 } // emit_GLSL_LABEL
 
 static void emit_GLSL_DCL(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
+#if 0
+    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const DestArgInfo *arg = &ctx->dest_args[0];
+    const char *usage_str = "";
+    char index_str[16] = { '\0' };
+
+    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    {
+        static const char *usagestrs[] = {
+            "_position", "_blendweight", "_blendindices", "_normal",
+            "_psize", "_texcoord", "_tangent", "_binormal", "_tessfactor",
+            "_positiont", "_color", "_fog", "_depth", "_sample"
+        };
+
+        const uint32 usage = ctx->dwords[0];
+        const uint32 index = ctx->dwords[1];
+
+        if (usage >= STATICARRAYLEN(usagestrs))
+        {
+            fail(ctx, "unknown DCL usage");
+            return;
+        } // if
+
+        usage_str = usagestrs[usage];
+
+        if (index != 0)
+            snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+    } // if
+
+    else if (arg->regtype == REGISTER_TYPE_SAMPLER)
+    {
+        switch ((const TextureType) ctx->dwords[0])
+        {
+            case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+            case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+            case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+            default: fail(ctx, "unknown sampler texture type"); return;
+        } // switch
+    } // else if
+
+    output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
+#endif
 } // emit_GLSL_DCL
 
 static void emit_GLSL_POW(Context *ctx)
@@ -1434,17 +1712,25 @@ static void emit_GLSL_POW(Context *ctx)
 
 static void emit_GLSL_CRS(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = cross(vec3(%s), vec3(%s));", dst0, src0, src1);
 } // emit_GLSL_CRS
 
 static void emit_GLSL_SGN(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    // (we don't need the temporary registers specified for the D3D opcode.)
+    output_line(ctx, "%s = sign(%s);", dst0, src0);
 } // emit_GLSL_SGN
 
 static void emit_GLSL_ABS(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = abs(%s);", dst0, src0);
 } // emit_GLSL_ABS
 
 static void emit_GLSL_NRM(Context *ctx)
@@ -1455,6 +1741,15 @@ static void emit_GLSL_NRM(Context *ctx)
 static void emit_GLSL_SINCOS(Context *ctx)
 {
     fail(ctx, "unimplemented.");  // !!! FIXME
+#if 0 // !!! FIXME
+    // !!! FIXME: vs_2_0 is different?
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    if (ctx->source_args[0].writemask == 0x3)  // .xy
+        output_line(ctx, "%s = vec2(cos(%s), sin(%s));", dst0, src0, src0);
+    else if (ctx->source_args[0].writemask == 0x1)  // .x
+        sdfsdf
+#endif
 } // emit_GLSL_SINCOS
 
 static void emit_GLSL_REP(Context *ctx)
@@ -1511,30 +1806,28 @@ static void emit_GLSL_BREAKC(Context *ctx)
 
 static void emit_GLSL_MOVA(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "%s = ivec4(floor(%s + vec4(0.5f, 0.5f, 0.5f, 0.5f)));", dst0, src0);
 } // emit_GLSL_MOVA
 
 static void emit_GLSL_DEFB(Context *ctx)
 {
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
-
-    OutputList *orig_target = ctx->output;
-    ctx->output = &ctx->globals;
+    push_output(ctx, &ctx->globals);
     output_line(ctx, "const bool %s = %s;",
                 dst0, ctx->dwords[0] ? "true" : "false");
-    ctx->output = orig_target;
+    pop_output(ctx);
 } // emit_GLSL_DEFB
 
 static void emit_GLSL_DEFI(Context *ctx)
 {
     const char *dst0 = make_GLSL_destarg_string(ctx, 0);
     const int32 *x = (const int32 *) ctx->dwords;
-
-    OutputList *orig_target = ctx->output;
-    ctx->output = &ctx->globals;
+    push_output(ctx, &ctx->globals);
     output_line(ctx, "const ivec4 %s(%d, %d, %d, %d);",
                 dst0, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
-    ctx->output = orig_target;
+    pop_output(ctx);
 } // emit_GLSL_DEFI
 
 static void emit_GLSL_TEXCOORD(Context *ctx)
@@ -1641,11 +1934,10 @@ static void emit_GLSL_DEF(Context *ctx)
     floatstr(ctx, val2, sizeof (val2), val[2]);
     floatstr(ctx, val3, sizeof (val3), val[3]);
 
-    OutputList *orig_target = ctx->output;
-    ctx->output = &ctx->globals;
+    push_output(ctx, &ctx->globals);
     output_line(ctx, "const vec4 %s(%s, %s, %s, %s);",
                 dst0, val0, val1, val2, val3);
-    ctx->output = orig_target;
+    pop_output(ctx);
 } // emit_GLSL_DEF
 
 static void emit_GLSL_TEXREG2RGB(Context *ctx)
@@ -1776,8 +2068,8 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->writemask2 = (int) ((token >> 18) & 0x1); // bit 18
     info->writemask3 = (int) ((token >> 19) & 0x1); // bit 19
     info->result_mod = (int) ((token >> 20) & 0xF); // bits 20 through 23
-    info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27
-    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 8) & 0x18);  // bits 28-30, 11-12
+    info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27      abc
+    info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
@@ -1854,7 +2146,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
     info->swizzle_w = (int) ((token >> 22) & 0x3); // bits 22 through 23
     info->src_mod = (int) ((token >> 24) & 0xF); // bits 24 through 27
-    info->regtype = (int) ((token >> 28) & 0x7) | ((token >> 9) & 0x18);  // bits 28-30, 11-12
+    info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
@@ -1890,7 +2182,13 @@ static int parse_args_DEF(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    switch ((RegisterType) ctx->dest_args[0].regtype)
+    // !!! FIXME: msdn says this can be float or int...how do we differentiate?
+    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
+    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
+    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
+    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
+
+    switch (ctx->dest_args[0].regtype)
     {
         case REGISTER_TYPE_CONST:
         case REGISTER_TYPE_CONST2:
@@ -1902,12 +2200,6 @@ static int parse_args_DEF(Context *ctx)
             return fail(ctx, "DEF token using invalid register");
     } // switch
 
-    // !!! FIXME: msdn says this can be float or int...how do we differentiate?
-    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
-    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
-    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
-    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-
     return 6;
 } // parse_args_DEF
 
@@ -1917,13 +2209,13 @@ static int parse_args_DEFI(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    if (((RegisterType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTINT)
-        return fail(ctx, "DEFI token using invalid register");
-
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
+
+    if (ctx->dest_args[0].regtype != REGISTER_TYPE_CONSTINT)
+        return fail(ctx, "DEFI token using invalid register");
 
     return 6;
 } // parse_args_DEFI
@@ -1934,10 +2226,10 @@ static int parse_args_DEFB(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    if (((RegisterType) ctx->dest_args[0].regtype) != REGISTER_TYPE_CONSTBOOL)
-        return fail(ctx, "DEFB token using invalid register");
-
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
+
+    if (ctx->dest_args[0].regtype != REGISTER_TYPE_CONSTBOOL)
+        return fail(ctx, "DEFB token using invalid register");
 
     return 3;
 } // parse_args_DEFB
@@ -1958,7 +2250,7 @@ static int parse_args_DCL(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    const RegisterType regtype = (RegisterType) ctx->dest_args[0].regtype;
+    const RegisterType regtype = ctx->dest_args[0].regtype;
     if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
     {
         if (regtype == REGISTER_TYPE_INPUT)
@@ -2161,10 +2453,191 @@ static int parse_args_TEXCOORD(Context *ctx)
 
 // State machine functions...
 
-static void state_RESERVED(Context *ctx)
+static void state_FRC(Context *ctx)
 {
-    fail(ctx, "Tried to use RESERVED opcode.");
-} // state_RESERVED
+    if (!shader_version_atleast(ctx, 2, 0))
+    {
+        const DestArgInfo *info = &ctx->dest_args[0];
+        if ((info->writemask != 0x2) && (info->writemask != 0x3))
+            fail(ctx, "FRC writemask must be .y or .xy for shader model 1.x");
+    } // if
+} // state_FRC
+
+static void state_M4X4(Context *ctx)
+{
+    int i;
+    const DestArgInfo *info = &ctx->dest_args[0];
+    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+        fail(ctx, "M4X4 writemask must be .xyzw");
+
+// !!! FIXME: MSDN:
+//The xyzw (default) mask is required for the destination register. Negate and swizzle modifiers are allowed for src0, but not for src1.
+//Swizzle and negate modifiers are invalid for the src0 register. The dest and src0 registers cannot be the same.
+
+    // replicate the matrix registers to source args. The D3D profile will
+    //  only use the one legitimate argument, but this saves other profiles
+    //  from having to build this.
+    for (i = 0; i < 3; i++)
+    {
+        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
+        ctx->source_args[i+1].regnum += i;
+    } // for
+} // state_M4X4
+
+static void state_M4X3(Context *ctx)
+{
+    int i;
+    const DestArgInfo *info = &ctx->dest_args[0];
+    if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
+        fail(ctx, "M4X3 writemask must be .xyz");
+
+// !!! FIXME: MSDN stuff
+
+    // replicate the matrix registers to source args. The D3D profile will
+    //  only use the one legitimate argument, but this saves other profiles
+    //  from having to build this.
+    for (i = 0; i < 2; i++)
+    {
+        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
+        ctx->source_args[i+1].regnum += i;
+    } // for
+} // state_M4X3
+
+static void state_M3X4(Context *ctx)
+{
+    int i;
+    const DestArgInfo *info = &ctx->dest_args[0];
+    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+        fail(ctx, "M3X4 writemask must be .xyzw");
+
+// !!! FIXME: MSDN stuff
+
+    // replicate the matrix registers to source args. The D3D profile will
+    //  only use the one legitimate argument, but this saves other profiles
+    //  from having to build this.
+    for (i = 0; i < 3; i++)
+    {
+        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
+        ctx->source_args[i+1].regnum += i;
+    } // for
+} // state_M3X4
+
+static void state_M3X3(Context *ctx)
+{
+    int i;
+    const DestArgInfo *info = &ctx->dest_args[0];
+    if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
+        fail(ctx, "M3X3 writemask must be .xyz");
+
+// !!! FIXME: MSDN stuff
+
+    // replicate the matrix registers to source args. The D3D profile will
+    //  only use the one legitimate argument, but this saves other profiles
+    //  from having to build this.
+    for (i = 0; i < 2; i++)
+    {
+        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
+        ctx->source_args[i+1].regnum += i;
+    } // for
+} // state_M3X3
+
+static void state_M3X2(Context *ctx)
+{
+    const DestArgInfo *info = &ctx->dest_args[0];
+    if (info->writemask != 0x3)  // 0x3 == 0011. (that is: xy)
+        fail(ctx, "M3X2 writemask must be .xy");
+
+// !!! FIXME: MSDN stuff
+
+    // replicate the matrix registers to source args. The D3D profile will
+    //  only use the one legitimate argument, but this saves other profiles
+    //  from having to build this.
+    memcpy(&ctx->source_args[2], &ctx->source_args[1], sizeof (SourceArgInfo));
+    ctx->source_args[2].regnum++;
+} // state_M3X2
+
+static void state_RET(Context *ctx)
+{
+    // MSDN all but says that assembly shaders are more or less serialized
+    //  HLSL functions, and a RET means you're at the end of one, unlike how
+    //  most CPUs would behave. This is actually really helpful,
+    //  since we can use high-level constructs and not a mess of GOTOs,
+    //  which is a godsend for GLSL...this also means we can consider things
+    //  like a LOOP without a matching ENDLOOP within a label's section as
+    //  an error.
+    if (ctx->loops > 0)
+        fail(ctx, "LOOP without ENDLOOP");
+} // state_RET
+
+static int check_label_register(Context *ctx, int arg, const char *opcode)
+{
+    const SourceArgInfo *info = &ctx->source_args[arg];
+    const RegisterType regtype = info->regtype;
+    const int regnum = info->regnum;
+
+    if (regtype != REGISTER_TYPE_LABEL)
+        return failf(ctx, "%s with a non-label register specified", opcode);
+
+    else if (shader_version_atleast(ctx, 2, 0))
+        return failf(ctx, "%s not supported in Shader Model 1", opcode);
+
+    else if ((shader_version_atleast(ctx, 2, 255)) && (regnum > 2047))
+        return failf(ctx, "label register number must be <= 2047");
+
+    else if (regnum > 15)
+        return failf(ctx, "label register number must be <= 15");
+
+    return 0;
+} // check_label_register
+
+static void state_LABEL(Context *ctx)
+{
+    if (ctx->previous_opcode != OPCODE_RET)
+        fail(ctx, "LABEL not followed by a RET");
+//    check_label_register(ctx, 0, "LABEL");
+} // state_LABEL
+
+static void state_CALL(Context *ctx)
+{
+    const int l = ctx->source_args[0].regnum;
+// !!! FIXME
+//    if (check_label_register(ctx, 0, "CALL") != FAIL)
+        set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
+} // state_CALL
+
+static void state_CALLNZ(Context *ctx)
+{
+    const int l = ctx->source_args[0].regnum;
+// !!! FIXME
+//    if (ctx->source_args[1].regtype != REGISTER_TYPE_CONSTBOOL)
+//        fail(ctx, "CALLNZ argument isn't constbool register");
+//    else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
+        set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
+} // state_CALLNZ
+
+static void state_MOVA(Context *ctx)
+{
+    if (ctx->dest_args[0].regtype != REGISTER_TYPE_ADDRESS)
+        fail(ctx, "MOVA argument isn't address register");
+} // state_MOVA
+
+static void state_LOOP(Context *ctx)
+{
+if (0)  // !!! FIXME
+//    if (ctx->source_args[0].regtype != REGISTER_TYPE_LOOP)
+        fail(ctx, "LOOP argument isn't loop register");
+    else if (ctx->source_args[1].regtype != REGISTER_TYPE_CONSTINT)
+        fail(ctx, "LOOP argument isn't constint register");
+    else
+        ctx->loops++;
+} // state_LOOP
+
+static void state_ENDLOOP(Context *ctx)
+{
+    if (ctx->loops <= 0)
+        fail(ctx, "ENDLOOP without LOOP");
+    ctx->loops--;
+} // state_ENDLOOP
 
 
 // Lookup table for instruction opcodes...
@@ -2214,18 +2687,18 @@ static const Instruction instructions[] =
     INSTRUCTION(LIT, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DST, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(LRP, 4, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(FRC, 2, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(M4X4, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(M4X3, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(M3X4, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(M3X3, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(M3X2, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CALL, 1, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CALLNZ, 2, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LOOP, 2, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RET, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ENDLOOP, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LABEL, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(FRC, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M4X4, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M4X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X4, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X2, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CALL, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CALLNZ, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LOOP, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RET, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(ENDLOOP, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LABEL, 1, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DCL, 2, DCL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(POW, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(CRS, 3, DSS, MOJOSHADER_TYPE_ANY),
@@ -2241,24 +2714,24 @@ static const Instruction instructions[] =
     INSTRUCTION(ENDIF, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(BREAK, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(BREAKC, 2, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MOVA, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(MOVA, 2, DS, MOJOSHADER_TYPE_VERTEX),
     INSTRUCTION(DEFB, 2, DEFB, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DEFI, 5, DEFI, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(TEXCOORD, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXKILL, 1, D, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEX, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL), // same parse_args logic as TEXCOORD
@@ -2270,7 +2743,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXM3X2TEX, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXM3X3PAD, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXM3X3TEX, 2, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RESERVED, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(TEXM3X3SPEC, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXM3X3VSPEC, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(EXPP, 2, DS, MOJOSHADER_TYPE_ANY),
@@ -2379,6 +2852,8 @@ static int parse_instruction_token(Context *ctx)
     else
         emitter(ctx);  // call the profile's emitter.
 
+    ctx->previous_opcode = opcode;
+
     return retval;
 } // parse_instruction_token
 
@@ -2485,6 +2960,9 @@ static int parse_token(Context *ctx)
     if (isfail(ctx))
         return FAIL;  // just in case...catch previously unhandled fails here.
 
+    if (ctx->output_stack_len != 0)
+        return fail(ctx, "BUG: output stack isn't empty on new token!");
+
     if (ctx->tokencount == 0)
         return fail(ctx, "unexpected end of shader.");
 
@@ -2541,8 +3019,10 @@ static Context *build_context(const char *profile,
     ctx->endline = endline_str;
     ctx->endline_len = strlen(ctx->endline);
     ctx->globals.tail = &ctx->globals.head;
+    ctx->helpers.tail = &ctx->helpers.head;
     ctx->subroutines.tail = &ctx->subroutines.head;
     ctx->mainline.tail = &ctx->mainline.head;
+    ctx->ignore.tail = &ctx->ignore.head;
     ctx->output = &ctx->globals;
 
     const int profileid = find_profile_id(profile);
@@ -2575,8 +3055,10 @@ static void destroy_context(Context *ctx)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
         free_output_list(f, ctx->globals.head.next);
+        free_output_list(f, ctx->helpers.head.next);
         free_output_list(f, ctx->subroutines.head.next);
         free_output_list(f, ctx->mainline.head.next);
+        free_output_list(f, ctx->ignore.head.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr);
         f(ctx);
@@ -2613,8 +3095,10 @@ static char *build_output(Context *ctx)
         const size_t endllen = ctx->endline_len;
         char *wptr = retval;
         append_list(&wptr, endl, endllen, ctx->globals.head.next);
+        append_list(&wptr, endl, endllen, ctx->helpers.head.next);
         append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
         append_list(&wptr, endl, endllen, ctx->mainline.head.next);
+        // don't append ctx->ignore ... that's why it's called "ignore"
     } // else
 
     return retval;
