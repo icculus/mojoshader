@@ -1801,9 +1801,11 @@ static void emit_GLSL_CALL(Context *ctx)
 
 static void emit_GLSL_CALLNZ(Context *ctx)
 {
+    // !!! FIXME: if src1 is a constbool that's true, we can remove the
+    // !!! FIXME:  if. If it's false, we can make this a no-op.
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    output_line(ctx, "if (%s) { %s(); }", src0, src1);
+    output_line(ctx, "if (%s) { %s(); }", src1, src0);
 } // emit_GLSL_CALLNZ
 
 static void emit_GLSL_LOOP(Context *ctx)
