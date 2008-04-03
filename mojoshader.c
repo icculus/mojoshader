@@ -2019,7 +2019,8 @@ static void emit_GLSL_TEXLDL(Context *ctx)
 
 static void emit_GLSL_BREAKP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    output_line(ctx, "if (%s) { break; }", src0);
 } // emit_GLSL_BREAKP
 
 static void emit_GLSL_RESERVED(Context *ctx)
