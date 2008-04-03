@@ -1863,6 +1863,9 @@ static void emit_GLSL_LABEL(Context *ctx)
     if (!get_bit_array(ctx->labels_called, sizeof (ctx->labels_called), label))
         ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
 
+    // !!! FIXME: it would be nice if we could determine if a function is
+    // !!! FIXME:  only called once and, if so, forcibly inline it.
+
     output_line(ctx, "void %s(void)", labelstr);
     output_line(ctx, "{");
     ctx->indent++;
