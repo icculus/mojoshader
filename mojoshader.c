@@ -1509,6 +1509,7 @@ static void emit_GLSL_end(Context *ctx)
         output_line(ctx, "ivec a0;");
     if (ctx->flags & CTX_FLAGS_USED_PRED_REG)
         output_line(ctx, "bvec p0;");
+    output_blank_line(ctx);
     pop_output(ctx);
 } // emit_GLSL_end
 
