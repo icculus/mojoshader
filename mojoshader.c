@@ -1662,9 +1662,13 @@ static void emit_GLSL_LABEL(Context *ctx)
 
 static void emit_GLSL_DCL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+//    fail(ctx, "unimplemented.");  // !!! FIXME
+// !!! FIXME
+push_output(ctx, &ctx->globals);
+output_line(ctx, "DCL GOES HERE");
+pop_output(ctx);
 #if 0
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
     const DestArgInfo *arg = &ctx->dest_args[0];
     const char *usage_str = "";
     char index_str[16] = { '\0' };
