@@ -2022,7 +2022,7 @@ static void emit_GLSL_BREAKC(Context *ctx)
 static void emit_GLSL_MOVA(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "ivec4(floor(%s + vec4(0.5f)))", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "ivec4(floor(abs(%s) + vec4(0.5f)) * sign(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOVA
 
