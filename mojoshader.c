@@ -515,17 +515,22 @@ static inline int output_blank_line(Context *ctx)
 
 
 // !!! FIXME: this is sort of nasty.
-static void floatstr(Context *ctx, char *buf, size_t bufsize, float f)
+static void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
+                     int leavedecimal)
 {
     const size_t len = snprintf(buf, bufsize, "%f", f);
-    if (len >= bufsize)
+    if ((len+2) >= bufsize)
         fail(ctx, "BUG: internal buffer is too small");
     else
     {
         char *end = buf + len;
         char *ptr = strchr(buf, '.');
         if (ptr == NULL)
+        {
+            if (leavedecimal)
+                strcat(buf, ".0");
             return;  // done.
+        } // if
 
         while (--end != ptr)
         {
@@ -535,6 +540,8 @@ static void floatstr(Context *ctx, char *buf, size_t bufsize, float f)
                 break;
             } // if
         } // while
+        if ((leavedecimal) && (end == ptr))
+            end += 2;
         *end = '\0';  // chop extra '0' or all decimal places off.
     } // else
 } // floatstr
@@ -1123,10 +1130,10 @@ static void emit_D3D_DEF(Context *ctx)
     char val1[32];
     char val2[32];
     char val3[32];
-    floatstr(ctx, val0, sizeof (val0), val[0]);
-    floatstr(ctx, val1, sizeof (val1), val[1]);
-    floatstr(ctx, val2, sizeof (val2), val[2]);
-    floatstr(ctx, val3, sizeof (val3), val[3]);
+    floatstr(ctx, val0, sizeof (val0), val[0], 0);
+    floatstr(ctx, val1, sizeof (val1), val[1], 0);
+    floatstr(ctx, val2, sizeof (val2), val[2], 0);
+    floatstr(ctx, val3, sizeof (val3), val[3], 0);
     output_line(ctx, "def%s, %s, %s, %s, %s", dst0, val0, val1, val2, val3);
 } // emit_D3D_DEF
 
@@ -2127,13 +2134,13 @@ static void emit_GLSL_DEF(Context *ctx)
     char val1[32];
     char val2[32];
     char val3[32];
-    floatstr(ctx, val0, sizeof (val0), val[0]);
-    floatstr(ctx, val1, sizeof (val1), val[1]);
-    floatstr(ctx, val2, sizeof (val2), val[2]);
-    floatstr(ctx, val3, sizeof (val3), val[3]);
+    floatstr(ctx, val0, sizeof (val0), val[0], 1);
+    floatstr(ctx, val1, sizeof (val1), val[1], 1);
+    floatstr(ctx, val2, sizeof (val2), val[2], 1);
+    floatstr(ctx, val3, sizeof (val3), val[3], 1);
 
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "const vec4 %s(%s, %s, %s, %s);",
+    output_line(ctx, "const vec4 %s(%sf, %sf, %sf, %sf);",
                 varname, val0, val1, val2, val3);
     pop_output(ctx);
 } // emit_GLSL_DEF
