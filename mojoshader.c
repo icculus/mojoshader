@@ -731,10 +731,13 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 
 static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 {
+    char *retval = get_scratch_buffer(ctx);
+    *retval = '\0';  // truncate string to start.
+
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        return retval;
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
@@ -805,7 +808,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown source register type.");
-        return "";
+        return retval;
     } // if
 
     char swizzle_str[6];
@@ -826,7 +829,6 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
-    char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
              premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
     return retval;
