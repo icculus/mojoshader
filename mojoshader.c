@@ -2013,7 +2013,11 @@ static void emit_GLSL_TEXLDD(Context *ctx)
 
 static void emit_GLSL_SETP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    output_line(ctx, "%s = %s(%s, %s);", dst0, comp, src0, src1);
 } // emit_GLSL_SETP
 
 static void emit_GLSL_TEXLDL(Context *ctx)
@@ -2657,6 +2661,13 @@ static void state_BREAKP(Context *ctx)
         fail(ctx, "BREAKP argument isn't predicate register");
 } // state_BREAKP
 
+static void state_SETP(Context *ctx)
+{
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    if (regtype != REGISTER_TYPE_PREDICATE)
+        fail(ctx, "SETP argument isn't predicate register");
+} // state_SETP
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -2780,7 +2791,7 @@ static const Instruction instructions[] =
     INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXLDD, 5, DSSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SETP, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(SETP, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXLDL, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(BREAKP, 1, S, MOJOSHADER_TYPE_ANY),
 
