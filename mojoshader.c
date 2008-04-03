@@ -1290,7 +1290,8 @@ static void emit_GLSL_start(Context *ctx)
     } // else
 
     ctx->output = &ctx->mainline;
-    output_line(ctx, "void main() {");
+    output_line(ctx, "void main()");
+    output_line(ctx, "{");
     ctx->indent++;
 } // emit_GLSL_start
 
