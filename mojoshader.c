@@ -2266,6 +2266,17 @@ static const Profile profiles[] =
      PROFILE_EMITTER_GLSL(op) \
 }
 
+static void register_reference_upkeep(Context *ctx, const RegisterType regtype)
+{
+    // !!! FIXME: make sure there were def/dcl for all referenced vars?
+    switch (regtype)
+    {
+        case REG_TYPE_ADDRESS: ctx->flags |= CTX_FLAGS_USED_ADDR_REG; break;
+        case REG_TYPE_PREDICATE: ctx->flags |= CTX_FLAGS_USED_PRED_REG; break;
+        default: break;  // don't care.
+    } // switch
+} // register_reference_upkeep
+
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
@@ -2343,6 +2354,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     if ((info->regtype < 0) || (info->regtype > REG_TYPE_MAX))
         return fail(ctx, "Register type is out of range");
 
+    register_reference_upkeep(ctx, info->regtype);
     return 1;
 } // parse_destination_token
 
@@ -2389,14 +2401,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     if ( ((SourceMod) info->src_mod) >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
-    // !!! FIXME: make sure there were def/dcl for all referenced vars?
-    switch (info->regtype)
-    {
-        case REG_TYPE_ADDRESS: ctx->flags |= CTX_FLAGS_USED_ADDR_REG; break;
-        case REG_TYPE_PREDICATE: ctx->flags |= CTX_FLAGS_USED_PRED_REG; break;
-        default: break;  // don't care.
-    } // switch
-
+    register_reference_upkeep(ctx, info->regtype);
     return 1;
 } // parse_source_token
 
