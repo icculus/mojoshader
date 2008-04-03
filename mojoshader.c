@@ -1625,7 +1625,9 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 
 static void emit_GLSL_LOOP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    //fail(ctx, "unimplemented.");  // !!! FIXME
+    output_line(ctx, "for (BLAH, BLAH, BLAH) {");
+    ctx->indent++;
 } // emit_GLSL_LOOP
 
 static void emit_GLSL_RET(Context *ctx)
@@ -1641,7 +1643,9 @@ static void emit_GLSL_RET(Context *ctx)
 
 static void emit_GLSL_ENDLOOP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    //fail(ctx, "unimplemented.");  // !!! FIXME
+    ctx->indent--;
+    output_line(ctx, "}");
 } // emit_GLSL_ENDLOOP
 
 static void emit_GLSL_LABEL(Context *ctx)
