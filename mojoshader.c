@@ -672,10 +672,13 @@ static const char *get_D3D_register_string(Context *ctx,
 
 static char *make_D3D_destarg_string(Context *ctx, const int idx)
 {
+    char *retval = get_scratch_buffer(ctx);
+    *retval = '\0';  // truncate string to start.
+
     if (idx >= STATICARRAYLEN(ctx->dest_args))
     {
         fail(ctx, "Too many destination args");
-        return "";
+        return retval;
     } // if
 
     const DestArgInfo *arg = &ctx->dest_args[idx];
@@ -702,7 +705,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
-        return "";
+        return retval;
     } // if
 
     char writemask_str[6];
@@ -719,7 +722,6 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     assert(i < sizeof (writemask_str));
 
     // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
-    char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
              regtype_str, regnum_str, writemask_str);
