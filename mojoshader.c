@@ -1477,7 +1477,6 @@ static const char *get_GLSL_comparison_string(Context *ctx)
 
 static void emit_GLSL_start(Context *ctx)
 {
-    ctx->output = &ctx->globals;
     switch (ctx->shader_type)
     {
         case MOJOSHADER_TYPE_PIXEL:
