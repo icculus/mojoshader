@@ -1477,19 +1477,18 @@ static const char *get_GLSL_comparison_string(Context *ctx)
 
 static void emit_GLSL_start(Context *ctx)
 {
-    const uint major = (uint) ctx->major_ver;
-    const uint minor = (uint) ctx->minor_ver;
-
     ctx->output = &ctx->globals;
-    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
-        output_line(ctx, "// Pixel shader, version %u.%u", major, minor);
-    else if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
-        output_line(ctx, "// Vertex shader, version %u.%u", major, minor);
-    else
+    switch (ctx->shader_type)
     {
-        failf(ctx, "Shader type %u unsupported in this profile.",
-              (uint) ctx->shader_type);
-    } // else
+        case MOJOSHADER_TYPE_PIXEL:
+        case MOJOSHADER_TYPE_VERTEX:
+            break;  // supported.
+
+        default:
+            failf(ctx, "Shader type %u unsupported in this profile.",
+                  (uint) ctx->shader_type);
+            return;
+    } // switch
 
     ctx->output = &ctx->mainline;
     output_line(ctx, "void main()");
