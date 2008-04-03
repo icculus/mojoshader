@@ -263,9 +263,14 @@ typedef struct
 
 typedef enum
 {
-    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
-    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 1),
-    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 2),
+    // May apply to any profile...
+    CTX_FLAGS_USED_ADDR_REG   = (1 << 0),
+    CTX_FLAGS_USED_PRED_REG   = (1 << 1),
+
+    // Specific to GLSL profile...
+    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 2),
+    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 3),
+    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 4),
     CTX_FLAGS_MASK = 0xFFFFFFFF
 } ContextFlags;
 
@@ -1498,6 +1503,13 @@ static void emit_GLSL_end(Context *ctx)
     // force a RET opcode if we're at the end of the stream without one.
     if (ctx->previous_opcode != OPCODE_RET)
         emit_GLSL_RET(ctx);
+
+    push_output(ctx, &ctx->globals);
+    if (ctx->flags & CTX_FLAGS_USED_ADDR_REG)
+        output_line(ctx, "ivec a0;");
+    if (ctx->flags & CTX_FLAGS_USED_PRED_REG)
+        output_line(ctx, "bvec p0;");
+    pop_output(ctx);
 } // emit_GLSL_end
 
 static void emit_GLSL_comment(Context *ctx, const char *str)
@@ -2376,6 +2388,14 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
     if ( ((SourceMod) info->src_mod) >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
+
+    // !!! FIXME: make sure there were def/dcl for all referenced vars?
+    switch (info->regtype)
+    {
+        case REG_TYPE_ADDRESS: ctx->flags |= CTX_FLAGS_USED_ADDR_REG; break;
+        case REG_TYPE_PREDICATE: ctx->flags |= CTX_FLAGS_USED_PRED_REG; break;
+        default: break;  // don't care.
+    } // switch
 
     return 1;
 } // parse_source_token
