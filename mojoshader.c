@@ -2646,6 +2646,13 @@ static void state_ENDLOOP(Context *ctx)
     ctx->loops--;
 } // state_ENDLOOP
 
+static void state_BREAKP(Context *ctx)
+{
+    const RegisterType regtype = ctx->source_args[0].regtype;
+    if (regtype != REGISTER_TYPE_PREDICATE)
+        fail(ctx, "BREAKP argument isn't predicate register");
+} // state_BREAKP
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -2771,7 +2778,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXLDD, 5, DSSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(SETP, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXLDL, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(BREAKP, 1, S, MOJOSHADER_TYPE_ANY),  // src
+    INSTRUCTION_STATE(BREAKP, 1, S, MOJOSHADER_TYPE_ANY),
 
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
