@@ -123,29 +123,29 @@ typedef MOJOSHADER_shaderType ShaderType;
 
 typedef enum
 {
-    REGISTER_TYPE_TEMP = 0,
-    REGISTER_TYPE_INPUT = 1,
-    REGISTER_TYPE_CONST = 2,
-    REGISTER_TYPE_ADDRESS = 3,
-    REGISTER_TYPE_TEXTURE = 3,  // ALSO 3!
-    REGISTER_TYPE_RASTOUT = 4,
-    REGISTER_TYPE_ATTROUT = 5,
-    REGISTER_TYPE_TEXCRDOUT = 6,
-    REGISTER_TYPE_OUTPUT = 6,  // ALSO 6!
-    REGISTER_TYPE_CONSTINT = 7,
-    REGISTER_TYPE_COLOROUT = 8,
-    REGISTER_TYPE_DEPTHOUT = 9,
-    REGISTER_TYPE_SAMPLER = 10,
-    REGISTER_TYPE_CONST2 = 11,
-    REGISTER_TYPE_CONST3 = 12,
-    REGISTER_TYPE_CONST4 = 13,
-    REGISTER_TYPE_CONSTBOOL = 14,
-    REGISTER_TYPE_LOOP = 15,
-    REGISTER_TYPE_TEMPFLOAT16 = 16,
-    REGISTER_TYPE_MISCTYPE = 17,
-    REGISTER_TYPE_LABEL = 18,
-    REGISTER_TYPE_PREDICATE = 19,
-    REGISTER_TYPE_MAX = 19
+    REG_TYPE_TEMP = 0,
+    REG_TYPE_INPUT = 1,
+    REG_TYPE_CONST = 2,
+    REG_TYPE_ADDRESS = 3,
+    REG_TYPE_TEXTURE = 3,  // ALSO 3!
+    REG_TYPE_RASTOUT = 4,
+    REG_TYPE_ATTROUT = 5,
+    REG_TYPE_TEXCRDOUT = 6,
+    REG_TYPE_OUTPUT = 6,  // ALSO 6!
+    REG_TYPE_CONSTINT = 7,
+    REG_TYPE_COLOROUT = 8,
+    REG_TYPE_DEPTHOUT = 9,
+    REG_TYPE_SAMPLER = 10,
+    REG_TYPE_CONST2 = 11,
+    REG_TYPE_CONST3 = 12,
+    REG_TYPE_CONST4 = 13,
+    REG_TYPE_CONSTBOOL = 14,
+    REG_TYPE_LOOP = 15,
+    REG_TYPE_TEMPFLOAT16 = 16,
+    REG_TYPE_MISCTYPE = 17,
+    REG_TYPE_LABEL = 18,
+    REG_TYPE_PREDICATE = 19,
+    REG_TYPE_MAX = 19
 } RegisterType;
 
 typedef enum
@@ -558,38 +558,38 @@ static const char *get_D3D_register_string(Context *ctx,
 
     switch (regtype)
     {
-        case REGISTER_TYPE_TEMP:
+        case REG_TYPE_TEMP:
             retval = "r";
             break;
 
-        case REGISTER_TYPE_INPUT:
+        case REG_TYPE_INPUT:
             retval = "v";
             break;
 
-        case REGISTER_TYPE_CONST:
+        case REG_TYPE_CONST:
             retval = "c";
             break;
 
-        case REGISTER_TYPE_CONST2:
+        case REG_TYPE_CONST2:
             retval = "c";
             regnum += 2048;
             break;
 
-        case REGISTER_TYPE_CONST3:
+        case REG_TYPE_CONST3:
             retval = "c";
             regnum += 4096;
             break;
 
-        case REGISTER_TYPE_CONST4:
+        case REG_TYPE_CONST4:
             retval = "c";
             regnum += 6144;
             break;
 
-        case REGISTER_TYPE_ADDRESS:  // (or REGISTER_TYPE_TEXTURE, same value.)
+        case REG_TYPE_ADDRESS:  // (or REG_TYPE_TEXTURE, same value.)
             retval = (ctx->shader_type == MOJOSHADER_TYPE_VERTEX) ? "a" : "t";
             break;
 
-        case REGISTER_TYPE_RASTOUT:
+        case REG_TYPE_RASTOUT:
             switch ((RastOutType) regnum)
             {
                 case RASTOUT_TYPE_POSITION: retval = "oPos"; break;
@@ -599,51 +599,51 @@ static const char *get_D3D_register_string(Context *ctx,
             has_number = 0;
             break;
 
-        case REGISTER_TYPE_ATTROUT:
+        case REG_TYPE_ATTROUT:
             retval = "oD";
             break;
 
-        case REGISTER_TYPE_OUTPUT: // (or REGISTER_TYPE_TEXCRDOUT, same value.)
+        case REG_TYPE_OUTPUT: // (or REG_TYPE_TEXCRDOUT, same value.)
             if ((ctx->shader_type==MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
                 retval = "o";
             else
                 retval = "oT";
             break;
 
-        case REGISTER_TYPE_CONSTINT:
+        case REG_TYPE_CONSTINT:
             retval = "i";
             break;
 
-        case REGISTER_TYPE_COLOROUT:
+        case REG_TYPE_COLOROUT:
             retval = "oC";
             break;
 
-        case REGISTER_TYPE_DEPTHOUT:
+        case REG_TYPE_DEPTHOUT:
             retval = "oDepth";
             has_number = 0;
             break;
 
-        case REGISTER_TYPE_SAMPLER:
+        case REG_TYPE_SAMPLER:
             retval = "s";
             break;
 
-        case REGISTER_TYPE_CONSTBOOL:
+        case REG_TYPE_CONSTBOOL:
             retval = "b";
             break;
 
-        case REGISTER_TYPE_LOOP:
+        case REG_TYPE_LOOP:
             retval = "aL";
             has_number = 0;
             break;
 
         // !!! FIXME: don't know what the asm string is for this..
-        case REGISTER_TYPE_TEMPFLOAT16:
+        case REG_TYPE_TEMPFLOAT16:
             fail(ctx, "don't know the ASM for tempfloat16 register");
             retval = "???";
             has_number = 0;
             break;
 
-        case REGISTER_TYPE_MISCTYPE:
+        case REG_TYPE_MISCTYPE:
             switch ((MiscTypeType) regnum)
             {
                 case MISCTYPE_TYPE_POSITION: retval = "vPos"; break;
@@ -652,11 +652,11 @@ static const char *get_D3D_register_string(Context *ctx,
             has_number = 0;
             break;
 
-        case REGISTER_TYPE_LABEL:
+        case REG_TYPE_LABEL:
             retval = "l";
             break;
 
-        case REGISTER_TYPE_PREDICATE:
+        case REG_TYPE_PREDICATE:
             retval = "p";
             break;
     } // switch
@@ -1182,7 +1182,7 @@ static void emit_D3D_DCL(Context *ctx)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // if
 
-    else if (arg->regtype == REGISTER_TYPE_SAMPLER)
+    else if (arg->regtype == REG_TYPE_SAMPLER)
     {
         switch ((const TextureType) ctx->dwords[0])
         {
@@ -1893,7 +1893,7 @@ pop_output(ctx);
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // if
 
-    else if (arg->regtype == REGISTER_TYPE_SAMPLER)
+    else if (arg->regtype == REG_TYPE_SAMPLER)
     {
         switch ((const TextureType) ctx->dwords[0])
         {
@@ -2328,7 +2328,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             return fail(ctx, "Centroid result mod in non-pixel shader");
     } // if
 
-    if ((info->regtype < 0) || (info->regtype > REGISTER_TYPE_MAX))
+    if ((info->regtype < 0) || (info->regtype > REG_TYPE_MAX))
         return fail(ctx, "Register type is out of range");
 
     return 1;
@@ -2400,10 +2400,10 @@ static int parse_args_DEF(Context *ctx)
 
     switch (ctx->dest_args[0].regtype)
     {
-        case REGISTER_TYPE_CONST:
-        case REGISTER_TYPE_CONST2:
-        case REGISTER_TYPE_CONST3:
-        case REGISTER_TYPE_CONST4:
+        case REG_TYPE_CONST:
+        case REG_TYPE_CONST2:
+        case REG_TYPE_CONST3:
+        case REG_TYPE_CONST4:
             break;
 
         default:
@@ -2424,7 +2424,7 @@ static int parse_args_DEFI(Context *ctx)
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
 
-    if (ctx->dest_args[0].regtype != REGISTER_TYPE_CONSTINT)
+    if (ctx->dest_args[0].regtype != REG_TYPE_CONSTINT)
         return fail(ctx, "DEFI token using invalid register");
 
     return 6;
@@ -2438,7 +2438,7 @@ static int parse_args_DEFB(Context *ctx)
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
 
-    if (ctx->dest_args[0].regtype != REGISTER_TYPE_CONSTBOOL)
+    if (ctx->dest_args[0].regtype != REG_TYPE_CONSTBOOL)
         return fail(ctx, "DEFB token using invalid register");
 
     return 3;
@@ -2464,10 +2464,10 @@ static int parse_args_DCL(Context *ctx)
     const RegisterType regtype = ctx->dest_args[0].regtype;
     if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
     {
-        if (regtype == REGISTER_TYPE_INPUT)
+        if (regtype == REG_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
 
-        else if (regtype == REGISTER_TYPE_MISCTYPE)
+        else if (regtype == REG_TYPE_MISCTYPE)
         {
             const MiscTypeType mt = (MiscTypeType) ctx->dest_args[0].regnum;
             if (mt == MISCTYPE_TYPE_POSITION)
@@ -2488,7 +2488,7 @@ static int parse_args_DCL(Context *ctx)
             } // else
         } // else if
 
-        else if (regtype == REGISTER_TYPE_TEXTURE)
+        else if (regtype == REG_TYPE_TEXTURE)
         {
             const uint32 usage = (token & 0xF);
             const uint32 index = ((token >> 16) & 0xF);
@@ -2512,7 +2512,7 @@ static int parse_args_DCL(Context *ctx)
             ctx->dwords[1] = index;
         } // else if
 
-        else if (regtype == REGISTER_TYPE_SAMPLER)
+        else if (regtype == REG_TYPE_SAMPLER)
         {
             reserved_mask = 0x7FFFFFF;
             ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
@@ -2526,11 +2526,11 @@ static int parse_args_DCL(Context *ctx)
 
     else if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 2))
     {
-        if (regtype == REGISTER_TYPE_INPUT)
+        if (regtype == REG_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
-        else if (regtype == REGISTER_TYPE_TEXTURE)
+        else if (regtype == REG_TYPE_TEXTURE)
             reserved_mask = 0x7FFFFFFF;
-        else if (regtype == REGISTER_TYPE_SAMPLER)
+        else if (regtype == REG_TYPE_SAMPLER)
         {
             reserved_mask = 0x7FFFFFF;
             ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
@@ -2543,7 +2543,7 @@ static int parse_args_DCL(Context *ctx)
 
     else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
     {
-        if ((regtype==REGISTER_TYPE_INPUT) || (regtype==REGISTER_TYPE_OUTPUT))
+        if ((regtype==REG_TYPE_INPUT) || (regtype==REG_TYPE_OUTPUT))
         {
             const uint32 usage = (token & 0xF);
             const uint32 index = ((token >> 16) & 0xF);
@@ -2559,7 +2559,7 @@ static int parse_args_DCL(Context *ctx)
 
     else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 2))
     {
-        if (regtype == REGISTER_TYPE_INPUT)
+        if (regtype == REG_TYPE_INPUT)
         {
             const uint32 usage = (token & 0xF);
             const uint32 index = ((token >> 16) & 0xF);
@@ -2786,7 +2786,7 @@ static int check_label_register(Context *ctx, int arg, const char *opcode)
     const RegisterType regtype = info->regtype;
     const int regnum = info->regnum;
 
-    if (regtype != REGISTER_TYPE_LABEL)
+    if (regtype != REG_TYPE_LABEL)
         return failf(ctx, "%s with a non-label register specified", opcode);
 
     else if (!shader_version_atleast(ctx, 2, 0))
@@ -2817,9 +2817,9 @@ static void state_CALL(Context *ctx)
 
 static void state_CALLNZ(Context *ctx)
 {
-    const RegisterType rt = ctx->source_args[1].regtype;
+    const RegisterType regtype = ctx->source_args[1].regtype;
     const int l = ctx->source_args[0].regnum;
-    if ((rt != REGISTER_TYPE_CONSTBOOL) && (rt != REGISTER_TYPE_PREDICATE))
+    if ((regtype != REG_TYPE_CONSTBOOL) && (regtype != REG_TYPE_PREDICATE))
         fail(ctx, "CALLNZ argument isn't constbool or predicate register");
     else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
         set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
@@ -2827,15 +2827,15 @@ static void state_CALLNZ(Context *ctx)
 
 static void state_MOVA(Context *ctx)
 {
-    if (ctx->dest_args[0].regtype != REGISTER_TYPE_ADDRESS)
+    if (ctx->dest_args[0].regtype != REG_TYPE_ADDRESS)
         fail(ctx, "MOVA argument isn't address register");
 } // state_MOVA
 
 static void state_LOOP(Context *ctx)
 {
-    if (ctx->source_args[0].regtype != REGISTER_TYPE_LOOP)
+    if (ctx->source_args[0].regtype != REG_TYPE_LOOP)
         fail(ctx, "LOOP argument isn't loop register");
-    else if (ctx->source_args[1].regtype != REGISTER_TYPE_CONSTINT)
+    else if (ctx->source_args[1].regtype != REG_TYPE_CONSTINT)
         fail(ctx, "LOOP argument isn't constint register");
     else
         ctx->loops++;
@@ -2843,6 +2843,7 @@ static void state_LOOP(Context *ctx)
 
 static void state_ENDLOOP(Context *ctx)
 {
+    // !!! FIXME: check that we aren't straddling an IF block.
     if (ctx->loops <= 0)
         fail(ctx, "ENDLOOP without LOOP");
     ctx->loops--;
@@ -2851,14 +2852,14 @@ static void state_ENDLOOP(Context *ctx)
 static void state_BREAKP(Context *ctx)
 {
     const RegisterType regtype = ctx->source_args[0].regtype;
-    if (regtype != REGISTER_TYPE_PREDICATE)
+    if (regtype != REG_TYPE_PREDICATE)
         fail(ctx, "BREAKP argument isn't predicate register");
 } // state_BREAKP
 
 static void state_SETP(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_args[0].regtype;
-    if (regtype != REGISTER_TYPE_PREDICATE)
+    if (regtype != REG_TYPE_PREDICATE)
         fail(ctx, "SETP argument isn't predicate register");
 } // state_SETP
 
