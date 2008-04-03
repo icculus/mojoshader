@@ -1755,9 +1755,9 @@ static void emit_GLSL_M3X4(Context *ctx)
     const char *row3 = make_GLSL_sourcearg_string(ctx, 4);
 
     const char *code = make_GLSL_destarg_assign(ctx, 0,
-                                "vec4(dot(vec3(%s), vec3(%s)),"
-                                     "dot(vec3(%s), vec3(%s)),"
-                                     "dot(vec3(%s), vec3(%s)),"
+                                "vec4(dot(vec3(%s), vec3(%s)), "
+                                     "dot(vec3(%s), vec3(%s)), "
+                                     "dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
                                 src0, row0, src0, row1,
                                 src0, row2, src0, row3);
@@ -1772,8 +1772,8 @@ static void emit_GLSL_M3X3(Context *ctx)
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
     const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
     const char *code = make_GLSL_destarg_assign(ctx, 0,
-                                "vec3(dot(vec3(%s), vec3(%s)),"
-                                     "dot(vec3(%s), vec3(%s)),"
+                                "vec3(dot(vec3(%s), vec3(%s)), "
+                                     "dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
@@ -1787,7 +1787,7 @@ static void emit_GLSL_M3X2(Context *ctx)
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
 
     const char *code = make_GLSL_destarg_assign(ctx, 0,
-                                "vec3(dot(vec3(%s), vec3(%s)),"
+                                "vec3(dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
                                 src0, row0, src0, row1);
     output_line(ctx, "%s", code);
