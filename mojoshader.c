@@ -673,15 +673,12 @@ static const char *get_D3D_register_string(Context *ctx,
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
-static char *make_D3D_destarg_string(Context *ctx, const int idx)
+static const char *make_D3D_destarg_string(Context *ctx, const int idx)
 {
-    char *retval = get_scratch_buffer(ctx);
-    *retval = '\0';  // truncate string to start.
-
     if (idx >= STATICARRAYLEN(ctx->dest_args))
     {
         fail(ctx, "Too many destination args");
-        return retval;
+        return "";
     } // if
 
     const DestArgInfo *arg = &ctx->dest_args[idx];
@@ -708,7 +705,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
-        return retval;
+        return "";
     } // if
 
     char writemask_str[6];
@@ -725,6 +722,7 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
     assert(i < sizeof (writemask_str));
 
     // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
+    char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
              regtype_str, regnum_str, writemask_str);
@@ -733,15 +731,12 @@ static char *make_D3D_destarg_string(Context *ctx, const int idx)
 } // make_D3D_destarg_string
 
 
-static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
+static const char *make_D3D_sourcearg_string(Context *ctx, const int idx)
 {
-    char *retval = get_scratch_buffer(ctx);
-    *retval = '\0';  // truncate string to start.
-
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return retval;
+        return "";
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
@@ -812,7 +807,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown source register type.");
-        return retval;
+        return "";
     } // if
 
     char swizzle_str[6];
@@ -833,6 +828,7 @@ static char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
+    char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
              premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
