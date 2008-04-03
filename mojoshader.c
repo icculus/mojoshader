@@ -1344,9 +1344,103 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
         return "";
     } // if
 
-    //const SourceArgInfo *arg = &ctx->source_args[idx];
+// !!! FIXME: not right.
+    const SourceArgInfo *arg = &ctx->source_args[idx];
+
+    const char *premod_str = "";
+    const char *postmod_str = "";
+    switch ((SourceMod) arg->src_mod)
+    {
+        case SRCMOD_NEGATE:
+            premod_str = "-";
+            break;
+
+        case SRCMOD_BIASNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_BIAS:
+            postmod_str = "_bias";
+            break;
+
+        case SRCMOD_SIGNNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_SIGN:
+            postmod_str = "_bx2";
+            break;
+
+        case SRCMOD_COMPLEMENT:
+            premod_str = "1-";
+            break;
+
+        case SRCMOD_X2NEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_X2:
+            postmod_str = "_x2";
+            break;
+
+        case SRCMOD_DZ:
+            postmod_str = "_dz";
+            break;
+
+        case SRCMOD_DW:
+            postmod_str = "_dw";
+            break;
+
+        case SRCMOD_ABSNEGATE:
+            premod_str = "-abs(";
+            postmod_str = ")";
+            break;
+
+        case SRCMOD_ABS:
+            premod_str = "abs(";
+            postmod_str = ")";
+            break;
+
+        case SRCMOD_NOT:
+            premod_str = "!";
+            break;
+
+        case SRCMOD_NONE:
+        case SRCMOD_TOTAL:
+             break;  // stop compiler whining.
+    } // switch
+
+
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
+
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown source register type.");
+        return "";
+    } // if
+
+    char swizzle_str[6];
+    int i = 0;
+    if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
+    {
+        static const char channel[] = { 'x', 'y', 'z', 'w' };
+        swizzle_str[i++] = '.';
+        swizzle_str[i++] = channel[arg->swizzle_x];
+        swizzle_str[i++] = channel[arg->swizzle_y];
+        swizzle_str[i++] = channel[arg->swizzle_z];
+        swizzle_str[i++] = channel[arg->swizzle_w];
+
+        // .xyzz is the same as .xyz, .z is the same as .zzzz, etc.
+        while (swizzle_str[i-1] == swizzle_str[i-2])
+            i--;
+    } // if
+    swizzle_str[i] = '\0';
+    assert(i < sizeof (swizzle_str));
+
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "src%d", idx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
+             premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
+    // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_GLSL_sourcearg_string
 
