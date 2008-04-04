@@ -492,7 +492,7 @@ static int output_line(Context *ctx, const char *fmt, ...)
     item->str = (char *) Malloc(ctx, len + 1);
     if (item->str == NULL)
     {
-        free(item);
+        Free(ctx, item);
         return out_of_memory(ctx);
     } // if
 
