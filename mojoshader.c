@@ -2678,8 +2678,6 @@ static int parse_args_DCL(Context *ctx)
     if ((token & reserved_mask) != 0)
         return fail(ctx, "reserved bits in DCL dword aren't zero");
 
-    set_defined_register(ctx, regtype, regnum);
-
     return 3;
 } // parse_args_DCL
 
@@ -2797,6 +2795,13 @@ static void state_DEFB(Context *ctx)
     else
         set_defined_register(ctx, regtype, regnum);
 } // state_DEFB
+
+static void state_DCL(Context *ctx)
+{
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    set_defined_register(ctx, regtype, regnum);
+} // state_DCL
 
 static void state_FRC(Context *ctx)
 {
@@ -3037,7 +3042,7 @@ static const Instruction instructions[] =
     INSTRUCTION_STATE(RET, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(ENDLOOP, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(LABEL, 1, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DCL, 2, DCL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DCL, 2, DCL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(POW, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(CRS, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(SGN, 4, DSSS, MOJOSHADER_TYPE_ANY),
