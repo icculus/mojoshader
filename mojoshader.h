@@ -46,6 +46,20 @@ typedef enum
     MOJOSHADER_TYPE_ANY = 0xFFFFFFFF   /* used for bitmasks */
 } MOJOSHADER_shaderType;
 
+typedef enum
+{
+    MOJOSHADER_UNIFORM_FLOAT,
+    MOJOSHADER_UNIFORM_INT,
+    MOJOSHADER_UNIFORM_BOOL
+} MOJOSHADER_uniform_type;
+
+typedef struct
+{
+    int index;
+    const char *name;
+    MOJOSHADER_uniform_type type;
+} MOJOSHADER_uniform;
+
 
 /*
  * Structure used to return data from parsing of a shader...
@@ -97,6 +111,18 @@ typedef struct
      *  Two notes: for "vs_2_x", this is 1, and for "vs_3_sw", this is 255.
      */
     int minor_ver;
+
+    /*
+     * The number of elements pointed to by (uniforms).
+     */
+    int uniform_count;
+
+    /*
+     * (uniform_count) elements of data on how to access uniforms to be
+     *  set by this shader. "Uniforms" are what Direct3D calls "Constants" ...
+     *  IDirect3DDevice::SetVertexShaderConstantF() would need this data.
+     */
+    MOJOSHADER_uniform *uniforms;
 
     /*
      * This is the malloc implementation you passed to MOJOSHADER_parse().

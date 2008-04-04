@@ -55,6 +55,23 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
         printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
         printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
         printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
+        printf("UNIFORMS:");
+        if (pd->uniform_count == 0)
+            printf(" (none.)\n");
+        else
+        {
+            static const char *typenames[] = { "float", "int", "bool" };
+            int i;
+            printf("\n");
+            for (i = 0; i < pd->uniform_count; i++)
+            {
+                const MOJOSHADER_uniform *u = &pd->uniforms[i];
+                const char *name = u->name ? u->name : "";
+                const char *typestr = typenames[(int) u->type];
+                printf("    * %d: %s %s\n", u->index, typestr, name);
+            } // for
+        } // else
+
         if (pd->output != NULL)
             printf("OUTPUT:\n%s\n", pd->output);
     } // else

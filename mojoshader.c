@@ -3534,6 +3534,17 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
     if (data->output != NULL)  // check for NULL in case of dumb free() impl.
         f((void *) data->output);
 
+    if (data->uniforms != NULL)
+    {
+        int i;
+        for (i = 0; i < data->uniform_count; i++)
+        {
+            if (data->uniforms[i].name != NULL)
+                f((void *) data->uniforms[i].name);
+        } // for
+        f((void *) data->uniforms);
+    } // if
+
     if ((data->error != NULL) && (data->error != out_of_mem_str))
         f((void *) data->error);
 
