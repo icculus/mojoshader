@@ -157,8 +157,6 @@ typedef struct
     emit_finalize finalize_emitter;
 } Profile;
 
-typedef MOJOSHADER_shaderType ShaderType;
-
 typedef enum
 {
     RASTOUT_TYPE_POSITION = 0,
@@ -322,7 +320,7 @@ struct Context
     int scratchidx;  // current scratch buffer.
     int profileid;
     const Profile *profile;
-    ShaderType shader_type;
+    MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
     DestArgInfo dest_args[1];
@@ -3038,7 +3036,7 @@ static void state_SETP(Context *ctx)
 typedef struct
 {
     const char *opcode_string;
-    ShaderType shader_types;  // mask of shader types that can use this opcode.
+    MOJOSHADER_shaderType shader_types;  // mask of types that can use opcode.
     int arg_tokens;
     args_function parse_args;
     state_function state;
