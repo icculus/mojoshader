@@ -2815,9 +2815,25 @@ static void state_FRC(Context *ctx)
     } // if
 } // state_FRC
 
-static void state_M4X4(Context *ctx)
+
+// replicate the matrix registers to source args. The D3D profile will
+//  only use the one legitimate argument, but this saves other profiles
+//  from having to build this.
+static void sourcearg_matrix_replicate(Context *ctx, const int idx,
+                                       const int rows)
 {
     int i;
+    SourceArgInfo *src = &ctx->source_args[idx];
+    SourceArgInfo *dst = &ctx->source_args[idx+1];
+    for (i = 0; i < (rows-1); i++, dst++)
+    {
+        memcpy(dst, src, sizeof (SourceArgInfo));
+        dst->regnum += (i + 1);
+    } // for
+} // sourcearg_matrix_replicate
+
+static void state_M4X4(Context *ctx)
+{
     const DestArgInfo *info = &ctx->dest_args[0];
     if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
         fail(ctx, "M4X4 writemask must be .xyzw");
@@ -2826,71 +2842,40 @@ static void state_M4X4(Context *ctx)
 //The xyzw (default) mask is required for the destination register. Negate and swizzle modifiers are allowed for src0, but not for src1.
 //Swizzle and negate modifiers are invalid for the src0 register. The dest and src0 registers cannot be the same.
 
-    // replicate the matrix registers to source args. The D3D profile will
-    //  only use the one legitimate argument, but this saves other profiles
-    //  from having to build this.
-    for (i = 0; i < 3; i++)
-    {
-        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
-        ctx->source_args[i+1].regnum += i;
-    } // for
+    sourcearg_matrix_replicate(ctx, 1, 4);
 } // state_M4X4
 
 static void state_M4X3(Context *ctx)
 {
-    int i;
     const DestArgInfo *info = &ctx->dest_args[0];
     if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
         fail(ctx, "M4X3 writemask must be .xyz");
 
 // !!! FIXME: MSDN stuff
 
-    // replicate the matrix registers to source args. The D3D profile will
-    //  only use the one legitimate argument, but this saves other profiles
-    //  from having to build this.
-    for (i = 0; i < 2; i++)
-    {
-        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
-        ctx->source_args[i+1].regnum += i;
-    } // for
+    sourcearg_matrix_replicate(ctx, 1, 3);
 } // state_M4X3
 
 static void state_M3X4(Context *ctx)
 {
-    int i;
     const DestArgInfo *info = &ctx->dest_args[0];
     if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
         fail(ctx, "M3X4 writemask must be .xyzw");
 
 // !!! FIXME: MSDN stuff
 
-    // replicate the matrix registers to source args. The D3D profile will
-    //  only use the one legitimate argument, but this saves other profiles
-    //  from having to build this.
-    for (i = 0; i < 3; i++)
-    {
-        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
-        ctx->source_args[i+1].regnum += i;
-    } // for
+    sourcearg_matrix_replicate(ctx, 1, 4);
 } // state_M3X4
 
 static void state_M3X3(Context *ctx)
 {
-    int i;
     const DestArgInfo *info = &ctx->dest_args[0];
     if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
         fail(ctx, "M3X3 writemask must be .xyz");
 
 // !!! FIXME: MSDN stuff
 
-    // replicate the matrix registers to source args. The D3D profile will
-    //  only use the one legitimate argument, but this saves other profiles
-    //  from having to build this.
-    for (i = 0; i < 2; i++)
-    {
-        memcpy(&ctx->source_args[i+2], &ctx->source_args[1], sizeof (SourceArgInfo));
-        ctx->source_args[i+1].regnum += i;
-    } // for
+    sourcearg_matrix_replicate(ctx, 1, 3);
 } // state_M3X3
 
 static void state_M3X2(Context *ctx)
@@ -2901,11 +2886,7 @@ static void state_M3X2(Context *ctx)
 
 // !!! FIXME: MSDN stuff
 
-    // replicate the matrix registers to source args. The D3D profile will
-    //  only use the one legitimate argument, but this saves other profiles
-    //  from having to build this.
-    memcpy(&ctx->source_args[2], &ctx->source_args[1], sizeof (SourceArgInfo));
-    ctx->source_args[2].regnum++;
+    sourcearg_matrix_replicate(ctx, 1, 2);
 } // state_M3X2
 
 static void state_RET(Context *ctx)
