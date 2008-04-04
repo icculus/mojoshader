@@ -3366,7 +3366,7 @@ static Context *build_context(const char *profile,
     ctx->subroutines.tail = &ctx->subroutines.head;
     ctx->mainline.tail = &ctx->mainline.head;
     ctx->ignore.tail = &ctx->ignore.head;
-    ctx->output = &ctx->globals;
+    ctx->output = &ctx->mainline;
 
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
