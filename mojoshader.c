@@ -349,7 +349,9 @@ static inline void *Malloc(Context *ctx, int len)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    ctx->free(ptr, ctx->malloc_data);
+    // check for NULL in case of dumb free() impl.
+    if (ptr != NULL)
+        ctx->free(ptr, ctx->malloc_data);
 } // Free
 
 
@@ -3605,10 +3607,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     // check again, in case build_output ran out of memory.
     if (isfail(ctx))
     {
-        if (output != NULL)
-            Free(ctx, output);
-        if (uniforms != NULL)
-            Free(ctx, uniforms);
+        Free(ctx, output);
+        Free(ctx, uniforms);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
