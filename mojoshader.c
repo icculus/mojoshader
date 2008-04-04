@@ -1584,10 +1584,40 @@ static void emit_GLSL_end(Context *ctx)
         emit_GLSL_RET(ctx);
 
     push_output(ctx, &ctx->globals);
-    if (get_used_register(ctx, REG_TYPE_ADDRESS, 0))
-        output_line(ctx, "ivec a0;");
-    if (get_used_register(ctx, REG_TYPE_PREDICATE, 0))
-        output_line(ctx, "bvec p0;");
+
+    const RegisterList *item = ctx->used_registers.next;
+    while (item != NULL)
+    {
+        const RegisterType regtype = item->regtype;
+        const int regnum = item->regnum;
+        item = item->next;
+
+        if (get_defined_register(ctx, regtype, regnum))
+            continue;  // already dealt with this one.
+        else if (regtype == REG_TYPE_ADDRESS)
+            output_line(ctx, "ivec4 a%d;", regnum);
+        else if (regtype == REG_TYPE_PREDICATE)
+            output_line(ctx, "bvec4 p%d;", regnum);
+        else if (regtype == REG_TYPE_CONST)
+            output_line(ctx, "uniform vec4 c%d;", regnum);
+        else if (regtype == REG_TYPE_CONST2)
+            output_line(ctx, "uniform vec4 c%d;", regnum + 2048);
+        else if (regtype == REG_TYPE_CONST3)
+            output_line(ctx, "uniform vec4 c%d;", regnum + 4096);
+        else if (regtype == REG_TYPE_CONST4)
+            output_line(ctx, "uniform vec4 c%d;", regnum + 6144);
+        else if (regtype == REG_TYPE_CONSTINT)
+            output_line(ctx, "uniform ivec4 i%d;", regnum);
+        else if (regtype == REG_TYPE_CONSTBOOL)
+            output_line(ctx, "uniform bvec4 i%d;", regnum);
+        else if (regtype == REG_TYPE_TEMP)
+            output_line(ctx, "vec4 r%d;", regnum);
+        else if (regtype == REG_TYPE_LOOP)
+            output_line(ctx, "ivec4 aL;");
+        else
+            fail(ctx, "BUG: we used a register we don't know how to define.");
+    } // while
+
     output_blank_line(ctx);
     pop_output(ctx);
 } // emit_GLSL_end
