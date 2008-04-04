@@ -2518,51 +2518,13 @@ static int parse_args_DEF(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
-    // !!! FIXME: msdn says this can be float or int...how do we differentiate?
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
-    switch (regtype)
-    {
-        case REG_TYPE_CONST:
-        case REG_TYPE_CONST2:
-        case REG_TYPE_CONST3:
-        case REG_TYPE_CONST4:
-            break;
-
-        default:
-            return fail(ctx, "DEF token using invalid register");
-    } // switch
-
-    set_defined_register(ctx, regtype, regnum);
 
     return 6;
 } // parse_args_DEF
-
-
-static int parse_args_DEFI(Context *ctx)
-{
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
-        return FAIL;
-
-    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
-    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
-    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
-    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
-    if (regtype != REG_TYPE_CONSTINT)
-        return fail(ctx, "DEFI token using invalid register");
-
-    set_defined_register(ctx, regtype, regnum);
-
-    return 6;
-} // parse_args_DEFI
 
 
 static int parse_args_DEFB(Context *ctx)
@@ -2571,13 +2533,6 @@ static int parse_args_DEFB(Context *ctx)
         return FAIL;
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
-
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
-    if (regtype != REG_TYPE_CONSTBOOL)
-        return fail(ctx, "DEFB token using invalid register");
-
-    set_defined_register(ctx, regtype, regnum);
 
     return 3;
 } // parse_args_DEFB
@@ -2804,6 +2759,44 @@ static int parse_args_TEXCOORD(Context *ctx)
 
 
 // State machine functions...
+
+static void state_DEF(Context *ctx)
+{
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    switch (regtype)
+    {
+        case REG_TYPE_CONST:
+        case REG_TYPE_CONST2:
+        case REG_TYPE_CONST3:
+        case REG_TYPE_CONST4:
+            set_defined_register(ctx, regtype, regnum);
+            break;
+
+        default:
+            fail(ctx, "DEF token using invalid register");
+    } // switch
+} // state_DEF
+
+static void state_DEFI(Context *ctx)
+{
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    if (regtype != REG_TYPE_CONSTINT)
+        fail(ctx, "DEFI token using invalid register");
+    else
+        set_defined_register(ctx, regtype, regnum);
+} // state_DEFI
+
+static void state_DEFB(Context *ctx)
+{
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    if (regtype != REG_TYPE_CONSTBOOL)
+        fail(ctx, "DEFB token using invalid register");
+    else
+        set_defined_register(ctx, regtype, regnum);
+} // state_DEFB
 
 static void state_FRC(Context *ctx)
 {
@@ -3060,8 +3053,8 @@ static const Instruction instructions[] =
     INSTRUCTION(BREAK, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(BREAKC, 2, SS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(MOVA, 2, DS, MOJOSHADER_TYPE_VERTEX),
-    INSTRUCTION(DEFB, 2, DEFB, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DEFI, 5, DEFI, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DEFB, 2, DEFB, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DEFI, 5, DEF, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
@@ -3094,7 +3087,7 @@ static const Instruction instructions[] =
     INSTRUCTION(EXPP, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(LOGP, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(CND, 4, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DEF, 5, DEF, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DEF, 5, DEF, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXREG2RGB, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXDP3TEX, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXM3X2DEPTH, 2, DS, MOJOSHADER_TYPE_ANY),
