@@ -2829,6 +2829,7 @@ static void sourcearg_matrix_replicate(Context *ctx, const int idx,
     {
         memcpy(dst, src, sizeof (SourceArgInfo));
         dst->regnum += (i + 1);
+        set_used_register(ctx, dst->regtype, dst->regnum);
     } // for
 } // sourcearg_matrix_replicate
 
