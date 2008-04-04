@@ -205,6 +205,14 @@ typedef struct OutputList
 } OutputList;
 
 
+typedef struct RegisterList
+{
+    RegisterType regtype;
+    int regnum;
+    struct RegisterList *next;
+} RegisterList;
+
+
 // result modifiers.
 #define MOD_SATURATE 0x01
 #define MOD_PP 0x02
@@ -263,14 +271,10 @@ typedef struct
 
 typedef enum
 {
-    // May apply to any profile...
-    CTX_FLAGS_USED_ADDR_REG   = (1 << 0),
-    CTX_FLAGS_USED_PRED_REG   = (1 << 1),
-
     // Specific to GLSL profile...
-    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 2),
-    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 3),
-    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 4),
+    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
+    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 1),
+    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 2),
     CTX_FLAGS_MASK = 0xFFFFFFFF
 } ContextFlags;
 
@@ -278,12 +282,10 @@ typedef enum
 #define SCRATCH_BUFFER_SIZE 256
 #define SCRATCH_BUFFERS 10
 
-// !!! FIXME: labels_called and the scratch buffers make this pretty big.
+// !!! FIXME: the scratch buffers make Context pretty big.
 // !!! FIXME:  might be worth having one set of static scratch buffers that
 // !!! FIXME:  are mutex protected?
-// !!! FIXME: and replace the bit array for labels_called with a linked list?
-// !!! FIXME:  maybe just malloc() the label list, since it can't be more than
-// !!! FIXME:  around (bytes_of_shader / 20) elements in the pathological case?
+
 // Context...this is state that changes as we parse through a shader...
 struct Context
 {
@@ -319,8 +321,9 @@ struct Context
     uint32 instruction_controls;
     uint32 previous_opcode;
     ContextFlags flags;
-    uint8 labels_called[256];
     int loops;
+    RegisterList used_registers;
+    RegisterList defined_registers;
 };
 
 
@@ -365,28 +368,6 @@ static int shader_version_atleast(const Context *ctx, uint8 maj, uint8 min)
 
 
 // Bit arrays (for storing large arrays of booleans...
-
-static void set_bit_array(uint8 *array, size_t arraylen, int index, int val)
-{
-    const int byteindex = index / 8;
-    const int bitindex = index % 8;
-    assert(byteindex < arraylen);
-
-    if (val)
-        array[byteindex] |= (1 << bitindex);
-    else
-        array[byteindex] &= ~(1 << bitindex);
-} // set_bit_array
-
-static int get_bit_array(const uint8 *array, size_t arraylen, int index)
-{
-    const int byteindex = index / 8;
-    const int bitindex = index % 8;
-    assert(byteindex < arraylen);
-    const uint8 byte = array[byteindex];
-    return (byte & (1 << bitindex)) ? 1 : 0;
-} // get_bit_array
-
 
 static inline char *get_scratch_buffer(Context *ctx)
 {
@@ -550,6 +531,106 @@ static void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
         *end = '\0';  // chop extra '0' or all decimal places off.
     } // else
 } // floatstr
+
+
+// Deal with register lists...  !!! FIXME: I sort of hate this.
+
+static void free_reglist(MOJOSHADER_free f, RegisterList *item)
+{
+    while (item != NULL)
+    {
+        RegisterList *next = item->next;
+        f(item);
+        item = next;
+    } // while
+} // free_reglist
+
+static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
+{
+    return ( ((uint32) regtype) | (((uint32) regnum) << 16) );
+} // reg_to_uint32
+
+static void reglist_insert(Context *ctx, RegisterList *prev,
+                           const RegisterType regtype, const int regnum)
+{
+    const uint32 newval = reg_to_ui32(regtype, regnum);
+    RegisterList *item = prev->next;
+    while (item != NULL)
+    {
+        const uint32 val = reg_to_ui32(item->regtype, item->regnum);
+        if (newval == val)
+            return;  // already set, so we're done.
+        else if (newval < val)  // insert it here.
+            break;
+        else // if (newval > val)
+        {
+            // keep going, we're not to the insertion point yet.
+            prev = item;
+            item = item->next;
+        } // else
+    } // while
+
+    // we need to insert an entry after (prev).
+    item = (RegisterList *) ctx->malloc(sizeof (RegisterList));
+    if (item == NULL)
+        out_of_memory(ctx);
+    else
+    {
+        item->regtype = regtype;
+        item->regnum = regnum;
+        item->next = prev->next;
+        prev->next = item;
+    } // else
+} // reglist_insert
+
+static RegisterList *reglist_exists(RegisterList *prev,
+                                    const RegisterType regtype,
+                                    const int regnum)
+{
+    const uint32 newval = reg_to_ui32(regtype, regnum);
+    RegisterList *item = prev->next;
+    while (item != NULL)
+    {
+        const uint32 val = reg_to_ui32(item->regtype, item->regnum);
+        if (newval == val)
+            return item;  // here it is.
+        else if (newval < val)  // should have been here if it existed.
+            return NULL;
+        else // if (newval > val)
+        {
+            // keep going, we're not to the insertion point yet.
+            prev = item;
+            item = item->next;
+        } // else
+    } // while
+
+    return NULL;  // wasn't in the list.
+} // reglist_exists
+
+static inline void set_used_register(Context *ctx, const RegisterType regtype,
+                                     const int regnum)
+{
+    reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
+} // set_used_register
+
+static inline int get_used_register(Context *ctx, const RegisterType regtype,
+                                    const int regnum)
+{
+    return (reglist_exists(&ctx->used_registers, regtype, regnum) != NULL);
+} // set_used_register
+
+static inline void set_defined_register(Context *ctx, const RegisterType rtype,
+                                        const int regnum)
+{
+    reglist_insert(ctx, &ctx->defined_registers, rtype, regnum);
+} // set_defined_register
+
+static inline int get_defined_register(Context *ctx, const RegisterType rtype,
+                                       const int regnum)
+{
+    return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
+} // get_defined_register
+
 
 
 // This is used in more than just the d3d profile.
@@ -1503,9 +1584,9 @@ static void emit_GLSL_end(Context *ctx)
         emit_GLSL_RET(ctx);
 
     push_output(ctx, &ctx->globals);
-    if (ctx->flags & CTX_FLAGS_USED_ADDR_REG)
+    if (get_used_register(ctx, REG_TYPE_ADDRESS, 0))
         output_line(ctx, "ivec a0;");
-    if (ctx->flags & CTX_FLAGS_USED_PRED_REG)
+    if (get_used_register(ctx, REG_TYPE_PREDICATE, 0))
         output_line(ctx, "bvec p0;");
     output_blank_line(ctx);
     pop_output(ctx);
@@ -1860,7 +1941,7 @@ static void emit_GLSL_LABEL(Context *ctx)
 
     // MSDN specs say CALL* has to come before the LABEL, so we know if we
     //  can ditch the entire function here as unused.
-    if (!get_bit_array(ctx->labels_called, sizeof (ctx->labels_called), label))
+    if (!get_used_register(ctx, REG_TYPE_LABEL, label))
         ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
 
     // !!! FIXME: it would be nice if we could determine if a function is
@@ -2268,18 +2349,6 @@ static const Profile profiles[] =
      PROFILE_EMITTER_GLSL(op) \
 }
 
-static void register_reference_upkeep(Context *ctx, const RegisterType regtype)
-{
-    // !!! FIXME: make sure there were def/dcl for all referenced vars?
-    switch (regtype)
-    {
-        case REG_TYPE_ADDRESS: ctx->flags |= CTX_FLAGS_USED_ADDR_REG; break;
-        case REG_TYPE_PREDICATE: ctx->flags |= CTX_FLAGS_USED_PRED_REG; break;
-        default: break;  // don't care.
-    } // switch
-} // register_reference_upkeep
-
-
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
     // !!! FIXME: recheck against the spec for ranges (like RASTOUT values, etc).
@@ -2356,7 +2425,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     if ((info->regtype < 0) || (info->regtype > REG_TYPE_MAX))
         return fail(ctx, "Register type is out of range");
 
-    register_reference_upkeep(ctx, info->regtype);
+    set_used_register(ctx, info->regtype, info->regnum);
     return 1;
 } // parse_destination_token
 
@@ -2403,7 +2472,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     if ( ((SourceMod) info->src_mod) >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
-    register_reference_upkeep(ctx, info->regtype);
+    set_used_register(ctx, info->regtype, info->regnum);
     return 1;
 } // parse_source_token
 
@@ -2837,19 +2906,16 @@ static void state_LABEL(Context *ctx)
 
 static void state_CALL(Context *ctx)
 {
-    const int l = ctx->source_args[0].regnum;
-    if (check_label_register(ctx, 0, "CALL") != FAIL)
-        set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
+    check_label_register(ctx, 0, "CALL");
 } // state_CALL
 
 static void state_CALLNZ(Context *ctx)
 {
     const RegisterType regtype = ctx->source_args[1].regtype;
-    const int l = ctx->source_args[0].regnum;
     if ((regtype != REG_TYPE_CONSTBOOL) && (regtype != REG_TYPE_PREDICATE))
         fail(ctx, "CALLNZ argument isn't constbool or predicate register");
-    else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
-        set_bit_array(ctx->labels_called, sizeof (ctx->labels_called), l, 1);
+    else
+        check_label_register(ctx, 0, "CALLNZ");
 } // state_CALLNZ
 
 static void state_MOVA(Context *ctx)
@@ -3310,6 +3376,8 @@ static void destroy_context(Context *ctx)
         free_output_list(f, ctx->subroutines.head.next);
         free_output_list(f, ctx->mainline.head.next);
         free_output_list(f, ctx->ignore.head.next);
+        free_reglist(f, ctx->used_registers.next);
+        free_reglist(f, ctx->defined_registers.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr);
         f(ctx);
