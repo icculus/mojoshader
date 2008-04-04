@@ -2947,6 +2947,7 @@ static void state_LABEL(Context *ctx)
     if (ctx->previous_opcode != OPCODE_RET)
         fail(ctx, "LABEL not followed by a RET");
     check_label_register(ctx, 0, "LABEL");
+    set_defined_register(ctx, REG_TYPE_LABEL, ctx->source_args[0].regnum);
 } // state_LABEL
 
 static void state_CALL(Context *ctx)
