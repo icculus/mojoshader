@@ -583,12 +583,12 @@ static void reglist_insert(Context *ctx, RegisterList *prev,
     } // else
 } // reglist_insert
 
-static RegisterList *reglist_exists(RegisterList *prev,
-                                    const RegisterType regtype,
-                                    const int regnum)
+static const RegisterList *reglist_exists(const RegisterList *prev,
+                                          const RegisterType regtype,
+                                          const int regnum)
 {
     const uint32 newval = reg_to_ui32(regtype, regnum);
-    RegisterList *item = prev->next;
+    const RegisterList *item = prev->next;
     while (item != NULL)
     {
         const uint32 val = reg_to_ui32(item->regtype, item->regnum);
