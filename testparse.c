@@ -46,7 +46,7 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
 {
     const MOJOSHADER_parseData *pd;
 
-    pd = MOJOSHADER_parse(prof, buf, len, Malloc, Free);
+    pd = MOJOSHADER_parse(prof, buf, len, Malloc, Free, NULL);
     printf("PROFILE: %s\n", prof);
     if (pd->error != NULL)
         printf("ERROR: %s\n", pd->error);

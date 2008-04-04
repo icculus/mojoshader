@@ -300,6 +300,7 @@ struct Context
 {
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
+    void *malloc_data;
     const uint32 *tokens;
     uint32 tokencount;
     OutputList *output;
@@ -336,6 +337,21 @@ struct Context
     int uniform_count;
     RegisterList uniforms;
 };
+
+
+// Convenience functions for allocators...
+
+static inline void *Malloc(Context *ctx, int len)
+{
+    return ctx->malloc(len, ctx->malloc_data);
+} // Malloc
+
+
+static inline void Free(Context *ctx, void *ptr)
+{
+    ctx->free(ptr, ctx->malloc_data);
+} // Free
+
 
 
 // jump between output sections in the context...
@@ -422,7 +438,7 @@ static int failf(Context *ctx, const char *fmt, ...)
         const int len = vsnprintf(scratch,SCRATCH_BUFFER_SIZE,fmt,ap);
         va_end(ap);
 
-        char *failstr = (char *) ctx->malloc(len + 1);
+        char *failstr = (char *) Malloc(ctx, len + 1);
         if (failstr == NULL)
             out_of_memory(ctx);
         else
@@ -469,11 +485,11 @@ static int output_line(Context *ctx, const char *fmt, ...)
     const int len = vsnprintf(scratch+indent, SCRATCH_BUFFER_SIZE-indent, fmt, ap) + indent;
     va_end(ap);
 
-    item = (OutputListNode *) ctx->malloc(sizeof (OutputListNode));
+    item = (OutputListNode *) Malloc(ctx, sizeof (OutputListNode));
     if (item == NULL)
         return out_of_memory(ctx);
 
-    item->str = (char *) ctx->malloc(len + 1);
+    item->str = (char *) Malloc(ctx, len + 1);
     if (item->str == NULL)
     {
         free(item);
@@ -546,12 +562,12 @@ static void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
 
 // Deal with register lists...  !!! FIXME: I sort of hate this.
 
-static void free_reglist(MOJOSHADER_free f, RegisterList *item)
+static void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
 {
     while (item != NULL)
     {
         RegisterList *next = item->next;
-        f(item);
+        f(item, d);
         item = next;
     } // while
 } // free_reglist
@@ -582,7 +598,7 @@ static void reglist_insert(Context *ctx, RegisterList *prev,
     } // while
 
     // we need to insert an entry after (prev).
-    item = (RegisterList *) ctx->malloc(sizeof (RegisterList));
+    item = (RegisterList *) Malloc(ctx, sizeof (RegisterList));
     if (item == NULL)
         out_of_memory(ctx);
     else
@@ -3303,7 +3319,7 @@ static int parse_comment_token(Context *ctx)
             str = get_scratch_buffer(ctx);
         else
         {
-            str = (char *) ctx->malloc(len + 1);
+            str = (char *) Malloc(ctx, len + 1);
             if (str == NULL)
                 return out_of_memory(ctx);
         } // else
@@ -3313,7 +3329,7 @@ static int parse_comment_token(Context *ctx)
         ctx->profile->comment_emitter(ctx, str);
 
         if (needmalloc)
-            ctx->free(str);
+            Free(ctx, str);
 
         return commenttoks + 1;  // comment data plus the initial token.
     } // else
@@ -3374,8 +3390,8 @@ static int parse_token(Context *ctx)
 } // parse_token
 
 
-static void *internal_malloc(int bytes) { return malloc(bytes); }
-static void internal_free(void *ptr) { free(ptr); }
+static void *internal_malloc(int bytes, void *d) { return malloc(bytes); }
+static void internal_free(void *ptr, void *d) { free(ptr); }
 
 
 static int find_profile_id(const char *profile)
@@ -3394,18 +3410,19 @@ static int find_profile_id(const char *profile)
 static Context *build_context(const char *profile,
                               const unsigned char *tokenbuf,
                               const unsigned int bufsize,
-                              MOJOSHADER_malloc m, MOJOSHADER_free f)
+                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     if (m == NULL) m = internal_malloc;
     if (f == NULL) f = internal_free;
 
-    Context *ctx = m(sizeof (Context));
+    Context *ctx = m(sizeof (Context), d);
     if (ctx == NULL)
         return NULL;
 
     memset(ctx, '\0', sizeof (Context));
     ctx->malloc = m;
     ctx->free = f;
+    ctx->malloc_data = d;
     ctx->tokens = (const uint32 *) tokenbuf;
     ctx->tokencount = bufsize / sizeof (uint32);
     ctx->endline = endline_str;
@@ -3428,14 +3445,14 @@ static Context *build_context(const char *profile,
 } // build_context
 
 
-static void free_output_list(MOJOSHADER_free f, OutputListNode *item)
+static void free_output_list(MOJOSHADER_free f, void *d, OutputListNode *item)
 {
     while (item != NULL)
     {
         OutputListNode *next = item->next;
         if (item->str != NULL)
-            f(item->str);
-        f(item);
+            f(item->str, d);
+        f(item, d);
         item = next;
     } // while
 } // free_output_list
@@ -3446,17 +3463,18 @@ static void destroy_context(Context *ctx)
     if (ctx != NULL)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
-        free_output_list(f, ctx->globals.head.next);
-        free_output_list(f, ctx->helpers.head.next);
-        free_output_list(f, ctx->subroutines.head.next);
-        free_output_list(f, ctx->mainline.head.next);
-        free_output_list(f, ctx->ignore.head.next);
-        free_reglist(f, ctx->used_registers.next);
-        free_reglist(f, ctx->defined_registers.next);
-        free_reglist(f, ctx->uniforms.next);
+        void *d = ctx->malloc_data;
+        free_output_list(f, d, ctx->globals.head.next);
+        free_output_list(f, d, ctx->helpers.head.next);
+        free_output_list(f, d, ctx->subroutines.head.next);
+        free_output_list(f, d, ctx->mainline.head.next);
+        free_output_list(f, d, ctx->ignore.head.next);
+        free_reglist(f, d, ctx->used_registers.next);
+        free_reglist(f, d, ctx->defined_registers.next);
+        free_reglist(f, d, ctx->uniforms.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
-            f((void *) ctx->failstr);
-        f(ctx);
+            f((void *) ctx->failstr, d);
+        f(ctx, d);
     } // if
 } // destroy_context
 
@@ -3481,7 +3499,7 @@ static void append_list(char **_wptr, const char *endline,
 
 static char *build_output(Context *ctx)
 {
-    char *retval = (char *) ctx->malloc(ctx->output_len + 1);
+    char *retval = (char *) Malloc(ctx, ctx->output_len + 1);
     if (retval == NULL)
         out_of_memory(ctx);
     else
@@ -3503,7 +3521,7 @@ static char *build_output(Context *ctx)
 static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 {
     MOJOSHADER_uniform *retval = (MOJOSHADER_uniform *)
-                ctx->malloc(sizeof (MOJOSHADER_uniform) * ctx->uniform_count);
+                Malloc(ctx, sizeof (MOJOSHADER_uniform) * ctx->uniform_count);
 
     if (retval == NULL)
         out_of_memory(ctx);
@@ -3573,7 +3591,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_parseData *retval;
 
-    if ((retval = ctx->malloc(sizeof (MOJOSHADER_parseData))) == NULL)
+    if ((retval = Malloc(ctx, sizeof (MOJOSHADER_parseData))) == NULL)
         return &out_of_mem_data;
 
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
@@ -3588,9 +3606,9 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (isfail(ctx))
     {
         if (output != NULL)
-            ctx->free(output);
+            Free(ctx, output);
         if (uniforms != NULL)
-            ctx->free(uniforms);
+            Free(ctx, uniforms);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -3608,6 +3626,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
+    retval->malloc_data = ctx->malloc_data;
 
     return retval;
 } // build_parsedata
@@ -3673,7 +3692,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
                                              const unsigned char *tokenbuf,
                                              const unsigned int bufsize,
                                              MOJOSHADER_malloc m,
-                                             MOJOSHADER_free f)
+                                             MOJOSHADER_free f, void *d)
 {
     MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
@@ -3682,7 +3701,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
         return &out_of_mem_data;  // supply both or neither.
 
-    if ((ctx = build_context(profile, tokenbuf, bufsize, m, f)) == NULL)
+    if ((ctx = build_context(profile, tokenbuf, bufsize, m, f, d)) == NULL)
         return &out_of_mem_data;
 
     // Version token always comes first.
@@ -3715,17 +3734,18 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
         return;  // no-op.
 
     MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
+    void *d = data->malloc_data;
 
     if (data->output != NULL)  // check for NULL in case of dumb free() impl.
-        f((void *) data->output);
+        f((void *) data->output, d);
 
     if (data->uniforms != NULL)
-        f((void *) data->uniforms);
+        f((void *) data->uniforms, d);
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))
-        f((void *) data->error);
+        f((void *) data->error, d);
 
-    f(data);
+    f(data, d);
 } // MOJOSHADER_freeParseData
 
 

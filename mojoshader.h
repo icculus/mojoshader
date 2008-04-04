@@ -28,9 +28,12 @@ int MOJOSHADER_version(void);
  * These allocators work just like the C runtime's malloc() and free()
  *  (in fact, they probably use malloc() and free() internally if you don't
  *  specify your own allocator, but don't rely on that behaviour).
+ * (data) is the pointer you supplied when specifying these allocator
+ *  callbacks, in case you need instance-specific data...it is passed through
+ *  to your allocator unmolested, and can be NULL if you like.
  */
-typedef void *(*MOJOSHADER_malloc)(int bytes);
-typedef void (*MOJOSHADER_free)(void *ptr);
+typedef void *(*MOJOSHADER_malloc)(int bytes, void *data);
+typedef void (*MOJOSHADER_free)(void *ptr, void *data);
 
 
 /*
@@ -142,6 +145,11 @@ typedef struct
      * This is the free implementation you passed to MOJOSHADER_parse().
      */
     MOJOSHADER_free free;
+
+    /*
+     * This is the pointer you passed as opaque data for your allocator.
+     */
+    void *malloc_data;
 } MOJOSHADER_parseData;
 
 
@@ -154,6 +162,7 @@ typedef struct
  * Profile string for GLSL: OpenGL high-level shader language output.
  */
 #define MOJOSHADER_PROFILE_GLSL "glsl"
+
 
 /*
  * Parse a compiled Direct3D shader's bytecode.
@@ -169,9 +178,11 @@ typedef struct
  * As parsing requires some memory to be allocated, you may provide a custom
  *  allocator to this function, which will be used to allocate/free memory.
  *  They function just like malloc() and free(). We do not use realloc().
- *  If you don't care, pass NULL in for the allocator functions.
+ *  If you don't care, pass NULL in for the allocator functions. If your
+ *  allocator needs instance-specific data, you may supply it with the
+ *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
  *
- * This function returns a MOJOSHADER_parseData
+ * This function returns a MOJOSHADER_parseData.
  *
  * This function will never return NULL, even if the system is completely
  *  out of memory upon entry (in which case, this function returns a static
@@ -186,7 +197,8 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
                                              const unsigned char *tokenbuf,
                                              const unsigned int bufsize,
                                              MOJOSHADER_malloc m,
-                                             MOJOSHADER_free f);
+                                             MOJOSHADER_free f,
+                                             void *d);
 
 /*
  * Call this to dispose of parsing results when you are done with them.
