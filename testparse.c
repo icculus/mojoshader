@@ -60,15 +60,13 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
             printf(" (none.)\n");
         else
         {
-            static const char *typenames[] = { "float", "int", "bool" };
             int i;
             printf("\n");
             for (i = 0; i < pd->uniform_count; i++)
             {
+                static const char *typenames[] = { "float", "int", "bool" };
                 const MOJOSHADER_uniform *u = &pd->uniforms[i];
-                const char *name = u->name ? u->name : "";
-                const char *typestr = typenames[(int) u->type];
-                printf("    * %d: %s %s\n", u->index, typestr, name);
+                printf("    * %d: %s\n", u->index, typenames[(int) u->type]);
             } // for
         } // else
 

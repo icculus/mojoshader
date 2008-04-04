@@ -46,18 +46,28 @@ typedef enum
     MOJOSHADER_TYPE_ANY = 0xFFFFFFFF   /* used for bitmasks */
 } MOJOSHADER_shaderType;
 
+/*
+ * Data types for uniforms. See MOJOSHADER_uniform for more information.
+ */
 typedef enum
 {
     MOJOSHADER_UNIFORM_FLOAT,
     MOJOSHADER_UNIFORM_INT,
     MOJOSHADER_UNIFORM_BOOL
-} MOJOSHADER_uniform_type;
+} MOJOSHADER_uniformType;
 
+/*
+ * These are the uniforms to be set for a shader. "Uniforms" are what Direct3D
+ *  calls "Constants" ... IDirect3DDevice::SetVertexShaderConstantF() would
+ *  need this data, for example. These integers are register indexes. So if
+ *  index==6 and type==MOJOSHADER_UNIFORM_FLOAT, that means we'd expect a
+ *  4-float vector to be specified for what would be register "c6" in D3D
+ *  assembly language, before drawing with the shader.
+ */
 typedef struct
 {
     int index;
-    const char *name;
-    MOJOSHADER_uniform_type type;
+    MOJOSHADER_uniformType type;
 } MOJOSHADER_uniform;
 
 
@@ -118,9 +128,8 @@ typedef struct
     int uniform_count;
 
     /*
-     * (uniform_count) elements of data on how to access uniforms to be
-     *  set by this shader. "Uniforms" are what Direct3D calls "Constants" ...
-     *  IDirect3DDevice::SetVertexShaderConstantF() would need this data.
+     * (uniform_count) elements of data that specify Uniforms to be set for
+     *  this shader. See discussion on MOJOSHADER_uniform for details.
      */
     MOJOSHADER_uniform *uniforms;
 
