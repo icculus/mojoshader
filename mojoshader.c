@@ -1977,7 +1977,7 @@ static void emit_GLSL_LABEL(Context *ctx)
     // !!! FIXME: it would be nice if we could determine if a function is
     // !!! FIXME:  only called once and, if so, forcibly inline it.
 
-    output_line(ctx, "void %s(void)", labelstr);
+    output_line(ctx, "void %s()", labelstr);
     output_line(ctx, "{");
     ctx->indent++;
 } // emit_GLSL_LABEL
