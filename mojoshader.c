@@ -89,38 +89,6 @@ const char *endline_str = "\n";
 #   define SWAP32(x) (x)
 #endif
 
-
-// predeclare.
-typedef struct Context Context;
-
-// one emit function for each opcode in each profile.
-typedef void (*emit_function)(Context *ctx);
-
-// one emit function for comments in each profile.
-typedef void (*emit_comment)(Context *ctx, const char *str);
-
-// one emit function for starting output in each profile.
-typedef void (*emit_start)(Context *ctx);
-
-// one emit function for ending output in each profile.
-typedef void (*emit_end)(Context *ctx);
-
-// one args function for each possible sequence of opcode arguments.
-typedef int (*args_function)(Context *ctx);
-
-// one state function for each opcode where we have state machine updates.
-typedef void (*state_function)(Context *ctx);
-
-typedef struct
-{
-    const char *name;
-    emit_start start_emitter;
-    emit_end end_emitter;
-    emit_comment comment_emitter;
-} Profile;
-
-typedef MOJOSHADER_shaderType ShaderType;
-
 typedef enum
 {
     REG_TYPE_TEMP = 0,
@@ -147,6 +115,49 @@ typedef enum
     REG_TYPE_PREDICATE = 19,
     REG_TYPE_MAX = 19
 } RegisterType;
+
+// predeclare.
+typedef struct Context Context;
+
+// one emit function for each opcode in each profile.
+typedef void (*emit_function)(Context *ctx);
+
+// one emit function for comments in each profile.
+typedef void (*emit_comment)(Context *ctx, const char *str);
+
+// one emit function for starting output in each profile.
+typedef void (*emit_start)(Context *ctx);
+
+// one emit function for ending output in each profile.
+typedef void (*emit_end)(Context *ctx);
+
+// one emit function for finalizing output in each profile.
+typedef void (*emit_finalize)(Context *ctx);
+
+// one emit function for global definitions in each profile.
+typedef void (*emit_global)(Context *ctx, RegisterType regtype, int regnum);
+
+// one emit function for uniforms in each profile.
+typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum);
+
+// one args function for each possible sequence of opcode arguments.
+typedef int (*args_function)(Context *ctx);
+
+// one state function for each opcode where we have state machine updates.
+typedef void (*state_function)(Context *ctx);
+
+typedef struct
+{
+    const char *name;
+    emit_start start_emitter;
+    emit_end end_emitter;
+    emit_comment comment_emitter;
+    emit_global global_emitter;
+    emit_uniform uniform_emitter;
+    emit_finalize finalize_emitter;
+} Profile;
+
+typedef MOJOSHADER_shaderType ShaderType;
 
 typedef enum
 {
@@ -324,6 +335,8 @@ struct Context
     int loops;
     RegisterList used_registers;
     RegisterList defined_registers;
+    int uniform_count;
+    RegisterList uniforms;
 };
 
 
@@ -964,6 +977,24 @@ static void emit_D3D_end(Context *ctx)
 } // emit_D3D_end
 
 
+static void emit_D3D_finalize(Context *ctx)
+{
+    // no-op.
+} // emit_D3D_finalize
+
+
+static void emit_D3D_global(Context *ctx, RegisterType regtype, int regnum)
+{
+    // no-op.
+} // emit_D3D_global
+
+
+static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum)
+{
+    // no-op.
+} // emit_D3D_uniform
+
+
 static void emit_D3D_comment(Context *ctx, const char *str)
 {
     output_line(ctx, "; %s", str);
@@ -1582,45 +1613,53 @@ static void emit_GLSL_end(Context *ctx)
     // force a RET opcode if we're at the end of the stream without one.
     if (ctx->previous_opcode != OPCODE_RET)
         emit_GLSL_RET(ctx);
+} // emit_GLSL_end
 
+static void emit_GLSL_finalize(Context *ctx)
+{
+    // throw some blank lines around to make source more readable.
     push_output(ctx, &ctx->globals);
-
-    const RegisterList *item = ctx->used_registers.next;
-    while (item != NULL)
-    {
-        const RegisterType regtype = item->regtype;
-        const int regnum = item->regnum;
-        item = item->next;
-
-        if (get_defined_register(ctx, regtype, regnum))
-            continue;  // already dealt with this one.
-        else if (regtype == REG_TYPE_ADDRESS)
-            output_line(ctx, "ivec4 a%d;", regnum);
-        else if (regtype == REG_TYPE_PREDICATE)
-            output_line(ctx, "bvec4 p%d;", regnum);
-        else if (regtype == REG_TYPE_CONST)
-            output_line(ctx, "uniform vec4 c%d;", regnum);
-        else if (regtype == REG_TYPE_CONST2)
-            output_line(ctx, "uniform vec4 c%d;", regnum + 2048);
-        else if (regtype == REG_TYPE_CONST3)
-            output_line(ctx, "uniform vec4 c%d;", regnum + 4096);
-        else if (regtype == REG_TYPE_CONST4)
-            output_line(ctx, "uniform vec4 c%d;", regnum + 6144);
-        else if (regtype == REG_TYPE_CONSTINT)
-            output_line(ctx, "uniform ivec4 i%d;", regnum);
-        else if (regtype == REG_TYPE_CONSTBOOL)
-            output_line(ctx, "uniform bvec4 i%d;", regnum);
-        else if (regtype == REG_TYPE_TEMP)
-            output_line(ctx, "vec4 r%d;", regnum);
-        else if (regtype == REG_TYPE_LOOP)
-            output_line(ctx, "ivec4 aL;");
-        else
-            fail(ctx, "BUG: we used a register we don't know how to define.");
-    } // while
-
     output_blank_line(ctx);
     pop_output(ctx);
-} // emit_GLSL_end
+} // emit_GLSL_finalize
+
+static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
+{
+    push_output(ctx, &ctx->globals);
+    if (regtype == REG_TYPE_ADDRESS)
+        output_line(ctx, "ivec4 a%d;", regnum);
+    else if (regtype == REG_TYPE_PREDICATE)
+        output_line(ctx, "bvec4 p%d;", regnum);
+    else if (regtype == REG_TYPE_TEMP)
+        output_line(ctx, "vec4 r%d;", regnum);
+    else if (regtype == REG_TYPE_LOOP)
+        output_line(ctx, "ivec4 aL;");
+    else if (regtype == REG_TYPE_LABEL)
+        ; /* no-op. If we see it here, it means we optimized it out. */
+    else
+        fail(ctx, "BUG: we used a register we don't know how to define.");
+    pop_output(ctx);
+} // emit_GLSL_global
+
+static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
+{
+    push_output(ctx, &ctx->globals);
+    if (regtype == REG_TYPE_CONST)
+        output_line(ctx, "uniform vec4 c%d;", regnum);
+    else if (regtype == REG_TYPE_CONST2)
+        output_line(ctx, "uniform vec4 c%d;", regnum + 2048);
+    else if (regtype == REG_TYPE_CONST3)
+        output_line(ctx, "uniform vec4 c%d;", regnum + 4096);
+    else if (regtype == REG_TYPE_CONST4)
+        output_line(ctx, "uniform vec4 c%d;", regnum + 6144);
+    else if (regtype == REG_TYPE_CONSTINT)
+        output_line(ctx, "uniform ivec4 i%d;", regnum);
+    else if (regtype == REG_TYPE_CONSTBOOL)
+        output_line(ctx, "uniform bvec4 i%d;", regnum);
+    else
+        fail(ctx, "BUG: we used a uniform we don't know how to define.");
+    pop_output(ctx);
+} // emit_GLSL_uniform
 
 static void emit_GLSL_comment(Context *ctx, const char *str)
 {
@@ -2363,15 +2402,27 @@ static void emit_GLSL_RESERVED(Context *ctx)
 #error No profiles are supported. Fix your build.
 #endif
 
+#define DEFINE_PROFILE(prof) { \
+    MOJOSHADER_PROFILE_##prof, \
+    emit_##prof##_start, \
+    emit_##prof##_end, \
+    emit_##prof##_comment, \
+    emit_##prof##_global, \
+    emit_##prof##_uniform, \
+    emit_##prof##_finalize, \
+},
+
 static const Profile profiles[] =
 {
 #if SUPPORT_PROFILE_D3D
-    { MOJOSHADER_PROFILE_D3D, emit_D3D_start, emit_D3D_end, emit_D3D_comment },
+    DEFINE_PROFILE(D3D)
 #endif
 #if SUPPORT_PROFILE_GLSL
-    { MOJOSHADER_PROFILE_GLSL, emit_GLSL_start, emit_GLSL_end, emit_GLSL_comment },
+    DEFINE_PROFILE(GLSL)
 #endif
 };
+
+#undef DEFINE_PROFILE
 
 // The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
 #define PROFILE_EMITTERS(op) { \
@@ -3404,6 +3455,7 @@ static void destroy_context(Context *ctx)
         free_output_list(f, ctx->ignore.head.next);
         free_reglist(f, ctx->used_registers.next);
         free_reglist(f, ctx->defined_registers.next);
+        free_reglist(f, ctx->uniforms.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr);
         f(ctx);
@@ -3450,9 +3502,77 @@ static char *build_output(Context *ctx)
 } // build_output
 
 
+static MOJOSHADER_uniform *build_uniforms(Context *ctx)
+{
+    MOJOSHADER_uniform *retval = (MOJOSHADER_uniform *)
+                ctx->malloc(sizeof (MOJOSHADER_uniform) * ctx->uniform_count);
+
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
+    {
+        RegisterList *item = ctx->uniforms.next;
+        MOJOSHADER_uniformType type = MOJOSHADER_UNIFORM_FLOAT;
+        int index = 0;
+        int i;
+
+        for (i = 0; i < ctx->uniform_count; i++)
+        {
+            if (item == NULL)
+            {
+                fail(ctx, "BUG: mismatched uniform list and count");
+                break;
+            } // if
+
+            index = item->regnum;
+            switch (item->regtype)
+            {
+                case REG_TYPE_CONST:
+                    type = MOJOSHADER_UNIFORM_FLOAT;
+                    break;
+
+                case REG_TYPE_CONST2:
+                    index += 2048;
+                    type = MOJOSHADER_UNIFORM_FLOAT;
+                    break;
+
+                case REG_TYPE_CONST3:
+                    index += 4096;
+                    type = MOJOSHADER_UNIFORM_FLOAT;
+                    break;
+
+                case REG_TYPE_CONST4:
+                    index += 6144;
+                    type = MOJOSHADER_UNIFORM_FLOAT;
+                    break;
+
+                case REG_TYPE_CONSTINT:
+                    type = MOJOSHADER_UNIFORM_INT;
+                    break;
+
+                case REG_TYPE_CONSTBOOL:
+                    type = MOJOSHADER_UNIFORM_BOOL;
+                    break;
+
+                default:
+                    fail(ctx, "unknown uniform datatype");
+                    break;
+            } // switch
+
+            retval[i].index = index;
+            retval[i].type = type;
+            item = item->next;
+        } // while
+    } // else
+
+    return retval;
+} // build_output
+
+
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 {
     char *output = NULL;
+    MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_parseData *retval;
 
     if ((retval = ctx->malloc(sizeof (MOJOSHADER_parseData))) == NULL)
@@ -3463,11 +3583,16 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (!isfail(ctx))
         output = build_output(ctx);
 
+    if (!isfail(ctx))
+        uniforms = build_uniforms(ctx);
+
     // check again, in case build_output ran out of memory.
     if (isfail(ctx))
     {
         if (output != NULL)
             ctx->free(output);
+        if (uniforms != NULL)
+            ctx->free(uniforms);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -3479,6 +3604,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->shader_type = ctx->shader_type;
         retval->major_ver = (int) ctx->major_ver;
         retval->minor_ver = (int) ctx->minor_ver;
+        retval->uniform_count = ctx->uniform_count;
+        retval->uniforms = uniforms;
     } // else
 
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
@@ -3486,6 +3613,60 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
     return retval;
 } // build_parsedata
+
+
+static void process_definitions(Context *ctx)
+{
+    RegisterList *uitem = &ctx->uniforms;
+    RegisterList *prev = &ctx->used_registers;
+    RegisterList *item = prev->next;
+
+    while (item != NULL)
+    {
+        RegisterList *next = item->next;
+        const RegisterType regtype = item->regtype;
+        const int regnum = item->regnum;
+
+        if (!get_defined_register(ctx, regtype, regnum))
+        {
+            // haven't already dealt with this one.
+            switch (regtype)
+            {
+                case REG_TYPE_ADDRESS:
+                case REG_TYPE_PREDICATE:
+                case REG_TYPE_TEMP:
+                case REG_TYPE_LOOP:
+                case REG_TYPE_LABEL:
+                    ctx->profile->global_emitter(ctx, regtype, regnum);
+                    break;
+
+                case REG_TYPE_CONST:
+                case REG_TYPE_CONST2:
+                case REG_TYPE_CONST3:
+                case REG_TYPE_CONST4:
+                case REG_TYPE_CONSTINT:
+                case REG_TYPE_CONSTBOOL:
+                    // separate uniforms into a different list for now.
+                    ctx->uniform_count++;
+                    prev->next = item->next;
+                    uitem->next = item;
+                    uitem = item;
+                    uitem->next = NULL;
+                    break;
+
+                default:
+                    fail(ctx, "BUG: we used a register we don't know how to define.");
+            } // switch
+        } // if
+
+        prev = item;
+        item = next;
+    } // while
+
+    // okay, now deal with uniforms...
+    for (item = ctx->uniforms.next; item != NULL; item = item->next)
+        ctx->profile->uniform_emitter(ctx, item->regtype, item->regnum);
+} // process_definitions
 
 
 // API entry point...
@@ -3517,6 +3698,12 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         rc = parse_token(ctx);
     } // while
 
+    if (!isfail(ctx))
+        process_definitions(ctx);
+
+    if (!isfail(ctx))
+        ctx->profile->finalize_emitter(ctx);
+
     retval = build_parsedata(ctx);
     destroy_context(ctx);
     return retval;
@@ -3535,15 +3722,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
         f((void *) data->output);
 
     if (data->uniforms != NULL)
-    {
-        int i;
-        for (i = 0; i < data->uniform_count; i++)
-        {
-            if (data->uniforms[i].name != NULL)
-                f((void *) data->uniforms[i].name);
-        } // for
         f((void *) data->uniforms);
-    } // if
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))
         f((void *) data->error);
