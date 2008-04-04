@@ -617,7 +617,7 @@ static inline int get_used_register(Context *ctx, const RegisterType regtype,
                                     const int regnum)
 {
     return (reglist_exists(&ctx->used_registers, regtype, regnum) != NULL);
-} // set_used_register
+} // get_used_register
 
 static inline void set_defined_register(Context *ctx, const RegisterType rtype,
                                         const int regnum)
@@ -2494,7 +2494,9 @@ static int parse_args_DEF(Context *ctx)
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
 
-    switch (ctx->dest_args[0].regtype)
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    switch (regtype)
     {
         case REG_TYPE_CONST:
         case REG_TYPE_CONST2:
@@ -2505,6 +2507,8 @@ static int parse_args_DEF(Context *ctx)
         default:
             return fail(ctx, "DEF token using invalid register");
     } // switch
+
+    set_defined_register(ctx, regtype, regnum);
 
     return 6;
 } // parse_args_DEF
@@ -2520,8 +2524,12 @@ static int parse_args_DEFI(Context *ctx)
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
     ctx->dwords[3] = SWAP32(ctx->tokens[3]);
 
-    if (ctx->dest_args[0].regtype != REG_TYPE_CONSTINT)
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    if (regtype != REG_TYPE_CONSTINT)
         return fail(ctx, "DEFI token using invalid register");
+
+    set_defined_register(ctx, regtype, regnum);
 
     return 6;
 } // parse_args_DEFI
@@ -2534,8 +2542,12 @@ static int parse_args_DEFB(Context *ctx)
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
 
-    if (ctx->dest_args[0].regtype != REG_TYPE_CONSTBOOL)
+    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
+    if (regtype != REG_TYPE_CONSTBOOL)
         return fail(ctx, "DEFB token using invalid register");
+
+    set_defined_register(ctx, regtype, regnum);
 
     return 3;
 } // parse_args_DEFB
@@ -2558,6 +2570,7 @@ static int parse_args_DCL(Context *ctx)
         return FAIL;
 
     const RegisterType regtype = ctx->dest_args[0].regtype;
+    const int regnum = ctx->dest_args[0].regnum;
     if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
     {
         if (regtype == REG_TYPE_INPUT)
@@ -2565,7 +2578,7 @@ static int parse_args_DCL(Context *ctx)
 
         else if (regtype == REG_TYPE_MISCTYPE)
         {
-            const MiscTypeType mt = (MiscTypeType) ctx->dest_args[0].regnum;
+            const MiscTypeType mt = (MiscTypeType) regnum;
             if (mt == MISCTYPE_TYPE_POSITION)
                 reserved_mask = 0x7FFFFFFF;
             else if (mt == MISCTYPE_TYPE_FACE)
@@ -2679,6 +2692,8 @@ static int parse_args_DCL(Context *ctx)
 
     if ((token & reserved_mask) != 0)
         return fail(ctx, "reserved bits in DCL dword aren't zero");
+
+    set_defined_register(ctx, regtype, regnum);
 
     return 3;
 } // parse_args_DCL
