@@ -1669,8 +1669,8 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
             output_line(ctx, "vec4 r%d;", regnum);
             break;
         case REG_TYPE_LOOP:
-            output_line(ctx, "ivec4 aL;");
-            break;
+            //output_line(ctx, "int aL;");
+            break; // no-op. We declare these in for loops at the moment.
         case REG_TYPE_LABEL:
             break; // no-op. If we see it here, it means we optimized it out.
         default:
@@ -2173,7 +2173,7 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 static void emit_GLSL_LOOP(Context *ctx)
 {
     //fail(ctx, "unimplemented.");  // !!! FIXME
-    output_line(ctx, "for (BLAH, BLAH, BLAH) {");
+    output_line(ctx, "for (int aL = BLAH, BLAH, BLAH) {");
     ctx->indent++;
 } // emit_GLSL_LOOP
 
