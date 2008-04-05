@@ -174,24 +174,6 @@ typedef enum
 
 typedef enum
 {
-    DECLUSAGE_POSITION = 0,
-    DECLUSAGE_BLENDWEIGHT = 1,
-    DECLUSAGE_BLENDINDICES = 2,
-    DECLUSAGE_NORMAL = 3,
-    DECLUSAGE_PSIZE = 4,
-    DECLUSAGE_TEXCOORD = 5,
-    DECLUSAGE_TANGENT = 6,
-    DECLUSAGE_BINORMAL = 7,
-    DECLUSAGE_TESSFACTOR = 8,
-    DECLUSAGE_POSITIONT = 9,
-    DECLUSAGE_COLOR = 10,
-    DECLUSAGE_FOG = 11,
-    DECLUSAGE_DEPTH = 12,
-    DECLUSAGE_SAMPLE = 13
-} DeclUsageType;
-
-typedef enum
-{
     TEXTURE_TYPE_2D = 2,
     TEXTURE_TYPE_CUBE = 3,
     TEXTURE_TYPE_VOLUME = 4,
@@ -1291,6 +1273,7 @@ static void emit_D3D_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_args[0];
     const char *usage_str = "";
     char index_str[16] = { '\0' };
+    const uint32 usage = ctx->dwords[0];
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
@@ -1300,14 +1283,7 @@ static void emit_D3D_DCL(Context *ctx)
             "_positiont", "_color", "_fog", "_depth", "_sample"
         };
 
-        const uint32 usage = ctx->dwords[0];
         const uint32 index = ctx->dwords[1];
-
-        if (usage >= STATICARRAYLEN(usagestrs))
-        {
-            fail(ctx, "unknown DCL usage");
-            return;
-        } // if
 
         usage_str = usagestrs[usage];
 
@@ -1315,15 +1291,18 @@ static void emit_D3D_DCL(Context *ctx)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // if
 
-    else if (arg->regtype == REG_TYPE_SAMPLER)
+    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
     {
-        switch ((const TextureType) ctx->dwords[0])
+        if (arg->regtype == REG_TYPE_SAMPLER)
         {
-            case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
-            case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
-            case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
-            default: fail(ctx, "unknown sampler texture type"); return;
-        } // switch
+            switch ((const TextureType) usage)
+            {
+                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+                default: fail(ctx, "unknown sampler texture type"); return;
+            } // switch
+        } // if
     } // else if
 
     output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
@@ -1639,21 +1618,49 @@ static void emit_GLSL_finalize(Context *ctx)
     pop_output(ctx);
 } // emit_GLSL_finalize
 
+static void emit_GLSL_DCL(Context *ctx);
 static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 {
     push_output(ctx, &ctx->globals);
-    if (regtype == REG_TYPE_ADDRESS)
-        output_line(ctx, "ivec4 a%d;", regnum);
-    else if (regtype == REG_TYPE_PREDICATE)
-        output_line(ctx, "bvec4 p%d;", regnum);
-    else if (regtype == REG_TYPE_TEMP)
-        output_line(ctx, "vec4 r%d;", regnum);
-    else if (regtype == REG_TYPE_LOOP)
-        output_line(ctx, "ivec4 aL;");
-    else if (regtype == REG_TYPE_LABEL)
-        ; /* no-op. If we see it here, it means we optimized it out. */
-    else
-        fail(ctx, "BUG: we used a register we don't know how to define.");
+    switch (regtype)
+    {
+        case REG_TYPE_RASTOUT:
+        case REG_TYPE_ATTROUT:
+        case REG_TYPE_TEXCRDOUT:
+        case REG_TYPE_COLOROUT:
+        case REG_TYPE_DEPTHOUT:
+            // this happens on shaders which don't have to declare output
+            //  registers before using them. We fake a DCL emit for them now.
+            assert(!shader_version_atleast(ctx, 3, 0));
+            memset(&ctx->dest_args[0], '\0', sizeof (DestArgInfo));
+            ctx->dest_args[0].regnum = regnum;
+            ctx->dest_args[0].writemask = 0xF;
+            ctx->dest_args[0].writemask0 = 1;
+            ctx->dest_args[0].writemask1 = 1;
+            ctx->dest_args[0].writemask2 = 1;
+            ctx->dest_args[0].writemask3 = 1;
+            ctx->dest_args[0].regtype = regtype;
+            emit_GLSL_DCL(ctx); // force a DCL declaration for this register.
+            break;
+
+        case REG_TYPE_ADDRESS:
+            output_line(ctx, "ivec4 a%d;", regnum);
+            break;
+        case REG_TYPE_PREDICATE:
+            output_line(ctx, "bvec4 p%d;", regnum);
+            break;
+        case REG_TYPE_TEMP:
+            output_line(ctx, "vec4 r%d;", regnum);
+            break;
+        case REG_TYPE_LOOP:
+            output_line(ctx, "ivec4 aL;");
+            break;
+        case REG_TYPE_LABEL:
+            break; // no-op. If we see it here, it means we optimized it out.
+        default:
+            fail(ctx, "BUG: we used a register we don't know how to define.");
+            break;
+    } // switch
     pop_output(ctx);
 } // emit_GLSL_global
 
@@ -2039,53 +2046,120 @@ static void emit_GLSL_LABEL(Context *ctx)
 
 static void emit_GLSL_DCL(Context *ctx)
 {
-//    fail(ctx, "unimplemented.");  // !!! FIXME
-// !!! FIXME
-push_output(ctx, &ctx->globals);
-output_line(ctx, "DCL GOES HERE");
-pop_output(ctx);
-#if 0
-    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    // !!! FIXME: this function doesn't deal with write masks at all yet!
+    const char *varname = get_GLSL_destarg_varname(ctx, 0);
     const DestArgInfo *arg = &ctx->dest_args[0];
-    const char *usage_str = "";
-    char index_str[16] = { '\0' };
+    uint32 usage = ctx->dwords[0];
+    RegisterType regtype = arg->regtype;
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        static const char *usagestrs[] = {
-            "_position", "_blendweight", "_blendindices", "_normal",
-            "_psize", "_texcoord", "_tangent", "_binormal", "_tessfactor",
-            "_positiont", "_color", "_fog", "_depth", "_sample"
-        };
-
-        const uint32 usage = ctx->dwords[0];
-        const uint32 index = ctx->dwords[1];
-
-        if (usage >= STATICARRAYLEN(usagestrs))
+        // pre-vs3 output registers.
+        // these don't ever happen in DCL opcodes, I think, but we reuse this
+        //  function from emit_GLSL_global(). Map to vs3 output registers.
+        if (!shader_version_atleast(ctx, 3, 0))
         {
-            fail(ctx, "unknown DCL usage");
-            return;
+            if (regtype == REG_TYPE_RASTOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                switch ((const RastOutType) arg->regnum)
+                {
+                    case RASTOUT_TYPE_POSITION:
+                        usage = (uint32) MOJOSHADER_USAGE_POSITION;
+                        break;
+                    case RASTOUT_TYPE_FOG:
+                        usage = (uint32) MOJOSHADER_USAGE_FOG;
+                        break;
+                    case RASTOUT_TYPE_POINT_SIZE:
+                        usage = (uint32) MOJOSHADER_USAGE_POINTSIZE;
+                        break;
+                } // switch
+            } // if
+
+            else if (regtype == REG_TYPE_ATTROUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_COLOR;
+            } // else if
+
+            else if (regtype == REG_TYPE_TEXCRDOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_TEXCOORD;
+            } // else if
         } // if
 
-        usage_str = usagestrs[usage];
+        // to avoid limitations of various GL entry points for input
+        // attributes (glSecondaryColorPointer() can only take 3 component
+        // items, glVertexPointer() can't do GL_UNSIGNED_BYTE, many other
+        // issues), we set up all inputs as generic vertex attributes, so we
+        // can pass data in just about any form, and ignore the built-in GLSL
+        // attributes like gl_SecondaryColor. Output needs to use the the
+        // built-ins, though, but we don't have to worry about the GL entry
+        // point limitations there.
 
-        if (index != 0)
-            snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+        if (regtype == REG_TYPE_INPUT)
+            output_line(ctx, "attribute vec4 %s;", varname);
+        else if (regtype == REG_TYPE_OUTPUT)
+        {
+            const uint32 index = ctx->dwords[1];
+            const char *usage_str = NULL;
+            char index_str[16] = { '\0' };
+            if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
+                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+
+            switch (usage)
+            {
+                case MOJOSHADER_USAGE_POSITION:
+                    // !!! FIXME: make sure this is index == 0 in state machine.
+                    usage_str = "gl_Position";
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    usage_str = "gl_PointSize";
+                    break;
+                // !!! FIXME: we need to deal with some built-in varyings here.
+                default:
+                    fail(ctx, "Don't know how to handle this output register.");
+            } // switch
+
+            // !!! FIXME: the #define is a little hacky, but it means we don't
+            // !!! FIXME:  have to track these separately if this works.
+            push_output(ctx, &ctx->globals);
+            output_line(ctx, "#define %s %s;", varname, usage_str);
+            pop_output(ctx);
+        } // else
     } // if
 
-    else if (arg->regtype == REG_TYPE_SAMPLER)
+#if 0 // !!! FIXME: write me.
+    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
     {
-        switch ((const TextureType) ctx->dwords[0])
+        if (regtype == REG_TYPE_SAMPLER)
         {
-            case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
-            case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
-            case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
-            default: fail(ctx, "unknown sampler texture type"); return;
-        } // switch
-    } // else if
+            switch ((const TextureType) usage)
+            {
+                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+                default: fail(ctx, "unknown sampler texture type"); return;
+            } // switch
+        } // if
 
-    output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
+        else if (regtype == REG_TYPE_COLOROUT)
+        {
+            retval = "oC";
+        } // else if
+
+        else if (regtype == REG_TYPE_DEPTHOUT)
+        {
+            retval = "oDepth";
+        } // else if
+    } // else if
 #endif
+
+    else
+    {
+        fail(ctx, "Unknown shader type");  // state machine should catch this.
+    } // else
 } // emit_GLSL_DCL
 
 static void emit_GLSL_POW(Context *ctx)
@@ -2653,12 +2727,12 @@ static int parse_args_DCL(Context *ctx)
         {
             const uint32 usage = (token & 0xF);
             const uint32 index = ((token >> 16) & 0xF);
-            if (usage == DECLUSAGE_TEXCOORD)
+            if (usage == MOJOSHADER_USAGE_TEXCOORD)
             {
                 if (index > 7)
                     return fail(ctx, "DCL texcoord usage must have 0-7 index");
             } // if
-            else if (usage == DECLUSAGE_COLOR)
+            else if (usage == MOJOSHADER_USAGE_COLOR)
             {
                 if (index != 0)
                     return fail(ctx, "DCL color usage must have 0 index");
@@ -2704,7 +2778,7 @@ static int parse_args_DCL(Context *ctx)
 
     else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
     {
-        if ((regtype==REG_TYPE_INPUT) || (regtype==REG_TYPE_OUTPUT))
+        if ((regtype == REG_TYPE_INPUT) || (regtype == REG_TYPE_OUTPUT))
         {
             const uint32 usage = (token & 0xF);
             const uint32 index = ((token >> 16) & 0xF);
@@ -2867,6 +2941,41 @@ static void state_DCL(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_args[0].regtype;
     const int regnum = ctx->dest_args[0].regnum;
+    const uint32 usage = ctx->dwords[0];
+
+    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    {
+        //const uint32 index = ctx->dwords[1];
+        if (usage >= ((const uint32) MOJOSHADER_USAGE_TOTAL))
+        {
+            fail(ctx, "unknown DCL usage");
+            return;
+        } // if
+    } // if
+
+    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    {
+        if (regtype == REG_TYPE_SAMPLER)
+        {
+            switch ((const TextureType) usage)
+            {
+                case TEXTURE_TYPE_2D:
+                case TEXTURE_TYPE_CUBE:
+                case TEXTURE_TYPE_VOLUME:
+                    break;  // it's okay.
+                default:
+                    fail(ctx, "unknown sampler texture type");
+                    return;
+            } // switch
+        } // if
+
+    } // else if
+
+    else
+    {
+        assert(0 && "Unsupported shader type."); // should be caught elsewhere.
+    } // else
+
     set_defined_register(ctx, regtype, regnum);
 } // state_DCL
 
@@ -3649,6 +3758,25 @@ static void process_definitions(Context *ctx)
             // haven't already dealt with this one.
             switch (regtype)
             {
+                // !!! FIXME: I'm not entirely sure this is right...
+                case REG_TYPE_RASTOUT:
+                case REG_TYPE_ATTROUT:
+                case REG_TYPE_TEXCRDOUT:
+                case REG_TYPE_COLOROUT:
+                case REG_TYPE_DEPTHOUT:
+                    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+                    {
+                        if (shader_version_atleast(ctx, 3, 0))
+                        {
+                            fail(ctx, "vs_3 can't use output registers"
+                                      " without declaring them first.");
+                            return;
+                        } // if
+                    } // if
+
+                    // profiles need to deal with older shader models.
+                    // intentional fallthrough to next case statements!
+
                 case REG_TYPE_ADDRESS:
                 case REG_TYPE_PREDICATE:
                 case REG_TYPE_TEMP:
