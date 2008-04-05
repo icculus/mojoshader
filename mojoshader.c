@@ -1521,14 +1521,18 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
             break;
 
         case SRCMOD_COMPLEMENT:
-            premod_str = "1-";
+            premod_str = "(1.0f - (";
+            postmod_str = "))";
             break;
 
         case SRCMOD_X2NEGATE:
-            premod_str = "-";
-            // fall through.
+            premod_str = "-(";
+            postmod_str = " * 2.0f)";
+            break;
+
         case SRCMOD_X2:
-            postmod_str = "_x2";
+            premod_str = "(";
+            postmod_str = " * 2.0f)";
             break;
 
         case SRCMOD_DZ:
