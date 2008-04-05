@@ -55,6 +55,29 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
         printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
         printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
         printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
+
+        printf("ATTRIBUTES:");
+        if (pd->attribute_count == 0)
+            printf(" (none.)\n");
+        else
+        {
+            int i;
+            printf("\n");
+            for (i = 0; i < pd->attribute_count; i++)
+            {
+                static const char *usagenames[] = {
+                    "position", "blendweight", "blendindices", "normal",
+                    "psize", "texcoord", "tangent", "binormal", "tessfactor",
+                    "positiont", "color", "fog", "depth", "sample"
+                };
+                const MOJOSHADER_attribute *a = &pd->attributes[i];
+                char numstr[16] = { 0 };
+                if (a->index != 0)
+                    snprintf(numstr, sizeof (numstr), "%d", a->index);
+                printf("    * %s%s\n", usagenames[(int) a->usage], numstr);
+            } // for
+        } // else
+
         printf("UNIFORMS:");
         if (pd->uniform_count == 0)
             printf(" (none.)\n");

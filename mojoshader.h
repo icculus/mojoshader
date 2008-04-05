@@ -54,9 +54,9 @@ typedef enum
  */
 typedef enum
 {
-    MOJOSHADER_UNIFORM_FLOAT,
-    MOJOSHADER_UNIFORM_INT,
-    MOJOSHADER_UNIFORM_BOOL
+    MOJOSHADER_UNIFORM_FLOAT = 0,
+    MOJOSHADER_UNIFORM_INT = 1,
+    MOJOSHADER_UNIFORM_BOOL = 2,
 } MOJOSHADER_uniformType;
 
 /*
@@ -69,10 +69,45 @@ typedef enum
  */
 typedef struct
 {
-    int index;
     MOJOSHADER_uniformType type;
+    int index;
 } MOJOSHADER_uniform;
 
+/*
+ * Data types for attributes. See MOJOSHADER_attribute for more information.
+ */
+typedef enum
+{
+    MOJOSHADER_USAGE_POSITION = 0,
+    MOJOSHADER_USAGE_BLENDWEIGHT = 1,
+    MOJOSHADER_USAGE_BLENDINDICES = 2,
+    MOJOSHADER_USAGE_NORMAL = 3,
+    MOJOSHADER_USAGE_PSIZE = 4,
+    MOJOSHADER_USAGE_TEXCOORD = 5,
+    MOJOSHADER_USAGE_TANGENT = 6,
+    MOJOSHADER_USAGE_BINORMAL = 7,
+    MOJOSHADER_USAGE_TESSFACTOR = 8,
+    MOJOSHADER_USAGE_POSITIONT = 9,
+    MOJOSHADER_USAGE_COLOR = 10,
+    MOJOSHADER_USAGE_FOG = 11,
+    MOJOSHADER_USAGE_DEPTH = 12,
+    MOJOSHADER_USAGE_SAMPLE = 13,
+} MOJOSHADER_usage;
+
+/*
+ * These are the attributes to be set for a shader. "Attributes" are what
+ *  Direct3D calls "Vertex Declarations Usages" ...
+ *  IDirect3DDevice::CreateVertexDeclaration() would need this data, for
+ *  example. Each attribute is associated with an array of data that uses one
+ *  element per-vertex. So if usage==MOJOSHADER_USAGE_COLOR and index==1, that
+ *  means we'd expect a secondary color array to be bound to this shader
+ *  before drawing.
+ */
+typedef struct
+{
+    MOJOSHADER_usage usage;
+    int index;
+} MOJOSHADER_attribute;
 
 /*
  * Structure used to return data from parsing of a shader...
@@ -135,6 +170,18 @@ typedef struct
      *  this shader. See discussion on MOJOSHADER_uniform for details.
      */
     MOJOSHADER_uniform *uniforms;
+
+
+    /*
+     * The number of elements pointed to by (attributes).
+     */
+    int attribute_count;
+
+    /*
+     * (attribute_count) elements of data that specify Attributes to be set
+     *  for this shader. See discussion on MOJOSHADER_attribute for details.
+     */
+    MOJOSHADER_attribute *attributes;
 
     /*
      * This is the malloc implementation you passed to MOJOSHADER_parse().
