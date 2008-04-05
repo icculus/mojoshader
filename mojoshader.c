@@ -1785,7 +1785,11 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     else if (index == 1)
                         usage_str = "gl_FrontSecondaryColor";
                     break;
+                case MOJOSHADER_USAGE_FOG:
+                    usage_str = "gl_FogFragCoord";
+                    break;
                 case MOJOSHADER_USAGE_TEXCOORD:
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
