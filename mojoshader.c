@@ -2104,6 +2104,8 @@ static void emit_GLSL_DCL(Context *ctx)
         {
             const uint32 index = ctx->dwords[1];
             const char *usage_str = NULL;
+            const char *arrayleft = "";
+            const char *arrayright = "";
             char index_str[16] = { '\0' };
             if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
                 snprintf(index_str, sizeof (index_str), "%u", (uint) index);
@@ -2111,21 +2113,39 @@ static void emit_GLSL_DCL(Context *ctx)
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
-                    // !!! FIXME: make sure this is index == 0 in state machine.
                     usage_str = "gl_Position";
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     usage_str = "gl_PointSize";
                     break;
-                // !!! FIXME: we need to deal with some built-in varyings here.
+                case MOJOSHADER_USAGE_COLOR:
+                    index_str[0] = '\0';  // no explicit number.
+                    if (index == 0)
+                        usage_str = "gl_FrontColor";
+                    else if (index == 1)
+                        usage_str = "gl_FrontSecondaryColor";
+                    break;
+                case MOJOSHADER_USAGE_TEXCOORD:
+                    usage_str = "gl_TexCoord";
+                    arrayleft = "[";
+                    arrayright = "]";
+                    break;
                 default:
-                    fail(ctx, "Don't know how to handle this output register.");
+                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    break;
             } // switch
 
             // !!! FIXME: the #define is a little hacky, but it means we don't
             // !!! FIXME:  have to track these separately if this works.
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "#define %s %s;", varname, usage_str);
+            // no mapping to built-in var? Just make it a regular global, pray.
+            if (usage_str == NULL)
+                output_line(ctx, "vec %s;", varname);
+            else
+            {
+                output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+                            arrayleft, index_str, arrayright);
+            } // else
             pop_output(ctx);
         } // else
     } // if
