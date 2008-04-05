@@ -140,6 +140,10 @@ typedef void (*emit_global)(Context *ctx, RegisterType regtype, int regnum);
 // one emit function for uniforms in each profile.
 typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum);
 
+// one emit function for attributes in each profile.
+typedef void (*emit_attribute)(Context *ctx, RegisterType regtype, int regnum,
+                               MOJOSHADER_usage usage, int index, int wmask);
+
 // one args function for each possible sequence of opcode arguments.
 typedef int (*args_function)(Context *ctx);
 
@@ -154,6 +158,7 @@ typedef struct
     emit_comment comment_emitter;
     emit_global global_emitter;
     emit_uniform uniform_emitter;
+    emit_attribute attribute_emitter;
     emit_finalize finalize_emitter;
 } Profile;
 
@@ -200,6 +205,9 @@ typedef struct RegisterList
 {
     RegisterType regtype;
     int regnum;
+    MOJOSHADER_usage usage;
+    int index;
+    int writemask;
     struct RegisterList *next;
 } RegisterList;
 
@@ -318,6 +326,8 @@ struct Context
     RegisterList defined_registers;
     int uniform_count;
     RegisterList uniforms;
+    int attribute_count;
+    RegisterList attributes;
 };
 
 
@@ -561,8 +571,9 @@ static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
     return ( ((uint32) regtype) | (((uint32) regnum) << 16) );
 } // reg_to_uint32
 
-static void reglist_insert(Context *ctx, RegisterList *prev,
-                           const RegisterType regtype, const int regnum)
+static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
+                                    const RegisterType regtype,
+                                    const int regnum)
 {
     const uint32 newval = reg_to_ui32(regtype, regnum);
     RegisterList *item = prev->next;
@@ -570,7 +581,7 @@ static void reglist_insert(Context *ctx, RegisterList *prev,
     {
         const uint32 val = reg_to_ui32(item->regtype, item->regnum);
         if (newval == val)
-            return;  // already set, so we're done.
+            return item;  // already set, so we're done.
         else if (newval < val)  // insert it here.
             break;
         else // if (newval > val)
@@ -589,9 +600,14 @@ static void reglist_insert(Context *ctx, RegisterList *prev,
     {
         item->regtype = regtype;
         item->regnum = regnum;
+        item->usage = 0;
+        item->index = 0;
+        item->writemask = 0;
         item->next = prev->next;
         prev->next = item;
     } // else
+
+    return item;
 } // reglist_insert
 
 static const RegisterList *reglist_exists(const RegisterList *prev,
@@ -642,9 +658,25 @@ static inline int get_defined_register(Context *ctx, const RegisterType rtype,
     return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
 } // get_defined_register
 
+static void add_attribute_register(Context *ctx, const RegisterType rtype,
+                                const int regnum, const MOJOSHADER_usage usage,
+                                const int index, const int writemask)
+{
+    RegisterList *item = reglist_insert(ctx, &ctx->attributes, rtype, regnum);
+    item->usage = usage;
+    item->index = index;
+    item->writemask = writemask;
+} // add_attribute_register
 
 
-// This is used in more than just the d3d profile.
+// D3D stuff that's used in more than just the d3d profile...
+
+static const char *usagestrs[] = {
+    "_position", "_blendweight", "_blendindices", "_normal", "_psize",
+    "_texcoord", "_tangent", "_binormal", "_tessfactor", "_positiont",
+    "_color", "_fog", "_depth", "_sample"
+};
+
 static const char *get_D3D_register_string(Context *ctx,
                                            RegisterType regtype,
                                            int regnum, char *regnum_str,
@@ -993,6 +1025,13 @@ static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum)
 } // emit_D3D_uniform
 
 
+static void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
+                               MOJOSHADER_usage usage, int index, int wmask)
+{
+    // no-op.
+} // emit_D3D_attribute
+
+
 static void emit_D3D_comment(Context *ctx, const char *str)
 {
     output_line(ctx, "; %s", str);
@@ -1277,16 +1316,8 @@ static void emit_D3D_DCL(Context *ctx)
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        static const char *usagestrs[] = {
-            "_position", "_blendweight", "_blendindices", "_normal",
-            "_psize", "_texcoord", "_tangent", "_binormal", "_tessfactor",
-            "_positiont", "_color", "_fog", "_depth", "_sample"
-        };
-
         const uint32 index = ctx->dwords[1];
-
         usage_str = usagestrs[usage];
-
         if (index != 0)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // if
@@ -1351,7 +1382,6 @@ static void emit_D3D_TEX(Context *ctx)
 const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
                                      int regnum, char *regnum_str, int len)
 {
-
     const char *retval = get_D3D_register_string(ctx, regtype, regnum,
                                                  regnum_str, len);
     if (retval == NULL)
@@ -1363,8 +1393,18 @@ const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
     return retval;
 } // get_GLSL_register_string
 
+static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char regnum_str[16];
+    const char *regtype_str = get_GLSL_register_string(ctx, rt, regnum,
+                                              regnum_str, sizeof (regnum_str));
 
-const char *get_GLSL_destarg_varname(Context *ctx, int idx)
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
+    return retval;
+} // get_GLSL_varname
+
+static const char *get_GLSL_destarg_varname(Context *ctx, int idx)
 {
     if (idx >= STATICARRAYLEN(ctx->dest_args))
     {
@@ -1373,16 +1413,8 @@ const char *get_GLSL_destarg_varname(Context *ctx, int idx)
     } // if
 
     const DestArgInfo *arg = &ctx->dest_args[idx];
-    char regnum_str[16];
-    const char *regtype_str = get_GLSL_register_string(ctx, arg->regtype,
-                                                       arg->regnum, regnum_str,
-                                                       sizeof (regnum_str));
-
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
-    return retval;
+    return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
 } // get_GLSL_destarg_varname
-
 
 
 static const char *make_GLSL_destarg_assign(Context *, const int, const char *, ...) ISPRINTF(3,4);
@@ -1618,31 +1650,11 @@ static void emit_GLSL_finalize(Context *ctx)
     pop_output(ctx);
 } // emit_GLSL_finalize
 
-static void emit_GLSL_DCL(Context *ctx);
 static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 {
     push_output(ctx, &ctx->globals);
     switch (regtype)
     {
-        case REG_TYPE_RASTOUT:
-        case REG_TYPE_ATTROUT:
-        case REG_TYPE_TEXCRDOUT:
-        case REG_TYPE_COLOROUT:
-        case REG_TYPE_DEPTHOUT:
-            // this happens on shaders which don't have to declare output
-            //  registers before using them. We fake a DCL emit for them now.
-            assert(!shader_version_atleast(ctx, 3, 0));
-            memset(&ctx->dest_args[0], '\0', sizeof (DestArgInfo));
-            ctx->dest_args[0].regnum = regnum;
-            ctx->dest_args[0].writemask = 0xF;
-            ctx->dest_args[0].writemask0 = 1;
-            ctx->dest_args[0].writemask1 = 1;
-            ctx->dest_args[0].writemask2 = 1;
-            ctx->dest_args[0].writemask3 = 1;
-            ctx->dest_args[0].regtype = regtype;
-            emit_GLSL_DCL(ctx); // force a DCL declaration for this register.
-            break;
-
         case REG_TYPE_ADDRESS:
             output_line(ctx, "ivec4 a%d;", regnum);
             break;
@@ -1683,6 +1695,157 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
         fail(ctx, "BUG: we used a uniform we don't know how to define.");
     pop_output(ctx);
 } // emit_GLSL_uniform
+
+static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
+                                MOJOSHADER_usage usage, int index, int wmask)
+{
+    // !!! FIXME: this function doesn't deal with write masks at all yet!
+    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+    const char *usage_str = NULL;
+    char index_str[16] = { '\0' };
+
+    if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
+        snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+
+    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    {
+        // pre-vs3 output registers.
+        // these don't ever happen in DCL opcodes, I think. Map to vs_3_*
+        //  output registers.
+        if (!shader_version_atleast(ctx, 3, 0))
+        {
+            if (regtype == REG_TYPE_RASTOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                switch ((const RastOutType) regnum)
+                {
+                    case RASTOUT_TYPE_POSITION:
+                        usage = MOJOSHADER_USAGE_POSITION;
+                        break;
+                    case RASTOUT_TYPE_FOG:
+                        usage = MOJOSHADER_USAGE_FOG;
+                        break;
+                    case RASTOUT_TYPE_POINT_SIZE:
+                        usage = MOJOSHADER_USAGE_POINTSIZE;
+                        break;
+                } // switch
+            } // if
+
+            else if (regtype == REG_TYPE_ATTROUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_COLOR;
+            } // else if
+
+            else if (regtype == REG_TYPE_TEXCRDOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_TEXCOORD;
+            } // else if
+        } // if
+
+        // to avoid limitations of various GL entry points for input
+        // attributes (glSecondaryColorPointer() can only take 3 component
+        // items, glVertexPointer() can't do GL_UNSIGNED_BYTE, many other
+        // issues), we set up all inputs as generic vertex attributes, so we
+        // can pass data in just about any form, and ignore the built-in GLSL
+        // attributes like gl_SecondaryColor. Output needs to use the the
+        // built-ins, though, but we don't have to worry about the GL entry
+        // point limitations there.
+
+        if (regtype == REG_TYPE_INPUT)
+        {
+            // The GL will bind to attr_position_0 or whatever, but we'll
+            //  refer to it in the shader by the original D3D register name.
+            push_output(ctx, &ctx->globals);
+            output_line(ctx, "#define %s attr%s_%d", varname,
+                        usagestrs[(int) usage], index);
+            output_line(ctx, "attribute vec4 %s;", varname);
+            pop_output(ctx);
+        } // if
+
+        else if (regtype == REG_TYPE_OUTPUT)
+        {
+            const uint32 index = ctx->dwords[1];
+            const char *arrayleft = "";
+            const char *arrayright = "";
+
+            switch (usage)
+            {
+                case MOJOSHADER_USAGE_POSITION:
+                    usage_str = "gl_Position";
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    usage_str = "gl_PointSize";
+                    break;
+                case MOJOSHADER_USAGE_COLOR:
+                    index_str[0] = '\0';  // no explicit number.
+                    if (index == 0)
+                        usage_str = "gl_FrontColor";
+                    else if (index == 1)
+                        usage_str = "gl_FrontSecondaryColor";
+                    break;
+                case MOJOSHADER_USAGE_TEXCOORD:
+                    usage_str = "gl_TexCoord";
+                    arrayleft = "[";
+                    arrayright = "]";
+                    break;
+                default:
+                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    break;
+            } // switch
+
+            // !!! FIXME: the #define is a little hacky, but it means we don't
+            // !!! FIXME:  have to track these separately if this works.
+            push_output(ctx, &ctx->globals);
+            // no mapping to built-in var? Just make it a regular global, pray.
+            if (usage_str == NULL)
+                output_line(ctx, "vec %s;", varname);
+            else
+            {
+                output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+                            arrayleft, index_str, arrayright);
+            } // else
+            pop_output(ctx);
+        } // else if
+
+        else
+        {
+            fail(ctx, "unknown attribute register");
+        } // else
+    } // if
+
+#if 0 // !!! FIXME: write me.
+    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    {
+        if (regtype == REG_TYPE_SAMPLER)
+        {
+            switch ((const TextureType) usage)
+            {
+                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+                default: fail(ctx, "unknown sampler texture type"); return;
+            } // switch
+        } // if
+
+        else if (regtype == REG_TYPE_COLOROUT)
+        {
+            retval = "oC";
+        } // else if
+
+        else if (regtype == REG_TYPE_DEPTHOUT)
+        {
+            retval = "oDepth";
+        } // else if
+    } // else if
+#endif
+
+    else
+    {
+        fail(ctx, "Unknown shader type");  // state machine should catch this.
+    } // else
+} // emit_GLSL_attribute
 
 static void emit_GLSL_comment(Context *ctx, const char *str)
 {
@@ -2046,150 +2209,7 @@ static void emit_GLSL_LABEL(Context *ctx)
 
 static void emit_GLSL_DCL(Context *ctx)
 {
-    // !!! FIXME: this function doesn't deal with write masks at all yet!
-    const char *varname = get_GLSL_destarg_varname(ctx, 0);
-    const DestArgInfo *arg = &ctx->dest_args[0];
-    uint32 usage = ctx->dwords[0];
-    RegisterType regtype = arg->regtype;
-
-    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
-    {
-        // pre-vs3 output registers.
-        // these don't ever happen in DCL opcodes, I think, but we reuse this
-        //  function from emit_GLSL_global(). Map to vs3 output registers.
-        if (!shader_version_atleast(ctx, 3, 0))
-        {
-            if (regtype == REG_TYPE_RASTOUT)
-            {
-                regtype = REG_TYPE_OUTPUT;
-                switch ((const RastOutType) arg->regnum)
-                {
-                    case RASTOUT_TYPE_POSITION:
-                        usage = (uint32) MOJOSHADER_USAGE_POSITION;
-                        break;
-                    case RASTOUT_TYPE_FOG:
-                        usage = (uint32) MOJOSHADER_USAGE_FOG;
-                        break;
-                    case RASTOUT_TYPE_POINT_SIZE:
-                        usage = (uint32) MOJOSHADER_USAGE_POINTSIZE;
-                        break;
-                } // switch
-            } // if
-
-            else if (regtype == REG_TYPE_ATTROUT)
-            {
-                regtype = REG_TYPE_OUTPUT;
-                usage = MOJOSHADER_USAGE_COLOR;
-            } // else if
-
-            else if (regtype == REG_TYPE_TEXCRDOUT)
-            {
-                regtype = REG_TYPE_OUTPUT;
-                usage = MOJOSHADER_USAGE_TEXCOORD;
-            } // else if
-        } // if
-
-        // to avoid limitations of various GL entry points for input
-        // attributes (glSecondaryColorPointer() can only take 3 component
-        // items, glVertexPointer() can't do GL_UNSIGNED_BYTE, many other
-        // issues), we set up all inputs as generic vertex attributes, so we
-        // can pass data in just about any form, and ignore the built-in GLSL
-        // attributes like gl_SecondaryColor. Output needs to use the the
-        // built-ins, though, but we don't have to worry about the GL entry
-        // point limitations there.
-
-        if (regtype == REG_TYPE_INPUT)
-        {
-            push_output(ctx, &ctx->globals);
-            output_line(ctx, "attribute vec4 %s;", varname);
-            pop_output(ctx);
-        } // if
-
-        else if (regtype == REG_TYPE_OUTPUT)
-        {
-            const uint32 index = ctx->dwords[1];
-            const char *usage_str = NULL;
-            const char *arrayleft = "";
-            const char *arrayright = "";
-            char index_str[16] = { '\0' };
-            if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
-                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
-
-            switch (usage)
-            {
-                case MOJOSHADER_USAGE_POSITION:
-                    usage_str = "gl_Position";
-                    break;
-                case MOJOSHADER_USAGE_POINTSIZE:
-                    usage_str = "gl_PointSize";
-                    break;
-                case MOJOSHADER_USAGE_COLOR:
-                    index_str[0] = '\0';  // no explicit number.
-                    if (index == 0)
-                        usage_str = "gl_FrontColor";
-                    else if (index == 1)
-                        usage_str = "gl_FrontSecondaryColor";
-                    break;
-                case MOJOSHADER_USAGE_TEXCOORD:
-                    usage_str = "gl_TexCoord";
-                    arrayleft = "[";
-                    arrayright = "]";
-                    break;
-                default:
-                    // !!! FIXME: we need to deal with some more built-in varyings here.
-                    break;
-            } // switch
-
-            // !!! FIXME: the #define is a little hacky, but it means we don't
-            // !!! FIXME:  have to track these separately if this works.
-            push_output(ctx, &ctx->globals);
-            // no mapping to built-in var? Just make it a regular global, pray.
-            if (usage_str == NULL)
-                output_line(ctx, "vec %s;", varname);
-            else
-            {
-                output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
-                            arrayleft, index_str, arrayright);
-            } // else
-            pop_output(ctx);
-        } // else if
-
-        else
-        {
-            fail(ctx, "unknown DCL register");
-        } // else
-    } // if
-
-#if 0 // !!! FIXME: write me.
-    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
-    {
-        if (regtype == REG_TYPE_SAMPLER)
-        {
-            switch ((const TextureType) usage)
-            {
-                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
-                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
-                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
-                default: fail(ctx, "unknown sampler texture type"); return;
-            } // switch
-        } // if
-
-        else if (regtype == REG_TYPE_COLOROUT)
-        {
-            retval = "oC";
-        } // else if
-
-        else if (regtype == REG_TYPE_DEPTHOUT)
-        {
-            retval = "oDepth";
-        } // else if
-    } // else if
-#endif
-
-    else
-    {
-        fail(ctx, "Unknown shader type");  // state machine should catch this.
-    } // else
+    // no-op. We do our work at the end in emit_attribute() implementation.
 } // emit_GLSL_DCL
 
 static void emit_GLSL_POW(Context *ctx)
@@ -2529,6 +2549,7 @@ static void emit_GLSL_RESERVED(Context *ctx)
     emit_##prof##_comment, \
     emit_##prof##_global, \
     emit_##prof##_uniform, \
+    emit_##prof##_attribute, \
     emit_##prof##_finalize, \
 },
 
@@ -2709,7 +2730,6 @@ static int parse_args_DEFB(Context *ctx)
 } // parse_args_DEFB
 
 
-// !!! FIXME: add a state_DCL() that fails if DCL opcode comes after real instructions.
 static int parse_args_DCL(Context *ctx)
 {
     int unsupported = 0;
@@ -2969,13 +2989,19 @@ static void state_DEFB(Context *ctx)
 
 static void state_DCL(Context *ctx)
 {
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
+    const DestArgInfo *arg = &ctx->dest_args[0];
+    const RegisterType regtype = arg->regtype;
+    const int regnum = arg->regnum;
     const uint32 usage = ctx->dwords[0];
+    int index = 0;
+
+    // parse_args_DCL() does a lot of state checking before we get here.
+
+    // !!! FIXME: fail if DCL opcode comes after real instructions.
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        //const uint32 index = ctx->dwords[1];
+        index = ctx->dwords[1];
         if (usage >= ((const uint32) MOJOSHADER_USAGE_TOTAL))
         {
             fail(ctx, "unknown DCL usage");
@@ -3007,6 +3033,8 @@ static void state_DCL(Context *ctx)
     } // else
 
     set_defined_register(ctx, regtype, regnum);
+    add_attribute_register(ctx, regtype, regnum, (MOJOSHADER_usage) usage,
+                            index, arg->writemask);
 } // state_DCL
 
 static void state_FRC(Context *ctx)
@@ -3613,6 +3641,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->used_registers.next);
         free_reglist(f, d, ctx->defined_registers.next);
         free_reglist(f, d, ctx->uniforms.next);
+        free_reglist(f, d, ctx->attributes.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr, d);
         f(ctx, d);
@@ -3716,20 +3745,52 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
                     break;
             } // switch
 
-            retval[i].index = index;
             retval[i].type = type;
+            retval[i].index = index;
             item = item->next;
         } // while
     } // else
 
     return retval;
-} // build_output
+} // build_uniforms
+
+
+static MOJOSHADER_attribute *build_attributes(Context *ctx)
+{
+    MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *)
+             Malloc(ctx, sizeof (MOJOSHADER_attribute) * ctx->attribute_count);
+
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
+    {
+        RegisterList *item = ctx->attributes.next;
+        int i;
+
+        for (i = 0; i < ctx->attribute_count; i++)
+        {
+            if (item == NULL)
+            {
+                fail(ctx, "BUG: mismatched attribute list and count");
+                break;
+            } // if
+
+            retval[i].usage = item->usage;
+            retval[i].index = item->index;
+            item = item->next;
+        } // while
+    } // else
+
+    return retval;
+} // build_attributes
+
 
 
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 {
     char *output = NULL;
     MOJOSHADER_uniform *uniforms = NULL;
+    MOJOSHADER_attribute *attributes = NULL;
     MOJOSHADER_parseData *retval;
 
     if ((retval = Malloc(ctx, sizeof (MOJOSHADER_parseData))) == NULL)
@@ -3743,11 +3804,15 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (!isfail(ctx))
         uniforms = build_uniforms(ctx);
 
+    if (!isfail(ctx))
+        attributes = build_attributes(ctx);
+
     // check again, in case build_output ran out of memory.
     if (isfail(ctx))
     {
         Free(ctx, output);
         Free(ctx, uniforms);
+        Free(ctx, attributes);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -3761,6 +3826,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->minor_ver = (int) ctx->minor_ver;
         retval->uniform_count = ctx->uniform_count;
         retval->uniforms = uniforms;
+        retval->attribute_count = ctx->attribute_count;
+        retval->attributes = attributes;
     } // else
 
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
@@ -3804,8 +3871,11 @@ static void process_definitions(Context *ctx)
                         } // if
                     } // if
 
-                    // profiles need to deal with older shader models.
-                    // intentional fallthrough to next case statements!
+                    // Apparently this is an attribute that wasn't DCL'd.
+                    //  Add it to the attribute list; deal with it later.
+                    add_attribute_register(ctx, item->regtype, item->regnum,
+                                           0, 0, 0xF);
+                    break;
 
                 case REG_TYPE_ADDRESS:
                 case REG_TYPE_PREDICATE:
@@ -3822,7 +3892,6 @@ static void process_definitions(Context *ctx)
                 case REG_TYPE_CONSTINT:
                 case REG_TYPE_CONSTBOOL:
                     // separate uniforms into a different list for now.
-                    ctx->uniform_count++;
                     prev->next = item->next;
                     uitem->next = item;
                     uitem = item;
@@ -3840,7 +3909,19 @@ static void process_definitions(Context *ctx)
 
     // okay, now deal with uniforms...
     for (item = ctx->uniforms.next; item != NULL; item = item->next)
+    {
+        ctx->uniform_count++;
         ctx->profile->uniform_emitter(ctx, item->regtype, item->regnum);
+    } // for
+
+    // ...and attributes...
+    for (item = ctx->attributes.next; item != NULL; item = item->next)
+    {
+        ctx->attribute_count++;
+        ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
+                                        item->usage, item->index,
+                                        item->writemask);
+    } // for
 } // process_definitions
 
 
@@ -3899,6 +3980,9 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     if (data->uniforms != NULL)
         f((void *) data->uniforms, d);
+
+    if (data->attributes != NULL)
+        f((void *) data->attributes, d);
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))
         f((void *) data->error, d);
