@@ -2099,7 +2099,12 @@ static void emit_GLSL_DCL(Context *ctx)
         // point limitations there.
 
         if (regtype == REG_TYPE_INPUT)
+        {
+            push_output(ctx, &ctx->globals);
             output_line(ctx, "attribute vec4 %s;", varname);
+            pop_output(ctx);
+        } // if
+
         else if (regtype == REG_TYPE_OUTPUT)
         {
             const uint32 index = ctx->dwords[1];
@@ -2147,6 +2152,11 @@ static void emit_GLSL_DCL(Context *ctx)
                             arrayleft, index_str, arrayright);
             } // else
             pop_output(ctx);
+        } // else if
+
+        else
+        {
+            fail(ctx, "unknown DCL register");
         } // else
     } // if
 
