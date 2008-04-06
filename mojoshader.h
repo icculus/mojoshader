@@ -207,6 +207,11 @@ typedef struct
 #define MOJOSHADER_PROFILE_D3D "d3d"
 
 /*
+ * Profile string for passthrough of the original bytecode, unchanged.
+ */
+#define MOJOSHADER_PROFILE_PASSTHROUGH "passthrough"
+
+/*
  * Profile string for GLSL: OpenGL high-level shader language output.
  */
 #define MOJOSHADER_PROFILE_GLSL "glsl"

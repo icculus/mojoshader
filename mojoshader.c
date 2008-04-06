@@ -40,6 +40,10 @@
 #define SUPPORT_PROFILE_D3D 1
 #endif
 
+#ifndef SUPPORT_PROFILE_PASSTHROUGH
+#define SUPPORT_PROFILE_PASSTHROUGH 1
+#endif
+
 #ifndef SUPPORT_PROFILE_GLSL
 #define SUPPORT_PROFILE_GLSL 1
 #endif
@@ -300,6 +304,7 @@ struct Context
     OutputList mainline;
     OutputList ignore;
     OutputList *output_stack[2];
+    uint8 *output_bytes;  // can be used instead of the OutputLists.
     int indent_stack[2];
     int output_stack_len;
     int output_len; // total strlen; prevents walking the lists just to malloc.
@@ -1370,6 +1375,115 @@ static void emit_D3D_TEX(Context *ctx)
 
 #endif  // SUPPORT_PROFILE_D3D
 
+
+#if !SUPPORT_PROFILE_PASSTHROUGH
+#define PROFILE_EMITTER_PASSTHROUGH(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_PASSTHROUGH(op) emit_PASSTHROUGH_##op,
+
+static void emit_PASSTHROUGH_start(Context *ctx)
+{
+    // just copy the whole token stream and make all other emitters no-ops.
+    ctx->output_len = (ctx->tokencount * sizeof (uint32));
+    ctx->output_bytes = Malloc(ctx, ctx->output_len);
+    if (ctx->output_bytes == NULL)
+        out_of_memory(ctx);
+    else
+        memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
+} // emit_PASSTHROUGH_start
+
+static void emit_PASSTHROUGH_RESERVED(Context *ctx) {}
+static void emit_PASSTHROUGH_NOP(Context *ctx) {}
+static void emit_PASSTHROUGH_MOV(Context *ctx) {}
+static void emit_PASSTHROUGH_ADD(Context *ctx) {}
+static void emit_PASSTHROUGH_SUB(Context *ctx) {}
+static void emit_PASSTHROUGH_MAD(Context *ctx) {}
+static void emit_PASSTHROUGH_MUL(Context *ctx) {}
+static void emit_PASSTHROUGH_RCP(Context *ctx) {}
+static void emit_PASSTHROUGH_RSQ(Context *ctx) {}
+static void emit_PASSTHROUGH_DP3(Context *ctx) {}
+static void emit_PASSTHROUGH_DP4(Context *ctx) {}
+static void emit_PASSTHROUGH_MIN(Context *ctx) {}
+static void emit_PASSTHROUGH_MAX(Context *ctx) {}
+static void emit_PASSTHROUGH_SLT(Context *ctx) {}
+static void emit_PASSTHROUGH_SGE(Context *ctx) {}
+static void emit_PASSTHROUGH_EXP(Context *ctx) {}
+static void emit_PASSTHROUGH_LOG(Context *ctx) {}
+static void emit_PASSTHROUGH_LIT(Context *ctx) {}
+static void emit_PASSTHROUGH_DST(Context *ctx) {}
+static void emit_PASSTHROUGH_LRP(Context *ctx) {}
+static void emit_PASSTHROUGH_FRC(Context *ctx) {}
+static void emit_PASSTHROUGH_M4X4(Context *ctx) {}
+static void emit_PASSTHROUGH_M4X3(Context *ctx) {}
+static void emit_PASSTHROUGH_M3X4(Context *ctx) {}
+static void emit_PASSTHROUGH_M3X3(Context *ctx) {}
+static void emit_PASSTHROUGH_M3X2(Context *ctx) {}
+static void emit_PASSTHROUGH_CALL(Context *ctx) {}
+static void emit_PASSTHROUGH_CALLNZ(Context *ctx) {}
+static void emit_PASSTHROUGH_LOOP(Context *ctx) {}
+static void emit_PASSTHROUGH_RET(Context *ctx) {}
+static void emit_PASSTHROUGH_ENDLOOP(Context *ctx) {}
+static void emit_PASSTHROUGH_LABEL(Context *ctx) {}
+static void emit_PASSTHROUGH_POW(Context *ctx) {}
+static void emit_PASSTHROUGH_CRS(Context *ctx) {}
+static void emit_PASSTHROUGH_SGN(Context *ctx) {}
+static void emit_PASSTHROUGH_ABS(Context *ctx) {}
+static void emit_PASSTHROUGH_NRM(Context *ctx) {}
+static void emit_PASSTHROUGH_SINCOS(Context *ctx) {}
+static void emit_PASSTHROUGH_REP(Context *ctx) {}
+static void emit_PASSTHROUGH_ENDREP(Context *ctx) {}
+static void emit_PASSTHROUGH_IF(Context *ctx) {}
+static void emit_PASSTHROUGH_ELSE(Context *ctx) {}
+static void emit_PASSTHROUGH_ENDIF(Context *ctx) {}
+static void emit_PASSTHROUGH_BREAK(Context *ctx) {}
+static void emit_PASSTHROUGH_MOVA(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXKILL(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXBEM(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXBEML(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXREG2AR(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXREG2GB(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X2PAD(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X2TEX(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X3PAD(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X3TEX(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X3SPEC(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X3VSPEC(Context *ctx) {}
+static void emit_PASSTHROUGH_EXPP(Context *ctx) {}
+static void emit_PASSTHROUGH_LOGP(Context *ctx) {}
+static void emit_PASSTHROUGH_CND(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXREG2RGB(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXDP3TEX(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X2DEPTH(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXDP3(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXM3X3(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXDEPTH(Context *ctx) {}
+static void emit_PASSTHROUGH_CMP(Context *ctx) {}
+static void emit_PASSTHROUGH_BEM(Context *ctx) {}
+static void emit_PASSTHROUGH_DP2ADD(Context *ctx) {}
+static void emit_PASSTHROUGH_DSX(Context *ctx) {}
+static void emit_PASSTHROUGH_DSY(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXLDD(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXLDL(Context *ctx) {}
+static void emit_PASSTHROUGH_BREAKP(Context *ctx) {}
+static void emit_PASSTHROUGH_BREAKC(Context *ctx) {}
+static void emit_PASSTHROUGH_IFC(Context *ctx) {}
+static void emit_PASSTHROUGH_SETP(Context *ctx) {}
+static void emit_PASSTHROUGH_DEF(Context *ctx) {}
+static void emit_PASSTHROUGH_DEFI(Context *ctx) {}
+static void emit_PASSTHROUGH_DEFB(Context *ctx) {}
+static void emit_PASSTHROUGH_DCL(Context *ctx) {}
+static void emit_PASSTHROUGH_TEXCOORD(Context *ctx) {}
+static void emit_PASSTHROUGH_TEX(Context *ctx) {}
+static void emit_PASSTHROUGH_end(Context *ctx) {}
+static void emit_PASSTHROUGH_finalize(Context *ctx) {}
+static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
+static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
+static void emit_PASSTHROUGH_comment(Context *ctx, const char *str) {}
+static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
+                                       MOJOSHADER_usage u, int i, int w) {}
+#endif  // SUPPORT_PROFILE_PASSTHROUGH
 
 
 #if !SUPPORT_PROFILE_GLSL
@@ -2568,6 +2682,9 @@ static const Profile profiles[] =
 #if SUPPORT_PROFILE_D3D
     DEFINE_PROFILE(D3D)
 #endif
+#if SUPPORT_PROFILE_PASSTHROUGH
+    DEFINE_PROFILE(PASSTHROUGH)
+#endif
 #if SUPPORT_PROFILE_GLSL
     DEFINE_PROFILE(GLSL)
 #endif
@@ -2578,6 +2695,7 @@ static const Profile profiles[] =
 // The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
 #define PROFILE_EMITTERS(op) { \
      PROFILE_EMITTER_D3D(op) \
+     PROFILE_EMITTER_PASSTHROUGH(op) \
      PROFILE_EMITTER_GLSL(op) \
 }
 
@@ -3643,6 +3761,8 @@ static void destroy_context(Context *ctx)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
         void *d = ctx->malloc_data;
+        if (ctx->output_bytes != NULL)
+            f(d, ctx->output_bytes);
         free_output_list(f, d, ctx->globals.head.next);
         free_output_list(f, d, ctx->helpers.head.next);
         free_output_list(f, d, ctx->subroutines.head.next);
@@ -3679,7 +3799,9 @@ static void append_list(char **_wptr, const char *endline,
 
 static char *build_output(Context *ctx)
 {
-    char *retval = (char *) Malloc(ctx, ctx->output_len + 1);
+    // add a byte for the null terminator if we're doing text output.
+    const int plusbytes = (ctx->output_bytes == NULL) ? 1 : 0;
+    char *retval = (char *) Malloc(ctx, ctx->output_len + plusbytes);
     if (retval == NULL)
         out_of_memory(ctx);
     else
@@ -3687,11 +3809,16 @@ static char *build_output(Context *ctx)
         const char *endl = ctx->endline;
         const size_t endllen = ctx->endline_len;
         char *wptr = retval;
-        append_list(&wptr, endl, endllen, ctx->globals.head.next);
-        append_list(&wptr, endl, endllen, ctx->helpers.head.next);
-        append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
-        append_list(&wptr, endl, endllen, ctx->mainline.head.next);
-        // don't append ctx->ignore ... that's why it's called "ignore"
+        if (ctx->output_bytes != NULL)
+            memcpy(retval, ctx->output_bytes, ctx->output_len);
+        else
+        {
+            append_list(&wptr, endl, endllen, ctx->globals.head.next);
+            append_list(&wptr, endl, endllen, ctx->helpers.head.next);
+            append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
+            append_list(&wptr, endl, endllen, ctx->mainline.head.next);
+            // don't append ctx->ignore ... that's why it's called "ignore"
+        } // else
     } // else
 
     return retval;
