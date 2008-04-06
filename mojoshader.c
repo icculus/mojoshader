@@ -2250,7 +2250,9 @@ static void emit_GLSL_ABS(Context *ctx)
 
 static void emit_GLSL_NRM(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "normalize(%s)", src0);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_NRM
 
 static void emit_GLSL_SINCOS(Context *ctx)
