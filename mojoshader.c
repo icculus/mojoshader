@@ -676,6 +676,15 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
 } // add_attribute_register
 
 
+static inline int replicate_swizzle(const int swizzle)
+{
+    return ( (((swizzle >> 0) & 0x3) == ((swizzle >> 2) & 0x3)) &&
+             (((swizzle >> 2) & 0x3) == ((swizzle >> 4) & 0x3)) &&
+             (((swizzle >> 4) & 0x3) == ((swizzle >> 6) & 0x3)) );
+} // replicate_swizzle
+
+
+
 // D3D stuff that's used in more than just the d3d profile...
 
 static const char *usagestrs[] = {
@@ -1744,7 +1753,20 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
 
 
 // special cases for comparison opcodes...
-static const char *get_GLSL_comparison_string(Context *ctx)
+
+static const char *get_GLSL_comparison_string_scalar(Context *ctx)
+{
+    static const char *comps[] = { "", ">", "==", ">=", "<", "!=", "<=" };
+    if (ctx->instruction_controls >= STATICARRAYLEN(comps))
+    {
+        fail(ctx, "unknown comparison control");
+        return "";
+    } // if
+
+    return comps[ctx->instruction_controls];
+} // get_GLSL_comparison_string_scalar
+
+static const char *get_GLSL_comparison_string_vector(Context *ctx)
 {
     static const char *comps[] = {
         "", "greaterThan", "equal", "greaterThanEqual", "lessThan",
@@ -1758,7 +1780,7 @@ static const char *get_GLSL_comparison_string(Context *ctx)
     } // if
 
     return comps[ctx->instruction_controls];
-} // get_D3D_comparison_string
+} // get_GLSL_comparison_string_vector
 
 
 static void emit_GLSL_start(Context *ctx)
@@ -2448,10 +2470,10 @@ static void emit_GLSL_IF(Context *ctx)
 
 static void emit_GLSL_IFC(Context *ctx)
 {
-    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *comp = get_GLSL_comparison_string_scalar(ctx);
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    output_line(ctx, "if (%s(%s, %s)) {", comp, src0, src1);
+    output_line(ctx, "if (%s %s %s) {", src0, comp, src1);
     ctx->indent++;
 } // emit_GLSL_IFC
 
@@ -2475,10 +2497,10 @@ static void emit_GLSL_BREAK(Context *ctx)
 
 static void emit_GLSL_BREAKC(Context *ctx)
 {
-    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *comp = get_GLSL_comparison_string_scalar(ctx);
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    output_line(ctx, "if (%s(%s, %s)) { break; }", comp, src0, src1);
+    output_line(ctx, "if (%s %s %s) { break; }", src0, comp, src1);
 } // emit_GLSL_BREAKC
 
 static void emit_GLSL_MOVA(Context *ctx)
@@ -2723,7 +2745,7 @@ static void emit_GLSL_TEXLDD(Context *ctx)
 
 static void emit_GLSL_SETP(Context *ctx)
 {
-    const char *comp = get_GLSL_comparison_string(ctx);
+    const char *comp = get_GLSL_comparison_string_vector(ctx);
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     const char *code = make_GLSL_destarg_assign(ctx, 0, "%s(%s, %s)", comp, src0, src1);
@@ -3430,6 +3452,14 @@ static void state_BREAKP(Context *ctx)
     const RegisterType regtype = ctx->source_args[0].regtype;
     if (regtype != REG_TYPE_PREDICATE)
         fail(ctx, "BREAKP argument isn't predicate register");
+    else if ((ctx->loops == 0) && (ctx->reps == 0))
+        fail(ctx, "BREAKP outside LOOP/ENDLOOP or REP/ENDREP");
+} // state_BREAKP
+
+static void state_BREAK(Context *ctx)
+{
+    if ((ctx->loops == 0) && (ctx->reps == 0))
+        fail(ctx, "BREAK outside LOOP/ENDLOOP or REP/ENDREP");
 } // state_BREAKP
 
 static void state_SETP(Context *ctx)
@@ -3532,6 +3562,24 @@ static void state_SINCOS(Context *ctx)
     } // if
 } // state_SINCOS
 
+static void state_IFC(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "IFC src1 must have replicate swizzle");
+    else if (!replicate_swizzle(ctx->source_args[1].swizzle))
+        fail(ctx, "IFC src2 must have replicate swizzle");
+} // state_IFC
+
+static void state_BREAKC(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "BREAKC src1 must have replicate swizzle");
+    else if (!replicate_swizzle(ctx->source_args[1].swizzle))
+        fail(ctx, "BREAKC src2 must have replicate swizzle");
+    else if ((ctx->loops == 0) && (ctx->reps == 0))
+        fail(ctx, "BREAKC outside LOOP/ENDLOOP or REP/ENDREP");
+} // state_BREAKC
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -3602,11 +3650,11 @@ static const Instruction instructions[] =
     INSTRUCTION_STATE(REP, 1, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(ENDREP, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(IF, 1, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(IFC, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(IFC, 2, SS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(ELSE, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(ENDIF, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(BREAK, 0, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(BREAKC, 2, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(BREAK, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(BREAKC, 2, SS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(MOVA, 2, DS, MOJOSHADER_TYPE_VERTEX),
     INSTRUCTION_STATE(DEFB, 2, DEFB, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(DEFI, 5, DEF, MOJOSHADER_TYPE_ANY),
