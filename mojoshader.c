@@ -2336,7 +2336,10 @@ static void emit_GLSL_DCL(Context *ctx)
 
 static void emit_GLSL_POW(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "pow(abs(%s), %s))", src0, src1);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_POW
 
 static void emit_GLSL_CRS(Context *ctx)
