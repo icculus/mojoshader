@@ -2635,12 +2635,16 @@ static void emit_GLSL_DP2ADD(Context *ctx)
 
 static void emit_GLSL_DSX(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "dFdx(%s)", src0);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_DSX
 
 static void emit_GLSL_DSY(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "dFdy(%s)", src0);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
 static void emit_GLSL_TEXLDD(Context *ctx)
@@ -3497,8 +3501,8 @@ static const Instruction instructions[] =
     INSTRUCTION(CMP, 4, DSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(BEM, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DP2ADD, 4, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXLDD, 5, DSSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(SETP, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXLDL, 3, DSS, MOJOSHADER_TYPE_ANY),
