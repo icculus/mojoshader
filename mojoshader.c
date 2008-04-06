@@ -354,7 +354,6 @@ static inline void Free(Context *ctx, void *ptr)
 } // Free
 
 
-
 // jump between output sections in the context...
 
 static inline void push_output(Context *ctx, OutputList *section)
@@ -617,12 +616,11 @@ static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
     return item;
 } // reglist_insert
 
-static const RegisterList *reglist_exists(const RegisterList *prev,
-                                          const RegisterType regtype,
-                                          const int regnum)
+static RegisterList *reglist_find(RegisterList *prev, const RegisterType rtype,
+                                  const int regnum)
 {
-    const uint32 newval = reg_to_ui32(regtype, regnum);
-    const RegisterList *item = prev->next;
+    const uint32 newval = reg_to_ui32(rtype, regnum);
+    RegisterList *item = prev->next;
     while (item != NULL)
     {
         const uint32 val = reg_to_ui32(item->regtype, item->regnum);
@@ -639,6 +637,13 @@ static const RegisterList *reglist_exists(const RegisterList *prev,
     } // while
 
     return NULL;  // wasn't in the list.
+} // reglist_find
+
+static inline const RegisterList *reglist_exists(RegisterList *prev,
+                                                 const RegisterType regtype,
+                                                 const int regnum)
+{
+    return (reglist_find(prev, regtype, regnum));
 } // reglist_exists
 
 static inline void set_used_register(Context *ctx, const RegisterType regtype,
@@ -2323,7 +2328,10 @@ static void emit_GLSL_M3X2(Context *ctx)
 static void emit_GLSL_CALL(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    output_line(ctx, "%s();", src0);
+    if (ctx->loops > 0)
+        output_line(ctx, "%s(aL);", src0);
+    else
+        output_line(ctx, "%s();", src0);
 } // emit_GLSL_CALL
 
 static void emit_GLSL_CALLNZ(Context *ctx)
@@ -2332,7 +2340,11 @@ static void emit_GLSL_CALLNZ(Context *ctx)
     // !!! FIXME:  if. If it's false, we can make this a no-op.
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    output_line(ctx, "if (%s) { %s(); }", src1, src0);
+
+    if (ctx->loops > 0)
+        output_line(ctx, "if (%s) { %s(aL); }", src1, src0);
+    else
+        output_line(ctx, "if (%s) { %s(); }", src1, src0);
 } // emit_GLSL_CALLNZ
 
 static void emit_GLSL_LOOP(Context *ctx)
@@ -2364,18 +2376,20 @@ static void emit_GLSL_LABEL(Context *ctx)
 {
     const char *labelstr = make_GLSL_sourcearg_string(ctx, 0);
     const int label = ctx->source_args[0].regnum;
+    RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, label);
     assert(ctx->output == &ctx->subroutines);  // not mainline, etc.
     assert(ctx->indent == 0);  // we shouldn't be in the middle of a function.
 
     // MSDN specs say CALL* has to come before the LABEL, so we know if we
     //  can ditch the entire function here as unused.
-    if (!get_used_register(ctx, REG_TYPE_LABEL, label))
+    if (reg == NULL)
         ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
 
     // !!! FIXME: it would be nice if we could determine if a function is
     // !!! FIXME:  only called once and, if so, forcibly inline it.
 
-    output_line(ctx, "void %s()", labelstr);
+    const char *uses_loopreg = ((reg) && (reg->usage == 1)) ? "int aL" : "";
+    output_line(ctx, "void %s(%s)", labelstr, uses_loopreg);
     output_line(ctx, "{");
     ctx->indent++;
 } // emit_GLSL_LABEL
@@ -3409,9 +3423,32 @@ static void state_LABEL(Context *ctx)
     set_defined_register(ctx, REG_TYPE_LABEL, ctx->source_args[0].regnum);
 } // state_LABEL
 
+static void check_call_loop_wrappage(Context *ctx, const int regnum)
+{
+    // msdn says subroutines inherit aL register if you're in a loop when
+    //  you call, and further more _if you ever call this function in a loop,
+    //  it must always be called in a loop_. So we'll just pass our loop
+    //  variable as a function parameter in those cases.
+
+    const int current_usage = (ctx->loops > 0) ? 1 : -1;
+    RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, regnum);
+    assert(reg != NULL);
+
+    if (reg->usage == 0)
+        reg->usage = current_usage;
+    else if (reg->usage != current_usage)
+    {
+        if (current_usage == 1)
+            fail(ctx, "CALL to this label must be wrapped in LOOP/ENDLOOP");
+        else
+            fail(ctx, "CALL to this label must not be wrapped in LOOP/ENDLOOP");
+    } // else if
+} // check_call_loop_wrappage
+
 static void state_CALL(Context *ctx)
 {
-    check_label_register(ctx, 0, "CALL");
+    if (check_label_register(ctx, 0, "CALL") != FAIL)
+        check_call_loop_wrappage(ctx, ctx->source_args[0].regnum);
 } // state_CALL
 
 static void state_CALLNZ(Context *ctx)
@@ -3419,8 +3456,8 @@ static void state_CALLNZ(Context *ctx)
     const RegisterType regtype = ctx->source_args[1].regtype;
     if ((regtype != REG_TYPE_CONSTBOOL) && (regtype != REG_TYPE_PREDICATE))
         fail(ctx, "CALLNZ argument isn't constbool or predicate register");
-    else
-        check_label_register(ctx, 0, "CALLNZ");
+    else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
+        check_call_loop_wrappage(ctx, ctx->source_args[0].regnum);
 } // state_CALLNZ
 
 static void state_MOVA(Context *ctx)
