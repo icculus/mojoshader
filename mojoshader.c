@@ -328,6 +328,7 @@ struct Context
     ContextFlags flags;
     int loops;
     int reps;
+    int cmps;
     RegisterList used_registers;
     RegisterList defined_registers;
     int uniform_count;
@@ -1538,6 +1539,18 @@ static const char *get_GLSL_destarg_varname(Context *ctx, int idx)
     return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
 } // get_GLSL_destarg_varname
 
+static const char *get_GLSL_sourcearg_varname(Context *ctx, int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
+        return "";
+    } // if
+
+    const SourceArgInfo *arg = &ctx->source_args[idx];
+    return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+} // get_GLSL_sourcearg_varname
+
 
 static const char *make_GLSL_destarg_assign(Context *, const int, const char *, ...) ISPRINTF(3,4);
 static const char *make_GLSL_destarg_assign(Context *ctx, const int idx,
@@ -2400,8 +2413,7 @@ static void emit_GLSL_REP(Context *ctx)
     // msdn docs say legal loop values are 0 to 255. We can check DEFI values
     //  at parse time, but if they are pulling a value from a uniform, do
     //  we clamp here?
-    const SourceArgInfo *arg = &ctx->source_args[0];
-    const char *varname = get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+    const char *varname = get_GLSL_sourcearg_varname(ctx, 0);
     const uint rep = (uint) ctx->reps;
     output_line(ctx, "for (int rep%u = 0; rep%u < %s.x; rep%u++) {",
                 rep, rep, varname, rep);
@@ -2628,7 +2640,35 @@ static void emit_GLSL_TEXDEPTH(Context *ctx)
 
 static void emit_GLSL_CMP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const DestArgInfo *dst = &ctx->dest_args[0];
+    const char *src0 = get_GLSL_sourcearg_varname(ctx, 0);
+    const char *src1 = get_GLSL_sourcearg_varname(ctx, 0);
+    const char *src2 = get_GLSL_sourcearg_varname(ctx, 0);
+
+    if (dst->writemask0)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x >= 0.0f) ? %s.x : %s.x)", src0, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask1)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y >= 0.0f) ? %s.y : %s.y)", src0, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask2)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z >= 0.0f) ? %s.z : %s.z)", src0, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask3)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w >= 0.0f) ? %s.w : %s.w)", src0, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
 } // emit_GLSL_CMP
 
 static void emit_GLSL_BEM(Context *ctx)
@@ -3389,6 +3429,32 @@ static void state_ENDREP(Context *ctx)
     ctx->reps--;
 } // state_ENDREP
 
+static void state_CMP(Context *ctx)
+{
+    ctx->cmps++;
+
+    // extra limitations for ps <= 1.4 ...
+    if (!shader_version_atleast(ctx, 1, 4))
+    {
+        int i;
+        const DestArgInfo *dst = &ctx->dest_args[0];
+        const RegisterType dregtype = dst->regtype;
+        const int dregnum = dst->regnum;
+
+        if (ctx->cmps > 3)
+            fail(ctx, "only 3 CMP instructions allowed in this shader model");
+
+        for (i = 0; i < 3; i++)
+        {
+            const SourceArgInfo *src = &ctx->source_args[i];
+            const RegisterType sregtype = src->regtype;
+            const int sregnum = src->regnum;
+            if ((dregtype == sregtype) && (dregnum == sregnum))
+                fail(ctx, "CMP dest can't match sources in this shader model");
+        } // for
+    } // if
+} // state_CMP
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -3506,7 +3572,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXDP3, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXM3X3, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXDEPTH, 1, D, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CMP, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CMP, 4, DSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(BEM, 3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DP2ADD, 4, DSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_PIXEL),
