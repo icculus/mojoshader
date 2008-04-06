@@ -327,6 +327,7 @@ struct Context
     uint32 previous_opcode;
     ContextFlags flags;
     int loops;
+    int reps;
     RegisterList used_registers;
     RegisterList defined_registers;
     int uniform_count;
@@ -2388,12 +2389,22 @@ static void emit_GLSL_SINCOS(Context *ctx)
 
 static void emit_GLSL_REP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // !!! FIXME:
+    // msdn docs say legal loop values are 0 to 255. We can check DEFI values
+    //  at parse time, but if they are pulling a value from a uniform, do
+    //  we clamp here?
+    const SourceArgInfo *arg = &ctx->source_args[0];
+    const char *varname = get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+    const uint rep = (uint) ctx->reps;
+    output_line(ctx, "for (int rep%u = 0; rep%u < %s.x; rep%u++) {",
+                rep, rep, varname, rep);
+    ctx->indent++;
 } // emit_GLSL_REP
 
 static void emit_GLSL_ENDREP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    ctx->indent--;
+    output_line(ctx, "}");
 } // emit_GLSL_ENDREP
 
 static void emit_GLSL_IF(Context *ctx)
@@ -3265,6 +3276,8 @@ static void state_RET(Context *ctx)
     //  an error.
     if (ctx->loops > 0)
         fail(ctx, "LOOP without ENDLOOP");
+    if (ctx->reps > 0)
+        fail(ctx, "REP without ENDREP");
 } // state_RET
 
 static int check_label_register(Context *ctx, int arg, const char *opcode)
@@ -3348,6 +3361,22 @@ static void state_SETP(Context *ctx)
         fail(ctx, "SETP argument isn't predicate register");
 } // state_SETP
 
+static void state_REP(Context *ctx)
+{
+    const RegisterType regtype = ctx->source_args[0].regtype;
+    if (regtype != REG_TYPE_CONSTINT)
+        fail(ctx, "REP argument isn't constint register");
+    ctx->reps++;
+} // state_REP
+
+static void state_ENDREP(Context *ctx)
+{
+    // !!! FIXME: check that we aren't straddling an IF block.
+    if (ctx->reps <= 0)
+        fail(ctx, "ENDREP without REP");
+    ctx->reps--;
+} // state_ENDREP
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -3415,8 +3444,8 @@ static const Instruction instructions[] =
     INSTRUCTION(ABS, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(NRM, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(SINCOS, 4, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(REP, 1, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ENDREP, 0, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(REP, 1, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(ENDREP, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(IF, 1, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(IFC, 2, SS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(ELSE, 0, NULL, MOJOSHADER_TYPE_ANY),
