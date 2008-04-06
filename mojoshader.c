@@ -2584,9 +2584,45 @@ static void emit_GLSL_LOGP(Context *ctx)
     emit_GLSL_LOG(ctx);
 } // emit_GLSL_LOGP
 
+// common code between CMP and CND.
+static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
+{
+    const DestArgInfo *dst = &ctx->dest_args[0];
+    const char *src0 = get_GLSL_sourcearg_varname(ctx, 0);
+    const char *src1 = get_GLSL_sourcearg_varname(ctx, 0);
+    const char *src2 = get_GLSL_sourcearg_varname(ctx, 0);
+
+    // !!! FIXME: for replicate swizzles, don't redo compares...
+
+    if (dst->writemask0)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask1)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask2)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+    if (dst->writemask3)
+    {
+        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
+        output_line(ctx, "%s", code);
+    } // if
+} // emit_GLSL_comparison_operations
+
 static void emit_GLSL_CND(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    emit_GLSL_comparison_operations(ctx, "> 0.5f");
 } // emit_GLSL_CND
 
 static void emit_GLSL_DEF(Context *ctx)
@@ -2640,35 +2676,7 @@ static void emit_GLSL_TEXDEPTH(Context *ctx)
 
 static void emit_GLSL_CMP(Context *ctx)
 {
-    const DestArgInfo *dst = &ctx->dest_args[0];
-    const char *src0 = get_GLSL_sourcearg_varname(ctx, 0);
-    const char *src1 = get_GLSL_sourcearg_varname(ctx, 0);
-    const char *src2 = get_GLSL_sourcearg_varname(ctx, 0);
-
-    if (dst->writemask0)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x >= 0.0f) ? %s.x : %s.x)", src0, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
-    if (dst->writemask1)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y >= 0.0f) ? %s.y : %s.y)", src0, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
-    if (dst->writemask2)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z >= 0.0f) ? %s.z : %s.z)", src0, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
-    if (dst->writemask3)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w >= 0.0f) ? %s.w : %s.w)", src0, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
+    emit_GLSL_comparison_operations(ctx, ">= 0.0f");
 } // emit_GLSL_CMP
 
 static void emit_GLSL_BEM(Context *ctx)
@@ -3455,6 +3463,24 @@ static void state_CMP(Context *ctx)
     } // if
 } // state_CMP
 
+static void state_CND(Context *ctx)
+{
+    // apparently it was removed...it's not in the docs past ps_1_4 ...
+    if (shader_version_atleast(ctx, 2, 0))
+        fail(ctx, "CND not allowed in this shader model");
+
+    // extra limitations for ps <= 1.4 ...
+    else if (!shader_version_atleast(ctx, 1, 4))
+    {
+        const SourceArgInfo *src = &ctx->source_args[0];
+        if ((src->regtype != REG_TYPE_TEMP) || (src->regnum != 0) ||
+            (src->swizzle != 0x0000))
+        {
+            fail(ctx, "CND src must be r0.a in this shader model");
+        } // if
+    } // if
+} // state_CND
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -3564,7 +3590,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXM3X3VSPEC, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(EXPP, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(LOGP, 2, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CND, 4, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CND, 4, DSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(DEF, 5, DEF, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXREG2RGB, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXDP3TEX, 2, DS, MOJOSHADER_TYPE_ANY),
