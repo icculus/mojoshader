@@ -1395,88 +1395,6 @@ static void emit_PASSTHROUGH_start(Context *ctx)
         memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
 } // emit_PASSTHROUGH_start
 
-static void emit_PASSTHROUGH_RESERVED(Context *ctx) {}
-static void emit_PASSTHROUGH_NOP(Context *ctx) {}
-static void emit_PASSTHROUGH_MOV(Context *ctx) {}
-static void emit_PASSTHROUGH_ADD(Context *ctx) {}
-static void emit_PASSTHROUGH_SUB(Context *ctx) {}
-static void emit_PASSTHROUGH_MAD(Context *ctx) {}
-static void emit_PASSTHROUGH_MUL(Context *ctx) {}
-static void emit_PASSTHROUGH_RCP(Context *ctx) {}
-static void emit_PASSTHROUGH_RSQ(Context *ctx) {}
-static void emit_PASSTHROUGH_DP3(Context *ctx) {}
-static void emit_PASSTHROUGH_DP4(Context *ctx) {}
-static void emit_PASSTHROUGH_MIN(Context *ctx) {}
-static void emit_PASSTHROUGH_MAX(Context *ctx) {}
-static void emit_PASSTHROUGH_SLT(Context *ctx) {}
-static void emit_PASSTHROUGH_SGE(Context *ctx) {}
-static void emit_PASSTHROUGH_EXP(Context *ctx) {}
-static void emit_PASSTHROUGH_LOG(Context *ctx) {}
-static void emit_PASSTHROUGH_LIT(Context *ctx) {}
-static void emit_PASSTHROUGH_DST(Context *ctx) {}
-static void emit_PASSTHROUGH_LRP(Context *ctx) {}
-static void emit_PASSTHROUGH_FRC(Context *ctx) {}
-static void emit_PASSTHROUGH_M4X4(Context *ctx) {}
-static void emit_PASSTHROUGH_M4X3(Context *ctx) {}
-static void emit_PASSTHROUGH_M3X4(Context *ctx) {}
-static void emit_PASSTHROUGH_M3X3(Context *ctx) {}
-static void emit_PASSTHROUGH_M3X2(Context *ctx) {}
-static void emit_PASSTHROUGH_CALL(Context *ctx) {}
-static void emit_PASSTHROUGH_CALLNZ(Context *ctx) {}
-static void emit_PASSTHROUGH_LOOP(Context *ctx) {}
-static void emit_PASSTHROUGH_RET(Context *ctx) {}
-static void emit_PASSTHROUGH_ENDLOOP(Context *ctx) {}
-static void emit_PASSTHROUGH_LABEL(Context *ctx) {}
-static void emit_PASSTHROUGH_POW(Context *ctx) {}
-static void emit_PASSTHROUGH_CRS(Context *ctx) {}
-static void emit_PASSTHROUGH_SGN(Context *ctx) {}
-static void emit_PASSTHROUGH_ABS(Context *ctx) {}
-static void emit_PASSTHROUGH_NRM(Context *ctx) {}
-static void emit_PASSTHROUGH_SINCOS(Context *ctx) {}
-static void emit_PASSTHROUGH_REP(Context *ctx) {}
-static void emit_PASSTHROUGH_ENDREP(Context *ctx) {}
-static void emit_PASSTHROUGH_IF(Context *ctx) {}
-static void emit_PASSTHROUGH_ELSE(Context *ctx) {}
-static void emit_PASSTHROUGH_ENDIF(Context *ctx) {}
-static void emit_PASSTHROUGH_BREAK(Context *ctx) {}
-static void emit_PASSTHROUGH_MOVA(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXKILL(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXBEM(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXBEML(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXREG2AR(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXREG2GB(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X2PAD(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X2TEX(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X3PAD(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X3TEX(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X3SPEC(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X3VSPEC(Context *ctx) {}
-static void emit_PASSTHROUGH_EXPP(Context *ctx) {}
-static void emit_PASSTHROUGH_LOGP(Context *ctx) {}
-static void emit_PASSTHROUGH_CND(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXREG2RGB(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXDP3TEX(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X2DEPTH(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXDP3(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXM3X3(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXDEPTH(Context *ctx) {}
-static void emit_PASSTHROUGH_CMP(Context *ctx) {}
-static void emit_PASSTHROUGH_BEM(Context *ctx) {}
-static void emit_PASSTHROUGH_DP2ADD(Context *ctx) {}
-static void emit_PASSTHROUGH_DSX(Context *ctx) {}
-static void emit_PASSTHROUGH_DSY(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXLDD(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXLDL(Context *ctx) {}
-static void emit_PASSTHROUGH_BREAKP(Context *ctx) {}
-static void emit_PASSTHROUGH_BREAKC(Context *ctx) {}
-static void emit_PASSTHROUGH_IFC(Context *ctx) {}
-static void emit_PASSTHROUGH_SETP(Context *ctx) {}
-static void emit_PASSTHROUGH_DEF(Context *ctx) {}
-static void emit_PASSTHROUGH_DEFI(Context *ctx) {}
-static void emit_PASSTHROUGH_DEFB(Context *ctx) {}
-static void emit_PASSTHROUGH_DCL(Context *ctx) {}
-static void emit_PASSTHROUGH_TEXCOORD(Context *ctx) {}
-static void emit_PASSTHROUGH_TEX(Context *ctx) {}
 static void emit_PASSTHROUGH_end(Context *ctx) {}
 static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
@@ -1484,6 +1402,95 @@ static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_comment(Context *ctx, const char *str) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w) {}
+
+#define EMIT_PASSTHROUGH_OPCODE_FUNC(op) \
+    static void emit_PASSTHROUGH_##op(Context *ctx) {}
+
+EMIT_PASSTHROUGH_OPCODE_FUNC(RESERVED)
+EMIT_PASSTHROUGH_OPCODE_FUNC(NOP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MOV)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ADD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SUB)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MAD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MUL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(RCP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(RSQ)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DP3)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DP4)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MIN)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MAX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SLT)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SGE)
+EMIT_PASSTHROUGH_OPCODE_FUNC(EXP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LOG)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LIT)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DST)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LRP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(FRC)
+EMIT_PASSTHROUGH_OPCODE_FUNC(M4X4)
+EMIT_PASSTHROUGH_OPCODE_FUNC(M4X3)
+EMIT_PASSTHROUGH_OPCODE_FUNC(M3X4)
+EMIT_PASSTHROUGH_OPCODE_FUNC(M3X3)
+EMIT_PASSTHROUGH_OPCODE_FUNC(M3X2)
+EMIT_PASSTHROUGH_OPCODE_FUNC(CALL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(CALLNZ)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LOOP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(RET)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ENDLOOP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LABEL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(POW)
+EMIT_PASSTHROUGH_OPCODE_FUNC(CRS)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SGN)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ABS)
+EMIT_PASSTHROUGH_OPCODE_FUNC(NRM)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SINCOS)
+EMIT_PASSTHROUGH_OPCODE_FUNC(REP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ENDREP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(IF)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ELSE)
+EMIT_PASSTHROUGH_OPCODE_FUNC(ENDIF)
+EMIT_PASSTHROUGH_OPCODE_FUNC(BREAK)
+EMIT_PASSTHROUGH_OPCODE_FUNC(MOVA)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXKILL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXBEM)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXBEML)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXREG2AR)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXREG2GB)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X2PAD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X2TEX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X3PAD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X3TEX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X3SPEC)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X3VSPEC)
+EMIT_PASSTHROUGH_OPCODE_FUNC(EXPP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(LOGP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(CND)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXREG2RGB)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXDP3TEX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X2DEPTH)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXDP3)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXM3X3)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXDEPTH)
+EMIT_PASSTHROUGH_OPCODE_FUNC(CMP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(BEM)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DP2ADD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DSX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DSY)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXLDD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXLDL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(BREAKP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(BREAKC)
+EMIT_PASSTHROUGH_OPCODE_FUNC(IFC)
+EMIT_PASSTHROUGH_OPCODE_FUNC(SETP)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DEF)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DEFI)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DEFB)
+EMIT_PASSTHROUGH_OPCODE_FUNC(DCL)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXCOORD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEX)
+
+#undef EMIT_PASSTHROUGH_OPCODE_FUNC
+
 #endif  // SUPPORT_PROFILE_PASSTHROUGH
 
 
