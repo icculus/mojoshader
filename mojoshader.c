@@ -4030,9 +4030,10 @@ static void process_definitions(Context *ctx)
                 case REG_TYPE_CONSTBOOL:
                     // separate uniforms into a different list for now.
                     prev->next = item->next;
+                    item->next = NULL;
                     uitem->next = item;
                     uitem = item;
-                    uitem->next = NULL;
+                    item = prev;
                     break;
 
                 default:
