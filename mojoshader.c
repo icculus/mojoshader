@@ -1209,7 +1209,6 @@ EMIT_D3D_OPCODE_DSS_FUNC(CRS)
 EMIT_D3D_OPCODE_DSSS_FUNC(SGN)
 EMIT_D3D_OPCODE_DS_FUNC(ABS)
 EMIT_D3D_OPCODE_DS_FUNC(NRM)
-EMIT_D3D_OPCODE_DS_FUNC(SINCOS)
 EMIT_D3D_OPCODE_S_FUNC(REP)
 EMIT_D3D_OPCODE_FUNC(ENDREP)
 EMIT_D3D_OPCODE_S_FUNC(IF)
@@ -1364,6 +1363,15 @@ static void emit_D3D_TEX(Context *ctx)
     else
         emit_D3D_opcode_d(ctx, "texld");
 } // emit_D3D_TEX
+
+static void emit_D3D_SINCOS(Context *ctx)
+{
+    // this opcode needs extra registers for sm2 and lower.
+    if (!shader_version_atleast(ctx, 3, 0))
+        emit_D3D_opcode_dsss(ctx, "sincos");
+    else
+        emit_D3D_opcode_ds(ctx, "sincos");
+} // emit_D3D_SINCOS
 
 
 #undef EMIT_D3D_OPCODE_FUNC
@@ -2395,16 +2403,21 @@ static void emit_GLSL_NRM(Context *ctx)
 
 static void emit_GLSL_SINCOS(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
-#if 0 // !!! FIXME
-    // !!! FIXME: vs_2_0 is different?
-    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
+    // we don't care about the temp registers that <= sm2 demands; ignore them.
+    //  sm2 also talks about what components are left untouched vs. undefined,
+    //  but we just leave those all untouched with GLSL write masks (which
+    //  would fulfill the "undefined" requirement, too).
+    const int mask = ctx->dest_args[0].writemask;
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    if (ctx->source_args[0].writemask == 0x3)  // .xy
-        output_line(ctx, "%s = vec2(cos(%s), sin(%s));", dst0, src0, src0);
-    else if (ctx->source_args[0].writemask == 0x1)  // .x
-        sdfsdf
-#endif
+    const char *code = NULL;
+
+    if (mask == 0x1)  // .x
+        code = make_GLSL_destarg_assign(ctx, 0, "cos(%s)", src0);
+    else if (mask == 0x2)  // .y
+        code = make_GLSL_destarg_assign(ctx, 0, "sin(%s)", src0);
+    else if (mask == 0x3)  // .xy
+        code = make_GLSL_destarg_assign(ctx, 0, "vec2(cos(%s), sin(%s))", src0, src0);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_SINCOS
 
 static void emit_GLSL_REP(Context *ctx)
@@ -3136,16 +3149,21 @@ static int parse_args_DSSSS(Context *ctx)
 } // parse_args_DSSSS
 
 
+static int parse_args_SINCOS(Context *ctx)
+{
+    // this opcode needs extra registers for sm2 and lower.
+    if (!shader_version_atleast(ctx, 3, 0))
+        return parse_args_DSSS(ctx);
+    return parse_args_DS(ctx);
+} // parse_args_SINCOS
+
+
 static int parse_args_TEXCOORD(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
+    // added extra register in ps_1_4.
     if (shader_version_atleast(ctx, 1, 4))
-    {
-        if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL)
-            return FAIL;
-        return 3;
-    } // if
-    return 2;
+        return parse_args_DS(ctx);
+    return parse_args_D(ctx);
 } // parse_args_TEXCOORD
 
 
@@ -3481,6 +3499,39 @@ static void state_CND(Context *ctx)
     } // if
 } // state_CND
 
+static void state_SINCOS(Context *ctx)
+{
+    const int mask = ctx->dest_args[0].writemask;
+    if ((mask < 0x1) || (mask > 0x3))
+    {
+        fail(ctx, "SINCOS write mask must be .x or .y or .xy");
+        return;
+    } // if
+
+    // this opcode needs extra registers, with extra limitations, for <= sm2.
+    if (!shader_version_atleast(ctx, 3, 0))
+    {
+        int i;
+        for (i = 1; i < 3; i++)
+        {
+            switch (ctx->source_args[i].regtype)
+            {
+                case REG_TYPE_CONST:
+                case REG_TYPE_CONST2:
+                case REG_TYPE_CONST3:
+                case REG_TYPE_CONST4:
+                    break;
+                default:
+                    failf(ctx, "SINCOS src%d must be constfloat", i);
+                    return;
+            } // switch
+        } // for
+
+        if (ctx->source_args[1].regnum == ctx->source_args[2].regnum)
+            fail(ctx, "SINCOS src1 and src2 must be different registers");
+    } // if
+} // state_SINCOS
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -3547,7 +3598,7 @@ static const Instruction instructions[] =
     INSTRUCTION(SGN, 4, DSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(ABS, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(NRM, 2, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SINCOS, 4, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(SINCOS, -1, SINCOS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(REP, 1, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(ENDREP, 0, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(IF, 1, S, MOJOSHADER_TYPE_ANY),
