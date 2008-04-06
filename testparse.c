@@ -94,7 +94,13 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
         } // else
 
         if (pd->output != NULL)
-            printf("OUTPUT:\n%s\n", pd->output);
+        {
+            int i;
+            printf("OUTPUT:\n");
+            for (i = 0; i < pd->output_len; i++)
+                putchar((int) pd->output[i]);
+            printf("\n");
+        } // if
     } // else
     printf("\n\n");
     MOJOSHADER_freeParseData(pd);

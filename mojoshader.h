@@ -131,8 +131,9 @@ typedef struct
 
     /*
      * Byte count for output, not counting any null terminator. Most profiles
-     *  produce an ASCII string of source code, but profiles that do binary
-     *  output may not be text at all. Will be 0 on error.
+     *  produce an ASCII string of source code (which will be null-terminated
+     *  even though that null char isn't included in output_len), but profiles
+     *  that do binary output may not be text at all. Will be 0 on error.
      */
     int output_len;
 
