@@ -2546,7 +2546,8 @@ static void emit_GLSL_EXPP(Context *ctx)
 
 static void emit_GLSL_LOGP(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    // LOGP is just low-precision LOG, but we'll take the higher precision.
+    emit_GLSL_LOG(ctx);
 } // emit_GLSL_LOGP
 
 static void emit_GLSL_CND(Context *ctx)
