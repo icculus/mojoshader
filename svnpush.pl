@@ -4,10 +4,10 @@ use strict;
 use warnings;
 
 print("Making sure svn working copy is up to date...\n");
-system("cd ../mojoshader ; svn update");
-my $svnver = `cd ../mojoshader ; svnversion`;
+system("cd ../svn-mojoshader ; svn update");
+my $svnver = `cd ../svn-mojoshader ; svnversion`;
 chomp($svnver);
-my $hgver = `cd ../mojoshader ; svn log -r${svnver} |grep 'changeset:'`;
+my $hgver = `cd ../svn-mojoshader ; svn log -r${svnver} |grep 'changeset:'`;
 chomp($hgver);
 $hgver =~ s/^changeset:\s+(\d+):.*\Z/$1/;
 my $min = $hgver;
@@ -39,9 +39,9 @@ for ($i = $min; $i <= $max; $i++) {
     print("Getting diff...\n");
     system("hg diff -r${p}:${i} > patch.diff");
     print("Patching svn working copy...\n");
-    system("cd ../mojoshader ; patch -p1 < ../hg-mojoshader/patch.diff");
+    system("cd ../svn-mojoshader ; patch -p1 < ../mojoshader/patch.diff");
     print("Committing svn working copy...\n");
-    system("cd ../mojoshader ; svn commit -F ../hg-mojoshader/commit.txt");
+    system("cd ../svn-mojoshader ; svn commit -F ../mojoshader/commit.txt");
     print("Cleaning up...\n");
     system("rm -rf commit.txt patch.diff");
     print("...revision committed!\n");
