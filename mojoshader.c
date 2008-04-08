@@ -2349,8 +2349,10 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 
 static void emit_GLSL_LOOP(Context *ctx)
 {
-    //fail(ctx, "unimplemented.");  // !!! FIXME
-    output_line(ctx, "for (int aL = BLAH, BLAH, BLAH) {");
+    const char *varname = get_GLSL_sourcearg_varname(ctx, 1);
+    assert(ctx->source_args[0].regnum == 0);  // in case they add aL1 someday.
+    output_line(ctx, "for (int aL = %s.y, const int aLend = %s.x+%s.y; aL < aLend; aL += %s.z) {",
+                varname, varname, varname, varname);
     ctx->indent++;
 } // emit_GLSL_LOOP
 
@@ -2367,7 +2369,6 @@ static void emit_GLSL_RET(Context *ctx)
 
 static void emit_GLSL_ENDLOOP(Context *ctx)
 {
-    //fail(ctx, "unimplemented.");  // !!! FIXME
     ctx->indent--;
     output_line(ctx, "}");
 } // emit_GLSL_ENDLOOP
