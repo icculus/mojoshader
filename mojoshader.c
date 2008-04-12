@@ -340,16 +340,15 @@ struct Context
 
 // Convenience functions for allocators...
 
-static inline void *Malloc(Context *ctx, int len)
+static inline void *Malloc(const Context *ctx, const int len)
 {
     return ctx->malloc(len, ctx->malloc_data);
 } // Malloc
 
 
-static inline void Free(Context *ctx, void *ptr)
+static inline void Free(const Context *ctx, void *ptr)
 {
-    // check for NULL in case of dumb free() impl.
-    if (ptr != NULL)
+    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
         ctx->free(ptr, ctx->malloc_data);
 } // Free
 
