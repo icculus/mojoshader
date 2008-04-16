@@ -2537,7 +2537,7 @@ static void emit_GLSL_DEFI(Context *ctx)
     const char *varname = get_GLSL_destarg_varname(ctx, 0);
     const int32 *x = (const int32 *) ctx->dwords;
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "const ivec4 %s(%d, %d, %d, %d);",
+    output_line(ctx, "const ivec4 %s = ivec4(%d, %d, %d, %d);",
                 varname, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
     pop_output(ctx);
 } // emit_GLSL_DEFI
@@ -2687,7 +2687,7 @@ static void emit_GLSL_DEF(Context *ctx)
     floatstr(ctx, val3, sizeof (val3), val[3], 1);
 
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "const vec4 %s(%sf, %sf, %sf, %sf);",
+    output_line(ctx, "const vec4 %s = vec4(%s, %s, %s, %s);",
                 varname, val0, val1, val2, val3);
     pop_output(ctx);
 } // emit_GLSL_DEF
