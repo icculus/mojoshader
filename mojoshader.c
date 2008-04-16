@@ -2519,7 +2519,7 @@ static void emit_GLSL_BREAKC(Context *ctx)
 static void emit_GLSL_MOVA(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "ivec4(floor(abs(%s) + vec4(0.5f)) * sign(%s))", src0, src0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "ivec4(floor(abs(%s) + vec4(0.5)) * sign(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOVA
 
@@ -2670,7 +2670,7 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
 
 static void emit_GLSL_CND(Context *ctx)
 {
-    emit_GLSL_comparison_operations(ctx, "> 0.5f");
+    emit_GLSL_comparison_operations(ctx, "> 0.5");
 } // emit_GLSL_CND
 
 static void emit_GLSL_DEF(Context *ctx)
