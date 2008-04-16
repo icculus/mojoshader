@@ -2317,7 +2317,7 @@ static void emit_GLSL_M3X2(Context *ctx)
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
 
     const char *code = make_GLSL_destarg_assign(ctx, 0,
-                                "vec3(dot(vec3(%s), vec3(%s)), "
+                                "vec2(dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
                                 src0, row0, src0, row1);
     output_line(ctx, "%s", code);
