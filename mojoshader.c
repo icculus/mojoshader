@@ -1677,18 +1677,18 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
             break;
 
         case SRCMOD_COMPLEMENT:
-            premod_str = "(1.0f - (";
+            premod_str = "(1.0 - (";
             postmod_str = "))";
             break;
 
         case SRCMOD_X2NEGATE:
             premod_str = "-(";
-            postmod_str = " * 2.0f)";
+            postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_X2:
             premod_str = "(";
-            postmod_str = " * 2.0f)";
+            postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_DZ:
@@ -2076,7 +2076,7 @@ static void emit_GLSL_MUL(Context *ctx)
 static void emit_GLSL_RCP(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "1.0f / %s", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "1.0 / %s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RCP
 
@@ -2164,10 +2164,10 @@ static void emit_GLSL_LIT_helper(Context *ctx)
     output_line(ctx, "const vec4 LIT(const vec4 src)");
     output_line(ctx, "{"); ctx->indent++;
     output_line(ctx,   "const float power = clamp(src.w, -%s, %s);",maxp,maxp);
-    output_line(ctx,   "vec4 retval(1.0f, 0.0f, 0.0f, 1.0f)");
-    output_line(ctx,   "if (src.x > 0.0f) {"); ctx->indent++;
+    output_line(ctx,   "vec4 retval(1.0, 0.0, 0.0, 1.0)");
+    output_line(ctx,   "if (src.x > 0.0) {"); ctx->indent++;
     output_line(ctx,     "retval.y = src.x;");
-    output_line(ctx,     "if (src.y > 0.0f) {"); ctx->indent++;
+    output_line(ctx,     "if (src.y > 0.0) {"); ctx->indent++;
     output_line(ctx,       "retval.z = pow(src.y, power);"); ctx->indent--;
     output_line(ctx,     "}"); ctx->indent--;
     output_line(ctx,   "}");
@@ -2195,7 +2195,7 @@ static void emit_GLSL_DST_helper(Context *ctx)
     push_output(ctx, &ctx->helpers);
     output_line(ctx, "const vec4 DST(const vec4 src0, const vec4 src1)");
     output_line(ctx, "{"); ctx->indent++;
-    output_line(ctx,   "return vec4(1.0f, src0.y * src1.y, src0.z, src1.w);"); ctx->indent--;
+    output_line(ctx,   "return vec4(1.0, src0.y * src1.y, src0.z, src1.w);"); ctx->indent--;
     output_line(ctx, "}");
     output_blank_line(ctx);
     pop_output(ctx);
@@ -2724,7 +2724,7 @@ static void emit_GLSL_TEXDEPTH(Context *ctx)
 
 static void emit_GLSL_CMP(Context *ctx)
 {
-    emit_GLSL_comparison_operations(ctx, ">= 0.0f");
+    emit_GLSL_comparison_operations(ctx, ">= 0.0");
 } // emit_GLSL_CMP
 
 static void emit_GLSL_BEM(Context *ctx)
