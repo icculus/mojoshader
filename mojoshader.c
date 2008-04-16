@@ -1977,7 +1977,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->globals);
             // no mapping to built-in var? Just make it a regular global, pray.
             if (usage_str == NULL)
-                output_line(ctx, "vec %s;", varname);
+                output_line(ctx, "vec4 %s;", varname);
             else
             {
                 output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
