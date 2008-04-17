@@ -277,7 +277,6 @@ typedef enum
     // Specific to GLSL profile...
     CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
     CTX_FLAGS_GLSL_DST_OPCODE = (1 << 1),
-    CTX_FLAGS_GLSL_LRP_OPCODE = (1 << 2),
     CTX_FLAGS_MASK = 0xFFFFFFFF
 } ContextFlags;
 
@@ -2210,35 +2209,13 @@ static void emit_GLSL_DST(Context *ctx)
     emit_GLSL_DST_helper(ctx);
 } // emit_GLSL_DST
 
-static void emit_GLSL_LRP_helper(Context *ctx)
-{
-    if (ctx->flags & CTX_FLAGS_GLSL_LRP_OPCODE)
-        return;
-
-    ctx->flags |= CTX_FLAGS_GLSL_LRP_OPCODE;
-
-    push_output(ctx, &ctx->helpers);
-    output_line(ctx, "const vec4 LRP(const vec4 src0, const vec4 src1, const vec4 src2)");
-    output_line(ctx, "{"); ctx->indent++;
-    output_line(ctx,   "return vec4("); ctx->indent++;
-    output_line(ctx,     "src0.x * (src1.x - src2.x) + src2.x,");
-    output_line(ctx,     "src0.y * (src1.y - src2.y) + src2.y,");
-    output_line(ctx,     "src0.z * (src1.z - src2.z) + src2.z,");
-    output_line(ctx,     "src0.w * (src1.w - src2.w) + src2.w"); ctx->indent--;
-    output_line(ctx,   ");"); ctx->indent--;
-    output_line(ctx, "}");
-    output_blank_line(ctx);
-    pop_output(ctx);
-} // emit_GLSL_LRP_helper
-
 static void emit_GLSL_LRP(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "LRP(%s, %s, %s)", src0, src1, src2);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "(%s * (%s - %s)) + %s", src0, src1, src2, src2);
     output_line(ctx, "%s", code);
-    emit_GLSL_LRP_helper(ctx);
 } // emit_GLSL_LRP
 
 static void emit_GLSL_FRC(Context *ctx)
