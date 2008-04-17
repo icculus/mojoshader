@@ -276,7 +276,6 @@ typedef enum
 {
     // Specific to GLSL profile...
     CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
-    CTX_FLAGS_GLSL_DST_OPCODE = (1 << 1),
     CTX_FLAGS_MASK = 0xFFFFFFFF
 } ContextFlags;
 
@@ -2184,29 +2183,15 @@ static void emit_GLSL_LIT(Context *ctx)
     emit_GLSL_LIT_helper(ctx);
 } // emit_GLSL_LIT
 
-static void emit_GLSL_DST_helper(Context *ctx)
-{
-    if (ctx->flags & CTX_FLAGS_GLSL_DST_OPCODE)
-        return;
-
-    ctx->flags |= CTX_FLAGS_GLSL_DST_OPCODE;
-
-    push_output(ctx, &ctx->helpers);
-    output_line(ctx, "const vec4 DST(const vec4 src0, const vec4 src1)");
-    output_line(ctx, "{"); ctx->indent++;
-    output_line(ctx,   "return vec4(1.0, src0.y * src1.y, src0.z, src1.w);"); ctx->indent--;
-    output_line(ctx, "}");
-    output_blank_line(ctx);
-    pop_output(ctx);
-} // emit_GLSL_DST_helper
-
 static void emit_GLSL_DST(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "DST(%s, %s)", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, 0,
+                            "vec4(1.0, %s.y * %s.y, %s.z, %s.w)",
+                            src0, src1, src0, src1);
+
     output_line(ctx, "%s", code);
-    emit_GLSL_DST_helper(ctx);
 } // emit_GLSL_DST
 
 static void emit_GLSL_LRP(Context *ctx)
