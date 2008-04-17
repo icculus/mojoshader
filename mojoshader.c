@@ -2351,7 +2351,7 @@ static void emit_GLSL_LOOP(Context *ctx)
     assert(ctx->source_args[0].regnum == 0);  // in case they add aL1 someday.
     output_line(ctx, "{");
     ctx->indent++;
-    output_line(ctx, "const int aLend = %s.x+%s.y;", varname, varname);
+    output_line(ctx, "const int aLend = %s.x + %s.y;", varname, varname);
     output_line(ctx, "for (int aL = %s.y; aL < aLend; aL += %s.z) {",
                 varname, varname);
     ctx->indent++;
