@@ -2199,7 +2199,7 @@ static void emit_GLSL_LRP(Context *ctx)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "(%s * (%s - %s)) + %s", src0, src1, src2, src2);
+    const char *code = make_GLSL_destarg_assign(ctx, 0, "mix(%s, %s, %s)", src2, src1, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_LRP
 
