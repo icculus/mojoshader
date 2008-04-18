@@ -280,8 +280,8 @@ typedef enum
 } ContextFlags;
 
 
-#define SCRATCH_BUFFER_SIZE 256
-#define SCRATCH_BUFFERS 10
+#define SCRATCH_BUFFER_SIZE 128
+#define SCRATCH_BUFFERS 16
 
 // !!! FIXME: the scratch buffers make Context pretty big.
 // !!! FIXME:  might be worth having one set of static scratch buffers that
@@ -434,7 +434,7 @@ static int failf(Context *ctx, const char *fmt, ...)
         char *scratch = get_scratch_buffer(ctx);
         va_list ap;
         va_start(ap, fmt);
-        const int len = vsnprintf(scratch,SCRATCH_BUFFER_SIZE,fmt,ap);
+        const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
         va_end(ap);
 
         char *failstr = (char *) Malloc(ctx, len + 1);
@@ -691,6 +691,9 @@ static inline int replicate_swizzle(const int swizzle)
 
 // D3D stuff that's used in more than just the d3d profile...
 
+static const char swizzle_channels[] = { 'x', 'y', 'z', 'w' };
+
+
 static const char *usagestrs[] = {
     "_position", "_blendweight", "_blendindices", "_normal", "_psize",
     "_texcoord", "_tangent", "_binormal", "_tessfactor", "_positiont",
@@ -906,12 +909,11 @@ static const char *make_D3D_sourcearg_string_in_buf(Context *ctx,
     int i = 0;
     if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
     {
-        static const char channel[] = { 'x', 'y', 'z', 'w' };
         swizzle_str[i++] = '.';
-        swizzle_str[i++] = channel[arg->swizzle_x];
-        swizzle_str[i++] = channel[arg->swizzle_y];
-        swizzle_str[i++] = channel[arg->swizzle_z];
-        swizzle_str[i++] = channel[arg->swizzle_w];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_y];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_z];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_w];
 
         // .xyzz is the same as .xyz, .z is the same as .zzzz, etc.
         while (swizzle_str[i-1] == swizzle_str[i-2])
@@ -1760,12 +1762,11 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
     int i = 0;
     if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
     {
-        static const char channel[] = { 'x', 'y', 'z', 'w' };
         swizzle_str[i++] = '.';
-        swizzle_str[i++] = channel[arg->swizzle_x];
-        swizzle_str[i++] = channel[arg->swizzle_y];
-        swizzle_str[i++] = channel[arg->swizzle_z];
-        swizzle_str[i++] = channel[arg->swizzle_w];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_y];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_z];
+        swizzle_str[i++] = swizzle_channels[arg->swizzle_w];
 
         // .xyzz is the same as .xyz, .z is the same as .zzzz, etc.
         while (swizzle_str[i-1] == swizzle_str[i-2])
@@ -2635,32 +2636,74 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
     const char *src1 = get_GLSL_sourcearg_varname(ctx, 1);
     const char *src2 = get_GLSL_sourcearg_varname(ctx, 2);
 
+    if (dst->writemask == 0x0)
+        return;  // nothing to do, drop out early.
+
     // !!! FIXME: for replicate swizzles, don't redo compares...
 
-    if (dst->writemask0)
+    if (replicate_swizzle(ctx->source_args[0].swizzle))
     {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
-        output_line(ctx, "%s", code);
+        const char swiz = swizzle_channels[ctx->source_args[0].swizzle_x];
+        if (dst->writemask == 0xF)
+        {
+            const char *code = make_GLSL_destarg_assign(ctx, 0,
+                                                "((%s.%c %s) ? %s : %s)",
+                                                src0, swiz, cmp, src1, src2);
+            output_line(ctx, "%s", code);
+        } // if
+        else
+        {
+            const char *dst0 = get_GLSL_destarg_varname(ctx, 0);
+            const char *x1 = (dst->writemask0) ? src1 : dst0;
+            const char *y1 = (dst->writemask1) ? src1 : dst0;
+            const char *z1 = (dst->writemask2) ? src1 : dst0;
+            const char *w1 = (dst->writemask3) ? src1 : dst0;
+            const char *x2 = (dst->writemask0) ? src2 : dst0;
+            const char *y2 = (dst->writemask1) ? src2 : dst0;
+            const char *z2 = (dst->writemask2) ? src2 : dst0;
+            const char *w2 = (dst->writemask3) ? src2 : dst0;
+            const char *code1 = make_GLSL_destarg_assign(ctx, 0,
+                                                "vec4(%s.x, %s.y, %s.z, %s.w)",
+                                                x1, y1, z1, w1);
+            const char *code2 = make_GLSL_destarg_assign(ctx, 0,
+                                                "vec4(%s.x, %s.y, %s.z, %s.w)",
+                                                x2, y2, z2, w2);
+
+            output_line(ctx, "if (%s.%c %s) {", src0, swiz, cmp);
+            ctx->indent++; output_line(ctx, "%s", code1); ctx->indent--;
+            output_line(ctx, "} else {");
+            ctx->indent++; output_line(ctx, "%s", code2); ctx->indent--;
+            output_line(ctx, "}");
+        } // else
     } // if
-    if (dst->writemask1)
+
+    else
     {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
-    if (dst->writemask2)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
-    if (dst->writemask3)
-    {
-        fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-        const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
-        output_line(ctx, "%s", code);
-    } // if
+        if (dst->writemask0)
+        {
+            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
+            output_line(ctx, "%s", code);
+        } // if
+        if (dst->writemask1)
+        {
+            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
+            output_line(ctx, "%s", code);
+        } // if
+        if (dst->writemask2)
+        {
+            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
+            output_line(ctx, "%s", code);
+        } // if
+        if (dst->writemask3)
+        {
+            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
+            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
+            output_line(ctx, "%s", code);
+        } // if
+    } // else
 } // emit_GLSL_comparison_operations
 
 static void emit_GLSL_CND(Context *ctx)
