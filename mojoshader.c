@@ -267,7 +267,7 @@ typedef struct
     int swizzle_y;
     int swizzle_z;
     int swizzle_w;
-    int src_mod;
+    SourceMod src_mod;
     RegisterType regtype;
 } SourceArgInfo;
 
@@ -319,11 +319,13 @@ struct Context
     uint8 minor_ver;
     DestArgInfo dest_args[1];
     SourceArgInfo source_args[5];
+    SourceArgInfo predicate_arg;  // for predicated instructions.
     uint32 dwords[4];
     int instruction_count;
     uint32 instruction_controls;
     uint32 previous_opcode;
     ContextFlags flags;
+    int predicated;
     int loops;
     int reps;
     int cmps;
@@ -827,77 +829,13 @@ static const char *get_D3D_register_string(Context *ctx,
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
-static const char *make_D3D_destarg_string(Context *ctx, const int idx)
+static const char *make_D3D_sourcearg_string_in_buf(Context *ctx,
+                                                    const SourceArgInfo *arg,
+                                                    char *buf, size_t buflen)
 {
-    if (idx >= STATICARRAYLEN(ctx->dest_args))
-    {
-        fail(ctx, "Too many destination args");
-        return "";
-    } // if
-
-    const DestArgInfo *arg = &ctx->dest_args[idx];
-
-    const char *result_shift_str = "";
-    switch (arg->result_shift)
-    {
-        case 0x1: result_shift_str = "_x2"; break;
-        case 0x2: result_shift_str = "_x4"; break;
-        case 0x3: result_shift_str = "_x8"; break;
-        case 0xD: result_shift_str = "_d8"; break;
-        case 0xE: result_shift_str = "_d4"; break;
-        case 0xF: result_shift_str = "_d2"; break;
-    } // switch
-
-    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_sat" : "";
-    const char *pp_str = (arg->result_mod & MOD_PP) ? "_pp" : "";
-    const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
-
-    char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
-                                                      arg->regnum, regnum_str,
-                                                      sizeof (regnum_str));
-    if (regtype_str == NULL)
-    {
-        fail(ctx, "Unknown destination register type.");
-        return "";
-    } // if
-
-    char writemask_str[6];
-    int i = 0;
-    if (arg->writemask != 0xF)  // 0xF == 1111. No explicit mask.
-    {
-        writemask_str[i++] = '.';
-        if (arg->writemask0) writemask_str[i++] = 'x';
-        if (arg->writemask1) writemask_str[i++] = 'y';
-        if (arg->writemask2) writemask_str[i++] = 'z';
-        if (arg->writemask3) writemask_str[i++] = 'w';
-    } // if
-    writemask_str[i] = '\0';
-    assert(i < sizeof (writemask_str));
-
-    // may turn out something like "_x2_sat_pp_centroid r0.xyzw" ...
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s",
-             result_shift_str, sat_str, pp_str, cent_str,
-             regtype_str, regnum_str, writemask_str);
-    // !!! FIXME: make sure the scratch buffer was large enough.
-    return retval;
-} // make_D3D_destarg_string
-
-
-static const char *make_D3D_sourcearg_string(Context *ctx, const int idx)
-{
-    if (idx >= STATICARRAYLEN(ctx->source_args))
-    {
-        fail(ctx, "Too many source args");
-        return "";
-    } // if
-
-    const SourceArgInfo *arg = &ctx->source_args[idx];
-
     const char *premod_str = "";
     const char *postmod_str = "";
-    switch ((SourceMod) arg->src_mod)
+    switch (arg->src_mod)
     {
         case SRCMOD_NEGATE:
             premod_str = "-";
@@ -982,11 +920,94 @@ static const char *make_D3D_sourcearg_string(Context *ctx, const int idx)
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
+    snprintf(buf, buflen, "%s%s%s%s%s",
              premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
+    return buf;
+} // make_D3D_sourcearg_string_in_buf
+
+
+static const char *make_D3D_destarg_string(Context *ctx, const int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->dest_args))
+    {
+        fail(ctx, "Too many destination args");
+        return "";
+    } // if
+
+    const DestArgInfo *arg = &ctx->dest_args[idx];
+
+    const char *result_shift_str = "";
+    switch (arg->result_shift)
+    {
+        case 0x1: result_shift_str = "_x2"; break;
+        case 0x2: result_shift_str = "_x4"; break;
+        case 0x3: result_shift_str = "_x8"; break;
+        case 0xD: result_shift_str = "_d8"; break;
+        case 0xE: result_shift_str = "_d4"; break;
+        case 0xF: result_shift_str = "_d2"; break;
+    } // switch
+
+    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_sat" : "";
+    const char *pp_str = (arg->result_mod & MOD_PP) ? "_pp" : "";
+    const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
+
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown destination register type.");
+        return "";
+    } // if
+
+    char writemask_str[6];
+    int i = 0;
+    if (arg->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    {
+        writemask_str[i++] = '.';
+        if (arg->writemask0) writemask_str[i++] = 'x';
+        if (arg->writemask1) writemask_str[i++] = 'y';
+        if (arg->writemask2) writemask_str[i++] = 'z';
+        if (arg->writemask3) writemask_str[i++] = 'w';
+    } // if
+    writemask_str[i] = '\0';
+    assert(i < sizeof (writemask_str));
+
+    const char *pred_left = "";
+    const char *pred_right = "";
+    char pred[32] = { '\0' };
+    if (ctx->predicated)
+    {
+        pred_left = "(";
+        pred_right = ") ";
+        make_D3D_sourcearg_string_in_buf(ctx, &ctx->predicate_arg,
+                                         pred, sizeof (pred));
+    } // if
+
+    // may turn out something like "_x2_sat_pp_centroid (!p0.x) r0.xyzw" ...
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s",
+             result_shift_str, sat_str, pp_str, cent_str,
+             pred_left, pred, pred_right,
+             regtype_str, regnum_str, writemask_str);
+    // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
+} // make_D3D_destarg_string
+
+
+static const char *make_D3D_sourcearg_string(Context *ctx, const int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
+        return "";
+    } // if
+
+    const SourceArgInfo *arg = &ctx->source_args[idx];
+    char *buf = get_scratch_buffer(ctx);
+    return make_D3D_sourcearg_string_in_buf(ctx, arg, buf, SCRATCH_BUFFER_SIZE);
 } // make_D3D_sourcearg_string
 
 
@@ -1581,6 +1602,13 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const int idx,
         return "";
     } // if
 
+    // !!! FIXME
+    if (ctx->predicated)
+    {
+        fail(ctx, "predicated instructions not yet supported in this profile.");
+        return "";
+    } // if
+
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_args[idx];
     char *operation = get_scratch_buffer(ctx);
@@ -1654,7 +1682,7 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
 
     const char *premod_str = "";
     const char *postmod_str = "";
-    switch ((SourceMod) arg->src_mod)
+    switch (arg->src_mod)
     {
         case SRCMOD_NEGATE:
             premod_str = "-";
@@ -2890,7 +2918,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->swizzle_y = (int) ((token >> 18) & 0x3); // bits 18 through 19
     info->swizzle_z = (int) ((token >> 20) & 0x3); // bits 20 through 21
     info->swizzle_w = (int) ((token >> 22) & 0x3); // bits 22 through 23
-    info->src_mod = (int) ((token >> 24) & 0xF); // bits 24 through 27
+    info->src_mod = (SourceMod) ((token >> 24) & 0xF); // bits 24 through 27
     info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
@@ -2909,12 +2937,30 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
 
-    if ( ((SourceMod) info->src_mod) >= SRCMOD_TOTAL )
+    if ( info->src_mod >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
     set_used_register(ctx, info->regtype, info->regnum);
     return 1;
 } // parse_source_token
+
+
+static int parse_predicated_token(Context *ctx)
+{
+    SourceArgInfo *arg = &ctx->predicate_arg;
+    if (parse_source_token(ctx, arg) == FAIL)
+        return FAIL;
+    if (arg->regtype != REG_TYPE_PREDICATE)
+        return fail(ctx, "Predicated instruction but not predicate register!");
+    if ((arg->src_mod != SRCMOD_NONE) && (arg->src_mod != SRCMOD_NOT))
+        return fail(ctx, "Predicated instruction register is not NONE or NOT");
+
+    // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
+    if ( (arg->swizzle != 0xE4) && (!replicate_swizzle(arg->swizzle)) )
+        return fail(ctx, "Predicated instruction register has wrong swizzle");
+
+    return 0;
+} // parse_predicated_token
 
 
 static int parse_args_NULL(Context *ctx)
@@ -3741,9 +3787,6 @@ static int parse_instruction_token(Context *ctx)
     if (coissue)  // !!! FIXME: I'm not sure what this means, yet.
         return fail(ctx, "coissue instructions unsupported");
 
-    if (predicated)  // !!! FIXME: I'm not sure what this means, yet.
-        return fail(ctx, "predicated instructions unsupported");
-
     if (ctx->major_ver < 2)
     {
         if (insttoks != 0)  // this is a reserved field in shaders < 2.0 ...
@@ -3774,12 +3817,16 @@ static int parse_instruction_token(Context *ctx)
 
     ctx->instruction_count++;
     ctx->instruction_controls = controls;
+    ctx->predicated = predicated;
 
     // Update the context with instruction's arguments.
     ctx->tokens++;
     ctx->tokencount--;
     retval = instruction->parse_args(ctx);
     assert((isfail(ctx)) || (retval >= 0));
+
+    if ( (!isfail(ctx)) && (predicated) )
+        parse_predicated_token(ctx);
 
     // parse_args() moves these forward for convenience...reset them.
     ctx->tokens = start_tokens;
