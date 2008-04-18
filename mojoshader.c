@@ -2632,8 +2632,8 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
 {
     const DestArgInfo *dst = &ctx->dest_args[0];
     const char *src0 = get_GLSL_sourcearg_varname(ctx, 0);
-    const char *src1 = get_GLSL_sourcearg_varname(ctx, 0);
-    const char *src2 = get_GLSL_sourcearg_varname(ctx, 0);
+    const char *src1 = get_GLSL_sourcearg_varname(ctx, 1);
+    const char *src2 = get_GLSL_sourcearg_varname(ctx, 2);
 
     // !!! FIXME: for replicate swizzles, don't redo compares...
 
