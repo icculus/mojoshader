@@ -42,9 +42,10 @@ static const char *shader_type(const MOJOSHADER_shaderType s)
 } // shader_type
 
 
-static void do_parse(const unsigned char *buf, const int len, const char *prof)
+static int do_parse(const unsigned char *buf, const int len, const char *prof)
 {
     const MOJOSHADER_parseData *pd;
+    int retval = 0;
 
     pd = MOJOSHADER_parse(prof, buf, len, Malloc, Free, NULL);
     printf("PROFILE: %s\n", prof);
@@ -52,6 +53,7 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
         printf("ERROR: %s\n", pd->error);
     else
     {
+        retval = 1;
         printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
         printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
         printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
@@ -104,11 +106,15 @@ static void do_parse(const unsigned char *buf, const int len, const char *prof)
     } // else
     printf("\n\n");
     MOJOSHADER_freeParseData(pd);
+
+    return retval;
 } // do_parse
 
 
 int main(int argc, char **argv)
 {
+    int retval = 0;
+
     printf("MojoShader testparse\n");
     printf("Compiled against version %d\n", MOJOSHADER_VERSION);
     printf("Linked against version %d\n", MOJOSHADER_version());
@@ -132,13 +138,14 @@ int main(int argc, char **argv)
                 unsigned char *buf = (unsigned char *) malloc(1000000);
                 int rc = fread(buf, 1, 1000000, io);
                 fclose(io);
-                do_parse(buf, rc, profile);
+                if (!do_parse(buf, rc, profile))
+                    retval = 1;
                 free(buf);
             } // else
         } // for
     } // else
 
-    return 0;
+    return retval;
 } // main
 
 // end of testparse.c ...
