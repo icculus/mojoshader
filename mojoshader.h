@@ -170,9 +170,9 @@ typedef struct
     /*
      * (uniform_count) elements of data that specify Uniforms to be set for
      *  this shader. See discussion on MOJOSHADER_uniform for details.
+     * This can be NULL on error or if (uniform_count) is zero.
      */
     MOJOSHADER_uniform *uniforms;
-
 
     /*
      * The number of elements pointed to by (attributes).
@@ -182,6 +182,7 @@ typedef struct
     /*
      * (attribute_count) elements of data that specify Attributes to be set
      *  for this shader. See discussion on MOJOSHADER_attribute for details.
+     * This can be NULL on error or if (attribute_count) is zero.
      */
     MOJOSHADER_attribute *attributes;
 

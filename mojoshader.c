@@ -4233,6 +4233,16 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
 static MOJOSHADER_attribute *build_attributes(Context *ctx)
 {
+    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    {
+        if (ctx->attribute_count > 0)
+            fail(ctx, "BUG: pixel shader shouldn't have vertex attributes");
+        return NULL;  // nothing to do for pixel shaders.
+    } // if
+
+    if (ctx->attribute_count == 0)
+        return NULL;  // nothing to do.
+
     MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *)
              Malloc(ctx, sizeof (MOJOSHADER_attribute) * ctx->attribute_count);
 
