@@ -388,15 +388,26 @@ static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
     return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
 } // version_ui32
 
-static int shader_version_supported(uint8 maj, uint8 min)
+static inline int shader_version_supported(const uint8 maj, const uint8 min)
 {
     return (ver_ui32(maj,min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR));
 } // shader_version_supported
 
-static int shader_version_atleast(const Context *ctx, uint8 maj, uint8 min)
+static inline int shader_version_atleast(const Context *ctx, const uint8 maj,
+                                         const uint8 min)
 {
     return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
 } // shader_version_atleast
+
+static inline int shader_is_pixel(const Context *ctx)
+{
+    return (ctx->shader_type == MOJOSHADER_TYPE_PIXEL);
+} // shader_is_pixel
+
+static inline int shader_is_vertex(const Context *ctx)
+{
+    return (ctx->shader_type == MOJOSHADER_TYPE_VERTEX);
+} // shader_is_vertex
 
 
 // Bit arrays (for storing large arrays of booleans...
@@ -751,7 +762,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REG_TYPE_ADDRESS:  // (or REG_TYPE_TEXTURE, same value.)
-            retval = (ctx->shader_type == MOJOSHADER_TYPE_VERTEX) ? "a" : "t";
+            retval = shader_is_vertex(ctx) ? "a" : "t";
             break;
 
         case REG_TYPE_RASTOUT:
@@ -769,7 +780,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REG_TYPE_OUTPUT: // (or REG_TYPE_TEXCRDOUT, same value.)
-            if ((ctx->shader_type==MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver>=3))
+            if (shader_is_vertex(ctx) && shader_version_atleast(ctx, 3, 0))
                 retval = "o";
             else
                 retval = "oT";
@@ -1040,9 +1051,9 @@ static void emit_D3D_start(Context *ctx)
     else
         snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
 
-    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    if (shader_is_pixel(ctx))
         shadertype_str = "ps";
-    else if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    else if (shader_is_vertex(ctx))
         shadertype_str = "vs";
     else
     {
@@ -1372,16 +1383,16 @@ static void emit_D3D_DCL(Context *ctx)
     const char *usage_str = "";
     char index_str[16] = { '\0' };
 
-    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    if (shader_is_vertex(ctx))
     {
+        const uint32 usage = ctx->dwords[0];
         const uint32 index = ctx->dwords[1];
-    const uint32 usage = ctx->dwords[0];
         usage_str = usagestrs[usage];
         if (index != 0)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // if
 
-    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    else if (shader_is_pixel(ctx))
     {
         if (arg->regtype == REG_TYPE_SAMPLER)
         {
@@ -1837,17 +1848,12 @@ static const char *get_GLSL_comparison_string_vector(Context *ctx)
 
 static void emit_GLSL_start(Context *ctx)
 {
-    switch (ctx->shader_type)
+    if (!shader_is_vertex(ctx) && !shader_is_pixel(ctx))
     {
-        case MOJOSHADER_TYPE_PIXEL:
-        case MOJOSHADER_TYPE_VERTEX:
-            break;  // supported.
-
-        default:
-            failf(ctx, "Shader type %u unsupported in this profile.",
-                  (uint) ctx->shader_type);
-            return;
-    } // switch
+        failf(ctx, "Shader type %u unsupported in this profile.",
+              (uint) ctx->shader_type);
+        return;
+    } // if
 
     ctx->output = &ctx->mainline;
     output_line(ctx, "void main()");
@@ -1941,7 +1947,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
         snprintf(index_str, sizeof (index_str), "%u", (uint) index);
 
-    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    if (shader_is_vertex(ctx))
     {
         // pre-vs3 output registers.
         // these don't ever happen in DCL opcodes, I think. Map to vs_3_*
@@ -2054,7 +2060,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     } // if
 
 #if 0 // !!! FIXME: write me.
-    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    else if (shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_SAMPLER)
         {
@@ -2933,9 +2939,9 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
     if (info->relative)
     {
-        if (ctx->shader_type != MOJOSHADER_TYPE_VERTEX)
+        if (!shader_is_vertex(ctx))
             return fail(ctx, "Relative addressing in non-vertex shader");
-        else if (ctx->major_ver < 3)
+        else if (!shader_version_atleast(ctx, 3, 0))
             return fail(ctx, "Relative addressing in vertex shader version < 3.0");
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
@@ -2943,9 +2949,9 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     const int s = info->result_shift;
     if (s != 0)
     {
-        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
+        if (!shader_is_pixel(ctx))
             return fail(ctx, "Result shift scale in non-pixel shader");
-        else if (ctx->major_ver >= 2)
+        else if (shader_version_atleast(ctx, 2, 0))
             return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
         else if ( ! (((s >= 1) && (s <= 3)) || ((s >= 0xD) && (s <= 0xF))) )
             return fail(ctx, "Result shift scale isn't 1 to 3, or 13 to 15.");
@@ -2956,20 +2962,20 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     #if 0
     if (info->result_mod & MOD_SATURATE)  // Saturate (vertex shaders only)
     {
-        if (ctx->shader_type != MOJOSHADER_TYPE_VERTEX)
+        if (!shader_is_vertex(ctx))
             return fail(ctx, "Saturate result mod in non-vertex shader");
     } // if
     #endif
 
     if (info->result_mod & MOD_PP)  // Partial precision (pixel shaders only)
     {
-        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
+        if (!shader_is_pixel(ctx))
             return fail(ctx, "Partial precision result mod in non-pixel shader");
     } // if
 
     if (info->result_mod & MOD_CENTROID)  // Centroid (pixel shaders only)
     {
-        if (ctx->shader_type != MOJOSHADER_TYPE_PIXEL)
+        if (!shader_is_pixel(ctx))
             return fail(ctx, "Centroid result mod in non-pixel shader");
     } // if
 
@@ -3015,7 +3021,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
     if (info->relative)
     {
-        if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver < 3))
+        if ( (shader_is_pixel(ctx)) && (!shader_version_atleast(ctx, 3, 0)) )
             return fail(ctx, "Relative addressing in pixel shader version < 3.0");
         return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
     } // if
@@ -3094,7 +3100,7 @@ static int parse_args_DCL(Context *ctx)
 
     const RegisterType regtype = ctx->dest_args[0].regtype;
     const int regnum = ctx->dest_args[0].regnum;
-    if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 3))
+    if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
@@ -3156,7 +3162,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // if
 
-    else if ((ctx->shader_type == MOJOSHADER_TYPE_PIXEL) && (ctx->major_ver >= 2))
+    else if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
             reserved_mask = 0x7FFFFFFF;
@@ -3173,7 +3179,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // if
 
-    else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 3))
+    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
     {
         if ((regtype == REG_TYPE_INPUT) || (regtype == REG_TYPE_OUTPUT))
         {
@@ -3189,7 +3195,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // else if
 
-    else if ((ctx->shader_type == MOJOSHADER_TYPE_VERTEX) && (ctx->major_ver >= 2))
+    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
         {
@@ -3358,7 +3364,7 @@ static void state_DCL(Context *ctx)
 
     // !!! FIXME: fail if DCL opcode comes after real instructions.
 
-    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+    if (shader_is_vertex(ctx))
     {
         const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
         const int index = ctx->dwords[1];
@@ -3371,7 +3377,7 @@ static void state_DCL(Context *ctx)
         add_attribute_register(ctx, regtype, regnum, usage, index, writemask);
     } // if
 
-    else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    else if (shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_SAMPLER)
         {
@@ -4372,7 +4378,7 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
             item = item->next;
         } // while
 
-        if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+        if (shader_is_pixel(ctx))
         {
             if (count > 0)
                 fail(ctx, "BUG: pixel shader shouldn't have vertex attributes");
@@ -4470,14 +4476,11 @@ static void process_definitions(Context *ctx)
                 case REG_TYPE_TEXCRDOUT:
                 case REG_TYPE_COLOROUT:
                 case REG_TYPE_DEPTHOUT:
-                    if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+                    if (shader_is_vertex(ctx)&&shader_version_atleast(ctx,3,0))
                     {
-                        if (shader_version_atleast(ctx, 3, 0))
-                        {
-                            fail(ctx, "vs_3 can't use output registers"
-                                      " without declaring them first.");
-                            return;
-                        } // if
+                        fail(ctx, "vs_3 can't use output registers"
+                                  " without declaring them first.");
+                        return;
                     } // if
 
                     // Apparently this is an attribute that wasn't DCL'd.
