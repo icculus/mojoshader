@@ -9,6 +9,8 @@ ENDIF(CMAKE_COMPILER_IS_GNUCC)
 #ADD_DEFINITIONS(-DMOJOSHADER_DEBUG_MALLOC=1)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
+ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c)
+TARGET_LINK_LIBRARIES(finderrors pthread)
 
 # End of CMakeLists.txt ...
 
