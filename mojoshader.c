@@ -3809,6 +3809,7 @@ static const Instruction instructions[] =
 
 static int parse_instruction_token(Context *ctx)
 {
+    int retval = NOFAIL;
     const uint32 *start_tokens = ctx->tokens;
     const uint32 start_tokencount = ctx->tokencount;
     const uint32 token = SWAP32(*(ctx->tokens));
@@ -3817,12 +3818,12 @@ static int parse_instruction_token(Context *ctx)
     const uint32 insttoks = ((token >> 24) & 0x0F);
     const int coissue = (token & 0x40000000) ? 1 : 0;
     const int predicated = (token & 0x10000000) ? 1 : 0;
-    const Instruction *instruction = &instructions[opcode];
-    const emit_function emitter = instruction->emitter[ctx->profileid];
-    int retval = NOFAIL;
 
     if ( opcode >= (sizeof (instructions) / sizeof (instructions[0])) )
         return 0;  // not an instruction token, or just not handled here.
+
+    const Instruction *instruction = &instructions[opcode];
+    const emit_function emitter = instruction->emitter[ctx->profileid];
 
     if ((token & 0x80000000) != 0)
         return fail(ctx, "instruction token high bit must be zero.");  // so says msdn.
