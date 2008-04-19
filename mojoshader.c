@@ -1393,7 +1393,7 @@ static void emit_D3D_TEX(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     if (shader_version_atleast(ctx, 1, 4))
-        emit_D3D_opcode_ds(ctx, "tex");
+        emit_D3D_opcode_dss(ctx, "tex");
     else
         emit_D3D_opcode_d(ctx, "texld");
 } // emit_D3D_TEX
@@ -2542,7 +2542,7 @@ static void emit_GLSL_TEXCOORD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     //if (shader_version_atleast(ctx, 1, 4))
-    //    emit_D3D_opcode_ds(ctx, "texcrd");
+    //    emit_D3D_opcode_dss(ctx, "texcrd");
     //else
     //    emit_D3D_opcode_d(ctx, "texcoord");
     fail(ctx, "unimplemented.");  // !!! FIXME
@@ -3258,6 +3258,15 @@ static int parse_args_TEXCOORD(Context *ctx)
 } // parse_args_TEXCOORD
 
 
+static int parse_args_TEX(Context *ctx)
+{
+    // added extra registers in ps_1_4.
+    if (shader_version_atleast(ctx, 1, 4))
+        return parse_args_DSS(ctx);
+    return parse_args_D(ctx);
+} // parse_args_TEX
+
+
 
 // State machine functions...
 
@@ -3767,7 +3776,7 @@ static const Instruction instructions[] =
     INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(TEXCOORD, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXKILL, 1, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEX, -1, TEXCOORD, MOJOSHADER_TYPE_PIXEL), // same parse_args logic as TEXCOORD
+    INSTRUCTION(TEX, -1, TEX, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEM, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXBEML, 2, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXREG2AR, 2, DS, MOJOSHADER_TYPE_ANY),
