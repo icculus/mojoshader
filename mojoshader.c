@@ -265,7 +265,6 @@ typedef struct
 {
     const uint32 *token;   // this is the unmolested token in the stream.
     int regnum;
-    int relative;
     int swizzle;  // xyzw (all four, not split out).
     int swizzle_x;
     int swizzle_y;
@@ -273,6 +272,10 @@ typedef struct
     int swizzle_w;
     SourceMod src_mod;
     RegisterType regtype;
+    int relative;
+    RegisterType relative_regtype;
+    int relative_regnum;
+    int relative_component;
 } SourceArgInfo;
 
 
@@ -929,6 +932,30 @@ static const char *make_D3D_sourcearg_string_in_buf(Context *ctx,
         return "";
     } // if
 
+    const char *rel_lbracket = "";
+    const char *rel_rbracket = "";
+    char rel_swizzle[4] = { '\0' };
+    char rel_regnum_str[16] = { '\0' };
+    const char *rel_regtype_str = "";
+    if (arg->relative)
+    {
+        rel_swizzle[0] = '.';
+        rel_swizzle[1] = swizzle_channels[arg->relative_component];
+        rel_swizzle[2] = '\0';
+        rel_lbracket = "[";
+        rel_rbracket = "]";
+        rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
+                                                  arg->relative_regnum,
+                                                  rel_regnum_str,
+                                                  sizeof (rel_regnum_str));
+
+        if (regtype_str == NULL)
+        {
+            fail(ctx, "Unknown relative source register type.");
+            return "";
+        } // if
+    } // if
+
     char swizzle_str[6];
     int i = 0;
     if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
@@ -946,8 +973,10 @@ static const char *make_D3D_sourcearg_string_in_buf(Context *ctx,
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
-    snprintf(buf, buflen, "%s%s%s%s%s",
-             premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s",
+             premod_str, regtype_str, regnum_str, postmod_str,
+             rel_lbracket, rel_regtype_str, rel_regnum_str, rel_swizzle,
+             rel_rbracket, swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return buf;
 } // make_D3D_sourcearg_string_in_buf
@@ -2943,7 +2972,8 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             return fail(ctx, "Relative addressing in non-vertex shader");
         else if (!shader_version_atleast(ctx, 3, 0))
             return fail(ctx, "Relative addressing in vertex shader version < 3.0");
-        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+        // !!! FIXME: I don't have a shader that has a relative dest currently.
+        return fail(ctx, "Relative addressing of dest tokens is unsupported");
     } // if
 
     const int s = info->result_shift;
@@ -2989,6 +3019,8 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
 static int parse_source_token(Context *ctx, SourceArgInfo *info)
 {
+    int retval = 1;
+
     if (isfail(ctx))
         return FAIL;  // already failed elsewhere.
 
@@ -3023,14 +3055,64 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     {
         if ( (shader_is_pixel(ctx)) && (!shader_version_atleast(ctx, 3, 0)) )
             return fail(ctx, "Relative addressing in pixel shader version < 3.0");
-        return fail(ctx, "Relative addressing is unsupported");  // !!! FIXME
+
+        if (ctx->tokencount == 0)
+            return fail(ctx, "Out of tokens in relative source parameter");
+
+        const uint32 reltoken = SWAP32(*(ctx->tokens));
+        ctx->tokens++;  // swallow token for now, for multiple calls in a row.
+        ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+
+        const int relswiz  = (int) ((reltoken >> 16) & 0xFF);
+        info->relative_component = relswiz & 0x3;
+        info->relative_regnum = (int) (reltoken & 0x7ff);
+        info->relative_regtype = (RegisterType)
+                                    (((reltoken >> 28) & 0x7) |
+                                    ((reltoken >> 8) & 0x18));
+
+        if (((reltoken >> 31) & 0x1) == 0)
+            return fail(ctx, "bit #31 in relative address must be set");
+
+        if ((reltoken & 0xF00E000) != 0)  // usused bits.
+            return fail(ctx, "relative address reserved bit must be zero");
+
+        switch (info->relative_regtype)
+        {
+            case REG_TYPE_LOOP:
+            case REG_TYPE_ADDRESS:
+                break;
+            default:
+                return fail(ctx, "invalid register for relative address");
+                break;
+        } // switch
+
+        if (info->relative_regnum != 0)  // true for now.
+            return fail(ctx, "invalid register for relative address");
+
+        switch (info->regtype)
+        {
+            case REG_TYPE_CONST:
+            case REG_TYPE_CONST2:
+            case REG_TYPE_CONST3:
+            case REG_TYPE_CONST4:
+                break;
+            default:
+                return fail(ctx, "relative addressing of non-const register");
+                break;
+        } // switch
+
+        if (!replicate_swizzle(relswiz))
+            return fail(ctx, "relative address needs replicate swizzle");
+
+        set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+        retval++;
     } // if
 
     if ( info->src_mod >= SRCMOD_TOTAL )
         return fail(ctx, "Unknown source modifier");
 
     set_used_register(ctx, info->regtype, info->regnum);
-    return 1;
+    return retval;
 } // parse_source_token
 
 
@@ -3048,7 +3130,10 @@ static int parse_predicated_token(Context *ctx)
     if ( (arg->swizzle != 0xE4) && (!replicate_swizzle(arg->swizzle)) )
         return fail(ctx, "Predicated instruction register has wrong swizzle");
 
-    return 0;
+    if (arg->relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in predicated token");
+
+    return 1;
 } // parse_predicated_token
 
 
@@ -3063,6 +3148,9 @@ static int parse_args_DEF(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
 
+    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in DEFB");
+
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
     ctx->dwords[2] = SWAP32(ctx->tokens[2]);
@@ -3076,6 +3164,9 @@ static int parse_args_DEFB(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
+
+    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in DEFB");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
 
@@ -3097,6 +3188,9 @@ static int parse_args_DCL(Context *ctx)
     ctx->tokencount--;
     if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
         return FAIL;
+
+    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in DCL");
 
     const RegisterType regtype = ctx->dest_args[0].regtype;
     const int regnum = ctx->dest_args[0].regnum;
@@ -3228,61 +3322,68 @@ static int parse_args_DCL(Context *ctx)
 
 static int parse_args_D(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    return 2;
+    int retval = 1;
+    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_D
 
 
 static int parse_args_S(Context *ctx)
 {
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return 2;
+    int retval = 1;
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_S
 
 
 static int parse_args_SS(Context *ctx)
 {
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return 3;
+    int retval = 1;
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_SS
 
 
 static int parse_args_DS(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    return 3;
+    int retval = 1;
+    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_DS
 
 
 static int parse_args_DSS(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    return 4;
+    int retval = 1;
+    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSS
 
 
 static int parse_args_DSSS(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
-    return 5;
+    int retval = 1;
+    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    retval += parse_source_token(ctx, &ctx->source_args[2]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSSS
 
 
 static int parse_args_DSSSS(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[0]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[1]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[2]) == FAIL) return FAIL;
-    if (parse_source_token(ctx, &ctx->source_args[3]) == FAIL) return FAIL;
-    return 6;
+    int retval = 1;
+    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    retval += parse_source_token(ctx, &ctx->source_args[2]);
+    retval += parse_source_token(ctx, &ctx->source_args[3]);
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSSSS
 
 
@@ -3902,7 +4003,10 @@ static int parse_instruction_token(Context *ctx)
     assert((isfail(ctx)) || (retval >= 0));
 
     if ( (!isfail(ctx)) && (predicated) )
-        parse_predicated_token(ctx);
+    {
+        if (parse_predicated_token(ctx) != FAIL)
+            retval++;  // one more token.
+    } // if
 
     // parse_args() moves these forward for convenience...reset them.
     ctx->tokens = start_tokens;
@@ -3934,7 +4038,7 @@ static int parse_instruction_token(Context *ctx)
             {
                 return failf(ctx,
                         "wrong token count (%u, not %u) for opcode '%s'.",
-                        (uint) insttoks, (uint) retval,
+                        (uint) retval, (uint) (insttoks+1),
                         instruction->opcode_string);
             } // if
         } // else
