@@ -57,9 +57,6 @@ typedef enum
     MOJOSHADER_UNIFORM_FLOAT,
     MOJOSHADER_UNIFORM_INT,
     MOJOSHADER_UNIFORM_BOOL,
-    MOJOSHADER_UNIFORM_SAMPLER_2D,
-    MOJOSHADER_UNIFORM_SAMPLER_CUBE,
-    MOJOSHADER_UNIFORM_SAMPLER_3D,
 } MOJOSHADER_uniformType;
 
 /*
@@ -75,6 +72,30 @@ typedef struct
     MOJOSHADER_uniformType type;
     int index;
 } MOJOSHADER_uniform;
+
+/*
+ * Data types for samplers. See MOJOSHADER_sampler for more information.
+ */
+typedef enum
+{
+    MOJOSHADER_SAMPLER_2D,
+    MOJOSHADER_SAMPLER_CUBE,
+    MOJOSHADER_SAMPLER_VOLUME,
+} MOJOSHADER_samplerType;
+
+/*
+ * These are the samplers to be set for a shader. ...
+ *  IDirect3DDevice::SetTexture() would need this data, for example.
+ * These integers are the sampler "stage". So if index==6 and
+ *  type==MOJOSHADER_SAMPLER_2D, that means we'd expect a regular 2D texture
+ *  to be specified for what would be register "s6" in D3D assembly language,
+ *  before drawing with the shader.
+ */
+typedef struct
+{
+    MOJOSHADER_samplerType type;
+    int index;
+} MOJOSHADER_sampler;
 
 /*
  * Data types for attributes. See MOJOSHADER_attribute for more information.
@@ -176,6 +197,18 @@ typedef struct
      * This can be NULL on error or if (uniform_count) is zero.
      */
     MOJOSHADER_uniform *uniforms;
+
+    /*
+     * The number of elements pointed to by (samplers).
+     */
+    int sampler_count;
+
+    /*
+     * (sampler_count) elements of data that specify Samplers to be set for
+     *  this shader. See discussion on MOJOSHADER_sampler for details.
+     * This can be NULL on error or if (sampler_count) is zero.
+     */
+    MOJOSHADER_sampler *samplers;
 
     /*
      * The number of elements pointed to by (attributes).

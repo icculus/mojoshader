@@ -95,6 +95,21 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
             } // for
         } // else
 
+        printf("SAMPLERS:");
+        if (pd->sampler_count == 0)
+            printf(" (none.)\n");
+        else
+        {
+            int i;
+            printf("\n");
+            for (i = 0; i < pd->sampler_count; i++)
+            {
+                static const char *typenames[] = { "2d", "cube", "volume" };
+                const MOJOSHADER_sampler *s = &pd->samplers[i];
+                printf("    * %d: %s\n", s->index, typenames[(int) s->type]);
+            } // for
+        } // else
+
         if (pd->output != NULL)
         {
             int i;

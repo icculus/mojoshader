@@ -120,6 +120,13 @@ typedef enum
     REG_TYPE_MAX = 19
 } RegisterType;
 
+typedef enum
+{
+    TEXTURE_TYPE_2D = 2,
+    TEXTURE_TYPE_CUBE = 3,
+    TEXTURE_TYPE_VOLUME = 4,
+} TextureType;
+
 // predeclare.
 typedef struct Context Context;
 
@@ -144,6 +151,9 @@ typedef void (*emit_global)(Context *ctx, RegisterType regtype, int regnum);
 // one emit function for uniforms in each profile.
 typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum);
 
+// one emit function for samplers in each profile.
+typedef void (*emit_sampler)(Context *ctx, int stage, TextureType ttype);
+
 // one emit function for attributes in each profile.
 typedef void (*emit_attribute)(Context *ctx, RegisterType regtype, int regnum,
                                MOJOSHADER_usage usage, int index, int wmask);
@@ -162,6 +172,7 @@ typedef struct
     emit_comment comment_emitter;
     emit_global global_emitter;
     emit_uniform uniform_emitter;
+    emit_sampler sampler_emitter;
     emit_attribute attribute_emitter;
     emit_finalize finalize_emitter;
 } Profile;
@@ -180,13 +191,6 @@ typedef enum
     MISCTYPE_TYPE_FACE = 1,
     MISCTYPE_TYPE_MAX = 1
 } MiscTypeType;
-
-typedef enum
-{
-    TEXTURE_TYPE_2D = 2,
-    TEXTURE_TYPE_CUBE = 3,
-    TEXTURE_TYPE_VOLUME = 4,
-} TextureType;
 
 
 // A simple linked list of strings, so we can build the final output without
@@ -335,6 +339,8 @@ struct Context
     RegisterList uniforms;
     int attribute_count;
     RegisterList attributes;
+    int sampler_count;
+    RegisterList samplers;
 };
 
 
@@ -678,6 +684,13 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
     item->index = index;
     item->writemask = writemask;
 } // add_attribute_register
+
+static inline void add_sampler(Context *ctx, const RegisterType rtype,
+                               const int regnum, const TextureType ttype)
+{
+    RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
+    item->index = (int) ttype;
+} // add_sampler
 
 
 static inline int replicate_swizzle(const int swizzle)
@@ -1066,6 +1079,12 @@ static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum)
 } // emit_D3D_uniform
 
 
+static void emit_D3D_sampler(Context *ctx, int stage, TextureType ttype)
+{
+    // no-op.
+} // emit_D3D_sampler
+
+
 static void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
                                MOJOSHADER_usage usage, int index, int wmask)
 {
@@ -1352,11 +1371,11 @@ static void emit_D3D_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_args[0];
     const char *usage_str = "";
     char index_str[16] = { '\0' };
-    const uint32 usage = ctx->dwords[0];
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
         const uint32 index = ctx->dwords[1];
+    const uint32 usage = ctx->dwords[0];
         usage_str = usagestrs[usage];
         if (index != 0)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
@@ -1366,7 +1385,8 @@ static void emit_D3D_DCL(Context *ctx)
     {
         if (arg->regtype == REG_TYPE_SAMPLER)
         {
-            switch ((const TextureType) usage)
+            const TextureType ttype = (const TextureType) ctx->dwords[0];
+            switch (ttype)
             {
                 case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
                 case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
@@ -1442,6 +1462,7 @@ static void emit_PASSTHROUGH_end(Context *ctx) {}
 static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
+static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
 static void emit_PASSTHROUGH_comment(Context *ctx, const char *str) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w) {}
@@ -1894,6 +1915,20 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
         fail(ctx, "BUG: we used a uniform we don't know how to define.");
     pop_output(ctx);
 } // emit_GLSL_uniform
+
+static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
+{
+    push_output(ctx, &ctx->globals);
+    if (ttype == TEXTURE_TYPE_2D)
+        output_line(ctx, "uniform sampler2D s%d;", stage);
+    else if (ttype == TEXTURE_TYPE_CUBE)
+        output_line(ctx, "uniform samplerCube s%d;", stage);
+    else if (ttype == TEXTURE_TYPE_VOLUME)
+        output_line(ctx, "uniform sampler3D s%d;", stage);
+    else
+        fail(ctx, "BUG: we used a sampler we don't know how to define.");
+    pop_output(ctx);
+} // emit_GLSL_sampler
 
 static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                                 MOJOSHADER_usage usage, int index, int wmask)
@@ -2391,7 +2426,7 @@ static void emit_GLSL_LABEL(Context *ctx)
 
 static void emit_GLSL_DCL(Context *ctx)
 {
-    // no-op. We do our work at the end in emit_attribute() implementation.
+    // no-op. We do this in our emit_attribute() and emit_uniform().
 } // emit_GLSL_DCL
 
 static void emit_GLSL_POW(Context *ctx)
@@ -2834,6 +2869,7 @@ static void emit_GLSL_RESERVED(Context *ctx)
     emit_##prof##_comment, \
     emit_##prof##_global, \
     emit_##prof##_uniform, \
+    emit_##prof##_sampler, \
     emit_##prof##_attribute, \
     emit_##prof##_finalize, \
 },
@@ -3313,8 +3349,6 @@ static void state_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_args[0];
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
-    const uint32 usage = ctx->dwords[0];
-    int index = 0;
 
     // parse_args_DCL() does a lot of state checking before we get here.
 
@@ -3322,19 +3356,23 @@ static void state_DCL(Context *ctx)
 
     if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        index = ctx->dwords[1];
-        if (usage >= ((const uint32) MOJOSHADER_USAGE_TOTAL))
+        const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
+        const int index = ctx->dwords[1];
+        const int writemask = arg->writemask;
+        if (usage >= MOJOSHADER_USAGE_TOTAL)
         {
             fail(ctx, "unknown DCL usage");
             return;
         } // if
+        add_attribute_register(ctx, regtype, regnum, usage, index, writemask);
     } // if
 
     else if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
     {
         if (regtype == REG_TYPE_SAMPLER)
         {
-            switch ((const TextureType) usage)
+            const TextureType ttype = (const TextureType) ctx->dwords[0];
+            switch (ttype)
             {
                 case TEXTURE_TYPE_2D:
                 case TEXTURE_TYPE_CUBE:
@@ -3344,8 +3382,8 @@ static void state_DCL(Context *ctx)
                     fail(ctx, "unknown sampler texture type");
                     return;
             } // switch
+            add_sampler(ctx, regtype, regnum, ttype);
         } // if
-
     } // else if
 
     else
@@ -3354,8 +3392,6 @@ static void state_DCL(Context *ctx)
     } // else
 
     set_defined_register(ctx, regtype, regnum);
-    add_attribute_register(ctx, regtype, regnum, (MOJOSHADER_usage) usage,
-                            index, arg->writemask);
 } // state_DCL
 
 static void state_FRC(Context *ctx)
@@ -4111,6 +4147,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->defined_registers.next);
         free_reglist(f, d, ctx->uniforms.next);
         free_reglist(f, d, ctx->attributes.next);
+        free_reglist(f, d, ctx->samplers.next);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr, d);
         f(ctx, d);
@@ -4231,14 +4268,60 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 } // build_uniforms
 
 
-static MOJOSHADER_attribute *build_attributes(Context *ctx)
+static MOJOSHADER_sampler *build_samplers(Context *ctx)
 {
-    if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+    MOJOSHADER_sampler *retval = (MOJOSHADER_sampler *)
+                Malloc(ctx, sizeof (MOJOSHADER_sampler) * ctx->sampler_count);
+
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
     {
-        if (ctx->attribute_count > 0)
-            fail(ctx, "BUG: pixel shader shouldn't have vertex attributes");
-        return NULL;  // nothing to do for pixel shaders.
-    } // if
+        RegisterList *item = ctx->samplers.next;
+        MOJOSHADER_samplerType type = MOJOSHADER_SAMPLER_2D;
+        int i;
+
+        for (i = 0; i < ctx->sampler_count; i++)
+        {
+            if (item == NULL)
+            {
+                fail(ctx, "BUG: mismatched sampler list and count");
+                break;
+            } // if
+
+            assert(item->regtype == REG_TYPE_SAMPLER);
+            switch ((const TextureType) item->index)
+            {
+                case TEXTURE_TYPE_2D:
+                    type = MOJOSHADER_SAMPLER_2D;
+                    break;
+
+                case TEXTURE_TYPE_CUBE:
+                    type = MOJOSHADER_SAMPLER_CUBE;
+                    break;
+
+                case TEXTURE_TYPE_VOLUME:
+                    type = MOJOSHADER_SAMPLER_VOLUME;
+                    break;
+
+                default:
+                    fail(ctx, "Unknown sampler type");
+                    break;
+            } // switch
+
+            retval[i].type = type;
+            retval[i].index = item->regnum;
+            item = item->next;
+        } // while
+    } // else
+
+    return retval;
+} // build_samplers
+
+
+static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
+{
+    *_count = 0;
 
     if (ctx->attribute_count == 0)
         return NULL;  // nothing to do.
@@ -4251,6 +4334,9 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx)
     else
     {
         RegisterList *item = ctx->attributes.next;
+        MOJOSHADER_attribute *wptr = retval;
+        int is_output = 0;
+        int count = 0;
         int i;
 
         for (i = 0; i < ctx->attribute_count; i++)
@@ -4261,15 +4347,44 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx)
                 break;
             } // if
 
-            retval[i].usage = item->usage;
-            retval[i].index = item->index;
+            switch (item->regtype)
+            {
+                case REG_TYPE_RASTOUT:
+                case REG_TYPE_ATTROUT:
+                case REG_TYPE_TEXCRDOUT:
+                case REG_TYPE_COLOROUT:
+                case REG_TYPE_DEPTHOUT:
+                    is_output = 1;
+                    break;
+                default:
+                    is_output = 0;
+                    break;
+            } // switch
+
+            if (!is_output)
+            {
+                wptr->usage = item->usage;
+                wptr->index = item->index;
+                wptr++;
+                count++;
+            } // if
+
             item = item->next;
         } // while
+
+        if (ctx->shader_type == MOJOSHADER_TYPE_PIXEL)
+        {
+            if (count > 0)
+                fail(ctx, "BUG: pixel shader shouldn't have vertex attributes");
+            Free(ctx, retval);
+            return NULL;  // nothing to do for pixel shaders.
+        } // if
+
+        *_count = count;
     } // else
 
     return retval;
 } // build_attributes
-
 
 
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
@@ -4277,7 +4392,9 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     char *output = NULL;
     MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_attribute *attributes = NULL;
+    MOJOSHADER_sampler *samplers = NULL;
     MOJOSHADER_parseData *retval;
+    int attribute_count = 0;
 
     if ((retval = Malloc(ctx, sizeof (MOJOSHADER_parseData))) == NULL)
         return &out_of_mem_data;
@@ -4291,7 +4408,10 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         uniforms = build_uniforms(ctx);
 
     if (!isfail(ctx))
-        attributes = build_attributes(ctx);
+        attributes = build_attributes(ctx, &attribute_count);
+
+    if (!isfail(ctx))
+        samplers = build_samplers(ctx);
 
     // check again, in case build_output ran out of memory.
     if (isfail(ctx))
@@ -4299,6 +4419,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         Free(ctx, output);
         Free(ctx, uniforms);
         Free(ctx, attributes);
+        Free(ctx, samplers);
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -4312,8 +4433,10 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->minor_ver = (int) ctx->minor_ver;
         retval->uniform_count = ctx->uniform_count;
         retval->uniforms = uniforms;
-        retval->attribute_count = ctx->attribute_count;
+        retval->attribute_count = attribute_count;
         retval->attributes = attributes;
+        retval->sampler_count = ctx->sampler_count;
+        retval->samplers = samplers;
     } // else
 
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
@@ -4378,7 +4501,7 @@ static void process_definitions(Context *ctx)
                 case REG_TYPE_CONSTINT:
                 case REG_TYPE_CONSTBOOL:
                     // separate uniforms into a different list for now.
-                    prev->next = item->next;
+                    prev->next = next;
                     item->next = NULL;
                     uitem->next = item;
                     uitem = item;
@@ -4400,6 +4523,15 @@ static void process_definitions(Context *ctx)
         ctx->uniform_count++;
         ctx->profile->uniform_emitter(ctx, item->regtype, item->regnum);
     } // for
+
+    // ...and samplers...
+    for (item = ctx->samplers.next; item != NULL; item = item->next)
+    {
+        ctx->sampler_count++;
+        ctx->profile->sampler_emitter(ctx, item->regnum,
+                                      (TextureType) item->index);
+    } // for
+
 
     // ...and attributes...
     for (item = ctx->attributes.next; item != NULL; item = item->next)
@@ -4470,6 +4602,9 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     if (data->attributes != NULL)
         f((void *) data->attributes, d);
+
+    if (data->samplers != NULL)
+        f((void *) data->samplers, d);
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))
         f((void *) data->error, d);
