@@ -3989,8 +3989,15 @@ static int parse_instruction_token(Context *ctx)
     if ((token & 0x80000000) != 0)
         return fail(ctx, "instruction token high bit must be zero.");  // so says msdn.
 
-    if (coissue)  // !!! FIXME: I'm not sure what this means, yet.
+    if (coissue)
+    {
+        if (!shader_is_pixel(ctx))
+            return fail(ctx, "coissue instruction on non-pixel shader");
+        else if (shader_version_atleast(ctx, 2, 0))
+            return fail(ctx, "coissue instruction in Shader Model >= 2.0");
+        // !!! FIXME: I'm not sure what this actually means, yet.
         return fail(ctx, "coissue instructions unsupported");
+    } // if
 
     if ((ctx->shader_type & instruction->shader_types) == 0)
     {
