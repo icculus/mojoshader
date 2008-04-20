@@ -1412,29 +1412,26 @@ static void emit_D3D_DCL(Context *ctx)
     const char *usage_str = "";
     char index_str[16] = { '\0' };
 
-    if (shader_is_vertex(ctx))
+    if (arg->regtype == REG_TYPE_SAMPLER)
+    {
+        const TextureType ttype = (const TextureType) ctx->dwords[0];
+        switch (ttype)
+        {
+            case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
+            case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
+            case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
+            default: fail(ctx, "unknown sampler texture type"); return;
+        } // switch
+    } // if
+
+    else
     {
         const uint32 usage = ctx->dwords[0];
         const uint32 index = ctx->dwords[1];
         usage_str = usagestrs[usage];
         if (index != 0)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
-    } // if
-
-    else if (shader_is_pixel(ctx))
-    {
-        if (arg->regtype == REG_TYPE_SAMPLER)
-        {
-            const TextureType ttype = (const TextureType) ctx->dwords[0];
-            switch (ttype)
-            {
-                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
-                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
-                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
-                default: fail(ctx, "unknown sampler texture type"); return;
-            } // switch
-        } // if
-    } // else if
+    } // else
 
     output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
 } // emit_D3D_DCL
@@ -3174,6 +3171,7 @@ static int parse_args_DEFB(Context *ctx)
 } // parse_args_DEFB
 
 
+// !!! FIXME: this function is kind of a mess.
 static int parse_args_DCL(Context *ctx)
 {
     int unsupported = 0;
@@ -3197,7 +3195,13 @@ static int parse_args_DCL(Context *ctx)
     if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
-            reserved_mask = 0x7FFFFFFF;
+        {
+            const uint32 usage = (token & 0xF);
+            const uint32 index = ((token >> 16) & 0xF);
+            reserved_mask = 0x7FF0FFE0;
+            ctx->dwords[0] = usage;
+            ctx->dwords[1] = index;
+        } // if
 
         else if (regtype == REG_TYPE_MISCTYPE)
         {
