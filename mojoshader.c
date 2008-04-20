@@ -2686,7 +2686,7 @@ static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
 static void emit_GLSL_EXPP(Context *ctx)
 {
     // !!! FIXME: msdn's asm docs don't list this opcode, I'll have to check the driver documentation.
-    emit_GLSL_EXPP(ctx);  // I guess this is just partial precision EXP?
+    emit_GLSL_EXP(ctx);  // I guess this is just partial precision EXP?
 } // emit_GLSL_EXPP
 
 static void emit_GLSL_LOGP(Context *ctx)
