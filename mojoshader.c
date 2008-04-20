@@ -1983,6 +1983,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             if (regtype == REG_TYPE_RASTOUT)
             {
                 regtype = REG_TYPE_OUTPUT;
+                index = regnum;
                 switch ((const RastOutType) regnum)
                 {
                     case RASTOUT_TYPE_POSITION:
@@ -2001,12 +2002,14 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 regtype = REG_TYPE_OUTPUT;
                 usage = MOJOSHADER_USAGE_COLOR;
+                index = regnum;
             } // else if
 
             else if (regtype == REG_TYPE_TEXCRDOUT)
             {
                 regtype = REG_TYPE_OUTPUT;
                 usage = MOJOSHADER_USAGE_TEXCOORD;
+                index = regnum;
             } // else if
         } // if
 
@@ -2032,7 +2035,6 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         else if (regtype == REG_TYPE_OUTPUT)
         {
-            const uint32 index = ctx->dwords[1];
             const char *arrayleft = "";
             const char *arrayright = "";
 
