@@ -134,7 +134,7 @@ typedef struct Context Context;
 typedef void (*emit_function)(Context *ctx);
 
 // one emit function for comments in each profile.
-typedef void (*emit_comment)(Context *ctx, const char *str);
+typedef void (*emit_comment)(Context *ctx, const char *str, size_t len);
 
 // one emit function for starting output in each profile.
 typedef void (*emit_start)(Context *ctx);
@@ -1132,9 +1132,9 @@ static void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
 } // emit_D3D_attribute
 
 
-static void emit_D3D_comment(Context *ctx, const char *str)
+static void emit_D3D_comment(Context *ctx, const char *str, size_t len)
 {
-    output_line(ctx, "; %s", str);
+    // no-op.
 } // emit_D3D_comment
 
 
@@ -1500,7 +1500,7 @@ static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
-static void emit_PASSTHROUGH_comment(Context *ctx, const char *str) {}
+static void emit_PASSTHROUGH_comment(Context *ctx, const char *s, size_t l) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w) {}
 
@@ -2119,9 +2119,9 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     } // else
 } // emit_GLSL_attribute
 
-static void emit_GLSL_comment(Context *ctx, const char *str)
+static void emit_GLSL_comment(Context *ctx, const char *str, size_t len)
 {
-    output_line(ctx, "// %s", str);
+    // no-op.
 } // emit_GLSL_comment
 
 static void emit_GLSL_NOP(Context *ctx)
@@ -4107,25 +4107,7 @@ static int parse_comment_token(Context *ctx)
     {
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
         const uint32 len = commenttoks * sizeof (uint32);
-        const int needmalloc = (len >= SCRATCH_BUFFER_SIZE);
-        char *str = NULL;
-
-        if (!needmalloc)
-            str = get_scratch_buffer(ctx);
-        else
-        {
-            str = (char *) Malloc(ctx, len + 1);
-            if (str == NULL)
-                return out_of_memory(ctx);
-        } // else
-
-        memcpy(str, (const char *) (ctx->tokens+1), len);
-        str[len] = '\0';
-        ctx->profile->comment_emitter(ctx, str);
-
-        if (needmalloc)
-            Free(ctx, str);
-
+        ctx->profile->comment_emitter(ctx, (const char *)(ctx->tokens+1), len);
         return commenttoks + 1;  // comment data plus the initial token.
     } // else
 
