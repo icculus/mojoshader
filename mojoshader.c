@@ -320,7 +320,7 @@ struct Context
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
-    DestArgInfo dest_args[1];
+    DestArgInfo dest_arg;
     SourceArgInfo source_args[5];
     SourceArgInfo predicate_arg;  // for predicated instructions.
     uint32 dwords[4];
@@ -978,15 +978,9 @@ static const char *make_D3D_sourcearg_string_in_buf(Context *ctx,
 } // make_D3D_sourcearg_string_in_buf
 
 
-static const char *make_D3D_destarg_string(Context *ctx, const int idx)
+static const char *make_D3D_destarg_string(Context *ctx)
 {
-    if (idx >= STATICARRAYLEN(ctx->dest_args))
-    {
-        fail(ctx, "Too many destination args");
-        return "";
-    } // if
-
-    const DestArgInfo *arg = &ctx->dest_args[idx];
+    const DestArgInfo *arg = &ctx->dest_arg;
 
     const char *result_shift_str = "";
     switch (arg->result_shift)
@@ -1151,7 +1145,7 @@ static char *lowercase(char *dst, const char *src)
 
 static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s", opcode, dst0);
 } // emit_D3D_opcode_d
@@ -1176,7 +1170,7 @@ static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
 
 static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     opcode = lowercase(get_scratch_buffer(ctx), opcode);
     output_line(ctx, "%s%s, %s", opcode, dst0, src0);
@@ -1185,7 +1179,7 @@ static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 
 static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     opcode = lowercase(get_scratch_buffer(ctx), opcode);
@@ -1195,7 +1189,7 @@ static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
 
 static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     const char *src2 = make_D3D_sourcearg_string(ctx, 2);
@@ -1206,7 +1200,7 @@ static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
 
 static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const char *src0 = make_D3D_sourcearg_string(ctx, 0);
     const char *src1 = make_D3D_sourcearg_string(ctx, 1);
     const char *src2 = make_D3D_sourcearg_string(ctx, 2);
@@ -1367,7 +1361,7 @@ static void emit_D3D_SETP(Context *ctx)
 
 static void emit_D3D_DEF(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
     char val0[32];
     char val1[32];
@@ -1382,7 +1376,7 @@ static void emit_D3D_DEF(Context *ctx)
 
 static void emit_D3D_DEFI(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     const int32 *x = (const int32 *) ctx->dwords;
     output_line(ctx, "defi%s, %d, %d, %d, %d", dst0,
                 (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
@@ -1390,15 +1384,15 @@ static void emit_D3D_DEFI(Context *ctx)
 
 static void emit_D3D_DEFB(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
+    const char *dst0 = make_D3D_destarg_string(ctx);
     output_line(ctx, "defb%s, %s", dst0, ctx->dwords[0] ? "true" : "false");
 } // emit_D3D_DEFB
 
 
 static void emit_D3D_DCL(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx, 0);
-    const DestArgInfo *arg = &ctx->dest_args[0];
+    const char *dst0 = make_D3D_destarg_string(ctx);
+    const DestArgInfo *arg = &ctx->dest_arg;
     const char *usage_str = "";
     char index_str[16] = { '\0' };
 
@@ -1616,15 +1610,9 @@ static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
     return retval;
 } // get_GLSL_varname
 
-static const char *get_GLSL_destarg_varname(Context *ctx, int idx)
+static const char *get_GLSL_destarg_varname(Context *ctx)
 {
-    if (idx >= STATICARRAYLEN(ctx->dest_args))
-    {
-        fail(ctx, "Too many destination args");
-        return "";
-    } // if
-
-    const DestArgInfo *arg = &ctx->dest_args[idx];
+    const DestArgInfo *arg = &ctx->dest_arg;
     return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
 } // get_GLSL_destarg_varname
 
@@ -1641,18 +1629,11 @@ static const char *get_GLSL_sourcearg_varname(Context *ctx, int idx)
 } // get_GLSL_sourcearg_varname
 
 
-static const char *make_GLSL_destarg_assign(Context *, const int, const char *, ...) ISPRINTF(3,4);
-static const char *make_GLSL_destarg_assign(Context *ctx, const int idx,
-                                            const char *fmt, ...)
+static const char *make_GLSL_destarg_assign(Context *, const char *, ...) ISPRINTF(2,3);
+static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
 {
-    if (idx >= STATICARRAYLEN(ctx->dest_args))
-    {
-        fail(ctx, "Too many destination args");
-        return "";
-    } // if
-
     int need_parens = 0;
-    const DestArgInfo *arg = &ctx->dest_args[idx];
+    const DestArgInfo *arg = &ctx->dest_arg;
 
     if (arg->result_mod & MOD_SATURATE) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
     if (arg->result_mod & MOD_PP) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
@@ -2110,7 +2091,7 @@ static void emit_GLSL_NOP(Context *ctx)
 static void emit_GLSL_MOV(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "%s", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "%s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOV
 
@@ -2118,7 +2099,7 @@ static void emit_GLSL_ADD(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "%s + %s", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "%s + %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_ADD
 
@@ -2126,7 +2107,7 @@ static void emit_GLSL_SUB(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "%s - %s", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "%s - %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SUB
 
@@ -2135,7 +2116,7 @@ static void emit_GLSL_MAD(Context *ctx)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "(%s * %s) + %s", src0, src1, src2);
+    const char *code = make_GLSL_destarg_assign(ctx, "(%s * %s) + %s", src0, src1, src2);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MAD
 
@@ -2143,21 +2124,21 @@ static void emit_GLSL_MUL(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "%s * %s", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "%s * %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MUL
 
 static void emit_GLSL_RCP(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "1.0 / %s", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "1.0 / %s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RCP
 
 static void emit_GLSL_RSQ(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "inversesqrt(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "inversesqrt(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
@@ -2165,7 +2146,7 @@ static void emit_GLSL_DP3(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "dot(vec3(%s), vec3(%s))", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "dot(vec3(%s), vec3(%s))", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DP3
 
@@ -2173,7 +2154,7 @@ static void emit_GLSL_DP4(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "dot(vec4(%s), vec4(%s))", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "dot(vec4(%s), vec4(%s))", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DP4
 
@@ -2181,7 +2162,7 @@ static void emit_GLSL_MIN(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "min(%s, %s)", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "min(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MIN
 
@@ -2189,7 +2170,7 @@ static void emit_GLSL_MAX(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "max(%s, %s)", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "max(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MAX
 
@@ -2198,7 +2179,7 @@ static void emit_GLSL_SLT(Context *ctx)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     // !!! FIXME: need to cast from bvec to vec...
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "lessThan(%s, %s)", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "lessThan(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SLT
 
@@ -2207,21 +2188,21 @@ static void emit_GLSL_SGE(Context *ctx)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     // !!! FIXME: need to cast from bvec to vec...
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "greaterThanEqual(%s, %s)", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "greaterThanEqual(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SGE
 
 static void emit_GLSL_EXP(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "exp2(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "exp2(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_EXP
 
 static void emit_GLSL_LOG(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "log2(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "log2(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_LOG
 
@@ -2254,7 +2235,7 @@ static void emit_GLSL_LIT_helper(Context *ctx)
 static void emit_GLSL_LIT(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "LIT(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "LIT(%s)", src0);
     output_line(ctx, "%s", code);
     emit_GLSL_LIT_helper(ctx);
 } // emit_GLSL_LIT
@@ -2263,7 +2244,7 @@ static void emit_GLSL_DST(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                             "vec4(1.0, %s.y * %s.y, %s.z, %s.w)",
                             src0, src1, src0, src1);
 
@@ -2275,14 +2256,14 @@ static void emit_GLSL_LRP(Context *ctx)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
     const char *src2 = make_GLSL_sourcearg_string(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "mix(%s, %s, %s)", src2, src1, src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "mix(%s, %s, %s)", src2, src1, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_LRP
 
 static void emit_GLSL_FRC(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "fract(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "fract(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_FRC
 
@@ -2294,7 +2275,7 @@ static void emit_GLSL_M4X4(Context *ctx)
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
     const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
     const char *row3 = make_GLSL_sourcearg_string(ctx, 4);
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                     "vec4(dot(%s, %s), dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                     src0, row0, src0, row1, src0, row2, src0, row3);
     output_line(ctx, "%s", code);
@@ -2307,7 +2288,7 @@ static void emit_GLSL_M4X3(Context *ctx)
     const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
     const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                                 "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
@@ -2322,7 +2303,7 @@ static void emit_GLSL_M3X4(Context *ctx)
     const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
     const char *row3 = make_GLSL_sourcearg_string(ctx, 4);
 
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                                 "vec4(dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)), "
@@ -2339,7 +2320,7 @@ static void emit_GLSL_M3X3(Context *ctx)
     const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
     const char *row2 = make_GLSL_sourcearg_string(ctx, 3);
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                                 "vec3(dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
@@ -2354,7 +2335,7 @@ static void emit_GLSL_M3X2(Context *ctx)
     const char *row0 = make_GLSL_sourcearg_string(ctx, 1);
     const char *row1 = make_GLSL_sourcearg_string(ctx, 2);
 
-    const char *code = make_GLSL_destarg_assign(ctx, 0,
+    const char *code = make_GLSL_destarg_assign(ctx,
                                 "vec2(dot(vec3(%s), vec3(%s)), "
                                      "dot(vec3(%s), vec3(%s)))",
                                 src0, row0, src0, row1);
@@ -2445,7 +2426,7 @@ static void emit_GLSL_POW(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "pow(abs(%s), %s))", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "pow(abs(%s), %s))", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_POW
 
@@ -2453,7 +2434,7 @@ static void emit_GLSL_CRS(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "cross(vec3(%s), vec3(%s))", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "cross(vec3(%s), vec3(%s))", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_CRS
 
@@ -2461,21 +2442,21 @@ static void emit_GLSL_SGN(Context *ctx)
 {
     // (we don't need the temporary registers specified for the D3D opcode.)
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "sign(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "sign(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SGN
 
 static void emit_GLSL_ABS(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "abs(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "abs(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_ABS
 
 static void emit_GLSL_NRM(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "normalize(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "normalize(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_NRM
 
@@ -2485,16 +2466,16 @@ static void emit_GLSL_SINCOS(Context *ctx)
     //  sm2 also talks about what components are left untouched vs. undefined,
     //  but we just leave those all untouched with GLSL write masks (which
     //  would fulfill the "undefined" requirement, too).
-    const int mask = ctx->dest_args[0].writemask;
+    const int mask = ctx->dest_arg.writemask;
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *code = NULL;
 
     if (mask == 0x1)  // .x
-        code = make_GLSL_destarg_assign(ctx, 0, "cos(%s)", src0);
+        code = make_GLSL_destarg_assign(ctx, "cos(%s)", src0);
     else if (mask == 0x2)  // .y
-        code = make_GLSL_destarg_assign(ctx, 0, "sin(%s)", src0);
+        code = make_GLSL_destarg_assign(ctx, "sin(%s)", src0);
     else if (mask == 0x3)  // .xy
-        code = make_GLSL_destarg_assign(ctx, 0, "vec2(cos(%s), sin(%s))", src0, src0);
+        code = make_GLSL_destarg_assign(ctx, "vec2(cos(%s), sin(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SINCOS
 
@@ -2562,13 +2543,13 @@ static void emit_GLSL_BREAKC(Context *ctx)
 static void emit_GLSL_MOVA(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "ivec4(floor(abs(%s) + vec4(0.5)) * sign(%s))", src0, src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "ivec4(floor(abs(%s) + vec4(0.5)) * sign(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOVA
 
 static void emit_GLSL_DEFB(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx, 0);
+    const char *varname = get_GLSL_destarg_varname(ctx);
     push_output(ctx, &ctx->globals);
     output_line(ctx, "const bool %s = %s;",
                 varname, ctx->dwords[0] ? "true" : "false");
@@ -2577,7 +2558,7 @@ static void emit_GLSL_DEFB(Context *ctx)
 
 static void emit_GLSL_DEFI(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx, 0);
+    const char *varname = get_GLSL_destarg_varname(ctx);
     const int32 *x = (const int32 *) ctx->dwords;
     push_output(ctx, &ctx->globals);
     output_line(ctx, "const ivec4 %s = ivec4(%d, %d, %d, %d);",
@@ -2678,7 +2659,7 @@ static void emit_GLSL_LOGP(Context *ctx)
 // common code between CMP and CND.
 static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
 {
-    const DestArgInfo *dst = &ctx->dest_args[0];
+    const DestArgInfo *dst = &ctx->dest_arg;
     const char *src0 = get_GLSL_sourcearg_varname(ctx, 0);
     const char *src1 = get_GLSL_sourcearg_varname(ctx, 1);
     const char *src2 = get_GLSL_sourcearg_varname(ctx, 2);
@@ -2693,14 +2674,14 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
         const char swiz = swizzle_channels[ctx->source_args[0].swizzle_x];
         if (dst->writemask == 0xF)
         {
-            const char *code = make_GLSL_destarg_assign(ctx, 0,
+            const char *code = make_GLSL_destarg_assign(ctx,
                                                 "((%s.%c %s) ? %s : %s)",
                                                 src0, swiz, cmp, src1, src2);
             output_line(ctx, "%s", code);
         } // if
         else
         {
-            const char *dst0 = get_GLSL_destarg_varname(ctx, 0);
+            const char *dst0 = get_GLSL_destarg_varname(ctx);
             const char *x1 = (dst->writemask0) ? src1 : dst0;
             const char *y1 = (dst->writemask1) ? src1 : dst0;
             const char *z1 = (dst->writemask2) ? src1 : dst0;
@@ -2709,10 +2690,10 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
             const char *y2 = (dst->writemask1) ? src2 : dst0;
             const char *z2 = (dst->writemask2) ? src2 : dst0;
             const char *w2 = (dst->writemask3) ? src2 : dst0;
-            const char *code1 = make_GLSL_destarg_assign(ctx, 0,
+            const char *code1 = make_GLSL_destarg_assign(ctx,
                                                 "vec4(%s.x, %s.y, %s.z, %s.w)",
                                                 x1, y1, z1, w1);
-            const char *code2 = make_GLSL_destarg_assign(ctx, 0,
+            const char *code2 = make_GLSL_destarg_assign(ctx,
                                                 "vec4(%s.x, %s.y, %s.z, %s.w)",
                                                 x2, y2, z2, w2);
 
@@ -2729,25 +2710,25 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
         if (dst->writemask0)
         {
             fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
+            const char *code = make_GLSL_destarg_assign(ctx, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
             output_line(ctx, "%s", code);
         } // if
         if (dst->writemask1)
         {
             fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
+            const char *code = make_GLSL_destarg_assign(ctx, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
             output_line(ctx, "%s", code);
         } // if
         if (dst->writemask2)
         {
             fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
+            const char *code = make_GLSL_destarg_assign(ctx, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
             output_line(ctx, "%s", code);
         } // if
         if (dst->writemask3)
         {
             fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, 0, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
+            const char *code = make_GLSL_destarg_assign(ctx, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
             output_line(ctx, "%s", code);
         } // if
     } // else
@@ -2760,7 +2741,7 @@ static void emit_GLSL_CND(Context *ctx)
 
 static void emit_GLSL_DEF(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx, 0);
+    const char *varname = get_GLSL_destarg_varname(ctx);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
     char val0[32];
     char val1[32];
@@ -2825,14 +2806,14 @@ static void emit_GLSL_DP2ADD(Context *ctx)
 static void emit_GLSL_DSX(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "dFdx(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "dFdx(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSX
 
 static void emit_GLSL_DSY(Context *ctx)
 {
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "dFdy(%s)", src0);
+    const char *code = make_GLSL_destarg_assign(ctx, "dFdy(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
@@ -2846,7 +2827,7 @@ static void emit_GLSL_SETP(Context *ctx)
     const char *comp = get_GLSL_comparison_string_vector(ctx);
     const char *src0 = make_GLSL_sourcearg_string(ctx, 0);
     const char *src1 = make_GLSL_sourcearg_string(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, 0, "%s(%s, %s)", comp, src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "%s(%s, %s)", comp, src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SETP
 
@@ -3121,10 +3102,10 @@ static int parse_args_NULL(Context *ctx)
 
 static int parse_args_DEF(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
-    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in DEFB");
 
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
@@ -3138,10 +3119,10 @@ static int parse_args_DEF(Context *ctx)
 
 static int parse_args_DEFB(Context *ctx)
 {
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
-    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in DEFB");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
@@ -3163,14 +3144,14 @@ static int parse_args_DCL(Context *ctx)
 
     ctx->tokens++;
     ctx->tokencount--;
-    if (parse_destination_token(ctx, &ctx->dest_args[0]) == FAIL)
+    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
-    if (ctx->dest_args[0].relative)  // I'm pretty sure this is illegal...?
+    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in DCL");
 
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
+    const RegisterType regtype = ctx->dest_arg.regtype;
+    const int regnum = ctx->dest_arg.regnum;
     if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
@@ -3190,11 +3171,11 @@ static int parse_args_DCL(Context *ctx)
             else if (mt == MISCTYPE_TYPE_FACE)
             {
                 reserved_mask = 0x7FFFFFFF;
-                if (ctx->dest_args[0].writemask != 0xF)
+                if (ctx->dest_arg.writemask != 0xF)
                     return fail(ctx, "DCL face writemask must be full");
-                else if (ctx->dest_args[0].result_mod != 0)
+                else if (ctx->dest_arg.result_mod != 0)
                     return fail(ctx, "DCL face result modifier must be zero");
-                else if (ctx->dest_args[0].result_shift != 0)
+                else if (ctx->dest_arg.result_shift != 0)
                     return fail(ctx, "DCL face shift scale must be zero");
             } // else if
             else
@@ -3306,7 +3287,7 @@ static int parse_args_DCL(Context *ctx)
 static int parse_args_D(Context *ctx)
 {
     int retval = 1;
-    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_destination_token(ctx, &ctx->dest_arg);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_D
 
@@ -3331,7 +3312,7 @@ static int parse_args_SS(Context *ctx)
 static int parse_args_DS(Context *ctx)
 {
     int retval = 1;
-    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_destination_token(ctx, &ctx->dest_arg);
     retval += parse_source_token(ctx, &ctx->source_args[0]);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_DS
@@ -3340,7 +3321,7 @@ static int parse_args_DS(Context *ctx)
 static int parse_args_DSS(Context *ctx)
 {
     int retval = 1;
-    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_destination_token(ctx, &ctx->dest_arg);
     retval += parse_source_token(ctx, &ctx->source_args[0]);
     retval += parse_source_token(ctx, &ctx->source_args[1]);
     return isfail(ctx) ? FAIL : retval;
@@ -3350,7 +3331,7 @@ static int parse_args_DSS(Context *ctx)
 static int parse_args_DSSS(Context *ctx)
 {
     int retval = 1;
-    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_destination_token(ctx, &ctx->dest_arg);
     retval += parse_source_token(ctx, &ctx->source_args[0]);
     retval += parse_source_token(ctx, &ctx->source_args[1]);
     retval += parse_source_token(ctx, &ctx->source_args[2]);
@@ -3361,7 +3342,7 @@ static int parse_args_DSSS(Context *ctx)
 static int parse_args_DSSSS(Context *ctx)
 {
     int retval = 1;
-    retval += parse_destination_token(ctx, &ctx->dest_args[0]);
+    retval += parse_destination_token(ctx, &ctx->dest_arg);
     retval += parse_source_token(ctx, &ctx->source_args[0]);
     retval += parse_source_token(ctx, &ctx->source_args[1]);
     retval += parse_source_token(ctx, &ctx->source_args[2]);
@@ -3402,8 +3383,8 @@ static int parse_args_TEX(Context *ctx)
 
 static void state_DEF(Context *ctx)
 {
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
+    const RegisterType regtype = ctx->dest_arg.regtype;
+    const int regnum = ctx->dest_arg.regnum;
     switch (regtype)
     {
         case REG_TYPE_CONST:
@@ -3420,8 +3401,8 @@ static void state_DEF(Context *ctx)
 
 static void state_DEFI(Context *ctx)
 {
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
+    const RegisterType regtype = ctx->dest_arg.regtype;
+    const int regnum = ctx->dest_arg.regnum;
     if (regtype != REG_TYPE_CONSTINT)
         fail(ctx, "DEFI token using invalid register");
     else
@@ -3430,8 +3411,8 @@ static void state_DEFI(Context *ctx)
 
 static void state_DEFB(Context *ctx)
 {
-    const RegisterType regtype = ctx->dest_args[0].regtype;
-    const int regnum = ctx->dest_args[0].regnum;
+    const RegisterType regtype = ctx->dest_arg.regtype;
+    const int regnum = ctx->dest_arg.regnum;
     if (regtype != REG_TYPE_CONSTBOOL)
         fail(ctx, "DEFB token using invalid register");
     else
@@ -3440,7 +3421,7 @@ static void state_DEFB(Context *ctx)
 
 static void state_DCL(Context *ctx)
 {
-    const DestArgInfo *arg = &ctx->dest_args[0];
+    const DestArgInfo *arg = &ctx->dest_arg;
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
 
@@ -3492,7 +3473,7 @@ static void state_FRC(Context *ctx)
 {
     if (!shader_version_atleast(ctx, 2, 0))
     {
-        const DestArgInfo *info = &ctx->dest_args[0];
+        const DestArgInfo *info = &ctx->dest_arg;
         if ((info->writemask != 0x2) && (info->writemask != 0x3))
             fail(ctx, "FRC writemask must be .y or .xy for shader model 1.x");
     } // if
@@ -3518,7 +3499,7 @@ static void sourcearg_matrix_replicate(Context *ctx, const int idx,
 
 static void state_M4X4(Context *ctx)
 {
-    const DestArgInfo *info = &ctx->dest_args[0];
+    const DestArgInfo *info = &ctx->dest_arg;
     if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
         fail(ctx, "M4X4 writemask must be .xyzw");
 
@@ -3531,7 +3512,7 @@ static void state_M4X4(Context *ctx)
 
 static void state_M4X3(Context *ctx)
 {
-    const DestArgInfo *info = &ctx->dest_args[0];
+    const DestArgInfo *info = &ctx->dest_arg;
     if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
         fail(ctx, "M4X3 writemask must be .xyz");
 
@@ -3542,7 +3523,7 @@ static void state_M4X3(Context *ctx)
 
 static void state_M3X4(Context *ctx)
 {
-    const DestArgInfo *info = &ctx->dest_args[0];
+    const DestArgInfo *info = &ctx->dest_arg;
     if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
         fail(ctx, "M3X4 writemask must be .xyzw");
 
@@ -3553,7 +3534,7 @@ static void state_M3X4(Context *ctx)
 
 static void state_M3X3(Context *ctx)
 {
-    const DestArgInfo *info = &ctx->dest_args[0];
+    const DestArgInfo *info = &ctx->dest_arg;
     if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
         fail(ctx, "M3X3 writemask must be .xyz");
 
@@ -3564,7 +3545,7 @@ static void state_M3X3(Context *ctx)
 
 static void state_M3X2(Context *ctx)
 {
-    const DestArgInfo *info = &ctx->dest_args[0];
+    const DestArgInfo *info = &ctx->dest_arg;
     if (info->writemask != 0x3)  // 0x3 == 0011. (that is: xy)
         fail(ctx, "M3X2 writemask must be .xy");
 
@@ -3656,7 +3637,7 @@ static void state_CALLNZ(Context *ctx)
 
 static void state_MOVA(Context *ctx)
 {
-    if (ctx->dest_args[0].regtype != REG_TYPE_ADDRESS)
+    if (ctx->dest_arg.regtype != REG_TYPE_ADDRESS)
         fail(ctx, "MOVA argument isn't address register");
 } // state_MOVA
 
@@ -3695,7 +3676,7 @@ static void state_BREAK(Context *ctx)
 
 static void state_SETP(Context *ctx)
 {
-    const RegisterType regtype = ctx->dest_args[0].regtype;
+    const RegisterType regtype = ctx->dest_arg.regtype;
     if (regtype != REG_TYPE_PREDICATE)
         fail(ctx, "SETP argument isn't predicate register");
 } // state_SETP
@@ -3724,7 +3705,7 @@ static void state_CMP(Context *ctx)
     if (!shader_version_atleast(ctx, 1, 4))
     {
         int i;
-        const DestArgInfo *dst = &ctx->dest_args[0];
+        const DestArgInfo *dst = &ctx->dest_arg;
         const RegisterType dregtype = dst->regtype;
         const int dregnum = dst->regnum;
 
@@ -3762,7 +3743,7 @@ static void state_CND(Context *ctx)
 
 static void state_SINCOS(Context *ctx)
 {
-    const int mask = ctx->dest_args[0].writemask;
+    const int mask = ctx->dest_arg.writemask;
     if ((mask < 0x1) || (mask > 0x3))
     {
         fail(ctx, "SINCOS write mask must be .x or .y or .xy");
