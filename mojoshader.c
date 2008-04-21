@@ -1651,15 +1651,14 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const int idx,
         return "";
     } // if
 
-    // !!! FIXME
-    if (ctx->predicated)
-    {
-        fail(ctx, "predicated instructions not yet supported in this profile.");
-        return "";
-    } // if
-
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_args[idx];
+
+    if (arg->result_mod & MOD_SATURATE) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+    if (arg->result_mod & MOD_PP) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+    if (arg->result_mod & MOD_CENTROID) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+    if (ctx->predicated) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+
     char *operation = get_scratch_buffer(ctx);
     va_list ap;
     va_start(ap, fmt);
@@ -1682,11 +1681,6 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const int idx,
         case 0xF: result_shift_str = " / 2"; break;
     } // switch
     need_parens |= (result_shift_str[0] != '\0');
-
-// !!! FIXME
-//    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_sat" : "";
-//    const char *pp_str = (arg->result_mod & MOD_PP) ? "_pp" : "";
-//    const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
 
 // !!! FIXME: use get_GLSL_destarg_varname() here?
     char regnum_str[16];
