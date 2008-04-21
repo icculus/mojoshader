@@ -3963,6 +3963,7 @@ static int parse_instruction_token(Context *ctx)
                      instruction->opcode_string);
     } // if
 
+    memset(ctx->dwords, '\0', sizeof (ctx->dwords));
     ctx->instruction_count++;
     ctx->instruction_controls = controls;
     ctx->predicated = predicated;
