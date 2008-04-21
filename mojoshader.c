@@ -1703,6 +1703,7 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
 
 // !!! FIXME: not right.
     const SourceArgInfo *arg = &ctx->source_args[idx];
+    const DestArgInfo *dst = &ctx->dest_arg;
 
     const char *premod_str = "";
     const char *postmod_str = "";
@@ -1780,26 +1781,23 @@ static char *make_GLSL_sourcearg_string(Context *ctx, const int idx)
         return "";
     } // if
 
-    char swizzle_str[6];
+    char swiz_str[6];
     int i = 0;
-    if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
+    // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
+    if ((arg->swizzle != 0xE4) || (dst->writemask != 0xF))
     {
-        swizzle_str[i++] = '.';
-        swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
-        swizzle_str[i++] = swizzle_channels[arg->swizzle_y];
-        swizzle_str[i++] = swizzle_channels[arg->swizzle_z];
-        swizzle_str[i++] = swizzle_channels[arg->swizzle_w];
-
-        // .xyzz is the same as .xyz, .z is the same as .zzzz, etc.
-        while (swizzle_str[i-1] == swizzle_str[i-2])
-            i--;
+        swiz_str[i++] = '.';
+        if (dst->writemask0) swiz_str[i++] = swizzle_channels[arg->swizzle_x];
+        if (dst->writemask1) swiz_str[i++] = swizzle_channels[arg->swizzle_y];
+        if (dst->writemask2) swiz_str[i++] = swizzle_channels[arg->swizzle_z];
+        if (dst->writemask3) swiz_str[i++] = swizzle_channels[arg->swizzle_w];
     } // if
-    swizzle_str[i] = '\0';
-    assert(i < sizeof (swizzle_str));
+    swiz_str[i] = '\0';
+    assert(i < sizeof (swiz_str));
 
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
-             premod_str, regtype_str, regnum_str, postmod_str, swizzle_str);
+             premod_str, regtype_str, regnum_str, postmod_str, swiz_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_GLSL_sourcearg_string
