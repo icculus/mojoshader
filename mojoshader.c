@@ -133,9 +133,6 @@ typedef struct Context Context;
 // one emit function for each opcode in each profile.
 typedef void (*emit_function)(Context *ctx);
 
-// one emit function for comments in each profile.
-typedef void (*emit_comment)(Context *ctx, const char *str, size_t len);
-
 // one emit function for starting output in each profile.
 typedef void (*emit_start)(Context *ctx);
 
@@ -169,7 +166,6 @@ typedef struct
     const char *name;
     emit_start start_emitter;
     emit_end end_emitter;
-    emit_comment comment_emitter;
     emit_global global_emitter;
     emit_uniform uniform_emitter;
     emit_sampler sampler_emitter;
@@ -1132,12 +1128,6 @@ static void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
 } // emit_D3D_attribute
 
 
-static void emit_D3D_comment(Context *ctx, const char *str, size_t len)
-{
-    // no-op.
-} // emit_D3D_comment
-
-
 static void emit_D3D_RESERVED(Context *ctx)
 {
     // do nothing; fails in the state machine.
@@ -1500,7 +1490,6 @@ static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
-static void emit_PASSTHROUGH_comment(Context *ctx, const char *s, size_t l) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w) {}
 
@@ -2118,11 +2107,6 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         fail(ctx, "Unknown shader type");  // state machine should catch this.
     } // else
 } // emit_GLSL_attribute
-
-static void emit_GLSL_comment(Context *ctx, const char *str, size_t len)
-{
-    // no-op.
-} // emit_GLSL_comment
 
 static void emit_GLSL_NOP(Context *ctx)
 {
@@ -2900,7 +2884,6 @@ static void emit_GLSL_RESERVED(Context *ctx)
     MOJOSHADER_PROFILE_##prof, \
     emit_##prof##_start, \
     emit_##prof##_end, \
-    emit_##prof##_comment, \
     emit_##prof##_global, \
     emit_##prof##_uniform, \
     emit_##prof##_sampler, \
@@ -4106,8 +4089,6 @@ static int parse_comment_token(Context *ctx)
     else
     {
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
-        const uint32 len = commenttoks * sizeof (uint32);
-        ctx->profile->comment_emitter(ctx, (const char *)(ctx->tokens+1), len);
         return commenttoks + 1;  // comment data plus the initial token.
     } // else
 
