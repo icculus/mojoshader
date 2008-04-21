@@ -7,6 +7,7 @@ print("Making sure svn working copy is up to date...\n");
 system("cd ../svn-mojoshader ; svn update");
 my $svnver = `cd ../svn-mojoshader ; svnversion`;
 chomp($svnver);
+$svnver =~ s/M\Z//;
 my $hgver = `cd ../svn-mojoshader ; svn log -r${svnver} |grep 'changeset:'`;
 chomp($hgver);
 $hgver =~ s/^changeset:\s+(\d+):.*\Z/$1/;
