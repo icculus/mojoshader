@@ -1640,6 +1640,9 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_arg;
 
+    if (arg->writemask == 0x0)
+        fail(ctx, "BUG: empty writemask");  // !!! FIXME: make this a no-op?
+
     if (arg->result_mod & MOD_SATURATE) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
     if (arg->result_mod & MOD_PP) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
     if (arg->result_mod & MOD_CENTROID) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
@@ -2224,19 +2227,37 @@ static void emit_GLSL_MAX(Context *ctx)
 
 static void emit_GLSL_SLT(Context *ctx)
 {
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    // !!! FIXME: need to cast from bvec to vec...
-    const char *code = make_GLSL_destarg_assign(ctx, "lessThan(%s, %s)", src0, src1);
+    const char *code = NULL;
+
+    // float(bool) or vec(bvec) results in 0.0 or 1.0, like SGE wants.
+    if (vecsize == 1)
+        code = make_GLSL_destarg_assign(ctx, "float(%s >= %s)", src0, src1);
+    else
+    {
+        code = make_GLSL_destarg_assign(ctx, "vec%d(lessThan(%s, %s))",
+                                        vecsize, src0, src1);
+    } // else
     output_line(ctx, "%s", code);
 } // emit_GLSL_SLT
 
 static void emit_GLSL_SGE(Context *ctx)
 {
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    // !!! FIXME: need to cast from bvec to vec...
-    const char *code = make_GLSL_destarg_assign(ctx, "greaterThanEqual(%s, %s)", src0, src1);
+    const char *code = NULL;
+
+    // float(bool) or vec(bvec) results in 0.0 or 1.0, like SGE wants.
+    if (vecsize == 1)
+        code = make_GLSL_destarg_assign(ctx, "float(%s >= %s)", src0, src1);
+    else
+    {
+        code = make_GLSL_destarg_assign(ctx, "vec%d(greaterThanEqual(%s, %s))",
+                                        vecsize, src0, src1);
+    } // else
     output_line(ctx, "%s", code);
 } // emit_GLSL_SGE
 
@@ -2588,10 +2609,21 @@ static void emit_GLSL_MOVA(Context *ctx)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx,
+
+    if (vecsize == 1)
+    {
+        const char *code = make_GLSL_destarg_assign(ctx,
+                            "int(floor(abs(%s) + 0.5) * sign(%s))", src0, src0);
+        output_line(ctx, "%s", code);
+    } // if
+
+    else
+    {
+        const char *code = make_GLSL_destarg_assign(ctx,
                             "ivec%d(floor(abs(%s) + vec%d(0.5)) * sign(%s))",
                             vecsize, src0, vecsize, src0);
-    output_line(ctx, "%s", code);
+        output_line(ctx, "%s", code);
+    } // else
 } // emit_GLSL_MOVA
 
 static void emit_GLSL_DEFB(Context *ctx)
@@ -3682,12 +3714,6 @@ static void state_CALLNZ(Context *ctx)
     else if (check_label_register(ctx, 0, "CALLNZ") != FAIL)
         check_call_loop_wrappage(ctx, ctx->source_args[0].regnum);
 } // state_CALLNZ
-
-static void state_MOVA(Context *ctx)
-{
-    if (ctx->dest_arg.regtype != REG_TYPE_ADDRESS)
-        fail(ctx, "MOVA argument isn't address register");
-} // state_MOVA
 
 static void state_LOOP(Context *ctx)
 {
