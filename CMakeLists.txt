@@ -17,13 +17,12 @@ IF(SDL_FOUND)
         FIND_LIBRARY(OPENGL_LIBRARY OpenGL)
         MARK_AS_ADVANCED(OPENGL_LIBRARY)
         SET(EXTRA_LIBS ${OPENGL_LIBRARY})
-
     ENDIF(APPLE)
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
 ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c)
-TARGET_LINK_LIBRARIES(finderrors pthread ${SDL_LIBRARY} ${EXTRA_LIBS})
+TARGET_LINK_LIBRARIES(finderrors ${SDL_LIBRARY} ${EXTRA_LIBS})
 
 # End of CMakeLists.txt ...
 
