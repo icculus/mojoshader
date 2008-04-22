@@ -1643,7 +1643,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     if (arg->writemask == 0x0)
         fail(ctx, "BUG: empty writemask");  // !!! FIXME: make this a no-op?
 
-    char clampbuf[16] = { '\0' };
+    char clampbuf[32] = { '\0' };
     const char *clampleft = "";
     const char *clampright = "";
     if (arg->result_mod & MOD_SATURATE)
@@ -1656,6 +1656,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
         {
             snprintf(clampbuf, sizeof (clampbuf),
                      ", vec%d(0.0), vec%d(1.0))", vecsize, vecsize);
+            clampright = clampbuf;
         } // else
     } // if
 
