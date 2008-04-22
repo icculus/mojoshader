@@ -1643,8 +1643,24 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     if (arg->writemask == 0x0)
         fail(ctx, "BUG: empty writemask");  // !!! FIXME: make this a no-op?
 
-    if (arg->result_mod & MOD_SATURATE) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
-    if (arg->result_mod & MOD_PP) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+    char clampbuf[16] = { '\0' };
+    const char *clampleft = "";
+    const char *clampright = "";
+    if (arg->result_mod & MOD_SATURATE)
+    {
+        const int vecsize = vecsize_from_writemask(arg->writemask);
+        clampleft = "clamp(";
+        if (vecsize == 1)
+            clampright = ", 0.0, 1.0)";
+        else
+        {
+            snprintf(clampbuf, sizeof (clampbuf),
+                     ", vec%d(0.0), vec%d(1.0))", vecsize, vecsize);
+        } // else
+    } // if
+
+    // MSDN says MOD_PP is a hint and many implementations ignore it. So do we.
+
     if (arg->result_mod & MOD_CENTROID) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
     if (ctx->predicated) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
 
@@ -1671,7 +1687,6 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     } // switch
     need_parens |= (result_shift_str[0] != '\0');
 
-// !!! FIXME: use get_GLSL_destarg_varname() here?
     char regnum_str[16];
     const char *regtype_str = get_GLSL_register_string(ctx, arg->regtype,
                                                        arg->regnum, regnum_str,
@@ -1693,9 +1708,10 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const char *rightparen = (need_parens) ? ")" : "";
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s = %s%s%s%s;",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s = %s%s%s%s%s%s;",
              regtype_str, regnum_str, writemask_str,
-             leftparen, operation, rightparen, result_shift_str);
+             clampleft, leftparen, operation, rightparen, result_shift_str,
+             clampright);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_GLSL_destarg_assign
@@ -3079,6 +3095,11 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     if ((info->regtype < 0) || (info->regtype > REG_TYPE_MAX))
         return fail(ctx, "Register type is out of range");
 
+    // !!! FIXME: from msdn:
+    //  "_sat cannot be used with instructions writing to output o# registers."
+    // !!! FIXME: actually, just go over this page:
+    //  http://msdn.microsoft.com/archive/default.asp?url=/archive/en-us/directx9_c/directx/graphics/reference/shaders/ps_instructionmodifiers.asp
+
     set_used_register(ctx, info->regtype, info->regnum);
     return 1;
 } // parse_destination_token
@@ -3581,12 +3602,16 @@ static void state_DCL(Context *ctx)
 
 static void state_FRC(Context *ctx)
 {
-    if (!shader_version_atleast(ctx, 2, 0))
+    const DestArgInfo *dst = &ctx->dest_arg;
+
+    if (dst->result_mod & MOD_SATURATE)  // according to msdn...
+        fail(ctx, "FRC destination can't use saturate modifier");
+
+    else if (!shader_version_atleast(ctx, 2, 0))
     {
-        const DestArgInfo *info = &ctx->dest_arg;
-        if ((info->writemask != 0x2) && (info->writemask != 0x3))
+        if ((dst->writemask != 0x2) && (dst->writemask != 0x3))
             fail(ctx, "FRC writemask must be .y or .xy for shader model 1.x");
-    } // if
+    } // else if
 } // state_FRC
 
 
@@ -3861,12 +3886,16 @@ static void state_CND(Context *ctx)
 
 static void state_SINCOS(Context *ctx)
 {
-    const int mask = ctx->dest_arg.writemask;
+    const DestArgInfo *dst = &ctx->dest_arg;
+    const int mask = dst->writemask;
     if ((mask < 0x1) || (mask > 0x3))
         fail(ctx, "SINCOS write mask must be .x or .y or .xy");
 
     else if (!replicate_swizzle(ctx->source_args[0].swizzle))
         fail(ctx, "SINCOS src0 must have replicate swizzle");
+
+    else if (dst->result_mod & MOD_SATURATE)  // according to msdn...
+        fail(ctx, "SINCOS destination can't use saturate modifier");
 
     // this opcode needs extra registers, with extra limitations, for <= sm2.
     else if (!shader_version_atleast(ctx, 3, 0))
