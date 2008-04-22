@@ -3524,6 +3524,9 @@ static void state_DEF(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
+
+    ctx->instruction_count--;  // these don't increase your instruction count.
+
     switch (regtype)
     {
         case REG_TYPE_CONST:
@@ -3542,6 +3545,9 @@ static void state_DEFI(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
+
+    ctx->instruction_count--;  // these don't increase your instruction count.
+
     if (regtype != REG_TYPE_CONSTINT)
         fail(ctx, "DEFI token using invalid register");
     else
@@ -3552,6 +3558,9 @@ static void state_DEFB(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
+
+    ctx->instruction_count--;  // these don't increase your instruction count.
+
     if (regtype != REG_TYPE_CONSTBOOL)
         fail(ctx, "DEFB token using invalid register");
     else
@@ -3563,6 +3572,8 @@ static void state_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_arg;
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
+
+    ctx->instruction_count--;  // these don't increase your instruction count.
 
     // parse_args_DCL() does a lot of state checking before we get here.
 
