@@ -2193,20 +2193,34 @@ static void emit_GLSL_RSQ(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
+static void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1)
+{
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
+    char castleft[16] = { '\0' };
+    const char *castright = "";
+    if (vecsize != 1)
+    {
+        snprintf(castleft, sizeof (castleft), "vec%d(", vecsize);
+        castright = ")";
+    } // if
+
+    const char *code = make_GLSL_destarg_assign(ctx, "%sdot(%s, %s)%s",
+                        castleft, src0, src1, castright);
+    output_line(ctx, "%s", code);
+} // emit_GLSL_dotprod
+
 static void emit_GLSL_DP3(Context *ctx)
 {
     const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "dot(%s, %s)", src0, src1);
-    output_line(ctx, "%s", code);
+    emit_GLSL_dotprod(ctx, src0, src1);
 } // emit_GLSL_DP3
 
 static void emit_GLSL_DP4(Context *ctx)
 {
     const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_full(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "dot(%s, %s)", src0, src1);
-    output_line(ctx, "%s", code);
+    emit_GLSL_dotprod(ctx, src0, src1);
 } // emit_GLSL_DP4
 
 static void emit_GLSL_MIN(Context *ctx)
