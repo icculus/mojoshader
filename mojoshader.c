@@ -1747,6 +1747,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_BIAS:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME
             postmod_str = "_bias";
             break;
 
@@ -1754,29 +1755,35 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_SIGN:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME
             postmod_str = "_bx2";
             break;
 
         case SRCMOD_COMPLEMENT:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "(1.0 - (";
             postmod_str = "))";
             break;
 
         case SRCMOD_X2NEGATE:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "-(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_X2:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_DZ:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME
             postmod_str = "_dz";
             break;
 
         case SRCMOD_DW:
+            fail(ctx, "unsupported"); return ""; // !!! FIXME
             postmod_str = "_dw";
             break;
 
