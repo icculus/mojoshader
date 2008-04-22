@@ -2248,7 +2248,7 @@ static void emit_GLSL_SLT(Context *ctx)
 
     // float(bool) or vec(bvec) results in 0.0 or 1.0, like SGE wants.
     if (vecsize == 1)
-        code = make_GLSL_destarg_assign(ctx, "float(%s >= %s)", src0, src1);
+        code = make_GLSL_destarg_assign(ctx, "float(%s < %s)", src0, src1);
     else
     {
         code = make_GLSL_destarg_assign(ctx, "vec%d(lessThan(%s, %s))",
