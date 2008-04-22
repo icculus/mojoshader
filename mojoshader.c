@@ -1662,12 +1662,12 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const char *result_shift_str = "";
     switch (arg->result_shift)
     {
-        case 0x1: result_shift_str = " * 2"; break;
-        case 0x2: result_shift_str = " * 4"; break;
-        case 0x3: result_shift_str = " * 8"; break;
-        case 0xD: result_shift_str = " / 8"; break;
-        case 0xE: result_shift_str = " / 4"; break;
-        case 0xF: result_shift_str = " / 2"; break;
+        case 0x1: result_shift_str = " * 2.0"; break;
+        case 0x2: result_shift_str = " * 4.0"; break;
+        case 0x3: result_shift_str = " * 8.0"; break;
+        case 0xD: result_shift_str = " / 8.0"; break;
+        case 0xE: result_shift_str = " / 4.0"; break;
+        case 0xF: result_shift_str = " / 2.0"; break;
     } // switch
     need_parens |= (result_shift_str[0] != '\0');
 
