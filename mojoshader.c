@@ -1826,7 +1826,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
-             premod_str, regtype_str, regnum_str, postmod_str, swiz_str);
+             premod_str, regtype_str, regnum_str, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_GLSL_srcarg_string
