@@ -72,9 +72,27 @@ static int do_dir(const char *dname, const char *profile)
     DIR *dirp = opendir(dname);
     if (dirp != NULL)
     {
+        int do_quit = 0;
         struct dirent *dent;
         while ((dent = readdir(dirp)) != NULL)
         {
+            #if FINDERRORS_COMPILE_SHADERS
+            SDL_Event e;  // pump event queue to keep OS happy.
+            while (SDL_PollEvent(&e))
+            {
+                if (e.type == SDL_QUIT)
+                    do_quit = 1;
+            } // while
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            SDL_GL_SwapBuffers();
+            #endif
+
+            if (do_quit)
+            {
+                report("FAIL: user requested quit!\n");
+                break;
+            } // if
+
             if (strstr(dent->d_name, ".bytecode") == NULL)
                 continue;
 
@@ -132,6 +150,7 @@ int main(int argc, char **argv)
         #if FINDERRORS_COMPILE_SHADERS
         SDL_Init(SDL_INIT_VIDEO);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         #endif
 
         const char *profile = argv[1];
