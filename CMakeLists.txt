@@ -8,9 +8,22 @@ ENDIF(CMAKE_COMPILER_IS_GNUCC)
 # testparse uses this when I'm looking at memory usage patterns.
 #ADD_DEFINITIONS(-DMOJOSHADER_DEBUG_MALLOC=1)
 
+FIND_PACKAGE(SDL)
+IF(SDL_FOUND)
+    INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
+    IF(APPLE)
+        ADD_DEFINITIONS(-I/System/Library/Frameworks/OpenGL.framework/Versions/A/Headers)
+        FIND_LIBRARY(OPENGL_LIBRARY OpenGL)
+        MARK_AS_ADVANCED(OPENGL_LIBRARY)
+        SET(EXTRA_LIBS ${OPENGL_LIBRARY})
+
+    ENDIF(APPLE)
+ENDIF(SDL_FOUND)
+
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
 ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c)
-TARGET_LINK_LIBRARIES(finderrors pthread)
+TARGET_LINK_LIBRARIES(finderrors pthread ${SDL_LIBRARY} ${EXTRA_LIBS})
 
 # End of CMakeLists.txt ...
 
