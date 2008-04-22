@@ -3721,6 +3721,12 @@ static void state_MOVA(Context *ctx)
         fail(ctx, "MOVA argument isn't address register");
 } // state_MOVA
 
+static void state_RCP(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "RCP without replicate swizzzle");
+} // state_RCP
+
 static void state_LOOP(Context *ctx)
 {
     if (ctx->source_args[0].regtype != REG_TYPE_LOOP)
@@ -3914,7 +3920,7 @@ static const Instruction instructions[] =
     INSTRUCTION(SUB, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(MAD, DSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(MUL, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RCP, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RCP, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(RSQ, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DP3, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DP4, DSS, MOJOSHADER_TYPE_ANY),
