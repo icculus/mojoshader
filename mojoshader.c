@@ -3715,6 +3715,12 @@ static void state_CALLNZ(Context *ctx)
         check_call_loop_wrappage(ctx, ctx->source_args[0].regnum);
 } // state_CALLNZ
 
+static void state_MOVA(Context *ctx)
+{
+    if (ctx->dest_arg.regtype != REG_TYPE_ADDRESS)
+        fail(ctx, "MOVA argument isn't address register");
+} // state_MOVA
+
 static void state_LOOP(Context *ctx)
 {
     if (ctx->source_args[0].regtype != REG_TYPE_LOOP)
