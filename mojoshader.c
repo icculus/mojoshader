@@ -2325,6 +2325,7 @@ static void emit_GLSL_LIT(Context *ctx)
 
 static void emit_GLSL_DST(Context *ctx)
 {
+    // !!! FIXME: needs to take ctx->dst_arg.writemask into account.
     const char *src0_y = make_GLSL_srcarg_string_y(ctx, 0);
     const char *src1_y = make_GLSL_srcarg_string_y(ctx, 1);
     const char *src0_z = make_GLSL_srcarg_string_z(ctx, 0);
@@ -2511,9 +2512,10 @@ static void emit_GLSL_POW(Context *ctx)
 
 static void emit_GLSL_CRS(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_full(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "cross(vec3(%s), vec3(%s))", src0, src1);
+    // !!! FIXME: needs to take ctx->dst_arg.writemask into account.
+    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+    const char *src1 = make_GLSL_srcarg_string_vec3(ctx, 1);
+    const char *code = make_GLSL_destarg_assign(ctx, "cross(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_CRS
 
@@ -2546,7 +2548,7 @@ static void emit_GLSL_SINCOS(Context *ctx)
     //  but we just leave those all untouched with GLSL write masks (which
     //  would fulfill the "undefined" requirement, too).
     const int mask = ctx->dest_arg.writemask;
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
+    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
     const char *code = NULL;
 
     if (mask == 0x1)  // .x
@@ -2564,10 +2566,11 @@ static void emit_GLSL_REP(Context *ctx)
     // msdn docs say legal loop values are 0 to 255. We can check DEFI values
     //  at parse time, but if they are pulling a value from a uniform, do
     //  we clamp here?
-    const char *varname = get_GLSL_srcarg_varname(ctx, 0);
+    // !!! FIXME: swizzle is legal here, right?
+    const char *src0 = make_GLSL_srcarg_string_x(ctx, 0);
     const uint rep = (uint) ctx->reps;
-    output_line(ctx, "for (int rep%u = 0; rep%u < %s.x; rep%u++) {",
-                rep, rep, varname, rep);
+    output_line(ctx, "for (int rep%u = 0; rep%u < %s; rep%u++) {",
+                rep, rep, src0, rep);
     ctx->indent++;
 } // emit_GLSL_REP
 
@@ -2918,10 +2921,23 @@ static void emit_GLSL_TEXLDD(Context *ctx)
 
 static void emit_GLSL_SETP(Context *ctx)
 {
-    const char *comp = get_GLSL_comparison_string_vector(ctx);
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "%s(%s, %s)", comp, src0, src1);
+    const char *code = NULL;
+
+    // destination is always predicate register (which is type bvec4).
+    if (vecsize == 1)
+    {
+        const char *comp = get_GLSL_comparison_string_scalar(ctx);
+        code = make_GLSL_destarg_assign(ctx, "(%s %s %s)", src0, comp, src1);
+    } // if
+    else
+    {
+        const char *comp = get_GLSL_comparison_string_vector(ctx);
+        code = make_GLSL_destarg_assign(ctx, "%s(%s, %s)", comp, src0, src1);
+    } // else
+
     output_line(ctx, "%s", code);
 } // emit_GLSL_SETP
 
