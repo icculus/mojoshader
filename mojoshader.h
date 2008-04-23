@@ -147,6 +147,11 @@ typedef struct
     const char *error;
 
     /*
+     * The name of the profile used to parse the shader. Will be NULL on error.
+     */
+    const char *profile;
+
+    /*
      * Bytes of output from parsing. Most profiles produce a string of source
      *  code, but profiles that do binary output may not be text at all.
      *  Will be NULL on error.
@@ -280,7 +285,7 @@ typedef struct
  *  MOJOSHADER_parseData object, which is still safe to pass to
  *  MOJOSHADER_freeParseData()).
  *
- * This function is thread safe, so long (m) and (f) are too, and that
+ * This function is thread safe, so long as (m) and (f) are too, and that
  *  (tokenbuf) remains intact for the duration of the call. This allows you
  *  to parse several shaders on separate CPU cores at the same time.
  */

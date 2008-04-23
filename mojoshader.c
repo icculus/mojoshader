@@ -430,7 +430,7 @@ static inline int isfail(const Context *ctx)
 
 
 static MOJOSHADER_parseData out_of_mem_data = {
-    "Out of memory", 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+    "Out of memory", 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
 static const char *out_of_mem_str = "Out of memory";
@@ -4659,6 +4659,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     } // if
     else
     {
+        retval->profile = ctx->profile->name;
         retval->output = output;
         retval->output_len = ctx->output_len;
         retval->instruction_count = ctx->instruction_count;
@@ -4824,6 +4825,8 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
     void *d = data->malloc_data;
+
+    // we don't f(data->profile), because that's internal static data.
 
     if (data->output != NULL)  // check for NULL in case of dumb free() impl.
         f((void *) data->output, d);
