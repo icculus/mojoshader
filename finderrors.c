@@ -13,6 +13,7 @@
 
 #if FINDERRORS_COMPILE_SHADERS
 #define GL_GLEXT_PROTOTYPES 1
+#define GL_GLEXT_LEGACY 1
 #include "SDL.h"
 #include "gl.h"
 #include "glext.h"
