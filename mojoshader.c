@@ -302,6 +302,7 @@ struct Context
     OutputList globals;
     OutputList helpers;
     OutputList subroutines;
+    OutputList mainline_intro;
     OutputList mainline;
     OutputList ignore;
     OutputList *output_stack[2];
@@ -684,6 +685,21 @@ static inline int get_defined_register(Context *ctx, const RegisterType rtype,
 {
     return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
 } // get_defined_register
+
+static const RegisterList *declared_attribute(Context *ctx,
+                                              const MOJOSHADER_usage usage,
+                                              const int index)
+{
+    const RegisterList *item = ctx->attributes.next;
+    while (item != NULL)
+    {
+        if ((item->usage == usage) && (item->index == index))
+            return item;
+        item = item->next;
+    } // while
+
+    return NULL;
+} // declared_attribute
 
 static void add_attribute_register(Context *ctx, const RegisterType rtype,
                                 const int regnum, const MOJOSHADER_usage usage,
@@ -1920,9 +1936,10 @@ static void emit_GLSL_start(Context *ctx)
         return;
     } // if
 
-    ctx->output = &ctx->mainline;
+    ctx->output = &ctx->mainline_intro;
     output_line(ctx, "void main()");
     output_line(ctx, "{");
+    ctx->output = &ctx->mainline;
     ctx->indent++;
 } // emit_GLSL_start
 
@@ -1936,9 +1953,25 @@ static void emit_GLSL_end(Context *ctx)
 
 static void emit_GLSL_finalize(Context *ctx)
 {
+    const RegisterList *reg = NULL;
+
     // throw some blank lines around to make source more readable.
     push_output(ctx, &ctx->globals);
     output_blank_line(ctx);
+    pop_output(ctx);
+
+    push_output(ctx, &ctx->mainline_intro);
+    ctx->indent++;
+
+    // Make sure this is always set, moved from our generic attribute.
+    reg = declared_attribute(ctx, MOJOSHADER_USAGE_POSITION, 0);
+    if (reg != NULL)
+    {
+        output_line(ctx, "gl_Position = %s;",
+                            get_GLSL_varname(ctx, reg->regtype, reg->regnum));
+    } // if
+
+    ctx->indent--;
     pop_output(ctx);
 } // emit_GLSL_finalize
 
@@ -4336,6 +4369,7 @@ static Context *build_context(const char *profile,
     ctx->globals.tail = &ctx->globals.head;
     ctx->helpers.tail = &ctx->helpers.head;
     ctx->subroutines.tail = &ctx->subroutines.head;
+    ctx->mainline_intro.tail = &ctx->mainline_intro.head;
     ctx->mainline.tail = &ctx->mainline.head;
     ctx->ignore.tail = &ctx->ignore.head;
     ctx->output = &ctx->mainline;
@@ -4375,6 +4409,7 @@ static void destroy_context(Context *ctx)
         free_output_list(f, d, ctx->globals.head.next);
         free_output_list(f, d, ctx->helpers.head.next);
         free_output_list(f, d, ctx->subroutines.head.next);
+        free_output_list(f, d, ctx->mainline_intro.head.next);
         free_output_list(f, d, ctx->mainline.head.next);
         free_output_list(f, d, ctx->ignore.head.next);
         free_reglist(f, d, ctx->used_registers.next);
@@ -4426,6 +4461,7 @@ static char *build_output(Context *ctx)
             append_list(&wptr, endl, endllen, ctx->globals.head.next);
             append_list(&wptr, endl, endllen, ctx->helpers.head.next);
             append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
+            append_list(&wptr, endl, endllen, ctx->mainline_intro.head.next);
             append_list(&wptr, endl, endllen, ctx->mainline.head.next);
             // don't append ctx->ignore ... that's why it's called "ignore"
         } // else
