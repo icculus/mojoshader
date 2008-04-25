@@ -70,9 +70,13 @@ const char *endline_str = "\r\n";
 const char *endline_str = "\n";
 #endif
 
-
 // we need to reference this by explicit value occasionally.
 #define OPCODE_RET 28
+
+// Special-case return values from the parsing pipeline...
+#define FAIL (-1)
+#define NOFAIL (-2)
+#define END_OF_STREAM (-3)
 
 
 // Byteswap magic...
@@ -346,14 +350,28 @@ struct Context
 
 // Convenience functions for allocators...
 
-static inline void *Malloc(const Context *ctx, const int len)
+static MOJOSHADER_parseData out_of_mem_data = {
+    "Out of memory", 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+};
+
+static const char *out_of_mem_str = "Out of memory";
+static inline int out_of_memory(Context *ctx)
 {
-    // !!! FIXME: just call out_of_memory() from here?
-    return ctx->malloc(len, ctx->malloc_data);
+    if (ctx->failstr == NULL)
+        ctx->failstr = out_of_mem_str;  // fail() would call malloc().
+    return FAIL;
+} // out_of_memory
+
+static inline void *Malloc(Context *ctx, const int len)
+{
+    void *retval = ctx->malloc(len, ctx->malloc_data);
+    if (retval == NULL)
+        out_of_memory(ctx);
+    return retval;
 } // Malloc
 
 
-static inline void Free(const Context *ctx, void *ptr)
+static inline void Free(Context *ctx, void *ptr)
 {
     if (ptr != NULL)  // check for NULL in case of dumb free() impl.
         ctx->free(ptr, ctx->malloc_data);
@@ -420,28 +438,10 @@ static inline char *get_scratch_buffer(Context *ctx)
 } // get_scratch_buffer
 
 
-// Special-case return values from the parsing pipeline...
-#define FAIL (-1)
-#define NOFAIL (-2)
-#define END_OF_STREAM (-3)
-
 static inline int isfail(const Context *ctx)
 {
     return (ctx->failstr != NULL);
 } // isfail
-
-
-static MOJOSHADER_parseData out_of_mem_data = {
-    "Out of memory", 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
-};
-
-static const char *out_of_mem_str = "Out of memory";
-static inline int out_of_memory(Context *ctx)
-{
-    if (ctx->failstr == NULL)
-        ctx->failstr = out_of_mem_str;  // fail() would call malloc().
-    return FAIL;
-} // out_of_memory
 
 
 static int failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
@@ -456,9 +456,7 @@ static int failf(Context *ctx, const char *fmt, ...)
         va_end(ap);
 
         char *failstr = (char *) Malloc(ctx, len + 1);
-        if (failstr == NULL)
-            out_of_memory(ctx);
-        else
+        if (failstr != NULL)
         {
             // see comments about scratch buffer overflow in output_line().
             if (len < SCRATCH_BUFFER_SIZE)
@@ -470,7 +468,7 @@ static int failf(Context *ctx, const char *fmt, ...)
                 va_end(ap);
             } // else
             ctx->failstr = failstr;
-        } // else
+        } // if
     } // if
 
     return FAIL;
@@ -504,13 +502,13 @@ static int output_line(Context *ctx, const char *fmt, ...)
 
     item = (OutputListNode *) Malloc(ctx, sizeof (OutputListNode));
     if (item == NULL)
-        return out_of_memory(ctx);
+        return FAIL;
 
     item->str = (char *) Malloc(ctx, len + 1);
     if (item->str == NULL)
     {
         Free(ctx, item);
-        return out_of_memory(ctx);
+        return FAIL;
     } // if
 
     // If we overflowed our scratch buffer, that's okay. We were going to
@@ -617,9 +615,7 @@ static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
 
     // we need to insert an entry after (prev).
     item = (RegisterList *) Malloc(ctx, sizeof (RegisterList));
-    if (item == NULL)
-        out_of_memory(ctx);
-    else
+    if (item != NULL)
     {
         item->regtype = regtype;
         item->regnum = regnum;
@@ -628,7 +624,7 @@ static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
         item->writemask = 0;
         item->next = prev->next;
         prev->next = item;
-    } // else
+    } // if
 
     return item;
 } // reglist_insert
@@ -1494,9 +1490,7 @@ static void emit_PASSTHROUGH_start(Context *ctx)
     // just copy the whole token stream and make all other emitters no-ops.
     ctx->output_len = (ctx->tokencount * sizeof (uint32));
     ctx->output_bytes = Malloc(ctx, ctx->output_len);
-    if (ctx->output_bytes == NULL)
-        out_of_memory(ctx);
-    else
+    if (ctx->output_bytes != NULL)
         memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
 } // emit_PASSTHROUGH_start
 
@@ -4447,9 +4441,7 @@ static char *build_output(Context *ctx)
     // add a byte for the null terminator if we're doing text output.
     const int plusbytes = (ctx->output_bytes == NULL) ? 1 : 0;
     char *retval = (char *) Malloc(ctx, ctx->output_len + plusbytes);
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
     {
         const char *endl = ctx->endline;
         const size_t endllen = ctx->endline_len;
@@ -4465,7 +4457,7 @@ static char *build_output(Context *ctx)
             append_list(&wptr, endl, endllen, ctx->mainline.head.next);
             // don't append ctx->ignore ... that's why it's called "ignore"
         } // else
-    } // else
+    } // if
 
     return retval;
 } // build_output
@@ -4476,9 +4468,7 @@ static char *alloc_varname(Context *ctx, const RegisterList *reg)
     const char *varname = get_GLSL_varname(ctx, reg->regtype, reg->regnum);
     const size_t len = strlen(varname) + 1;
     char *retval = (char *) Malloc(ctx, len);
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
         strcpy(retval, varname);
     return retval;
 } // alloc_varname
@@ -4489,9 +4479,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
     const size_t len = sizeof (MOJOSHADER_uniform) * ctx->uniform_count;
     MOJOSHADER_uniform *retval = (MOJOSHADER_uniform *) Malloc(ctx, len);
 
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
     {
         RegisterList *item = ctx->uniforms.next;
         MOJOSHADER_uniformType type = MOJOSHADER_UNIFORM_FLOAT;
@@ -4548,7 +4536,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
             retval[i].name = alloc_varname(ctx, item);
             item = item->next;
         } // for
-    } // else
+    } // if
 
     return retval;
 } // build_uniforms
@@ -4559,9 +4547,7 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
     const size_t len = sizeof (MOJOSHADER_sampler) * ctx->sampler_count;
     MOJOSHADER_sampler *retval = (MOJOSHADER_sampler *) Malloc(ctx, len);
 
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
     {
         RegisterList *item = ctx->samplers.next;
         MOJOSHADER_samplerType type = MOJOSHADER_SAMPLER_2D;
@@ -4602,7 +4588,7 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
             retval[i].name = alloc_varname(ctx, item);
             item = item->next;
         } // for
-    } // else
+    } // if
 
     return retval;
 } // build_samplers
@@ -4621,9 +4607,7 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
     const size_t len = sizeof (MOJOSHADER_attribute) * ctx->attribute_count;
     MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *) Malloc(ctx, len);
 
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
     {
         RegisterList *item = ctx->attributes.next;
         MOJOSHADER_attribute *wptr = retval;
@@ -4673,7 +4657,7 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 
             item = item->next;
         } // for
-    } // else
+    } // if
 
     *_count = count;
     return retval;
