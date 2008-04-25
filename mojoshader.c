@@ -867,6 +867,16 @@ static const char *get_D3D_register_string(Context *ctx,
 } // get_D3D_register_string
 
 
+static inline const char *get_shader_type_string(Context *ctx)
+{
+    if (shader_is_pixel(ctx))
+        return "ps";
+    else if (shader_is_vertex(ctx))
+        return "vs";
+    fail(ctx, "Unknown shader type.");
+    return "";
+} // get_shader_type_string
+
 
 #define AT_LEAST_ONE_PROFILE 0
 
@@ -1082,7 +1092,7 @@ static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
-    const char *shadertype_str = NULL;
+    const char *shadertype_str = get_shader_type_string(ctx);
     char minor_str[16];
 
     if (minor == 0xFF)
@@ -1091,17 +1101,6 @@ static void emit_D3D_start(Context *ctx)
         strcpy(minor_str, "x");
     else
         snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
-
-    if (shader_is_pixel(ctx))
-        shadertype_str = "ps";
-    else if (shader_is_vertex(ctx))
-        shadertype_str = "vs";
-    else
-    {
-        failf(ctx, "Shader type %u unsupported in this profile.",
-              (uint) ctx->shader_type);
-        return;
-    } // else
 
     output_line(ctx, "%s_%u_%s", shadertype_str, major, minor_str);
 } // emit_D3D_start
@@ -1624,11 +1623,13 @@ const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
 static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
 {
     char regnum_str[16];
+    const char *shader_type_str = get_shader_type_string(ctx);
     const char *regtype_str = get_GLSL_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", shader_type_str,
+             regtype_str, regnum_str);
     return retval;
 } // get_GLSL_varname
 
@@ -1725,9 +1726,10 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const char *leftparen = (need_parens) ? "(" : "";
     const char *rightparen = (need_parens) ? ")" : "";
 
+    const char *shader_type_str = get_shader_type_string(ctx);
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s = %s%s%s%s%s%s;",
-             regtype_str, regnum_str, writemask_str,
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s%s = %s%s%s%s%s%s;",
+             shader_type_str, regtype_str, regnum_str, writemask_str,
              clampleft, leftparen, operation, rightparen, result_shift_str,
              clampright);
     // !!! FIXME: make sure the scratch buffer was large enough.
@@ -1825,9 +1827,9 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
 
     char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
-                                                      arg->regnum, regnum_str,
-                                                      sizeof (regnum_str));
+    const char *regtype_str = get_GLSL_register_string(ctx, arg->regtype,
+                                                       arg->regnum, regnum_str,
+                                                       sizeof (regnum_str));
 
     if (regtype_str == NULL)
     {
@@ -1849,8 +1851,9 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     swiz_str[i] = '\0';
     assert(i < sizeof (swiz_str));
 
+    const char *shader_type_str = get_shader_type_string(ctx);
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s%s%s%s", shader_type_str,
              premod_str, regtype_str, regnum_str, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
