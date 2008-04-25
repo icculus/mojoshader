@@ -348,6 +348,7 @@ struct Context
 
 static inline void *Malloc(const Context *ctx, const int len)
 {
+    // !!! FIXME: just call out_of_memory() from here?
     return ctx->malloc(len, ctx->malloc_data);
 } // Malloc
 
@@ -4471,10 +4472,23 @@ static char *build_output(Context *ctx)
 } // build_output
 
 
+static char *alloc_varname(Context *ctx, const RegisterList *reg)
+{
+    const char *varname = get_GLSL_varname(ctx, reg->regtype, reg->regnum);
+    const size_t len = strlen(varname) + 1;
+    char *retval = (char *) Malloc(ctx, len);
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
+        strcpy(retval, varname);
+    return retval;
+} // alloc_varname
+
+
 static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 {
-    MOJOSHADER_uniform *retval = (MOJOSHADER_uniform *)
-                Malloc(ctx, sizeof (MOJOSHADER_uniform) * ctx->uniform_count);
+    const size_t len = sizeof (MOJOSHADER_uniform) * ctx->uniform_count;
+    MOJOSHADER_uniform *retval = (MOJOSHADER_uniform *) Malloc(ctx, len);
 
     if (retval == NULL)
         out_of_memory(ctx);
@@ -4484,6 +4498,8 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
         MOJOSHADER_uniformType type = MOJOSHADER_UNIFORM_FLOAT;
         int index = 0;
         int i;
+
+        memset(retval, '\0', len);
 
         for (i = 0; i < ctx->uniform_count; i++)
         {
@@ -4530,8 +4546,9 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
             retval[i].type = type;
             retval[i].index = index;
+            retval[i].name = alloc_varname(ctx, item);
             item = item->next;
-        } // while
+        } // for
     } // else
 
     return retval;
@@ -4540,8 +4557,8 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
 static MOJOSHADER_sampler *build_samplers(Context *ctx)
 {
-    MOJOSHADER_sampler *retval = (MOJOSHADER_sampler *)
-                Malloc(ctx, sizeof (MOJOSHADER_sampler) * ctx->sampler_count);
+    const size_t len = sizeof (MOJOSHADER_sampler) * ctx->sampler_count;
+    MOJOSHADER_sampler *retval = (MOJOSHADER_sampler *) Malloc(ctx, len);
 
     if (retval == NULL)
         out_of_memory(ctx);
@@ -4550,6 +4567,8 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
         RegisterList *item = ctx->samplers.next;
         MOJOSHADER_samplerType type = MOJOSHADER_SAMPLER_2D;
         int i;
+
+        memset(retval, '\0', len);
 
         for (i = 0; i < ctx->sampler_count; i++)
         {
@@ -4581,8 +4600,9 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
 
             retval[i].type = type;
             retval[i].index = item->regnum;
+            retval[i].name = alloc_varname(ctx, item);
             item = item->next;
-        } // while
+        } // for
     } // else
 
     return retval;
@@ -4591,13 +4611,16 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
 
 static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 {
-    *_count = 0;
+    int count = 0;
 
     if (ctx->attribute_count == 0)
+    {
+        *_count = 0;
         return NULL;  // nothing to do.
+    } // if
 
-    MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *)
-             Malloc(ctx, sizeof (MOJOSHADER_attribute) * ctx->attribute_count);
+    const size_t len = sizeof (MOJOSHADER_attribute) * ctx->attribute_count;
+    MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *) Malloc(ctx, len);
 
     if (retval == NULL)
         out_of_memory(ctx);
@@ -4606,8 +4629,9 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
         RegisterList *item = ctx->attributes.next;
         MOJOSHADER_attribute *wptr = retval;
         int is_output = 0;
-        int count = 0;
         int i;
+
+        memset(retval, '\0', len);
 
         for (i = 0; i < ctx->attribute_count; i++)
         {
@@ -4633,26 +4657,26 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 
             if (!is_output)
             {
-                wptr->usage = item->usage;
-                wptr->index = item->index;
-                wptr++;
-                count++;
+                if (shader_is_pixel(ctx))
+                {
+                    fail(ctx, "BUG: pixel shader with vertex attributes");
+                    break;
+                } // if
+                else
+                {
+                    wptr->usage = item->usage;
+                    wptr->index = item->index;
+                    wptr->name = alloc_varname(ctx, item);
+                    wptr++;
+                    count++;
+                } // else
             } // if
 
             item = item->next;
-        } // while
-
-        if (shader_is_pixel(ctx))
-        {
-            if (count > 0)
-                fail(ctx, "BUG: pixel shader shouldn't have vertex attributes");
-            Free(ctx, retval);
-            return NULL;  // nothing to do for pixel shaders.
-        } // if
-
-        *_count = count;
+        } // for
     } // else
 
+    *_count = count;
     return retval;
 } // build_attributes
 
@@ -4686,10 +4710,22 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     // check again, in case build_output ran out of memory.
     if (isfail(ctx))
     {
+        int i;
+
         Free(ctx, output);
+
+        for (i = 0; i < ctx->uniform_count; i++)
+            Free(ctx, (void *) uniforms[i].name);
         Free(ctx, uniforms);
+
+        for (i = 0; i < attribute_count; i++)
+            Free(ctx, (void *) attributes[i].name);
         Free(ctx, attributes);
+
+        for (i = 0; i < ctx->sampler_count; i++)
+            Free(ctx, (void *) samplers[i].name);
         Free(ctx, samplers);
+
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
@@ -4861,6 +4897,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
     void *d = data->malloc_data;
+    int i;
 
     // we don't f(data->profile), because that's internal static data.
 
@@ -4868,13 +4905,34 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
         f((void *) data->output, d);
 
     if (data->uniforms != NULL)
+    {
+        for (i = 0; i < data->uniform_count; i++)
+        {
+            if (data->uniforms[i].name != NULL)
+                f((void *) data->uniforms[i].name, d);
+        } // for
         f((void *) data->uniforms, d);
+    } // if
 
     if (data->attributes != NULL)
+    {
+        for (i = 0; i < data->attribute_count; i++)
+        {
+            if (data->attributes[i].name != NULL)
+                f((void *) data->attributes[i].name, d);
+        } // for
         f((void *) data->attributes, d);
+    } // if
 
     if (data->samplers != NULL)
+    {
+        for (i = 0; i < data->sampler_count; i++)
+        {
+            if (data->samplers[i].name != NULL)
+                f((void *) data->samplers[i].name, d);
+        } // for
         f((void *) data->samplers, d);
+    } // if
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))
         f((void *) data->error, d);

@@ -66,11 +66,14 @@ typedef enum
  *  index==6 and type==MOJOSHADER_UNIFORM_FLOAT, that means we'd expect a
  *  4-float vector to be specified for what would be register "c6" in D3D
  *  assembly language, before drawing with the shader.
+ * (name) is a profile-specific variable name; it may be NULL if it isn't
+ *  applicable to the requested profile.
  */
 typedef struct
 {
     MOJOSHADER_uniformType type;
     int index;
+    const char *name;
 } MOJOSHADER_uniform;
 
 /*
@@ -90,11 +93,14 @@ typedef enum
  *  type==MOJOSHADER_SAMPLER_2D, that means we'd expect a regular 2D texture
  *  to be specified for what would be register "s6" in D3D assembly language,
  *  before drawing with the shader.
+ * (name) is a profile-specific variable name; it may be NULL if it isn't
+ *  applicable to the requested profile.
  */
 typedef struct
 {
     MOJOSHADER_samplerType type;
     int index;
+    const char *name;
 } MOJOSHADER_sampler;
 
 /*
@@ -127,11 +133,14 @@ typedef enum
  *  element per-vertex. So if usage==MOJOSHADER_USAGE_COLOR and index==1, that
  *  means we'd expect a secondary color array to be bound to this shader
  *  before drawing.
+ * (name) is a profile-specific variable name; it may be NULL if it isn't
+ *  applicable to the requested profile.
  */
 typedef struct
 {
     MOJOSHADER_usage usage;
     int index;
+    const char *name;
 } MOJOSHADER_attribute;
 
 /*
