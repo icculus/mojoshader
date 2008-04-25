@@ -4323,9 +4323,15 @@ static int parse_token(Context *ctx)
 } // parse_token
 
 
+// #define this to force app to supply an allocator, so there's no reference
+//  to the C runtime's malloc() and free()...
+#if MOJOSHADER_FORCE_ALLOCATOR
+#define internal_malloc NULL
+#define internal_free NULL
+#else
 static void *internal_malloc(int bytes, void *d) { return malloc(bytes); }
 static void internal_free(void *ptr, void *d) { free(ptr); }
-
+#endif
 
 static int find_profile_id(const char *profile)
 {
