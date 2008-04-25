@@ -76,7 +76,10 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
                 char numstr[16] = { 0 };
                 if (a->index != 0)
                     snprintf(numstr, sizeof (numstr), "%d", a->index);
-                printf("    * %s%s\n", usagenames[(int) a->usage], numstr);
+                printf("    * %s%s", usagenames[(int) a->usage], numstr);
+                if (a->name != NULL)
+                    printf(" (\"%s\")", a->name);
+                printf("\n");
             } // for
         } // else
 
@@ -91,7 +94,10 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
             {
                 static const char *typenames[] = { "float", "int", "bool" };
                 const MOJOSHADER_uniform *u = &pd->uniforms[i];
-                printf("    * %d: %s\n", u->index, typenames[(int) u->type]);
+                printf("    * %d: %s", u->index, typenames[(int) u->type]);
+                if (u->name != NULL)
+                    printf(" (\"%s\")", u->name);
+                printf("\n");
             } // for
         } // else
 
@@ -106,7 +112,10 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
             {
                 static const char *typenames[] = { "2d", "cube", "volume" };
                 const MOJOSHADER_sampler *s = &pd->samplers[i];
-                printf("    * %d: %s\n", s->index, typenames[(int) s->type]);
+                printf("    * %d: %s", s->index, typenames[(int) s->type]);
+                if (s->name != NULL)
+                    printf(" (\"%s\")", s->name);
+                printf("\n");
             } // for
         } // else
 
