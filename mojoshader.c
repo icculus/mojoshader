@@ -2097,11 +2097,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         if (regtype == REG_TYPE_INPUT)
         {
-            // The GL will bind to attr_position_0 or whatever, but we'll
-            //  refer to it in the shader by the original D3D register name.
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "#define %s attr%s_%d", varname,
-                        usagestrs[(int) usage], index);
             output_line(ctx, "attribute vec4 %s;", varname);
             pop_output(ctx);
         } // if
