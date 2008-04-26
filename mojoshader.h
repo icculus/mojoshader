@@ -368,8 +368,8 @@ int MOJOSHADER_glInit(const char *profile,
                       MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 /*
- * "Shaders" refer to individual vertex or fragment programs, and are created
- *  by "compiling" Direct3D shader bytecode. A vertex and fragment shader are
+ * "Shaders" refer to individual vertex or pixel programs, and are created
+ *  by "compiling" Direct3D shader bytecode. A vertex and pixel shader are
  *  "linked" into a "Program" before you can use them to render.
  *
  * To the calling application, these are opaque handles.
@@ -390,14 +390,14 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize);
 
 /*
- * Link a vertex and fragment shader into an OpenGL program.
- *  (vertex_shader) or (fragment_shader) can be NULL, to specify that the
- *  GL should use the fixed-function pipeline instead of the programmable
- *  pipeline for that portion of the work. You can reuse shaders in various
- *  combinations across multiple programs, by relinking different pairs.
+ * Link a vertex and pixel shader into an OpenGL program.
+ *  (vshader) or (pshader) can be NULL, to specify that the GL should use the
+ *  fixed-function pipeline instead of the programmable pipeline for that
+ *  portion of the work. You can reuse shaders in various combinations across
+ *  multiple programs, by relinking different pairs.
  *
- * It is illegal to give a vertex shader for (fragment_shader) or a fragment
- *  shader for (vertex_shader).
+ * It is illegal to give a vertex shader for (pshader) or a pixel shader
+ *  for (vshader).
  *
  * It is illegal to delete a shader while there is still a linked program
  *  using it. Delete the programs before the shaders.
@@ -406,9 +406,8 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
  *
  * Returns NULL on error, or a program handle on success.
  */
-MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(
-                                    MOJOSHADER_glShader *vertex_shader,
-                                    MOJOSHADER_glShader *fragment_shader);
+MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
+                                               MOJOSHADER_glShader *pshader);
 
 /*
  * This binds the program (using, for example, glUseProgramObjectARB()), and
