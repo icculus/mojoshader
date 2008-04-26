@@ -478,6 +478,29 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount);
 
+/*
+ * The equivalent of MOJOSHADER_glSetVertexShaderUniformF() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ */
+void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
+                                         unsigned int vec4count);
+
+/*
+ * The equivalent of MOJOSHADER_glSetVertexShaderUniformI() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ */
+void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
+                                         unsigned int ivec4count);
+
+/*
+ * The equivalent of MOJOSHADER_glSetVertexShaderUniformB() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ */
+void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
+                                         unsigned int bcount);
 
 /*
  * Connect a client-side array to the currently-bound program.
