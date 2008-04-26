@@ -50,6 +50,21 @@ typedef enum
 } MOJOSHADER_shaderType;
 
 /*
+ * Data types for vertex attribute streams.
+ */
+typedef enum
+{
+    MOJOSHADER_ATTRIBUTE_BYTE,
+    MOJOSHADER_ATTRIBUTE_UBYTE,
+    MOJOSHADER_ATTRIBUTE_SHORT,
+    MOJOSHADER_ATTRIBUTE_USHORT,
+    MOJOSHADER_ATTRIBUTE_INT,
+    MOJOSHADER_ATTRIBUTE_UINT,
+    MOJOSHADER_ATTRIBUTE_FLOAT,
+    MOJOSHADER_ATTRIBUTE_DOUBLE
+} MOJOSHADER_attributeType;
+
+/*
  * Data types for uniforms. See MOJOSHADER_uniform for more information.
  */
 typedef enum
@@ -315,6 +330,223 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
  *  MOJOSHADER_parse() is, too.
  */
 void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
+
+
+/*
+ * Prepare MojoShader to manage OpenGL shaders.
+ *
+ * You do not need to call this if all you want is MOJOSHADER_parse().
+ *
+ * You must call this once AFTER you have successfully built your GL context
+ *  and made it current. This function will lookup the GL functions it needs
+ *  through the callback you supply, after which it may call them at any time
+ *  up until you call MOJOSHADER_glDeinit().
+ *
+ * (profile) is an OpenGL-specific MojoShader profile, which decides how
+ *  Direct3D bytecode shaders get turned into OpenGL programs, and how they
+ *  are fed to the GL.
+ *
+ * (lookup) is a callback that is used to load GL entry points. This callback
+ *  has to look up base GL functions and extension entry points.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
+ *
+ * Returns zero on error, non-zero on success.
+ *
+ * This call is NOT thread safe! It must return success before you may call
+ *  any other MOJOSHADER_gl* function. Also, as most OpenGL implementations
+ *  are not thread safe, you should probably only call this from the same
+ *  thread that created the GL context.
+ */
+int MOJOSHADER_glInit(const char *profile,
+                      void *(*lookup)(const char *fnname),
+                      MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+
+/*
+ * "Shaders" refer to individual vertex or fragment programs, and are created
+ *  by "compiling" Direct3D shader bytecode. A vertex and fragment shader are
+ *  "linked" into a "Program" before you can use them to render.
+ *
+ * To the calling application, these are opaque handles.
+ */
+typedef struct MOJOSHADER_glShader MOJOSHADER_glShader;
+typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
+
+/*
+ * Compile a buffer of Direct3D shader bytecode into an OpenGL shader.
+ *  You still need to link the shader before you may render with it.
+ *
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *
+ * Returns NULL on error, or a shader handle on success.
+ */
+const MOJOSHADER_glShader *MOJOSHADER_glCompileShader(
+                                const unsigned char *tokenbuf,
+                                const unsigned int bufsize);
+
+/*
+ * Link a vertex and fragment shader into an OpenGL program.
+ *  (vertex_shader) or (fragment_shader) can be NULL, to specify that the
+ *  GL should use the fixed-function pipeline instead of the programmable
+ *  pipeline for that portion of the work. You can reuse shaders in various
+ *  combinations across multiple programs, by relinking different pairs.
+ *
+ * It is illegal to give a vertex shader for (fragment_shader) or a fragment
+ *  shader for (vertex_shader).
+ *
+ * It is illegal to delete a shader while there is still a linked program
+ *  using it. Delete the programs before the shaders.
+ *
+ * Once you have successfully linked a program, you may render with it.
+ *
+ * Returns NULL on error, or a program handle on success.
+ */
+const MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(
+                                const MOJOSHADER_glShader *vertex_shader,
+                                const MOJOSHADER_glShader *fragment_shader);
+
+/*
+ * This binds the program (using, for example, glUseProgramObjectARB()), and
+ *  disables all the client-side arrays so we can reset them with new values
+ *  if appropriate.
+ *
+ * Call with NULL to disable the programmable pipeline and all enabled
+ *  client-side arrays.
+ *
+ * After binding a program, you should update any uniforms you care about
+ *  with MOJOSHADER_glSetVertexShaderUniformF() (etc), set any vertex arrays
+ *  you want to use with MOJOSHADER_glSetVertexAttribute(), and finally call
+ *  MOJOSHADER_glProgramReady() to commit everything to the GL. Then you may
+ *  begin drawing through standard GL entry points.
+ */
+void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
+
+
+/*
+ * Set a floating-point uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of 4-float "registers" shared by all vertex shaders.
+ *  This is the "c" register file in Direct3D (c0, c1, c2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * (idx) is the index into the internal array: 0 is the first four floats,
+ *  1 is the next four, etc.
+ * (data) is a pointer to (vec4count*4) floats.
+ */
+void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
+                                          unsigned int vec4count);
+
+/*
+ * Set an integer uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of 4-int "registers" shared by all vertex shaders.
+ *  This is the "i" register file in Direct3D (i0, i1, i2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * (idx) is the index into the internal array: 0 is the first four ints,
+ *  1 is the next four, etc.
+ * (data) is a pointer to (ivec4count*4) ints.
+ */
+void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
+                                          unsigned int ivec4count);
+
+/*
+ * Set a boolean uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of "registers" shared by all vertex shaders.
+ *  This is the "b" register file in Direct3D (b0, b1, b2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * Unlike the float and int counterparts, booleans are single values, not
+ *  four-element vectors...so idx==1 is the second boolean in the internal
+ *  array, not the fifth.
+ *
+ * Non-zero values are considered "true" and zero is considered "false".
+ *
+ * (idx) is the index into the internal array.
+ * (data) is a pointer to (bcount) ints.
+ */
+void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
+                                          unsigned int bcount);
+
+
+/*
+ * Connect a client-side array to the currently-bound program.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The caller should bind VBOs before this call and treat (ptr) as an offset,
+ *  if appropriate.
+ *
+ * MojoShader will figure out where to plug this stream into the
+ *  currently-bound program, and enable the appropriate client-side array.
+ *
+ * (size), (type), (normalized), (stride), and (ptr) correspond to
+ *  glVertexAttribPointer()'s parameters (in most cases, these get passed
+ *  unmolested to that very entry point during this function).
+ */
+void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
+                                     int index, unsigned int size,
+                                     MOJOSHADER_attributeType type,
+                                     int normalized, unsigned int stride,
+                                     const void *ptr);
+
+/*
+ * Inform MojoShader that it should commit any pending state to the GL. This
+ *  must be called after you bind a program and update any inputs, right
+ *  before you start drawing, so any outstanding changes made to the shared
+ *  constants array (etc) can propagate to the shader during this call.
+ */
+void MOJOSHADER_glProgramReady(void);
+
+/*
+ * Free the resources of a linked program. This will delete the GL object
+ *  and free memory.
+ *
+ * You must not call this on a bound program! Either bind a different one
+ *  or call MOJOSHADER_glBindProgram(NULL) first to unbind it.
+ */
+void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program);
+
+/*
+ * Free the resources of a compiled shader. This will delete the GL object
+ *  and free memory.
+ *
+ * You must not call this on a shader that's currently linked in a program.
+ *  Call MOJOSHADER_glDeleteProgram() on any programs, first.
+ */
+void MOJOSHADER_glDeleteShader(const MOJOSHADER_glShader *shader);
+
+/*
+ * Deinitialize MojoShader's OpenGL shader management.
+ *
+ * You must call this once, while your GL context is still current, if you
+ *  previously had a successful call to MOJOSHADER_glInit(). This should
+ *  be the last MOJOSHADER_gl* function you call until you've initialized
+ *  again.
+ *
+ * This will clean up resources previously allocated, and may call into the GL.
+ *
+ * This will not clean up shaders and programs you created! Please call
+ *  MOJOSHADER_glDeleteShader() and MOJOSHADER_glDeleteProgram() to clean
+ *  those up before calling this function!
+ *
+ * This call is NOT thread safe! There must not be any other MOJOSHADER_gl*
+ *  functions running when this is called. Also, as most OpenGL implementations
+ *  are not thread safe, you should probably only call this from the same
+ *  thread that created the GL context.
+ */
+void MOJOSHADER_glDeinit(void);
 
 #ifdef __cplusplus
 }
