@@ -386,9 +386,8 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *
  * Returns NULL on error, or a shader handle on success.
  */
-const MOJOSHADER_glShader *MOJOSHADER_glCompileShader(
-                                const unsigned char *tokenbuf,
-                                const unsigned int bufsize);
+MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
+                                                const unsigned int bufsize);
 
 /*
  * Link a vertex and fragment shader into an OpenGL program.
@@ -407,9 +406,9 @@ const MOJOSHADER_glShader *MOJOSHADER_glCompileShader(
  *
  * Returns NULL on error, or a program handle on success.
  */
-const MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(
-                                const MOJOSHADER_glShader *vertex_shader,
-                                const MOJOSHADER_glShader *fragment_shader);
+MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(
+                                    MOJOSHADER_glShader *vertex_shader,
+                                    MOJOSHADER_glShader *fragment_shader);
 
 /*
  * This binds the program (using, for example, glUseProgramObjectARB()), and
@@ -539,7 +538,7 @@ void MOJOSHADER_glProgramReady(void);
  * If the program is currently bound by MOJOSHADER_glBindProgram(), it will
  *  be deleted as soon as it becomes unbound.
  */
-void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program);
+void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
 
 /*
  * Free the resources of a compiled shader. This will delete the GL object
@@ -548,7 +547,7 @@ void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program);
  * If the shader is currently referenced by a linked program, it will
  *  be deleted as soon as all referencing programs are deleted, too.
  */
-void MOJOSHADER_glDeleteShader(const MOJOSHADER_glShader *shader);
+void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
 
 /*
  * Deinitialize MojoShader's OpenGL shader management.
