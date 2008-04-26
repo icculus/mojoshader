@@ -513,8 +513,8 @@ void MOJOSHADER_glProgramReady(void);
  * Free the resources of a linked program. This will delete the GL object
  *  and free memory.
  *
- * You must not call this on a bound program! Either bind a different one
- *  or call MOJOSHADER_glBindProgram(NULL) first to unbind it.
+ * If the program is currently bound by MOJOSHADER_glBindProgram(), it will
+ *  be deleted as soon as it becomes unbound.
  */
 void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program);
 
@@ -522,8 +522,8 @@ void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program);
  * Free the resources of a compiled shader. This will delete the GL object
  *  and free memory.
  *
- * You must not call this on a shader that's currently linked in a program.
- *  Call MOJOSHADER_glDeleteProgram() on any programs, first.
+ * If the shader is currently referenced by a linked program, it will
+ *  be deleted as soon as all referencing programs are deleted, too.
  */
 void MOJOSHADER_glDeleteShader(const MOJOSHADER_glShader *shader);
 
