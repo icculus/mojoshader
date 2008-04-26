@@ -399,9 +399,6 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
  * It is illegal to give a vertex shader for (pshader) or a pixel shader
  *  for (vshader).
  *
- * It is illegal to delete a shader while there is still a linked program
- *  using it. Delete the programs before the shaders.
- *
  * Once you have successfully linked a program, you may render with it.
  *
  * Returns NULL on error, or a program handle on success.
