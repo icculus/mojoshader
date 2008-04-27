@@ -502,6 +502,7 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     {
         // !!! FIXME: fails if size==1.
         pglVertexPointer(size, opengl_posattr_type(type), stride, ptr);
+        pglEnableClientState(GL_VERTEX_ARRAY);
     } // if
 
     int i;
@@ -524,8 +525,9 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     if (gl_index != 0)
     {
         const GLenum gl_type = opengl_attr_type(type);
-        const GLboolean gl_norm = (normalized) ? GL_TRUE : GL_FALSE;
-        pglVertexAttribPointer(gl_index, size, gl_type, gl_norm, stride, ptr);
+        const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
+        pglVertexAttribPointerARB(gl_index, size, gl_type, norm, stride, ptr);
+        pglEnableVertexAttribArrayARB(gl_index);
     } // if
 } // MOJOSHADER_glSetVertexAttribute
 
