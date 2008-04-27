@@ -332,6 +332,10 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 
+
+
+/* OpenGL interface... */
+
 /*
  * Prepare MojoShader to manage OpenGL shaders.
  *
