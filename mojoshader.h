@@ -368,6 +368,7 @@ int MOJOSHADER_glInit(const char *profile,
                       void *(*lookup)(const char *fnname),
                       MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
+
 /*
  * "Shaders" refer to individual vertex or pixel programs, and are created
  *  by "compiling" Direct3D shader bytecode. A vertex and pixel shader are
@@ -386,6 +387,10 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *   (bufsize) is the size, in bytes, of the bytecode buffer.
  *
  * Returns NULL on error, or a shader handle on success.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize);
@@ -403,6 +408,10 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
  * Once you have successfully linked a program, you may render with it.
  *
  * Returns NULL on error, or a program handle on success.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader);
@@ -420,6 +429,10 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
  *  you want to use with MOJOSHADER_glSetVertexAttribute(), and finally call
  *  MOJOSHADER_glProgramReady() to commit everything to the GL. Then you may
  *  begin drawing through standard GL entry points.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
 
@@ -435,6 +448,10 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
  * (idx) is the index into the internal array: 0 is the first four floats,
  *  1 is the next four, etc.
  * (data) is a pointer to (vec4count*4) floats.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
                                           unsigned int vec4count);
@@ -450,6 +467,10 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  * (idx) is the index into the internal array: 0 is the first four ints,
  *  1 is the next four, etc.
  * (data) is a pointer to (ivec4count*4) ints.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
                                           unsigned int ivec4count);
@@ -470,6 +491,10 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
  *
  * (idx) is the index into the internal array.
  * (data) is a pointer to (bcount) ints.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount);
@@ -478,6 +503,10 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformF() for pixel
  *  shaders. Other than using a different internal array that is specific
  *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
                                          unsigned int vec4count);
@@ -486,6 +515,10 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformI() for pixel
  *  shaders. Other than using a different internal array that is specific
  *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
                                          unsigned int ivec4count);
@@ -494,6 +527,10 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformB() for pixel
  *  shaders. Other than using a different internal array that is specific
  *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
                                          unsigned int bcount);
@@ -513,6 +550,10 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
  * (size), (type), (normalized), (stride), and (ptr) correspond to
  *  glVertexAttribPointer()'s parameters (in most cases, these get passed
  *  unmolested to that very entry point during this function).
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
@@ -525,6 +566,10 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
  *  must be called after you bind a program and update any inputs, right
  *  before you start drawing, so any outstanding changes made to the shared
  *  constants array (etc) can propagate to the shader during this call.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glProgramReady(void);
 
@@ -534,6 +579,10 @@ void MOJOSHADER_glProgramReady(void);
  *
  * If the program is currently bound by MOJOSHADER_glBindProgram(), it will
  *  be deleted as soon as it becomes unbound.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
 
@@ -543,6 +592,10 @@ void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
  *
  * If the shader is currently referenced by a linked program, it will
  *  be deleted as soon as all referencing programs are deleted, too.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
  */
 void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
 
