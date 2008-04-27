@@ -280,49 +280,85 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 } // MOJOSHADER_glBindProgram
 
 
-void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
-                                          unsigned int vec4count)
+static inline uint maxuint(const uint a, const uint b)
 {
+    return ((a > b) ? a : b);
+} // maxuint
+
+
+void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
+                                          unsigned int vec4n)
+{
+    const uint maxregs = STATICARRAYLEN(vs_register_file_f) / 4;
+    if (idx < maxregs)
+    {
+        const uint cpy = maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(vs_register_file_f + (idx * 4), data, cpy);
+    } // if
 } // MOJOSHADER_glSetVertexShaderUniformF
 
 
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
-                                          unsigned int ivec4count)
+                                          unsigned int ivec4n)
 {
+    const uint maxregs = STATICARRAYLEN(vs_register_file_i) / 4;
+    if (idx < maxregs)
+    {
+        const uint cpy = maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        memcpy(vs_register_file_i + (idx * 4), data, cpy);
+    } // if
 } // MOJOSHADER_glSetVertexShaderUniformI
 
 
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount)
 {
-    // !!! FIXME: check for overflow!
-    uint8 *wptr = vs_register_file_b + idx;
-    uint8 *endptr = wptr + bcount;
-    while (wptr != endptr)
-        *(wptr++) = *(data++) ? 1 : 0;
+    const uint maxregs = STATICARRAYLEN(vs_register_file_f) / 4;
+    if (idx < maxregs)
+    {
+        uint8 *wptr = vs_register_file_b + idx;
+        uint8 *endptr = wptr + maxuint(maxregs - idx, bcount);
+        while (wptr != endptr)
+            *(wptr++) = *(data++) ? 1 : 0;
+    } // if
 } // MOJOSHADER_glSetVertexShaderUniformB
 
 
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
-                                          unsigned int vec4count)
+                                          unsigned int vec4n)
 {
+    const uint maxregs = STATICARRAYLEN(ps_register_file_f) / 4;
+    if (idx < maxregs)
+    {
+        const uint cpy = maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(ps_register_file_f + (idx * 4), data, cpy);
+    } // if
 } // MOJOSHADER_glSetPixelShaderUniformF
 
 
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
-                                          unsigned int ivec4count)
+                                         unsigned int ivec4n)
 {
+    const uint maxregs = STATICARRAYLEN(ps_register_file_i) / 4;
+    if (idx < maxregs)
+    {
+        const uint cpy = maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        memcpy(ps_register_file_i + (idx * 4), data, cpy);
+    } // if
 } // MOJOSHADER_glSetPixelShaderUniformI
 
 
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount)
 {
-    // !!! FIXME: check for overflow!
-    uint8 *wptr = ps_register_file_b + idx;
-    uint8 *endptr = wptr + bcount;
-    while (wptr != endptr)
-        *(wptr++) = *(data++) ? 1 : 0;
+    const uint maxregs = STATICARRAYLEN(ps_register_file_f) / 4;
+    if (idx < maxregs)
+    {
+        uint8 *wptr = ps_register_file_b + idx;
+        uint8 *endptr = wptr + maxuint(maxregs - idx, bcount);
+        while (wptr != endptr)
+            *(wptr++) = *(data++) ? 1 : 0;
+    } // if
 } // MOJOSHADER_glSetPixelShaderUniformB
 
 
