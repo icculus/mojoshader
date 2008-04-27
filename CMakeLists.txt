@@ -12,17 +12,10 @@ FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
     ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
-    IF(APPLE)
-        FIND_LIBRARY(OPENGL_LIBRARY OpenGL)
-        MARK_AS_ADVANCED(OPENGL_LIBRARY)
-        SET(EXTRA_LIBS ${OPENGL_LIBRARY})
-    ELSE(APPLE)
-        SET(EXTRA_LIBS GL)
-    ENDIF(APPLE)
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
-ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c)
+ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c mojoshader_opengl.c)
 TARGET_LINK_LIBRARIES(finderrors ${SDL_LIBRARY} ${EXTRA_LIBS})
 
 # End of CMakeLists.txt ...
