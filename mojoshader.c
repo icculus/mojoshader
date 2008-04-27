@@ -1965,6 +1965,7 @@ static void emit_GLSL_finalize(Context *ctx)
     reg = declared_attribute(ctx, MOJOSHADER_USAGE_POSITION, 0);
     if (reg != NULL)
     {
+        // !!! FIXME: only emit if shader didn't definitely set gl_Position.
         output_line(ctx, "gl_Position = %s;",
                             get_GLSL_varname(ctx, reg->regtype, reg->regnum));
     } // if
