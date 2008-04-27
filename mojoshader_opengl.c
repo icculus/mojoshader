@@ -251,15 +251,23 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     // !!! FIXME: alloc retval.
 
-    retval->vertex = vshader;
-    retval->fragment = pshader;
-    retval->handle = program;
-    retval->refcount = 1;
+    retval = (MOJOSHADER_glProgram *) Malloc(sizeof (MOJOSHADER_glProgram));
+    if (retval == NULL)
+        pglDeleteObjectARB(program);
+    else
+    {
+        retval->vertex = vshader;
+        retval->fragment = pshader;
+        retval->handle = program;
+        retval->refcount = 1;
+    } // else
 
     if (vshader != NULL)
         vshader->refcount++;
     if (pshader != NULL)
         pshader->refcount++;
+
+    return retval;
 } // MOJOSHADER_glLinkProgram
 
 
