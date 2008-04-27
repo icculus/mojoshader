@@ -174,26 +174,21 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize)
 {
     MOJOSHADER_glShader *retval = NULL;
+    GLhandleARB shader = 0;
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, tokenbuf,
                                                       bufsize, malloc_fn,
                                                       free_fn, malloc_data);
     if (pd->error != NULL)
-    {
-        MOJOSHADER_freeParseData(pd);
-        return NULL;
-    } // if
+        goto compile_shader_fail;
 
     retval = (MOJOSHADER_glShader *) Malloc(sizeof (MOJOSHADER_glShader));
     if (retval == NULL)
-    {
-        MOJOSHADER_freeParseData(pd);
-        return NULL;
-    } // if
-    
+        goto compile_shader_fail;
+
     GLint ok = 0;
     const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER_ARB : GL_VERTEX_SHADER_ARB;
     GLint shaderlen = (GLint) pd->output_len;
-    const GLhandleARB shader = pglCreateShaderObjectARB(shader_type);
+    shader = pglCreateShaderObjectARB(shader_type);
 
     pglShaderSourceARB(shader, 1, (const GLcharARB **) &pd->output, &shaderlen);
     pglCompileShaderARB(shader);
@@ -203,18 +198,22 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
     {
         GLcharARB err[1024];
         GLsizei len = 0;
-        //glGetInfoLogARB(shader, sizeof (err), &len, err);
+        pglGetInfoLogARB(shader, sizeof (err), &len, err);
         //printf("FAIL: %s glsl compile: %s\n", fname, err);
-        pglDeleteObjectARB(shader);
-        MOJOSHADER_freeParseData(pd);
-        Free(retval);
-        return NULL;
+        goto compile_shader_fail;
     } // if
 
     retval->parseData = pd;
     retval->handle = shader;
     retval->refcount = 1;
     return retval;
+
+compile_shader_fail:
+    MOJOSHADER_freeParseData(pd);
+    Free(retval);
+    if (shader != 0)
+        pglDeleteObjectARB(shader);
+    return NULL;
 } // MOJOSHADER_glCompileShader
 
 
