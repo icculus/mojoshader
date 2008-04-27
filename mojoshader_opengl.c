@@ -86,12 +86,16 @@ static void internal_free(void *ptr, void *d) { free(ptr); }
 
 static inline void *Malloc(const size_t len)
 {
-    return malloc_fn(len, malloc_data);
+    void *retval = malloc_fn(len, malloc_data);
+    if (retval == NULL)
+        set_error("out of memory");
+    return retval;
 } // Malloc
 
 static inline void Free(void *ptr)
 {
-    return free_fn(ptr, malloc_data);
+    if (ptr != NULL)
+        free_fn(ptr, malloc_data);
 } // Free
 
 
