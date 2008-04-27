@@ -115,7 +115,12 @@ int main(int argc, char **argv)
         SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        MOJOSHADER_glInit(profile, SDL_GL_GetProcAddress, 0, 0, 0);
+        if (!MOJOSHADER_glInit(profile, SDL_GL_GetProcAddress, 0, 0, 0))
+        {
+            printf("MOJOSHADER_glInit() fail: %s\n", MOJOSHADER_glGetError());
+            SDL_Quit();
+            return 1;
+        } // if
         #endif
 
         for (i = 2; i < argc; i++)
