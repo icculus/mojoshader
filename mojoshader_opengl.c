@@ -84,11 +84,19 @@ struct MOJOSHADER_glShader
     uint32 refcount;
 };
 
+typedef struct
+{
+    MOJOSHADER_uniform *uniform;
+    GLint location;
+} UniformMap;
+
 struct MOJOSHADER_glProgram
 {
     const MOJOSHADER_glShader *vertex;
     const MOJOSHADER_glShader *fragment;
     GLuint handle;
+    uint32 uniform_count;
+    UniformMap uniforms;
     uint32 refcount;
 };
 
@@ -238,36 +246,85 @@ static void program_unref(MOJOSHADER_glProgram *program)
             pglDeleteObjectARB(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
+            Free(program->uniforms);
             Free(program);
         } // else
     } // if
 } // program_unref
 
 
+static void lookup_uniforms(MOJOSHADER_glProgram *program,
+                            MOJOSHADER_glShader *shader)
+{
+    int i;
+    const MOJOSHADER_parseData *pd = shader->parseData;
+    const MOJOSHADER_uniforms *u = pd->uniforms;
+
+    for (i = 0; i < pd->uniform_count; i++)
+    {
+        const GLint loc = pglGetUniformLocationARB(program->handle, u[i].name);
+        if (loc != -1)  // maybe the Uniform was optimized out?
+        {
+            UniformMap *map = &program->uniforms[program->uniform_count];
+            map->uniform = &u[i];
+            map->location = loc;
+            program->uniform_count++;
+        } // if
+    } // for
+} // lookup_uniforms
+
+
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader)
 {
-    // !!! FIXME: actually link.
+    MOJOSHADER_glProgram *retval = NULL;
+    GLuint program = 0;
+    int numregs = 0;
 
-    // !!! FIXME: alloc retval.
+    if (vshader != NULL) numregs += vshader->parseData->uniform_count;
+    if (pshader != NULL) numregs += pshader->parseData->uniform_count;
+
+    // !!! FIXME: actually link.
 
     retval = (MOJOSHADER_glProgram *) Malloc(sizeof (MOJOSHADER_glProgram));
     if (retval == NULL)
-        pglDeleteObjectARB(program);
-    else
-    {
-        retval->vertex = vshader;
-        retval->fragment = pshader;
-        retval->handle = program;
-        retval->refcount = 1;
-    } // else
+        goto link_program_fail;
+
+    memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
+    retval->uniforms = (UniformMap *) Malloc(sizeof (UniformMap) * numregs);
+    if (retval->uniforms == NULL)
+        goto link_program_fail;
+
+    retval->handle = program;
+    retval->vertex = vshader;
+    retval->fragment = pshader;
+    retval->refcount = 1;
 
     if (vshader != NULL)
+    {
+        lookup_uniforms(retval, vshader);
         vshader->refcount++;
+    } // if
+
     if (pshader != NULL)
+    {
+        lookup_uniforms(retval, pshader);
         pshader->refcount++;
+    } // if
 
     return retval;
+
+link_program_fail:
+    if (retval != NULL)
+    {
+        if (retval->uniforms != NULL)
+            Free(retval->uniforms);
+        Free(retval);
+    } // if
+
+    if (program != 0)
+        pglDeleteObjectARB(program);
+    return NULL;
 } // MOJOSHADER_glLinkProgram
 
 
