@@ -489,7 +489,7 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int normalized, unsigned int stride,
                                      const void *ptr)
 {
-    if (bound_program == NULL)
+    if ((bound_program == NULL) || (bound_program->vertex == NULL))
         return;
 
     // Since glVertexPointer() lacks the flexibility that we can get from
