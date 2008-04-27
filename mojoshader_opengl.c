@@ -86,6 +86,7 @@ struct MOJOSHADER_glShader
 
 typedef struct
 {
+    MOJOSHADER_shaderType shader_type;
     MOJOSHADER_uniform *uniform;
     GLint location;
 } UniformMap;
@@ -259,6 +260,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
     int i;
     const MOJOSHADER_parseData *pd = shader->parseData;
     const MOJOSHADER_uniforms *u = pd->uniforms;
+    const MOJOSHADER_shaderType shader_type = pd->shader_type;
 
     for (i = 0; i < pd->uniform_count; i++)
     {
@@ -266,6 +268,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
         if (loc != -1)  // maybe the Uniform was optimized out?
         {
             UniformMap *map = &program->uniforms[program->uniform_count];
+            map->shader_type = shader_type;
             map->uniform = &u[i];
             map->location = loc;
             program->uniform_count++;
@@ -438,6 +441,43 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 
 void MOJOSHADER_glProgramReady(void)
 {
+    int i;
+
+    if (bound_program == NULL)
+        return;  // nothing to do.
+
+    // !!! FIXME: don't push Uniforms if we know they haven't changed.
+
+    // push Uniforms to the program from our register files...
+    for (i = 0; i < bound_program->uniform_count; i++)
+    {
+        const UniformMap *map = &bound_program->uniforms[i];
+        const MOJOSHADER_uniform *u = map->uniform;
+        const MOJOSHADER_uniformType type = u->type;
+        const MOJOSHADER_shaderType shader_type = map->shader_type;
+        const int index = u->index;
+        const GLint location = map->location;
+
+        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        {
+            if (type == MOJOSHADER_UNIFORM_FLOAT)
+                pglUniform4fvARB(location, 1, &vs_register_file_f[index * 4]);
+            else if (type == MOJOSHADER_UNIFORM_INT)
+                pglUniform4ivARB(location, 1, &vs_register_file_i[index * 4]);
+            else if (type == MOJOSHADER_UNIFORM_BOOL)
+                pglUniform1iARB(location, vs_register_file_b[index]);
+        } // if
+
+        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+        {
+            if (type == MOJOSHADER_UNIFORM_FLOAT)
+                pglUniform4fvARB(location, 1, &ps_register_file_f[index * 4]);
+            else if (type == MOJOSHADER_UNIFORM_INT)
+                pglUniform4ivARB(location, 1, &ps_register_file_i[index * 4]);
+            else if (type == MOJOSHADER_UNIFORM_BOOL)
+                pglUniform1iARB(location, ps_register_file_b[index]);
+        } // else if
+    } // for
 } // MOJOSHADER_glProgramReady
 
 
