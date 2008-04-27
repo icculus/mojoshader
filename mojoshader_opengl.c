@@ -347,13 +347,26 @@ link_program_fail:
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
     GLhandleARB handle = 0;
+
+    if (program == bound_program)
+        return;  // nothing to do.
+
+    // Disable any client-side arrays the current program could have used.
+    if (bound_program != NULL)
+    {
+        pglDisableClientState(GL_VERTEX_ARRAY);
+        for (i = 0; i < bound_program->attribute_count; i++)
+        {
+            const AttributeMap *map = &bound_program->attributes[i];
+            pglDisableVertexAttribArrayARB(map->location);
+        } // if
+    } // for
+
     if (program != NULL)
     {
         handle = program->handle;
         program->refcount++;
     } // if
-
-    // !!! FIXME: unbind client-side arrays.
 
     pglUseProgramObjectARB(handle);
     program_unref(bound_program);
