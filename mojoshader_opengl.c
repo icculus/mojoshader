@@ -93,6 +93,12 @@ typedef struct
     GLint location;
 } UniformMap;
 
+typedef struct
+{
+    MOJOSHADER_attribute *attribute;
+    GLint location;
+} AttributeMap;
+
 struct MOJOSHADER_glProgram
 {
     const MOJOSHADER_glShader *vertex;
@@ -100,6 +106,8 @@ struct MOJOSHADER_glProgram
     GLhandleARB handle;
     uint32 uniform_count;
     UniformMap uniforms;
+    uint32 attribute_count;
+    AttributeMap attributes;
     uint32 refcount;
 };
 
@@ -248,6 +256,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
             pglDeleteObjectARB(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
+            Free(program->attributes);
             Free(program->uniforms);
             Free(program);
         } // else
@@ -276,6 +285,26 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
         } // if
     } // for
 } // lookup_uniforms
+
+
+static void lookup_attributes(MOJOSHADER_glProgram *program)
+{
+    int i;
+    const MOJOSHADER_parseData *pd = program->vertex->parseData;
+    const MOJOSHADER_attributes *a = pd->attributes;
+
+    for (i = 0; i < pd->attribute_count; i++)
+    {
+        const GLint loc = pglGetAttribLocationARB(program->handle, a->name);
+        if (loc != -1)  // maybe the Attribute was optimized out?
+        {
+            AttributeMap *map = &program->attributes[program->attribute_count];
+            map->attribute = &a[i];
+            map->location = loc;
+            program->attribute_count++;
+        } // if
+    } // for
+} // lookup_attributes
 
 
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
@@ -323,6 +352,12 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (vshader != NULL)
     {
+        retval->attributes = (AttributeMap *) Malloc(sizeof (AttributeMap) *
+                                        vshader->parseData->attribute_count);
+        if (retval->attributes == NULL)
+            goto link_program_fail;
+
+        lookup_attributes(retval);
         lookup_uniforms(retval, vshader);
         vshader->refcount++;
     } // if
@@ -338,8 +373,8 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 link_program_fail:
     if (retval != NULL)
     {
-        if (retval->uniforms != NULL)
-            Free(retval->uniforms);
+        Free(retval->uniforms);
+        Free(retval->attributes);
         Free(retval);
     } // if
 
