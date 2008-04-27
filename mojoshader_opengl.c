@@ -82,7 +82,7 @@ typedef int32_t int32;
 struct MOJOSHADER_glShader
 {
     const MOJOSHADER_parseData *parseData;
-    GLuint handle;
+    GLhandleARB handle;
     uint32 refcount;
 };
 
@@ -97,7 +97,7 @@ struct MOJOSHADER_glProgram
 {
     const MOJOSHADER_glShader *vertex;
     const MOJOSHADER_glShader *fragment;
-    GLuint handle;
+    GLhandleARB handle;
     uint32 uniform_count;
     UniformMap uniforms;
     uint32 refcount;
@@ -350,7 +350,7 @@ link_program_fail:
 
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
-    GLuint handle = 0;
+    GLhandleARB handle = 0;
     if (program != NULL)
     {
         handle = program->handle;
