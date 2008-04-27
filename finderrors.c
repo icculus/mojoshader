@@ -39,7 +39,6 @@ static int do_dir(const char *dname, const char *profile)
                 if (e.type == SDL_QUIT)
                     do_quit = 1;
             } // while
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             SDL_GL_SwapBuffers();
             #endif
 
@@ -114,7 +113,6 @@ int main(int argc, char **argv)
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         if (!MOJOSHADER_glInit(profile, SDL_GL_GetProcAddress, 0, 0, 0))
         {
             printf("MOJOSHADER_glInit() fail: %s\n", MOJOSHADER_glGetError());
