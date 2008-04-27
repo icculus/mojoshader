@@ -281,23 +281,40 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader)
 {
+    if ((vshader == NULL) && (pshader == NULL))
+        return NULL;
+
     MOJOSHADER_glProgram *retval = NULL;
-    GLuint program = 0;
-    int numregs = 0;
+    const GLhandleARB program = pglCreateProgramObjectARB();
 
-    if (vshader != NULL) numregs += vshader->parseData->uniform_count;
-    if (pshader != NULL) numregs += pshader->parseData->uniform_count;
+    if (vshader != NULL) pglAttachObjectARB(program, vshader->handle);
+    if (pshader != NULL) pglAttachObjectARB(program, pshader->handle);
 
-    // !!! FIXME: actually link.
+    pglLinkProgramARB(program);
+
+    GLint ok = 0;
+    pglGetObjectParameterivARB(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
+    if (!ok)
+    {
+        GLcharARB err[1024];
+        GLsizei len = 0;
+        pglGetInfoLogARB(program, sizeof (err), &len, err);
+        //printf("FAIL: %s glsl link: %s\n", fname, err);
+        goto link_program_fail;
+    } // if
 
     retval = (MOJOSHADER_glProgram *) Malloc(sizeof (MOJOSHADER_glProgram));
     if (retval == NULL)
         goto link_program_fail;
-
     memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
+
+    int numregs = 0;
+    if (vshader != NULL) numregs += vshader->parseData->uniform_count;
+    if (pshader != NULL) numregs += pshader->parseData->uniform_count;
     retval->uniforms = (UniformMap *) Malloc(sizeof (UniformMap) * numregs);
     if (retval->uniforms == NULL)
         goto link_program_fail;
+    memset(retval->uniforms, '\0', sizeof (UniformMap) * numregs);
 
     retval->handle = program;
     retval->vertex = vshader;
@@ -326,8 +343,7 @@ link_program_fail:
         Free(retval);
     } // if
 
-    if (program != 0)
-        pglDeleteObjectARB(program);
+    pglDeleteObjectARB(program);
     return NULL;
 } // MOJOSHADER_glLinkProgram
 
