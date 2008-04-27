@@ -65,6 +65,14 @@ static uint8 ps_register_file_b[2047];
 // GL stuff...
 static MOJOSHADER_glProgram *bound_program = NULL;
 
+// Error state...
+static char error_buffer[1024] = { '\0' };
+
+static void set_error(const char *str)
+{
+    snprintf(error_buffer, sizeof (error_buffer), "%s", str);
+} // set_error
+
 
 // #define this to force app to supply an allocator, so there's no reference
 //  to the C runtime's malloc() and free()...
@@ -87,14 +95,25 @@ static inline void Free(void *ptr)
 } // Free
 
 
+const char *MOJOSHADER_glGetError(void)
+{
+    return error_buffer;
+} // MOJOSHADER_glGetError
+
+
 int MOJOSHADER_glInit(const char *_profile,
                       void *(*lookup)(const char *fnname),
                       MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    error_buffer[0] = '\0';
+
     if (strcmp(_profile, MOJOSHADER_PROFILE_GLSL) != 0)
         profile = MOJOSHADER_PROFILE_GLSL;
     else
+    {
+        set_error("unknown profile");
         return 0;
+    } // else
 
     // !!! FIXME: lookup glGetString(), check extensions.
 
@@ -126,7 +145,10 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                       bufsize, malloc_fn,
                                                       free_fn, malloc_data);
     if (pd->error != NULL)
+    {
+        set_error(pd->error);
         goto compile_shader_fail;
+    } // if
 
     retval = (MOJOSHADER_glShader *) Malloc(sizeof (MOJOSHADER_glShader));
     if (retval == NULL)
@@ -143,10 +165,9 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
 
     if (!ok)
     {
-        GLcharARB err[1024];
         GLsizei len = 0;
-        pglGetInfoLogARB(shader, sizeof (err), &len, err);
-        //printf("FAIL: %s glsl compile: %s\n", fname, err);
+        pglGetInfoLogARB(shader, sizeof (error_buffer), &len,
+                         (GLcharARB *) error_buffer);
         goto compile_shader_fail;
     } // if
 
@@ -262,10 +283,9 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     pglGetObjectParameterivARB(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
     if (!ok)
     {
-        GLcharARB err[1024];
         GLsizei len = 0;
-        pglGetInfoLogARB(program, sizeof (err), &len, err);
-        //printf("FAIL: %s glsl link: %s\n", fname, err);
+        pglGetInfoLogARB(shader, sizeof (error_buffer), &len,
+                         (GLcharARB *) error_buffer);
         goto link_program_fail;
     } // if
 
@@ -568,6 +588,7 @@ void MOJOSHADER_glDeinit(void)
     malloc_fn = NULL;
     free_fn = NULL;
     malloc_data = NULL;
+    error_buffer[0] = '\0';
 
     // !!! FIXME: NULL entry points.
 } // MOJOSHADER_glDeinit

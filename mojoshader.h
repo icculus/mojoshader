@@ -372,6 +372,30 @@ int MOJOSHADER_glInit(const char *profile,
                       void *(*lookup)(const char *fnname),
                       MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
+/*
+ * Get any error state we might have picked up. MojoShader will NOT call
+ *  glGetError() internally, but there are other errors we can pick up,
+ *  such as failed shader compilation, etc.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ *
+ * This is safe to call even if MOJOSHADER_glInit() failed.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ */
+const char *MOJOSHADER_glGetError(void);
 
 /*
  * "Shaders" refer to individual vertex or pixel programs, and are created
