@@ -1,66 +1,3 @@
-
-/* !!! FIXME: merge this in?
-static GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
-{
-    switch (type)
-    {
-        case MOJOSHADER_ATTRIBUTE_BYTE: return GL_BYTE;
-        case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_UNSIGNED_BYTE;
-        case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
-        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_USHORT;
-        case MOJOSHADER_ATTRIBUTE_INT: return GL_INT;
-        case MOJOSHADER_ATTRIBUTE_UINT: return GL_UNSIGNED_INT;
-        case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
-        case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
-    } // switch
-
-    return GL_NONE;  // oh well. Raises a GL error later.
-} // opengl_attr_type
-
-
-static GLenum opengl_attr_index(const MOJOSHADER_usage usage, const int index)
-{
-    switch (usage)
-    {
-        case MOJOSHADER_USAGE_POSITION,
-        case MOJOSHADER_USAGE_BLENDWEIGHT,
-        case MOJOSHADER_USAGE_BLENDINDICES,
-        case MOJOSHADER_USAGE_NORMAL,
-        case MOJOSHADER_USAGE_POINTSIZE,
-        case MOJOSHADER_USAGE_TEXCOORD,
-        case MOJOSHADER_USAGE_TANGENT,
-        case MOJOSHADER_USAGE_BINORMAL,
-        case MOJOSHADER_USAGE_TESSFACTOR,
-        case MOJOSHADER_USAGE_POSITIONT,
-        case MOJOSHADER_USAGE_COLOR,
-        case MOJOSHADER_USAGE_FOG,
-        case MOJOSHADER_USAGE_DEPTH,
-        case MOJOSHADER_USAGE_SAMPLE,
-        case MOJOSHADER_USAGE_TOTAL: return GL_NONE;  // stop compiler whining.
-    } // switch
-
-    return GL_NONE;  // will fail later.
-} // opengl_attr_index
-
-
-void MOJOSHADER_glSetVertexDeclaration(MOJOSHADER_usage usage, int index,
-                                       unsigned int size,
-                                       MOJOSHADER_attributeType type,
-                                       int normalized, unsigned int stride,
-                                       const void *ptr)
-{
-    const GLuint gl_index = opengl_attr_index(usage, index);
-    const GLenum gl_type = opengl_attr_type(type);
-    const GLboolean gl_normalized = (normalized) ? GL_TRUE : GL_FALSE;
-    pglVertexAttribPointer(gl_index, size, gl_type, gl_normalized,
-                           stride, ptr);
-} // MOJOSHADER_glSetVertexDeclaration
-*/
-
-
-
-
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -482,12 +419,90 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
 } // MOJOSHADER_glSetPixelShaderUniformB
 
 
+static inline GLenum opengl_posattr_type(const MOJOSHADER_attributeType type)
+{
+    // we don't ever use the glVertexPointer() stream, so we just need to
+    //  make the data types reasonably match, so the GL doesn't overrun
+    //  the buffer when dereferencing it.
+
+    switch (type)
+    {
+        case MOJOSHADER_ATTRIBUTE_BYTE: return GL_NONE;  // oh well.
+        case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_NONE;  // oh well.
+        case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
+        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_SHORT;
+        case MOJOSHADER_ATTRIBUTE_INT: return GL_INT;
+        case MOJOSHADER_ATTRIBUTE_UINT: return GL_INT;
+        case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
+        case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
+    } // switch
+
+    return GL_NONE;  // oh well. Raises a GL error later.
+} // opengl_posattr_type
+
+
+static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
+{
+    switch (type)
+    {
+        case MOJOSHADER_ATTRIBUTE_BYTE: return GL_BYTE;
+        case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_UNSIGNED_BYTE;
+        case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
+        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_USHORT;
+        case MOJOSHADER_ATTRIBUTE_INT: return GL_INT;
+        case MOJOSHADER_ATTRIBUTE_UINT: return GL_UNSIGNED_INT;
+        case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
+        case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
+    } // switch
+
+    return GL_NONE;  // oh well. Raises a GL error later.
+} // opengl_attr_type
+
+
 void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
                                      MOJOSHADER_attributeType type,
                                      int normalized, unsigned int stride,
                                      const void *ptr)
 {
+    if (bound_program == NULL)
+        return;
+
+    // Since glVertexPointer() lacks the flexibility that we can get from
+    //  glVertexAttribPointer(), we set POSITION0 to a generic vertex
+    //  attribute, and the shaders we generate know to look there instead of
+    //  GLSL's gl_Position global variable. But to keep the GL handy, we
+    //  also set the best possible equivalent with glVertexPointer(). Messy.
+
+    if ((usage == MOJOSHADER_USAGE_POSITION) && (index == 0))
+    {
+        // !!! FIXME: fails if size==1.
+        pglVertexPointer(size, opengl_posattr_type(type), stride, ptr);
+    } // if
+
+    int i;
+    GLuint gl_index = 0;
+    for (i = 0; i < bound_program->attribute_count; i++)
+    {
+        const AttributeMap *map = &bound_program->attributes[i];
+        const MOJOSHADER_attribute *a = map->attribute;
+
+        // !!! FIXME: is this array guaranteed to be sorted by usage?
+        // !!! FIXME:  if so, we can break out of the loop if a->usage > usage.
+
+        if ((a->usage == usage) && (a->index == index))
+        {
+            gl_index = map->location;
+            break;
+        } // if
+    } // for
+
+    if (gl_index != 0)
+    {
+        const GLenum gl_type = opengl_attr_type(type);
+        const GLboolean gl_norm = (normalized) ? GL_TRUE : GL_FALSE;
+        pglVertexAttribPointer(gl_index, size, gl_type, gl_norm, stride, ptr);
+    } // if
 } // MOJOSHADER_glSetVertexAttribute
 
 
