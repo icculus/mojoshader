@@ -21,52 +21,6 @@
 
 #define report printf
 
-static int compile_shader(const char *fname, const MOJOSHADER_parseData *pd)
-{
-    int retval = 1;
-
-    #if FINDERRORS_COMPILE_SHADERS
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER_ARB : GL_VERTEX_SHADER_ARB;
-    GLint shaderlen = (GLint) pd->output_len;
-    GLhandleARB program = glCreateProgramObjectARB();
-    GLhandleARB shader = glCreateShaderObjectARB(shader_type);
-    GLint ok = 0;
-    GLcharARB err[1024];
-    GLsizei len = 0;
-
-    retval = 0;
-
-    glShaderSourceARB(shader, 1, (const GLcharARB **) &pd->output, &shaderlen);
-    glCompileShaderARB(shader);
-    glGetObjectParameterivARB(shader, GL_OBJECT_COMPILE_STATUS_ARB, &ok);
-    if (!ok)
-    {
-        glGetInfoLogARB(shader, sizeof (err), &len, err);
-        printf("FAIL: %s glsl compile: %s\n", fname, err);
-    } // if
-    else
-    {
-        glAttachObjectARB(program, shader);
-        glLinkProgramARB(program);
-        glGetObjectParameterivARB(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
-        if (!ok)
-        {
-            glGetInfoLogARB(program, sizeof (err), &len, err);
-            printf("FAIL: %s glsl link: %s\n", fname, err);
-        } // if
-        else
-        {
-            retval = 1;
-        } // else
-    } // else
-    glDeleteObjectARB(shader);
-    glDeleteObjectARB(program);
-    #endif
-
-    return retval;
-} // compile_shader
-
-
 static int do_dir(const char *dname, const char *profile)
 {
     const int dirlen = strlen(dname) + 1;
@@ -118,15 +72,21 @@ static int do_dir(const char *dname, const char *profile)
                 continue;
             } // if
 
+            #if FINDERRORS_COMPILE_SHADERS
+            MOJOSHADER_glShader *shader = MOJOSHADER_glCompileShader(buf, rc);
+            if (shader == NULL)
+                report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
+            else
+                report("PASS: %s\n", fname);
+            MOJOSHADER_glDeleteShader(shader);
+            #else
             const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, 0, 0, 0);
             if (pd->error != NULL)
                 report("FAIL: %s %s\n", fname, pd->error);
             else
-            {
-                if (compile_shader(fname, pd))
-                    report("PASS: %s\n", fname);
-            } // else
+                report("PASS: %s\n", fname);
             MOJOSHADER_freeParseData(pd);
+            #endif
         } // while
         closedir(dirp);
     } // if
@@ -148,14 +108,15 @@ int main(int argc, char **argv)
     {
         int total = 0;
         int i;
+        const char *profile = argv[1];
 
         #if FINDERRORS_COMPILE_SHADERS
         SDL_Init(SDL_INIT_VIDEO);
+        SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        MOJOSHADER_glInit(profile, SDL_GL_GetProcAddress, 0, 0, 0);
         #endif
-
-        const char *profile = argv[1];
 
         for (i = 2; i < argc; i++)
             total += do_dir(argv[i], profile);
@@ -163,6 +124,7 @@ int main(int argc, char **argv)
         printf("Saw %d bytecode files.\n", total);
 
         #if FINDERRORS_COMPILE_SHADERS
+        MOJOSHADER_glDeinit();
         SDL_Quit();
         #endif
     } // else
