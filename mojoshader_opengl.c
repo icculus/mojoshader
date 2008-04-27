@@ -90,13 +90,13 @@ typedef struct
 {
     MOJOSHADER_shaderType shader_type;
     MOJOSHADER_uniform *uniform;
-    GLint location;
+    GLuint location;
 } UniformMap;
 
 typedef struct
 {
     MOJOSHADER_attribute *attribute;
-    GLint location;
+    GLuint location;
 } AttributeMap;
 
 struct MOJOSHADER_glProgram
@@ -280,7 +280,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
             UniformMap *map = &program->uniforms[program->uniform_count];
             map->shader_type = shader_type;
             map->uniform = &u[i];
-            map->location = loc;
+            map->location = (GLuint) loc;
             program->uniform_count++;
         } // if
     } // for
@@ -300,7 +300,7 @@ static void lookup_attributes(MOJOSHADER_glProgram *program)
         {
             AttributeMap *map = &program->attributes[program->attribute_count];
             map->attribute = &a[i];
-            map->location = loc;
+            map->location = (GLuint) loc;
             program->attribute_count++;
         } // if
     } // for
