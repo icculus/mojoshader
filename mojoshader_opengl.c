@@ -72,6 +72,8 @@ void MOJOSHADER_glSetVertexDeclaration(MOJOSHADER_usage usage, int index,
 
 // Get basic wankery out of the way here...
 
+#define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
+
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef uint8_t uint8;
 typedef uint32_t uint32;
