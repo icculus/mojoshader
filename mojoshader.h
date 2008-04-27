@@ -340,7 +340,8 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
  * You must call this once AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
  *  through the callback you supply, after which it may call them at any time
- *  up until you call MOJOSHADER_glDeinit().
+ *  up until you call MOJOSHADER_glDeinit(). The lookup function is neither
+ *  stored nor used by MojoShader after this function returns.
  *
  * (profile) is an OpenGL-specific MojoShader profile, which decides how
  *  Direct3D bytecode shaders get turned into OpenGL programs, and how they
