@@ -6,6 +6,9 @@
 #include <assert.h>
 
 #include "mojoshader.h"
+#define GL_GLEXT_LEGACY 1
+#include "gl.h"
+#include "glext.h"
 
 // Get basic wankery out of the way here...
 
@@ -26,25 +29,25 @@ struct MOJOSHADER_glShader
 typedef struct
 {
     MOJOSHADER_shaderType shader_type;
-    MOJOSHADER_uniform *uniform;
+    const MOJOSHADER_uniform *uniform;
     GLuint location;
 } UniformMap;
 
 typedef struct
 {
-    MOJOSHADER_attribute *attribute;
+    const MOJOSHADER_attribute *attribute;
     GLuint location;
 } AttributeMap;
 
 struct MOJOSHADER_glProgram
 {
-    const MOJOSHADER_glShader *vertex;
-    const MOJOSHADER_glShader *fragment;
+    MOJOSHADER_glShader *vertex;
+    MOJOSHADER_glShader *fragment;
     GLhandleARB handle;
     uint32 uniform_count;
-    UniformMap uniforms;
+    UniformMap *uniforms;
     uint32 attribute_count;
-    AttributeMap attributes;
+    AttributeMap *attributes;
     uint32 refcount;
 };
 
@@ -64,6 +67,8 @@ static uint8 ps_register_file_b[2047];
 
 // GL stuff...
 static MOJOSHADER_glProgram *bound_program = NULL;
+static const char *profile = NULL;
+
 
 // Error state...
 static char error_buffer[1024] = { '\0' };
@@ -193,9 +198,9 @@ static void shader_unref(MOJOSHADER_glShader *shader)
 {
     if (shader != NULL)
     {
-        const uint32 refcount = program->refcount;
+        const uint32 refcount = shader->refcount;
         if (refcount > 1)
-            program->refcount--;
+            shader->refcount--;
         else
         {
             pglDeleteObjectARB(shader->handle);
@@ -231,7 +236,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
 {
     int i;
     const MOJOSHADER_parseData *pd = shader->parseData;
-    const MOJOSHADER_uniforms *u = pd->uniforms;
+    const MOJOSHADER_uniform *u = pd->uniforms;
     const MOJOSHADER_shaderType shader_type = pd->shader_type;
 
     for (i = 0; i < pd->uniform_count; i++)
@@ -253,7 +258,7 @@ static void lookup_attributes(MOJOSHADER_glProgram *program)
 {
     int i;
     const MOJOSHADER_parseData *pd = program->vertex->parseData;
-    const MOJOSHADER_attributes *a = pd->attributes;
+    const MOJOSHADER_attribute *a = pd->attributes;
 
     for (i = 0; i < pd->attribute_count; i++)
     {
@@ -288,7 +293,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     if (!ok)
     {
         GLsizei len = 0;
-        pglGetInfoLogARB(shader, sizeof (error_buffer), &len,
+        pglGetInfoLogARB(program, sizeof (error_buffer), &len,
                          (GLcharARB *) error_buffer);
         goto link_program_fail;
     } // if
@@ -347,6 +352,7 @@ link_program_fail:
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
     GLhandleARB handle = 0;
+    int i;
 
     if (program == bound_program)
         return;  // nothing to do.
@@ -386,7 +392,7 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
     const uint maxregs = STATICARRAYLEN(vs_register_file_f) / 4;
     if (idx < maxregs)
     {
-        const uint cpy = maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(vs_register_file_f + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformF
@@ -398,7 +404,7 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(vs_register_file_i) / 4;
     if (idx < maxregs)
     {
-        const uint cpy = maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(vs_register_file_i + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformI
@@ -424,7 +430,7 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
     const uint maxregs = STATICARRAYLEN(ps_register_file_f) / 4;
     if (idx < maxregs)
     {
-        const uint cpy = maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ps_register_file_f + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformF
@@ -436,7 +442,7 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ps_register_file_i) / 4;
     if (idx < maxregs)
     {
-        const uint cpy = maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ps_register_file_i + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformI
@@ -485,7 +491,7 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
         case MOJOSHADER_ATTRIBUTE_BYTE: return GL_BYTE;
         case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_UNSIGNED_BYTE;
         case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
-        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_USHORT;
+        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_UNSIGNED_SHORT;
         case MOJOSHADER_ATTRIBUTE_INT: return GL_INT;
         case MOJOSHADER_ATTRIBUTE_UINT: return GL_UNSIGNED_INT;
         case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
@@ -587,13 +593,13 @@ void MOJOSHADER_glProgramReady(void)
 } // MOJOSHADER_glProgramReady
 
 
-void MOJOSHADER_glDeleteProgram(const MOJOSHADER_glProgram *program)
+void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program)
 {
-    program_unref(shader);
+    program_unref(program);
 } // MOJOSHADER_glDeleteProgram
 
 
-void MOJOSHADER_glDeleteShader(const MOJOSHADER_glShader *shader)
+void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader)
 {
     shader_unref(shader);
 } // MOJOSHADER_glDeleteShader
