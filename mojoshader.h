@@ -54,6 +54,7 @@ typedef enum
  */
 typedef enum
 {
+    MOJOSHADER_ATTRIBUTE_UNKNOWN = -1,  /* housekeeping; not returned. */
     MOJOSHADER_ATTRIBUTE_BYTE,
     MOJOSHADER_ATTRIBUTE_UBYTE,
     MOJOSHADER_ATTRIBUTE_SHORT,
@@ -70,6 +71,7 @@ typedef enum
  */
 typedef enum
 {
+    MOJOSHADER_UNIFORM_UNKNOWN = -1, /* housekeeping value; never returned. */
     MOJOSHADER_UNIFORM_FLOAT,
     MOJOSHADER_UNIFORM_INT,
     MOJOSHADER_UNIFORM_BOOL,
@@ -97,6 +99,7 @@ typedef struct
  */
 typedef enum
 {
+    MOJOSHADER_SAMPLER_UNKNOWN = -1, /* housekeeping value; never returned. */
     MOJOSHADER_SAMPLER_2D,
     MOJOSHADER_SAMPLER_CUBE,
     MOJOSHADER_SAMPLER_VOLUME,
@@ -124,6 +127,7 @@ typedef struct
  */
 typedef enum
 {
+    MOJOSHADER_USAGE_UNKNOWN = -1,  /* housekeeping value; never returned. */
     MOJOSHADER_USAGE_POSITION,
     MOJOSHADER_USAGE_BLENDWEIGHT,
     MOJOSHADER_USAGE_BLENDINDICES,
@@ -138,7 +142,7 @@ typedef enum
     MOJOSHADER_USAGE_FOG,
     MOJOSHADER_USAGE_DEPTH,
     MOJOSHADER_USAGE_SAMPLE,
-    MOJOSHADER_USAGE_TOTAL,  /* housekeeping value; not ever returned. */
+    MOJOSHADER_USAGE_TOTAL,  /* housekeeping value; never returned. */
 } MOJOSHADER_usage;
 
 /*
