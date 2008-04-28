@@ -3111,16 +3111,6 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             return fail(ctx, "Result shift scale isn't 1 to 3, or 13 to 15.");
     } // if
 
-    // !!! FIXME: these are definitely showing up in valid pixel shaders.
-    // !!! FIXME:  go re-read the spec on this one.
-    #if 0
-    if (info->result_mod & MOD_SATURATE)  // Saturate (vertex shaders only)
-    {
-        if (!shader_is_vertex(ctx))
-            return fail(ctx, "Saturate result mod in non-vertex shader");
-    } // if
-    #endif
-
     if (info->result_mod & MOD_PP)  // Partial precision (pixel shaders only)
     {
         if (!shader_is_pixel(ctx))
