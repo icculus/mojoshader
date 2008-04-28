@@ -66,8 +66,44 @@ static int ps_register_file_i[2047 * 4];
 static uint8 ps_register_file_b[2047];
 
 // GL stuff...
+static int opengl_major = 0;
+static int opengl_minor = 0;
 static MOJOSHADER_glProgram *bound_program = NULL;
 static const char *profile = NULL;
+
+// Entry points...
+typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
+typedef WINGDIAPI void (APIENTRYP PFNGLDISABLECLIENTSTATEPROC) (GLenum array);
+typedef WINGDIAPI void (APIENTRYP PFNGLENABLECLIENTSTATEPROC) (GLenum array);
+typedef WINGDIAPI void (APIENTRYP PFNGLVERTEXPOINTERPROC) (GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
+
+static int have_base_opengl = 0;
+static int have_GL_ARB_shader_objects = 0;
+static int have_GL_ARB_vertex_shader = 0;
+static int have_GL_ARB_fragment_shader = 0;
+static int have_GL_ARB_shading_language_100 = 0;
+static PFNGLGETSTRINGPROC pglGetString = NULL;
+static PFNGLDELETEOBJECTARBPROC pglDeleteObject = NULL;
+static PFNGLATTACHOBJECTARBPROC pglAttachObject = NULL;
+static PFNGLCOMPILESHADERARBPROC pglCompileShader = NULL;
+static PFNGLCREATEPROGRAMOBJECTARBPROC pglCreateProgramObject = NULL;
+static PFNGLCREATESHADEROBJECTARBPROC pglCreateShaderObject = NULL;
+static PFNGLDISABLECLIENTSTATEPROC pglDisableClientState = NULL;
+static PFNGLDISABLEVERTEXATTRIBARRAYARBPROC pglDisableVertexAttribArray = NULL;
+static PFNGLENABLECLIENTSTATEPROC pglEnableClientState = NULL;
+static PFNGLENABLEVERTEXATTRIBARRAYARBPROC pglEnableVertexAttribArray = NULL;
+static PFNGLGETATTRIBLOCATIONARBPROC pglGetAttribLocation = NULL;
+static PFNGLGETINFOLOGARBPROC pglGetInfoLog = NULL;
+static PFNGLGETOBJECTPARAMETERIVARBPROC pglGetObjectParameteriv = NULL;
+static PFNGLGETUNIFORMLOCATIONARBPROC pglGetUniformLocation = NULL;
+static PFNGLLINKPROGRAMARBPROC pglLinkProgram = NULL;
+static PFNGLSHADERSOURCEARBPROC pglShaderSource = NULL;
+static PFNGLUNIFORM1IARBPROC pglUniform1i = NULL;
+static PFNGLUNIFORM4FVARBPROC pglUniform4fv = NULL;
+static PFNGLUNIFORM4IVARBPROC pglUniform4iv = NULL;
+static PFNGLUSEPROGRAMOBJECTARBPROC pglUseProgramObject = NULL;
+static PFNGLVERTEXATTRIBPOINTERARBPROC pglVertexAttribPointer = NULL;
+static PFNGLVERTEXPOINTERPROC pglVertexPointer = NULL;
 
 
 // Error state...
@@ -110,6 +146,143 @@ const char *MOJOSHADER_glGetError(void)
 } // MOJOSHADER_glGetError
 
 
+static void *loadsym(void *(*lookup)(const char *fn), const char *fn, int *ext)
+{
+    void *retval = NULL;
+    if (lookup != NULL)
+    {
+        retval = lookup(fn);
+        if (retval == NULL)
+        {
+            char arbfn[64];
+            snprintf(arbfn, sizeof (arbfn), "%sARB", fn);
+            retval = lookup(arbfn);
+        } // if
+    } // if
+
+    if (retval == NULL)
+        *ext = 0;
+
+    return retval;
+} // loadsym
+
+static void lookup_entry_points(void *(*lookup)(const char *fnname))
+{
+    #define DO_LOOKUP(ext, typ, fn) p##fn = (typ) loadsym(lookup, #fn, &have_##ext)
+    DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
+    DO_LOOKUP(base_opengl, PFNGLDISABLECLIENTSTATEPROC, glDisableClientState);
+    DO_LOOKUP(base_opengl, PFNGLENABLECLIENTSTATEPROC, glEnableClientState);
+    DO_LOOKUP(base_opengl, PFNGLVERTEXPOINTERPROC, glVertexPointer);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLDELETEOBJECTARBPROC, glDeleteObject);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLATTACHOBJECTARBPROC, glAttachObject);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLCOMPILESHADERARBPROC, glCompileShader);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLCREATEPROGRAMOBJECTARBPROC, glCreateProgramObject);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLCREATESHADEROBJECTARBPROC, glCreateShaderObject);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLGETINFOLOGARBPROC, glGetInfoLog);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLGETOBJECTPARAMETERIVARBPROC, glGetObjectParameteriv);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLGETUNIFORMLOCATIONARBPROC, glGetUniformLocation);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLLINKPROGRAMARBPROC, glLinkProgram);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLSHADERSOURCEARBPROC, glShaderSource);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM1IARBPROC, glUniform1i);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM4FVARBPROC, glUniform4fv);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM4IVARBPROC, glUniform4iv);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLUSEPROGRAMOBJECTARBPROC, glUseProgramObject);
+    DO_LOOKUP(GL_ARB_vertex_shader, PFNGLDISABLEVERTEXATTRIBARRAYARBPROC, glDisableVertexAttribArray);
+    DO_LOOKUP(GL_ARB_vertex_shader, PFNGLENABLEVERTEXATTRIBARRAYARBPROC, glEnableVertexAttribArray);
+    DO_LOOKUP(GL_ARB_vertex_shader, PFNGLGETATTRIBLOCATIONARBPROC, glGetAttribLocation);
+    DO_LOOKUP(GL_ARB_vertex_shader, PFNGLVERTEXATTRIBPOINTERARBPROC, glVertexAttribPointer);
+    #undef DO_LOOKUP
+} // lookup_entry_points
+
+
+static int verify_extension(const char *ext, int have, const char *extlist,
+                            int major, int minor)
+{
+    if (have == 0)
+        return 0;  // don't bother checking, we're missing an entry point.
+
+    // See if it's in the spec for this GL implementation's version.
+    if ( ((opengl_major << 16) | (opengl_minor & 0xFFFF)) >=
+         ((major << 16) | (minor & 0xFFFF)) )
+        return 1;
+
+    // Not available in the GL version, check the extension list.
+    const char *ptr = strstr(extlist, ext);
+    if (ptr == NULL)
+        return 0;
+
+    const char endchar = ptr[strlen(ext)];
+    if ((endchar == '\0') || (endchar == ' '))
+        return 1;  // extension is in the list.
+
+    return 0;  // just not supported, fail.
+} // verify_extension
+
+
+static void parse_opengl_version(const char *verstr)
+{
+    if (verstr == NULL)
+        opengl_major = opengl_minor = 0;
+    else
+        sscanf(verstr, "%d.%d", &opengl_major, &opengl_minor);
+} // parse_opengl_version
+
+
+static int check_extensions(void *(*lookup)(const char *fnname))
+{
+    have_base_opengl = 1;
+    have_GL_ARB_shader_objects = 1;
+    have_GL_ARB_vertex_shader = 1;
+    have_GL_ARB_fragment_shader = 1;
+    have_GL_ARB_shading_language_100 = 1;
+
+    lookup_entry_points(lookup);
+
+    if (!have_base_opengl)   // a function we should definitely have is MIA?
+    {
+        set_error("missing basic OpenGL entry points");
+        return 0;
+    } // if
+
+    parse_opengl_version((const char *) pglGetString(GL_VERSION));
+
+    const char *extlist = (const char *) pglGetString(GL_EXTENSIONS);
+    if (extlist == NULL)
+        extlist = "";  // just in case.
+
+    #define VERIFY_EXT(ext, major, minor) \
+        have_##ext = verify_extension(#ext, have_##ext, extlist, major, minor)
+
+    VERIFY_EXT(GL_ARB_shader_objects, 2, 0);
+    VERIFY_EXT(GL_ARB_vertex_shader, 2, 0);
+    VERIFY_EXT(GL_ARB_fragment_shader, 2, 0);
+    VERIFY_EXT(GL_ARB_shading_language_100, 2, 0);
+
+    #undef VERIFY_EXT
+
+    #define REQUIRE_GL_EXTENSION(x) \
+        if (!have_##x) { set_error("This profile requires " #x); return 0; }
+
+    if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
+    {
+        REQUIRE_GL_EXTENSION(GL_ARB_shader_objects);
+        REQUIRE_GL_EXTENSION(GL_ARB_vertex_shader);
+        REQUIRE_GL_EXTENSION(GL_ARB_fragment_shader);
+        REQUIRE_GL_EXTENSION(GL_ARB_shading_language_100);
+    } // if
+
+    else
+    {
+        set_error("unknown profile");
+        return 0;
+    } // else
+
+    #undef REQUIRE_GL_EXTENSION
+
+    return 1;
+} // check_extensions
+
+
 int MOJOSHADER_glInit(const char *_profile,
                       void *(*lookup)(const char *fnname),
                       MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
@@ -121,16 +294,15 @@ int MOJOSHADER_glInit(const char *_profile,
     else
     {
         set_error("unknown profile");
-        return 0;
+        goto init_fail;
     } // else
 
-    // !!! FIXME: lookup glGetString(), check extensions.
+    if (!check_extensions(lookup))
+        goto init_fail;
 
     malloc_fn = (m == NULL) ? internal_malloc : m;
     free_fn = (f == NULL) ? internal_free : f;
     malloc_data = d;
-
-    // !!! FIXME: lookup other entry points.
 
     memset(vs_register_file_f, '\0', sizeof (vs_register_file_f));
     memset(vs_register_file_i, '\0', sizeof (vs_register_file_i));
@@ -142,6 +314,16 @@ int MOJOSHADER_glInit(const char *_profile,
     MOJOSHADER_glBindProgram(NULL);
 
     return 1;
+
+init_fail:
+    opengl_major = 0;
+    opengl_minor = 0;
+    profile = NULL;
+    malloc_fn = NULL;
+    free_fn = NULL;
+    malloc_data = NULL;
+    lookup_entry_points(NULL);
+    return 0;
 } // MOJOSHADER_glInit
 
 
@@ -164,19 +346,18 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
         goto compile_shader_fail;
 
     GLint ok = 0;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER_ARB : GL_VERTEX_SHADER_ARB;
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
     GLint shaderlen = (GLint) pd->output_len;
-    shader = pglCreateShaderObjectARB(shader_type);
+    shader = pglCreateShaderObject(shader_type);
 
-    pglShaderSourceARB(shader, 1, (const GLcharARB **) &pd->output, &shaderlen);
-    pglCompileShaderARB(shader);
-    pglGetObjectParameterivARB(shader, GL_OBJECT_COMPILE_STATUS_ARB, &ok);
+    pglShaderSource(shader, 1, (const GLchar **) &pd->output, &shaderlen);
+    pglCompileShader(shader);
+    pglGetObjectParameteriv(shader, GL_OBJECT_COMPILE_STATUS_ARB, &ok);
 
     if (!ok)
     {
         GLsizei len = 0;
-        pglGetInfoLogARB(shader, sizeof (error_buffer), &len,
-                         (GLcharARB *) error_buffer);
+        pglGetInfoLog(shader, sizeof (error_buffer), &len, (GLchar *) error_buffer);
         goto compile_shader_fail;
     } // if
 
@@ -189,7 +370,7 @@ compile_shader_fail:
     MOJOSHADER_freeParseData(pd);
     Free(retval);
     if (shader != 0)
-        pglDeleteObjectARB(shader);
+        pglDeleteObject(shader);
     return NULL;
 } // MOJOSHADER_glCompileShader
 
@@ -203,7 +384,7 @@ static void shader_unref(MOJOSHADER_glShader *shader)
             shader->refcount--;
         else
         {
-            pglDeleteObjectARB(shader->handle);
+            pglDeleteObject(shader->handle);
             MOJOSHADER_freeParseData(shader->parseData);
             Free(shader);
         } // else
@@ -220,7 +401,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
             program->refcount--;
         else
         {
-            pglDeleteObjectARB(program->handle);
+            pglDeleteObject(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
             Free(program->attributes);
@@ -241,7 +422,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
 
     for (i = 0; i < pd->uniform_count; i++)
     {
-        const GLint loc = pglGetUniformLocationARB(program->handle, u[i].name);
+        const GLint loc = pglGetUniformLocation(program->handle, u[i].name);
         if (loc != -1)  // maybe the Uniform was optimized out?
         {
             UniformMap *map = &program->uniforms[program->uniform_count];
@@ -262,7 +443,7 @@ static void lookup_attributes(MOJOSHADER_glProgram *program)
 
     for (i = 0; i < pd->attribute_count; i++)
     {
-        const GLint loc = pglGetAttribLocationARB(program->handle, a->name);
+        const GLint loc = pglGetAttribLocation(program->handle, a->name);
         if (loc != -1)  // maybe the Attribute was optimized out?
         {
             AttributeMap *map = &program->attributes[program->attribute_count];
@@ -281,20 +462,19 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         return NULL;
 
     MOJOSHADER_glProgram *retval = NULL;
-    const GLhandleARB program = pglCreateProgramObjectARB();
+    const GLhandleARB program = pglCreateProgramObject();
 
-    if (vshader != NULL) pglAttachObjectARB(program, vshader->handle);
-    if (pshader != NULL) pglAttachObjectARB(program, pshader->handle);
+    if (vshader != NULL) pglAttachObject(program, vshader->handle);
+    if (pshader != NULL) pglAttachObject(program, pshader->handle);
 
-    pglLinkProgramARB(program);
+    pglLinkProgram(program);
 
     GLint ok = 0;
-    pglGetObjectParameterivARB(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
+    pglGetObjectParameteriv(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
     if (!ok)
     {
         GLsizei len = 0;
-        pglGetInfoLogARB(program, sizeof (error_buffer), &len,
-                         (GLcharARB *) error_buffer);
+        pglGetInfoLog(program, sizeof (error_buffer), &len, (GLchar *) error_buffer);
         goto link_program_fail;
     } // if
 
@@ -344,7 +524,7 @@ link_program_fail:
         Free(retval);
     } // if
 
-    pglDeleteObjectARB(program);
+    pglDeleteObject(program);
     return NULL;
 } // MOJOSHADER_glLinkProgram
 
@@ -364,7 +544,7 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
         for (i = 0; i < bound_program->attribute_count; i++)
         {
             const AttributeMap *map = &bound_program->attributes[i];
-            pglDisableVertexAttribArrayARB(map->location);
+            pglDisableVertexAttribArray(map->location);
         } // if
     } // for
 
@@ -374,7 +554,7 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
         program->refcount++;
     } // if
 
-    pglUseProgramObjectARB(handle);
+    pglUseProgramObject(handle);
     program_unref(bound_program);
     bound_program = program;
 } // MOJOSHADER_glBindProgram
@@ -545,8 +725,8 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     {
         const GLenum gl_type = opengl_attr_type(type);
         const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
-        pglVertexAttribPointerARB(gl_index, size, gl_type, norm, stride, ptr);
-        pglEnableVertexAttribArrayARB(gl_index);
+        pglVertexAttribPointer(gl_index, size, gl_type, norm, stride, ptr);
+        pglEnableVertexAttribArray(gl_index);
     } // if
 } // MOJOSHADER_glSetVertexAttribute
 
@@ -573,21 +753,21 @@ void MOJOSHADER_glProgramReady(void)
         if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {
             if (type == MOJOSHADER_UNIFORM_FLOAT)
-                pglUniform4fvARB(location, 1, &vs_register_file_f[index * 4]);
+                pglUniform4fv(location, 1, &vs_register_file_f[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_INT)
-                pglUniform4ivARB(location, 1, &vs_register_file_i[index * 4]);
+                pglUniform4iv(location, 1, &vs_register_file_i[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_BOOL)
-                pglUniform1iARB(location, vs_register_file_b[index]);
+                pglUniform1i(location, vs_register_file_b[index]);
         } // if
 
         else if (shader_type == MOJOSHADER_TYPE_PIXEL)
         {
             if (type == MOJOSHADER_UNIFORM_FLOAT)
-                pglUniform4fvARB(location, 1, &ps_register_file_f[index * 4]);
+                pglUniform4fv(location, 1, &ps_register_file_f[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_INT)
-                pglUniform4ivARB(location, 1, &ps_register_file_i[index * 4]);
+                pglUniform4iv(location, 1, &ps_register_file_i[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_BOOL)
-                pglUniform1iARB(location, ps_register_file_b[index]);
+                pglUniform1i(location, ps_register_file_b[index]);
         } // else if
     } // for
 } // MOJOSHADER_glProgramReady
@@ -608,14 +788,14 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader)
 void MOJOSHADER_glDeinit(void)
 {
     MOJOSHADER_glBindProgram(NULL);
-
+    lookup_entry_points(NULL);
     profile = NULL;
     malloc_fn = NULL;
     free_fn = NULL;
     malloc_data = NULL;
     error_buffer[0] = '\0';
-
-    // !!! FIXME: NULL entry points.
+    opengl_major = 0;
+    opengl_minor = 0;
 } // MOJOSHADER_glDeinit
 
 // end of mojoshader_opengl.c ...
