@@ -297,7 +297,7 @@ static int check_extensions(void *(*lookup)(const char *fnname))
 } // check_extensions
 
 
-MOJOSHADER_glContext *MOJOSHADER_glInit(const char *_profile,
+MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
                                         void *(*lookup)(const char *fnname),
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
                                         void *d)
@@ -343,7 +343,7 @@ init_fail:
         f(ctx, d);
     ctx = current_ctx;
     return NULL;
-} // MOJOSHADER_glInit
+} // MOJOSHADER_glCreateContext
 
 
 void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *_ctx)
@@ -820,7 +820,7 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader)
 } // MOJOSHADER_glDeleteShader
 
 
-void MOJOSHADER_glDeinit(MOJOSHADER_glContext *_ctx)
+void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
 {
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = _ctx;
@@ -828,7 +828,7 @@ void MOJOSHADER_glDeinit(MOJOSHADER_glContext *_ctx)
     lookup_entry_points(NULL);
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
-} // MOJOSHADER_glDeinit
+} // MOJOSHADER_glDestroyContext
 
 // end of mojoshader_opengl.c ...
 

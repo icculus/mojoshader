@@ -114,10 +114,10 @@ int main(int argc, char **argv)
         SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
         MOJOSHADER_glContext *ctx;
-        ctx = MOJOSHADER_glInit(profile, SDL_GL_GetProcAddress, 0, 0, 0);
+        ctx = MOJOSHADER_glCreateContext(profile, SDL_GL_GetProcAddress, 0, 0, 0);
         if (ctx == NULL)
         {
-            printf("MOJOSHADER_glInit() fail: %s\n", MOJOSHADER_glGetError());
+            printf("MOJOSHADER_glCreateContext() fail: %s\n", MOJOSHADER_glGetError());
             SDL_Quit();
             return 1;
         } // if
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
         printf("Saw %d bytecode files.\n", total);
 
         #if FINDERRORS_COMPILE_SHADERS
-        MOJOSHADER_glDeinit(ctx);
+        MOJOSHADER_glDestroyContext(ctx);
         SDL_Quit();
         #endif
     } // else

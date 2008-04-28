@@ -359,8 +359,8 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  * You must call this once AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
  *  through the callback you supply, after which it may call them at any time
- *  up until you call MOJOSHADER_glDeinit(). The lookup function is neither
- *  stored nor used by MojoShader after this function returns.
+ *  up until you call MOJOSHADER_glDestroyContext(). The lookup function is
+ *  neither stored nor used by MojoShader after this function returns.
  *
  * (profile) is an OpenGL-specific MojoShader profile, which decides how
  *  Direct3D bytecode shaders get turned into OpenGL programs, and how they
@@ -385,14 +385,15 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-MOJOSHADER_glContext *MOJOSHADER_glInit(const char *profile,
+MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
                                         void *(*lookup)(const char *fnname),
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
                                         void *d);
 
 /*
  * You must call this before using the context that you got from
- *  MOJOSHADER_glInit(), and must use it when you switch to a new GL context.
+ *  MOJOSHADER_glCreateContext(), and must use it when you switch to a new GL
+ *  context.
  *
  * You can only have one MOJOSHADER_glContext per actual GL context, or
  *  undefined behaviour will result.
@@ -419,15 +420,13 @@ void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
  *  buffer. Do not keep the pointer around, either, as it's likely to become
  *  invalid as soon as you call into MojoShader again.
  *
- * This is safe to call even if MOJOSHADER_glInit() failed.
- *
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  *
  * This call does NOT require a valid MOJOSHADER_glContext to have been made
  *  current. The error buffer is shared between contexts, so you can get
- *  error results from a failed MOJOSHADER_glInit().
+ *  error results from a failed MOJOSHADER_glCreateContext().
  */
 const char *MOJOSHADER_glGetError(void);
 
@@ -699,10 +698,10 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
 /*
  * Deinitialize MojoShader's OpenGL shader management.
  *
- * You must call this once, while your GL context is still current, if you
- *  previously had a successful call to MOJOSHADER_glInit(). This should
- *  be the last MOJOSHADER_gl* function you call until you've initialized
- *  again.
+ * You must call this once, while your GL context (not MojoShader context) is
+ *  still current, if you previously had a successful call to
+ *  MOJOSHADER_glCreateContext(). This should be the last MOJOSHADER_gl*
+ *  function you call until you've prepared a context again.
  *
  * This will clean up resources previously allocated, and may call into the GL.
  *
@@ -718,7 +717,7 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-void MOJOSHADER_glDeinit(MOJOSHADER_glContext *ctx);
+void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 
 #ifdef __cplusplus
 }
