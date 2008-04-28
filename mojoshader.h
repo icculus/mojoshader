@@ -338,6 +338,20 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 /* OpenGL interface... */
 
 /*
+ * "Contexts" map to OpenGL contexts...you need one per window, or whatever,
+ *  and need to inform MojoShader when you make a new one current.
+ *
+ * "Shaders" refer to individual vertex or pixel programs, and are created
+ *  by "compiling" Direct3D shader bytecode. A vertex and pixel shader are
+ *  "linked" into a "Program" before you can use them to render.
+ *
+ * To the calling application, these are all opaque handles.
+ */
+typedef struct MOJOSHADER_glContext MOJOSHADER_glContext;
+typedef struct MOJOSHADER_glShader MOJOSHADER_glShader;
+typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
+
+/*
  * Prepare MojoShader to manage OpenGL shaders.
  *
  * You do not need to call this if all you want is MOJOSHADER_parse().
@@ -362,16 +376,31 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
  *  If your allocator needs instance-specific data, you may supply it with the
  *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
  *
- * Returns zero on error, non-zero on success.
+ * Returns a new context on success, NULL on error. If you get a new context,
+ *  you need to make it current before using it with
+ *  MOJOSHADER_glMakeContextCurrent().
  *
  * This call is NOT thread safe! It must return success before you may call
  *  any other MOJOSHADER_gl* function. Also, as most OpenGL implementations
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-int MOJOSHADER_glInit(const char *profile,
-                      void *(*lookup)(const char *fnname),
-                      MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+MOJOSHADER_glContext *MOJOSHADER_glInit(const char *profile,
+                                        void *(*lookup)(const char *fnname),
+                                        MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                        void *d);
+
+/*
+ * You must call this before using the context that you got from
+ *  MOJOSHADER_glInit(), and must use it when you switch to a new GL context.
+ *
+ * You can only have one MOJOSHADER_glContext per actual GL context, or
+ *  undefined behaviour will result.
+ *
+ * It is legal to call this with a NULL pointer to make no context current,
+ *  but you need a valid context to be current to use most of MojoShader.
+ */
+void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
 
 /*
  * Get any error state we might have picked up. MojoShader will NOT call
@@ -395,18 +424,12 @@ int MOJOSHADER_glInit(const char *profile,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call does NOT require a valid MOJOSHADER_glContext to have been made
+ *  current. The error buffer is shared between contexts, so you can get
+ *  error results from a failed MOJOSHADER_glInit().
  */
 const char *MOJOSHADER_glGetError(void);
-
-/*
- * "Shaders" refer to individual vertex or pixel programs, and are created
- *  by "compiling" Direct3D shader bytecode. A vertex and pixel shader are
- *  "linked" into a "Program" before you can use them to render.
- *
- * To the calling application, these are opaque handles.
- */
-typedef struct MOJOSHADER_glShader MOJOSHADER_glShader;
-typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
 
 /*
  * Compile a buffer of Direct3D shader bytecode into an OpenGL shader.
@@ -420,6 +443,11 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Compiled shaders from this function may not be shared between contexts.
  */
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize);
@@ -441,6 +469,11 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Linked programs from this function may not be shared between contexts.
  */
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader);
@@ -462,6 +495,9 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
 
@@ -481,6 +517,9 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
                                           unsigned int vec4count);
@@ -500,6 +539,9 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
                                           unsigned int ivec4count);
@@ -524,6 +566,9 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount);
@@ -536,6 +581,9 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
                                          unsigned int vec4count);
@@ -548,6 +596,9 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
                                          unsigned int ivec4count);
@@ -560,6 +611,9 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
                                          unsigned int bcount);
@@ -583,6 +637,11 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Vertex attributes are not shared between contexts.
  */
 void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
@@ -599,6 +658,9 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glProgramReady(void);
 
@@ -612,6 +674,9 @@ void MOJOSHADER_glProgramReady(void);
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
 
@@ -625,6 +690,9 @@ void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
 void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
 
@@ -642,12 +710,15 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
  *  MOJOSHADER_glDeleteShader() and MOJOSHADER_glDeleteProgram() to clean
  *  those up before calling this function!
  *
+ * This function destroys the MOJOSHADER_glContext you pass it. If it's the
+ *  current context, then no context will be current upon return.
+ *
  * This call is NOT thread safe! There must not be any other MOJOSHADER_gl*
  *  functions running when this is called. Also, as most OpenGL implementations
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-void MOJOSHADER_glDeinit(void);
+void MOJOSHADER_glDeinit(MOJOSHADER_glContext *ctx);
 
 #ifdef __cplusplus
 }
