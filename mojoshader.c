@@ -1976,17 +1976,19 @@ static void emit_GLSL_finalize(Context *ctx)
 
 static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 {
+    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+
     push_output(ctx, &ctx->globals);
     switch (regtype)
     {
         case REG_TYPE_ADDRESS:
-            output_line(ctx, "ivec4 a%d;", regnum);
+            output_line(ctx, "ivec4 %s;", varname);
             break;
         case REG_TYPE_PREDICATE:
-            output_line(ctx, "bvec4 p%d;", regnum);
+            output_line(ctx, "bvec4 %s;", varname);
             break;
         case REG_TYPE_TEMP:
-            output_line(ctx, "vec4 r%d;", regnum);
+            output_line(ctx, "vec4 %s;", varname);
             break;
         case REG_TYPE_LOOP:
             break; // no-op. We declare these in for loops at the moment.
@@ -2001,19 +2003,21 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 
 static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
 {
+    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+
     push_output(ctx, &ctx->globals);
     if (regtype == REG_TYPE_CONST)
-        output_line(ctx, "uniform vec4 c%d;", regnum);
+        output_line(ctx, "uniform vec4 %s;", varname);
     else if (regtype == REG_TYPE_CONST2)
-        output_line(ctx, "uniform vec4 c%d;", regnum + 2048);
+        output_line(ctx, "uniform vec4 %s;", varname);
     else if (regtype == REG_TYPE_CONST3)
-        output_line(ctx, "uniform vec4 c%d;", regnum + 4096);
+        output_line(ctx, "uniform vec4 %s;", varname);
     else if (regtype == REG_TYPE_CONST4)
-        output_line(ctx, "uniform vec4 c%d;", regnum + 6144);
+        output_line(ctx, "uniform vec4 %s;", varname);
     else if (regtype == REG_TYPE_CONSTINT)
-        output_line(ctx, "uniform ivec4 i%d;", regnum);
+        output_line(ctx, "uniform ivec4 %s;", varname);
     else if (regtype == REG_TYPE_CONSTBOOL)
-        output_line(ctx, "uniform bvec4 i%d;", regnum);
+        output_line(ctx, "uniform bvec4 %s;", varname);
     else
         fail(ctx, "BUG: we used a uniform we don't know how to define.");
     pop_output(ctx);
@@ -2021,13 +2025,15 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
 
 static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
 {
+    const char *varname = get_GLSL_varname(ctx, REG_TYPE_SAMPLER, stage);
+
     push_output(ctx, &ctx->globals);
     if (ttype == TEXTURE_TYPE_2D)
-        output_line(ctx, "uniform sampler2D s%d;", stage);
+        output_line(ctx, "uniform sampler2D %s", varname);
     else if (ttype == TEXTURE_TYPE_CUBE)
-        output_line(ctx, "uniform samplerCube s%d;", stage);
+        output_line(ctx, "uniform samplerCube %s", varname);
     else if (ttype == TEXTURE_TYPE_VOLUME)
-        output_line(ctx, "uniform sampler3D s%d;", stage);
+        output_line(ctx, "uniform sampler3D %s", varname);
     else
         fail(ctx, "BUG: we used a sampler we don't know how to define.");
     pop_output(ctx);
