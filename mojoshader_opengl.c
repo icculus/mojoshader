@@ -71,17 +71,20 @@ static int opengl_minor = 0;
 static MOJOSHADER_glProgram *bound_program = NULL;
 static const char *profile = NULL;
 
+// Extensions...
+static int have_base_opengl = 0;
+static int have_GL_ARB_shader_objects = 0;
+static int have_GL_ARB_vertex_shader = 0;
+static int have_GL_ARB_fragment_shader = 0;
+static int have_GL_ARB_shading_language_100 = 0;
+static int have_GL_NV_half_float = 0;
+
 // Entry points...
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 typedef WINGDIAPI void (APIENTRYP PFNGLDISABLECLIENTSTATEPROC) (GLenum array);
 typedef WINGDIAPI void (APIENTRYP PFNGLENABLECLIENTSTATEPROC) (GLenum array);
 typedef WINGDIAPI void (APIENTRYP PFNGLVERTEXPOINTERPROC) (GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
 
-static int have_base_opengl = 0;
-static int have_GL_ARB_shader_objects = 0;
-static int have_GL_ARB_vertex_shader = 0;
-static int have_GL_ARB_fragment_shader = 0;
-static int have_GL_ARB_shading_language_100 = 0;
 static PFNGLGETSTRINGPROC pglGetString = NULL;
 static PFNGLDELETEOBJECTARBPROC pglDeleteObject = NULL;
 static PFNGLATTACHOBJECTARBPROC pglAttachObject = NULL;
@@ -202,9 +205,12 @@ static int verify_extension(const char *ext, int have, const char *extlist,
         return 0;  // don't bother checking, we're missing an entry point.
 
     // See if it's in the spec for this GL implementation's version.
-    if ( ((opengl_major << 16) | (opengl_minor & 0xFFFF)) >=
-         ((major << 16) | (minor & 0xFFFF)) )
-        return 1;
+    if (major >= 0)
+    {
+        if ( ((opengl_major << 16) | (opengl_minor & 0xFFFF)) >=
+             ((major << 16) | (minor & 0xFFFF)) )
+            return 1;
+    } // if
 
     // Not available in the GL version, check the extension list.
     const char *ptr = strstr(extlist, ext);
@@ -235,6 +241,7 @@ static int check_extensions(void *(*lookup)(const char *fnname))
     have_GL_ARB_vertex_shader = 1;
     have_GL_ARB_fragment_shader = 1;
     have_GL_ARB_shading_language_100 = 1;
+    have_GL_NV_half_float = 1;
 
     lookup_entry_points(lookup);
 
@@ -257,6 +264,7 @@ static int check_extensions(void *(*lookup)(const char *fnname))
     VERIFY_EXT(GL_ARB_vertex_shader, 2, 0);
     VERIFY_EXT(GL_ARB_fragment_shader, 2, 0);
     VERIFY_EXT(GL_ARB_shading_language_100, 2, 0);
+    VERIFY_EXT(GL_NV_half_float, -1, -1);
 
     #undef VERIFY_EXT
 
@@ -658,6 +666,7 @@ static inline GLenum opengl_posattr_type(const MOJOSHADER_attributeType type)
         case MOJOSHADER_ATTRIBUTE_UINT: return GL_INT;
         case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
         case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
+        case MOJOSHADER_ATTRIBUTE_HALF_FLOAT: return GL_SHORT;
     } // switch
 
     return GL_NONE;  // oh well. Raises a GL error later.
@@ -676,6 +685,11 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
         case MOJOSHADER_ATTRIBUTE_UINT: return GL_UNSIGNED_INT;
         case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
         case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
+
+        case MOJOSHADER_ATTRIBUTE_HALF_FLOAT:
+            if (have_GL_NV_half_float)
+                return GL_HALF_FLOAT_NV;
+            break;
     } // switch
 
     return GL_NONE;  // oh well. Raises a GL error later.
