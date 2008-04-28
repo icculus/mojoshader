@@ -763,21 +763,6 @@ static const char *get_D3D_register_string(Context *ctx,
             retval = "c";
             break;
 
-        case REG_TYPE_CONST2:
-            retval = "c";
-            regnum += 2048;
-            break;
-
-        case REG_TYPE_CONST3:
-            retval = "c";
-            regnum += 4096;
-            break;
-
-        case REG_TYPE_CONST4:
-            retval = "c";
-            regnum += 6144;
-            break;
-
         case REG_TYPE_ADDRESS:  // (or REG_TYPE_TEXTURE, same value.)
             retval = shader_is_vertex(ctx) ? "a" : "t";
             break;
@@ -829,13 +814,6 @@ static const char *get_D3D_register_string(Context *ctx,
             has_number = 0;
             break;
 
-        // !!! FIXME: don't know what the asm string is for this..
-        case REG_TYPE_TEMPFLOAT16:
-            fail(ctx, "don't know the ASM for tempfloat16 register");
-            retval = "???";
-            has_number = 0;
-            break;
-
         case REG_TYPE_MISCTYPE:
             switch ((MiscTypeType) regnum)
             {
@@ -851,6 +829,13 @@ static const char *get_D3D_register_string(Context *ctx,
 
         case REG_TYPE_PREDICATE:
             retval = "p";
+            break;
+
+        //case REG_TYPE_TEMPFLOAT16:  // !!! FIXME: don't know this asm string
+        default:
+            fail(ctx, "unknown register type");
+            retval = "???";
+            has_number = 0;
             break;
     } // switch
 
@@ -3078,6 +3063,24 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27      abc
     info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
+    // all the REG_TYPE_CONSTx types are the same register type, it's just
+    //  split up so its regnum can be > 2047 in the bytecode. Clean it up.
+    if (info->regtype == REG_TYPE_CONST2)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 2048;
+    } // else if
+    else if (info->regtype == REG_TYPE_CONST3)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 4096;
+    } // else if
+    else if (info->regtype == REG_TYPE_CONST4)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 6144;
+    } // else if
+
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
 
@@ -3168,6 +3171,24 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->src_mod = (SourceMod) ((token >> 24) & 0xF); // bits 24 through 27
     info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
+    // all the REG_TYPE_CONSTx types are the same register type, it's just
+    //  split up so its regnum can be > 2047 in the bytecode. Clean it up.
+    if (info->regtype == REG_TYPE_CONST2)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 2048;
+    } // else if
+    else if (info->regtype == REG_TYPE_CONST3)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 4096;
+    } // else if
+    else if (info->regtype == REG_TYPE_CONST4)
+    {
+        info->regtype = REG_TYPE_CONST;
+        info->regnum += 6144;
+    } // else if
+
     ctx->tokens++;  // swallow token for now, for multiple calls in a row.
     ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
 
@@ -3215,17 +3236,8 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         if (info->relative_regnum != 0)  // true for now.
             return fail(ctx, "invalid register for relative address");
 
-        switch (info->regtype)
-        {
-            case REG_TYPE_CONST:
-            case REG_TYPE_CONST2:
-            case REG_TYPE_CONST3:
-            case REG_TYPE_CONST4:
-                break;
-            default:
-                return fail(ctx, "relative addressing of non-const register");
-                break;
-        } // switch
+        if (info->regtype != REG_TYPE_CONST)
+            return fail(ctx, "relative addressing of non-const register");
 
         if (!replicate_swizzle(relswiz))
             return fail(ctx, "relative address needs replicate swizzle");
@@ -3557,18 +3569,10 @@ static void state_DEF(Context *ctx)
 
     ctx->instruction_count--;  // these don't increase your instruction count.
 
-    switch (regtype)
-    {
-        case REG_TYPE_CONST:
-        case REG_TYPE_CONST2:
-        case REG_TYPE_CONST3:
-        case REG_TYPE_CONST4:
-            set_defined_register(ctx, regtype, regnum);
-            break;
-
-        default:
-            fail(ctx, "DEF token using invalid register");
-    } // switch
+    if (regtype != REG_TYPE_CONST)
+        fail(ctx, "DEF token using invalid register");
+    else
+        set_defined_register(ctx, regtype, regnum);
 } // state_DEF
 
 static void state_DEFI(Context *ctx)
@@ -3952,17 +3956,11 @@ static void state_SINCOS(Context *ctx)
         int i;
         for (i = 1; i < 3; i++)
         {
-            switch (ctx->source_args[i].regtype)
+            if (ctx->source_args[i].regtype != REG_TYPE_CONST)
             {
-                case REG_TYPE_CONST:
-                case REG_TYPE_CONST2:
-                case REG_TYPE_CONST3:
-                case REG_TYPE_CONST4:
-                    break;
-                default:
-                    failf(ctx, "SINCOS src%d must be constfloat", i);
-                    return;
-            } // switch
+                failf(ctx, "SINCOS src%d must be constfloat", i);
+                return;
+            } // if
         } // for
 
         if (ctx->source_args[1].regnum == ctx->source_args[2].regnum)
@@ -4512,21 +4510,6 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
                     type = MOJOSHADER_UNIFORM_FLOAT;
                     break;
 
-                case REG_TYPE_CONST2:
-                    index += 2048;
-                    type = MOJOSHADER_UNIFORM_FLOAT;
-                    break;
-
-                case REG_TYPE_CONST3:
-                    index += 4096;
-                    type = MOJOSHADER_UNIFORM_FLOAT;
-                    break;
-
-                case REG_TYPE_CONST4:
-                    index += 6144;
-                    type = MOJOSHADER_UNIFORM_FLOAT;
-                    break;
-
                 case REG_TYPE_CONSTINT:
                     type = MOJOSHADER_UNIFORM_INT;
                     break;
@@ -4791,9 +4774,6 @@ static void process_definitions(Context *ctx)
                     break;
 
                 case REG_TYPE_CONST:
-                case REG_TYPE_CONST2:
-                case REG_TYPE_CONST3:
-                case REG_TYPE_CONST4:
                 case REG_TYPE_CONSTINT:
                 case REG_TYPE_CONSTBOOL:
                     // separate uniforms into a different list for now.
