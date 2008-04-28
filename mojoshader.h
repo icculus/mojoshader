@@ -519,6 +519,8 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
                                           unsigned int vec4count);
@@ -541,6 +543,8 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
                                           unsigned int ivec4count);
@@ -568,6 +572,8 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount);
@@ -583,6 +589,8 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
                                          unsigned int vec4count);
@@ -598,6 +606,8 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
                                          unsigned int ivec4count);
@@ -613,6 +623,8 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
  *
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
                                          unsigned int bcount);
