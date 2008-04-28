@@ -51,11 +51,8 @@ struct MOJOSHADER_glProgram
     uint32 refcount;
 };
 
-// A few entry points in base OpenGL that lack function pointer prototypes...
+// Entry points in base OpenGL that lack function pointer prototypes...
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
-typedef WINGDIAPI void (APIENTRYP PFNGLDISABLECLIENTSTATEPROC) (GLenum array);
-typedef WINGDIAPI void (APIENTRYP PFNGLENABLECLIENTSTATEPROC) (GLenum array);
-typedef WINGDIAPI void (APIENTRYP PFNGLVERTEXPOINTERPROC) (GLint size, GLenum type, GLsizei stride, const GLvoid *pointer);
 
 struct MOJOSHADER_glContext
 {
@@ -94,9 +91,7 @@ struct MOJOSHADER_glContext
     PFNGLCOMPILESHADERARBPROC glCompileShader;
     PFNGLCREATEPROGRAMOBJECTARBPROC glCreateProgramObject;
     PFNGLCREATESHADEROBJECTARBPROC glCreateShaderObject;
-    PFNGLDISABLECLIENTSTATEPROC glDisableClientState;
     PFNGLDISABLEVERTEXATTRIBARRAYARBPROC glDisableVertexAttribArray;
-    PFNGLENABLECLIENTSTATEPROC glEnableClientState;
     PFNGLENABLEVERTEXATTRIBARRAYARBPROC glEnableVertexAttribArray;
     PFNGLGETATTRIBLOCATIONARBPROC glGetAttribLocation;
     PFNGLGETINFOLOGARBPROC glGetInfoLog;
@@ -109,7 +104,6 @@ struct MOJOSHADER_glContext
     PFNGLUNIFORM4IVARBPROC glUniform4iv;
     PFNGLUSEPROGRAMOBJECTARBPROC glUseProgramObject;
     PFNGLVERTEXATTRIBPOINTERARBPROC glVertexAttribPointer;
-    PFNGLVERTEXPOINTERPROC glVertexPointer;
 };
 
 static MOJOSHADER_glContext *ctx = NULL;
@@ -179,9 +173,6 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
 {
     #define DO_LOOKUP(ext, typ, fn) ctx->fn = (typ) loadsym(lookup, #fn, &ctx->have_##ext)
     DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
-    DO_LOOKUP(base_opengl, PFNGLDISABLECLIENTSTATEPROC, glDisableClientState);
-    DO_LOOKUP(base_opengl, PFNGLENABLECLIENTSTATEPROC, glEnableClientState);
-    DO_LOOKUP(base_opengl, PFNGLVERTEXPOINTERPROC, glVertexPointer);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLDELETEOBJECTARBPROC, glDeleteObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLATTACHOBJECTARBPROC, glAttachObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLCOMPILESHADERARBPROC, glCompileShader);
@@ -564,9 +555,10 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
         return;  // nothing to do.
 
     // Disable any client-side arrays the current program could have used.
+    // !!! FIXME: don't disable yet...see which ones get reused, and disable
+    // !!! FIXME:  only what we don't need in MOJOSHADER_glProgramReady().
     if (ctx->bound_program != NULL)
     {
-        ctx->glDisableClientState(GL_VERTEX_ARRAY);
         const int count = ctx->bound_program->attribute_count;
         for (i = 0; i < count; i++)
         {
@@ -669,30 +661,6 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
 } // MOJOSHADER_glSetPixelShaderUniformB
 
 
-static inline GLenum opengl_posattr_type(const MOJOSHADER_attributeType type)
-{
-    // we don't ever use the glVertexPointer() stream, so we just need to
-    //  make the data types reasonably match, so the GL doesn't overrun
-    //  the buffer when dereferencing it.
-
-    switch (type)
-    {
-        case MOJOSHADER_ATTRIBUTE_UNKNOWN: return GL_NONE;  // oh well.
-        case MOJOSHADER_ATTRIBUTE_BYTE: return GL_NONE;  // oh well.
-        case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_NONE;  // oh well.
-        case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
-        case MOJOSHADER_ATTRIBUTE_USHORT: return GL_SHORT;
-        case MOJOSHADER_ATTRIBUTE_INT: return GL_INT;
-        case MOJOSHADER_ATTRIBUTE_UINT: return GL_INT;
-        case MOJOSHADER_ATTRIBUTE_FLOAT: return GL_FLOAT;
-        case MOJOSHADER_ATTRIBUTE_DOUBLE: return GL_DOUBLE;
-        case MOJOSHADER_ATTRIBUTE_HALF_FLOAT: return GL_SHORT;
-    } // switch
-
-    return GL_NONE;  // oh well. Raises a GL error later.
-} // opengl_posattr_type
-
-
 static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
 {
     switch (type)
@@ -726,44 +694,39 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     if ((ctx->bound_program == NULL) || (ctx->bound_program->vertex == NULL))
         return;
 
-    // Since glVertexPointer() lacks the flexibility that we can get from
-    //  glVertexAttribPointer(), we set POSITION0 to a generic vertex
-    //  attribute, and the shaders we generate know to look there instead of
-    //  GLSL's gl_Position global variable. But to keep the GL handy, we
-    //  also set the best possible equivalent with glVertexPointer(). Messy.
-
-    if ((usage == MOJOSHADER_USAGE_POSITION) && (index == 0))
-    {
-        // !!! FIXME: fails if size==1.
-        ctx->glVertexPointer(size, opengl_posattr_type(type), stride, ptr);
-        ctx->glEnableClientState(GL_VERTEX_ARRAY);
-    } // if
-
-    int i;
+    const GLenum gl_type = opengl_attr_type(type);
+    const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
     GLuint gl_index = 0;
-    const int count = ctx->bound_program->attribute_count;
-    for (i = 0; i < count; i++)
+
+    // We have to map POSITION0 to generic vertex attribute 0; the
+    //  GL_ARB_vertex_shader spec says this is equivalent to using
+    //  glVertexPointer(), but without the limitations of that entry point.
+
+    if ((usage != MOJOSHADER_USAGE_POSITION) || (index != 0))
     {
-        const AttributeMap *map = &ctx->bound_program->attributes[i];
-        const MOJOSHADER_attribute *a = map->attribute;
-
-        // !!! FIXME: is this array guaranteed to be sorted by usage?
-        // !!! FIXME:  if so, we can break out of the loop if a->usage > usage.
-
-        if ((a->usage == usage) && (a->index == index))
+        int i;
+        const int count = ctx->bound_program->attribute_count;
+        for (i = 0; i < count; i++)
         {
-            gl_index = map->location;
-            break;
-        } // if
-    } // for
+            const AttributeMap *map = &ctx->bound_program->attributes[i];
+            const MOJOSHADER_attribute *a = map->attribute;
 
-    if (gl_index != 0)
-    {
-        const GLenum gl_type = opengl_attr_type(type);
-        const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
-        ctx->glVertexAttribPointer(gl_index, size, gl_type, norm, stride, ptr);
-        ctx->glEnableVertexAttribArray(gl_index);
+            // !!! FIXME: is this array guaranteed to be sorted by usage?
+            // !!! FIXME:  if so, we can break if a->usage > usage.
+
+            if ((a->usage == usage) && (a->index == index))
+            {
+                gl_index = map->location;
+                break;
+            } // if
+        } // for
+
+        if (gl_index == 0)
+            return;  // nothing to do, this shader doesn't use this stream.
     } // if
+
+    ctx->glVertexAttribPointer(gl_index, size, gl_type, norm, stride, ptr);
+    ctx->glEnableVertexAttribArray(gl_index);
 } // MOJOSHADER_glSetVertexAttribute
 
 
