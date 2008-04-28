@@ -289,7 +289,7 @@ int MOJOSHADER_glInit(const char *_profile,
 {
     error_buffer[0] = '\0';
 
-    if (strcmp(_profile, MOJOSHADER_PROFILE_GLSL) != 0)
+    if (strcmp(_profile, MOJOSHADER_PROFILE_GLSL) == 0)
         profile = MOJOSHADER_PROFILE_GLSL;
     else
     {
