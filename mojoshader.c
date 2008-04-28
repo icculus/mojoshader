@@ -1847,8 +1847,8 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     const char *shader_type_str = get_shader_type_string(ctx);
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s%s%s%s", shader_type_str,
-             premod_str, regtype_str, regnum_str, swiz_str, postmod_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s", premod_str,
+             shader_type_str, regtype_str, regnum_str, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_GLSL_srcarg_string
