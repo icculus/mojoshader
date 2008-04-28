@@ -677,6 +677,7 @@ static inline GLenum opengl_posattr_type(const MOJOSHADER_attributeType type)
 
     switch (type)
     {
+        case MOJOSHADER_ATTRIBUTE_UNKNOWN: return GL_NONE;  // oh well.
         case MOJOSHADER_ATTRIBUTE_BYTE: return GL_NONE;  // oh well.
         case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_NONE;  // oh well.
         case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
@@ -696,6 +697,7 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
 {
     switch (type)
     {
+        case MOJOSHADER_ATTRIBUTE_UNKNOWN: return GL_NONE; // oh well.
         case MOJOSHADER_ATTRIBUTE_BYTE: return GL_BYTE;
         case MOJOSHADER_ATTRIBUTE_UBYTE: return GL_UNSIGNED_BYTE;
         case MOJOSHADER_ATTRIBUTE_SHORT: return GL_SHORT;
