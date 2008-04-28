@@ -2004,38 +2004,34 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
 {
     const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+    const char *type = NULL;
+    switch (regtype)
+    {
+        case REG_TYPE_CONST: type = "vec4"; break;
+        case REG_TYPE_CONSTINT: type = "ivec4"; break;
+        case REG_TYPE_CONSTBOOL: type = "bvec4"; break;
+        default: fail(ctx, "BUG: used a uniform we don't know how to define.");
+    } // switch
 
     push_output(ctx, &ctx->globals);
-    if (regtype == REG_TYPE_CONST)
-        output_line(ctx, "uniform vec4 %s;", varname);
-    else if (regtype == REG_TYPE_CONST2)
-        output_line(ctx, "uniform vec4 %s;", varname);
-    else if (regtype == REG_TYPE_CONST3)
-        output_line(ctx, "uniform vec4 %s;", varname);
-    else if (regtype == REG_TYPE_CONST4)
-        output_line(ctx, "uniform vec4 %s;", varname);
-    else if (regtype == REG_TYPE_CONSTINT)
-        output_line(ctx, "uniform ivec4 %s;", varname);
-    else if (regtype == REG_TYPE_CONSTBOOL)
-        output_line(ctx, "uniform bvec4 %s;", varname);
-    else
-        fail(ctx, "BUG: we used a uniform we don't know how to define.");
+    output_line(ctx, "uniform %s %s;", type, varname);
     pop_output(ctx);
 } // emit_GLSL_uniform
 
 static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
 {
     const char *varname = get_GLSL_varname(ctx, REG_TYPE_SAMPLER, stage);
+    const char *type = NULL;
+    switch (ttype)
+    {
+        case TEXTURE_TYPE_2D: type = "sampler2D"; break;
+        case TEXTURE_TYPE_CUBE: type = "samplerCube"; break;
+        case TEXTURE_TYPE_VOLUME: type = "sampler3D"; break;
+        default: fail(ctx, "BUG: used a sampler we don't know how to define.");
+    } // switch
 
     push_output(ctx, &ctx->globals);
-    if (ttype == TEXTURE_TYPE_2D)
-        output_line(ctx, "uniform sampler2D %s", varname);
-    else if (ttype == TEXTURE_TYPE_CUBE)
-        output_line(ctx, "uniform samplerCube %s", varname);
-    else if (ttype == TEXTURE_TYPE_VOLUME)
-        output_line(ctx, "uniform sampler3D %s", varname);
-    else
-        fail(ctx, "BUG: we used a sampler we don't know how to define.");
+    output_line(ctx, "uniform %s %s;", type, varname);
     pop_output(ctx);
 } // emit_GLSL_sampler
 
