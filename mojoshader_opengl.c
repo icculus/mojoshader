@@ -16,8 +16,8 @@
 
 #include "mojoshader.h"
 #define GL_GLEXT_LEGACY 1
-#include "gl.h"
-#include "glext.h"
+#include "GL/gl.h"
+#include "GL/glext.h"
 
 // Get basic wankery out of the way here...
 
