@@ -401,6 +401,13 @@ compile_shader_fail:
 } // MOJOSHADER_glCompileShader
 
 
+const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
+                                                MOJOSHADER_glShader *shader)
+{
+    return (shader != NULL) ? shader->parseData : NULL;
+} // MOJOSHADER_glGetShaderParseData
+
+
 static void shader_unref(MOJOSHADER_glShader *shader)
 {
     if (shader != NULL)

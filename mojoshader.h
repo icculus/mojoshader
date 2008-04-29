@@ -455,6 +455,16 @@ const char *MOJOSHADER_glGetError(void);
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize);
 
+
+/*
+ * Get the MOJOSHADER_parseData structure that was produced from the
+ *  call to MOJOSHADER_glCompileShader().
+ *
+ * This data is read-only, and you should NOT attempt to free it. This
+ *  pointer remains valid until the shader is deleted.
+ */
+const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
+                                                MOJOSHADER_glShader *shader);
 /*
  * Link a vertex and pixel shader into an OpenGL program.
  *  (vshader) or (pshader) can be NULL, to specify that the GL should use the
