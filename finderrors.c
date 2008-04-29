@@ -1,3 +1,12 @@
+/**
+ * MojoShader; generate shader programs from bytecode of compiled
+ *  Direct3D shaders.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
