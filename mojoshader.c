@@ -216,6 +216,7 @@ typedef struct RegisterList
     MOJOSHADER_usage usage;
     int index;
     int writemask;
+    int misc;
     struct RegisterList *next;
 } RegisterList;
 
@@ -619,9 +620,10 @@ static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
     {
         item->regtype = regtype;
         item->regnum = regnum;
-        item->usage = 0;
+        item->usage = MOJOSHADER_USAGE_UNKNOWN;
         item->index = 0;
         item->writemask = 0;
+        item->misc = 0;
         item->next = prev->next;
         prev->next = item;
     } // if
@@ -2530,7 +2532,7 @@ static void emit_GLSL_LABEL(Context *ctx)
     // !!! FIXME: it would be nice if we could determine if a function is
     // !!! FIXME:  only called once and, if so, forcibly inline it.
 
-    const char *uses_loopreg = ((reg) && (reg->usage == 1)) ? "int aL" : "";
+    const char *uses_loopreg = ((reg) && (reg->misc == 1)) ? "int aL" : "";
     output_line(ctx, "void %s(%s)", labelstr, uses_loopreg);
     output_line(ctx, "{");
     ctx->indent++;
@@ -3787,9 +3789,9 @@ static void check_call_loop_wrappage(Context *ctx, const int regnum)
     RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, regnum);
     assert(reg != NULL);
 
-    if (reg->usage == 0)
-        reg->usage = current_usage;
-    else if (reg->usage != current_usage)
+    if (reg->misc == 0)
+        reg->misc = current_usage;
+    else if (reg->misc != current_usage)
     {
         if (current_usage == 1)
             fail(ctx, "CALL to this label must be wrapped in LOOP/ENDLOOP");
