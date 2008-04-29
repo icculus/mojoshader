@@ -1476,7 +1476,7 @@ static void emit_PASSTHROUGH_start(Context *ctx)
 {
     // just copy the whole token stream and make all other emitters no-ops.
     ctx->output_len = (ctx->tokencount * sizeof (uint32));
-    ctx->output_bytes = Malloc(ctx, ctx->output_len);
+    ctx->output_bytes = (uint8 *) Malloc(ctx, ctx->output_len);
     if (ctx->output_bytes != NULL)
         memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
 } // emit_PASSTHROUGH_start
@@ -2337,7 +2337,7 @@ static void emit_GLSL_LIT_helper(Context *ctx)
     if (ctx->flags & CTX_FLAGS_GLSL_LIT_OPCODE)
         return;
 
-    ctx->flags |= CTX_FLAGS_GLSL_LIT_OPCODE;
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_GLSL_LIT_OPCODE);
 
     push_output(ctx, &ctx->helpers);
     output_line(ctx, "const vec4 LIT(const vec4 src)");
@@ -4347,7 +4347,7 @@ static Context *build_context(const char *profile,
     if (m == NULL) m = internal_malloc;
     if (f == NULL) f = internal_free;
 
-    Context *ctx = m(sizeof (Context), d);
+    Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
         return NULL;
 
@@ -4654,10 +4654,11 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_attribute *attributes = NULL;
     MOJOSHADER_sampler *samplers = NULL;
-    MOJOSHADER_parseData *retval;
+    MOJOSHADER_parseData *retval = NULL;
     int attribute_count = 0;
 
-    if ((retval = Malloc(ctx, sizeof (MOJOSHADER_parseData))) == NULL)
+    retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
+    if (retval == NULL)
         return &out_of_mem_data;
 
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
@@ -4754,7 +4755,7 @@ static void process_definitions(Context *ctx)
                     // Apparently this is an attribute that wasn't DCL'd.
                     //  Add it to the attribute list; deal with it later.
                     add_attribute_register(ctx, item->regtype, item->regnum,
-                                           0, 0, 0xF);
+                                           MOJOSHADER_USAGE_UNKNOWN, 0, 0xF);
                     break;
 
                 case REG_TYPE_ADDRESS:

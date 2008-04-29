@@ -61,7 +61,7 @@ struct MOJOSHADER_glProgram
 };
 
 // Entry points in base OpenGL that lack function pointer prototypes...
-typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
+typedef const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 
 struct MOJOSHADER_glContext
 {
@@ -72,12 +72,12 @@ struct MOJOSHADER_glContext
 
     // The constant register files...
     // Man, it kills me how much memory this takes...
-    float vs_reg_file_f[8192 * 4];
-    int vs_reg_file_i[2047 * 4];
-    uint8 vs_reg_file_b[2047];
-    float ps_reg_file_f[8192 * 4];
-    int ps_reg_file_i[2047 * 4];
-    uint8 ps_reg_file_b[2047];
+    GLfloat vs_reg_file_f[8192 * 4];
+    GLint vs_reg_file_i[2047 * 4];
+    GLint vs_reg_file_b[2047];
+    GLfloat ps_reg_file_f[8192 * 4];
+    GLint ps_reg_file_i[2047 * 4];
+    GLint ps_reg_file_b[2047];
 
     // GL stuff...
     int opengl_major;
@@ -302,6 +302,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
                                         void *d)
 {
+    MOJOSHADER_glContext *retval = NULL;
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = NULL;
 
@@ -314,8 +315,6 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
         set_error("out of memory");
         goto init_fail;
     } // if
-
-    MOJOSHADER_glContext *retval = ctx;
 
     memset(ctx, '\0', sizeof (MOJOSHADER_glContext));
     ctx->malloc_fn = m;
@@ -335,6 +334,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
 
     MOJOSHADER_glBindProgram(NULL);
 
+    retval = ctx;
     ctx = current_ctx;
     return retval;
 
@@ -361,6 +361,10 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                       bufsize, ctx->malloc_fn,
                                                       ctx->free_fn,
                                                       ctx->malloc_data);
+    GLint ok = 0;
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
+    GLint shaderlen = (GLint) pd->output_len;
+
     if (pd->error != NULL)
     {
         set_error(pd->error);
@@ -371,9 +375,6 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
     if (retval == NULL)
         goto compile_shader_fail;
 
-    GLint ok = 0;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
-    GLint shaderlen = (GLint) pd->output_len;
     shader = ctx->glCreateShaderObject(shader_type);
 
     ctx->glShaderSource(shader, 1, (const GLchar **) &pd->output, &shaderlen);
@@ -496,6 +497,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     MOJOSHADER_glProgram *retval = NULL;
     const GLhandleARB program = ctx->glCreateProgramObject();
+    int numregs = 0;
 
     if (vshader != NULL) ctx->glAttachObject(program, vshader->handle);
     if (pshader != NULL) ctx->glAttachObject(program, pshader->handle);
@@ -516,7 +518,6 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         goto link_program_fail;
     memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
 
-    int numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->uniform_count;
     if (pshader != NULL) numregs += pshader->parseData->uniform_count;
     retval->uniforms = (UniformMap *) Malloc(sizeof (UniformMap) * numregs);
@@ -607,6 +608,7 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
     const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_f) / 4;
     if (idx < maxregs)
     {
+        assert(sizeof (GLfloat) == sizeof (float));
         const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_f + (idx * 4), data, cpy);
     } // if
@@ -619,6 +621,7 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_i) / 4;
     if (idx < maxregs)
     {
+        assert(sizeof (GLint) == sizeof (int));
         const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_i + (idx * 4), data, cpy);
     } // if
@@ -631,8 +634,8 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_f) / 4;
     if (idx < maxregs)
     {
-        uint8 *wptr = ctx->vs_reg_file_b + idx;
-        uint8 *endptr = wptr + maxuint(maxregs - idx, bcount);
+        GLint *wptr = ctx->vs_reg_file_b + idx;
+        GLint *endptr = wptr + maxuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
@@ -645,6 +648,7 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
     const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_f) / 4;
     if (idx < maxregs)
     {
+        assert(sizeof (GLfloat) == sizeof (float));
         const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_f + (idx * 4), data, cpy);
     } // if
@@ -657,6 +661,7 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_i) / 4;
     if (idx < maxregs)
     {
+        assert(sizeof (GLint) == sizeof (int));
         const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_i + (idx * 4), data, cpy);
     } // if
@@ -669,8 +674,8 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_f) / 4;
     if (idx < maxregs)
     {
-        uint8 *wptr = ctx->ps_reg_file_b + idx;
-        uint8 *endptr = wptr + maxuint(maxregs - idx, bcount);
+        GLint *wptr = ctx->ps_reg_file_b + idx;
+        GLint *endptr = wptr + maxuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
