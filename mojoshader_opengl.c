@@ -609,10 +609,10 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 } // MOJOSHADER_glBindProgram
 
 
-static inline uint maxuint(const uint a, const uint b)
+static inline uint minuint(const uint a, const uint b)
 {
-    return ((a > b) ? a : b);
-} // maxuint
+    return ((a < b) ? a : b);
+} // minuint
 
 
 void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
@@ -622,7 +622,7 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
     if (idx < maxregs)
     {
         assert(sizeof (GLfloat) == sizeof (float));
-        const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_f + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformF
@@ -635,7 +635,7 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
     if (idx < maxregs)
     {
         assert(sizeof (GLint) == sizeof (int));
-        const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_i + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformI
@@ -648,7 +648,7 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
     if (idx < maxregs)
     {
         GLint *wptr = ctx->vs_reg_file_b + idx;
-        GLint *endptr = wptr + maxuint(maxregs - idx, bcount);
+        GLint *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
@@ -662,7 +662,7 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
     if (idx < maxregs)
     {
         assert(sizeof (GLfloat) == sizeof (float));
-        const uint cpy = (maxuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_f + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformF
@@ -675,7 +675,7 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
     if (idx < maxregs)
     {
         assert(sizeof (GLint) == sizeof (int));
-        const uint cpy = (maxuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_i + (idx * 4), data, cpy);
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformI
@@ -688,7 +688,7 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
     if (idx < maxregs)
     {
         GLint *wptr = ctx->ps_reg_file_b + idx;
-        GLint *endptr = wptr + maxuint(maxregs - idx, bcount);
+        GLint *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
