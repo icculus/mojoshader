@@ -4691,17 +4691,26 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
         Free(ctx, output);
 
-        for (i = 0; i < ctx->uniform_count; i++)
-            Free(ctx, (void *) uniforms[i].name);
-        Free(ctx, uniforms);
+        if (uniforms != NULL)
+        {
+            for (i = 0; i < ctx->uniform_count; i++)
+                Free(ctx, (void *) uniforms[i].name);
+            Free(ctx, uniforms);
+        } // if
 
-        for (i = 0; i < attribute_count; i++)
-            Free(ctx, (void *) attributes[i].name);
-        Free(ctx, attributes);
+        if (attributes != NULL)
+        {
+            for (i = 0; i < attribute_count; i++)
+                Free(ctx, (void *) attributes[i].name);
+            Free(ctx, attributes);
+        } // if
 
-        for (i = 0; i < ctx->sampler_count; i++)
-            Free(ctx, (void *) samplers[i].name);
-        Free(ctx, samplers);
+        if (samplers != NULL)
+        {
+            for (i = 0; i < ctx->sampler_count; i++)
+                Free(ctx, (void *) samplers[i].name);
+            Free(ctx, samplers);
+        } // if
 
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
