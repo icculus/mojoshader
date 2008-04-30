@@ -12,7 +12,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <errno.h>
 #include <unistd.h>
 
@@ -25,79 +24,108 @@
 #endif
 
 #ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN 1
+#include <windows.h>
 #define snprintf _snprintf
+#else
+#include <dirent.h>
 #endif
 
 #define report printf
 
+static int do_file(const char *profile, const char *dname, const char *fn, int *total)
+{
+    int do_quit = 0;
+
+    #if FINDERRORS_COMPILE_SHADERS
+    SDL_Event e;  // pump event queue to keep OS happy.
+    while (SDL_PollEvent(&e))
+    {
+        if (e.type == SDL_QUIT)
+            do_quit = 1;
+    } // while
+    SDL_GL_SwapBuffers();
+    #endif
+
+    if (do_quit)
+    {
+        report("FAIL: user requested quit!\n");
+        return 0;
+    } // if
+
+    if (strstr(fn, ".bytecode") == NULL)
+        return 1;
+
+    (*total)++;
+
+    char *fname = (char *) alloca(strlen(fn) + strlen(dname) + 1);
+    sprintf(fname, "%s/%s", dname, fn);
+    FILE *io = fopen(fname, "rb");
+    if (io == NULL)
+    {
+        report("FAIL: %s fopen() failed.\n", fname);
+        return 1;
+    } // if
+
+    static unsigned char buf[1024 * 256];
+    int rc = fread(buf, 1, sizeof (buf), io);
+    fclose(io);
+    if (rc == -1)
+    {
+        report("FAIL: %s %s\n", fname, strerror(errno));
+        return 1;
+    } // if
+
+    #if FINDERRORS_COMPILE_SHADERS
+    MOJOSHADER_glShader *shader = MOJOSHADER_glCompileShader(buf, rc);
+    if (shader == NULL)
+        report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
+    else
+        report("PASS: %s\n", fname);
+    MOJOSHADER_glDeleteShader(shader);
+    #else
+    const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, 0, 0, 0);
+    if (pd->error != NULL)
+        report("FAIL: %s %s\n", fname, pd->error);
+    else
+        report("PASS: %s\n", fname);
+    MOJOSHADER_freeParseData(pd);
+    #endif
+
+    return 1;
+} // do_file
+
+
 static int do_dir(const char *dname, const char *profile)
 {
-    const int dirlen = strlen(dname) + 1;
     int total = 0;
+
+#ifdef _MSC_VER
+    WIN32_FIND_DATA dent;
+    HANDLE dirp = INVALID_HANDLE_VALUE;
+    FindFirstFileA(wSearchPath, &entw);
+    if (dirp != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            if (!do_file(profile, dname, dent.cFileName, &total))
+                break;
+        } while (pFindNextFileA(dirp, &dent) != 0);
+        CloseHandle(dirp);
+    } // if
+#else
+    struct dirent *dent = NULL;
     DIR *dirp = opendir(dname);
     if (dirp != NULL)
     {
-        int do_quit = 0;
-        struct dirent *dent;
         while ((dent = readdir(dirp)) != NULL)
         {
-            #if FINDERRORS_COMPILE_SHADERS
-            SDL_Event e;  // pump event queue to keep OS happy.
-            while (SDL_PollEvent(&e))
-            {
-                if (e.type == SDL_QUIT)
-                    do_quit = 1;
-            } // while
-            SDL_GL_SwapBuffers();
-            #endif
-
-            if (do_quit)
-            {
-                report("FAIL: user requested quit!\n");
+            if (!do_file(profile, dname, dent->d_name, &total))
                 break;
-            } // if
-
-            if (strstr(dent->d_name, ".bytecode") == NULL)
-                continue;
-
-            total++;
-
-            char *fname = (char *) alloca(strlen(dent->d_name) + dirlen);
-            sprintf(fname, "%s/%s", dname, dent->d_name);
-            FILE *io = fopen(fname, "rb");
-            if (io == NULL)
-            {
-                report("FAIL: %s fopen() failed.\n", fname);
-                continue;
-            } // if
-
-            static unsigned char buf[1024 * 256];
-            int rc = fread(buf, 1, sizeof (buf), io);
-            fclose(io);
-            if (rc == -1)
-            {
-                report("FAIL: %s %s\n", fname, strerror(errno));
-                continue;
-            } // if
-
-            #if FINDERRORS_COMPILE_SHADERS
-            MOJOSHADER_glShader *shader = MOJOSHADER_glCompileShader(buf, rc);
-            if (shader == NULL)
-                report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
-            else
-                report("PASS: %s\n", fname);
-            MOJOSHADER_glDeleteShader(shader);
-            #else
-            const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, 0, 0, 0);
-            if (pd->error != NULL)
-                report("FAIL: %s %s\n", fname, pd->error);
-            else
-                report("PASS: %s\n", fname);
-            MOJOSHADER_freeParseData(pd);
-            #endif
         } // while
         closedir(dirp);
     } // if
+#endif
 
     return total;
 } // do_dir
