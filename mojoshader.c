@@ -2723,10 +2723,8 @@ static void emit_GLSL_TEXCOORD(Context *ctx)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
-// !!! FIXME
-//    const char *dst0 = make_GLSL_destarg_string(ctx, 0);
-//    output_line(ctx, "if (any(lessThan(vec3(%s), vec3(0.0)))) discard;", dst0);
+    const char *dst0 = get_GLSL_destarg_varname(ctx);
+    output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst0);
 } // emit_GLSL_TEXKILL
 
 static void emit_GLSL_TEX(Context *ctx)
@@ -3992,6 +3990,22 @@ static void state_BREAKC(Context *ctx)
         fail(ctx, "BREAKC outside LOOP/ENDLOOP or REP/ENDREP");
 } // state_BREAKC
 
+static void state_TEXKILL(Context *ctx)
+{
+    // The MSDN docs say this should be a source arg, but the driver docs
+    //  say it's a dest arg. That's annoying.
+    const DestArgInfo *info = &ctx->dest_arg;
+    const RegisterType regtype = info->regtype;
+    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+        fail(ctx, "TEXKILL writemask must be .xyzw");
+    else if ((regtype != REG_TYPE_TEMP) && (regtype != REG_TYPE_TEXTURE))
+        fail(ctx, "TEXKILL must use a temp or texture register");
+
+    // !!! FIXME: "If a temporary register is used, all components must have been previously written."
+    // !!! FIXME: "If a texture register is used, all components that are read must have been declared."
+    // !!! FIXME: there are further limitations in ps_1_3 and earlier.
+} // state_TEXKILL
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -4085,7 +4099,7 @@ static const Instruction instructions[] =
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(TEXCOORD, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEX, TEX, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEM, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXBEML, DS, MOJOSHADER_TYPE_ANY),
