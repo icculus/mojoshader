@@ -23,6 +23,7 @@
 #ifdef _MSC_VER
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>
+#include <malloc.h>  // for alloca().
 #define snprintf _snprintf
 #else
 #include <dirent.h>
