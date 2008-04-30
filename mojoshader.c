@@ -1888,6 +1888,11 @@ static inline char *make_GLSL_srcarg_string_vec3(Context *ctx, const int idx)
     return make_GLSL_srcarg_string(ctx, idx, 0x7);
 } // make_GLSL_srcarg_string_vec3
 
+static inline char *make_GLSL_srcarg_string_vec2(Context *ctx, const int idx)
+{
+    return make_GLSL_srcarg_string(ctx, idx, 0x3);
+} // make_GLSL_srcarg_string_vec2
+
 
 // special cases for comparison opcodes...
 
@@ -2944,7 +2949,11 @@ static void emit_GLSL_BEM(Context *ctx)
 
 static void emit_GLSL_DP2ADD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    const char *src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
+    const char *src1 = make_GLSL_srcarg_string_vec2(ctx, 1);
+    const char *src2 = make_GLSL_srcarg_string_scalar(ctx, 2);
+    const char *code = make_GLSL_destarg_assign(ctx, "dot(%s, %s) + %s", src0, src1, src2);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_DP2ADD
 
 static void emit_GLSL_DSX(Context *ctx)
@@ -4008,6 +4017,12 @@ static void state_TEXKILL(Context *ctx)
     // !!! FIXME: there are further limitations in ps_1_3 and earlier.
 } // state_TEXKILL
 
+static void state_DP2ADD(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[2].swizzle))
+        fail(ctx, "IFC src2 must have replicate swizzle");
+} // state_DP2ADD
+
 
 // Lookup table for instruction opcodes...
 typedef struct
@@ -4126,7 +4141,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXDEPTH, D, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(CMP, DSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(BEM, DSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(DP2ADD, DSSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(DP2ADD, DSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(DSX, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(DSY, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXLDD, DSSSS, MOJOSHADER_TYPE_PIXEL),
