@@ -16,8 +16,6 @@
 
 #include "mojoshader.h"
 
-#define FINDERRORS_COMPILE_SHADERS 1
-
 #if FINDERRORS_COMPILE_SHADERS
 #include "SDL.h"
 #endif
