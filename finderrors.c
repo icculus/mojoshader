@@ -100,14 +100,14 @@ static int do_dir(const char *dname, const char *profile)
 #ifdef _MSC_VER
     WIN32_FIND_DATA dent;
     HANDLE dirp = INVALID_HANDLE_VALUE;
-    FindFirstFileA(wSearchPath, &entw);
+    FindFirstFileA(dname, &dent);
     if (dirp != INVALID_HANDLE_VALUE)
     {
         do
         {
             if (!do_file(profile, dname, dent.cFileName, &total))
                 break;
-        } while (pFindNextFileA(dirp, &dent) != 0);
+        } while (FindNextFileA(dirp, &dent) != 0);
         CloseHandle(dirp);
     } // if
 #else
