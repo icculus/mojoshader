@@ -355,6 +355,34 @@ typedef struct MOJOSHADER_glContext MOJOSHADER_glContext;
 typedef struct MOJOSHADER_glShader MOJOSHADER_glShader;
 typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
 
+
+/*
+ * Determine the best profile to use for the current system.
+ *
+ * You do not need to call this if all you want is MOJOSHADER_parse().
+ *
+ * You can only call this AFTER you have successfully built your GL context
+ *  and made it current. This function will lookup the GL functions it needs
+ *  through the callback you supply. The lookup function is neither stored nor
+ *  used by MojoShader after this function returns, nor are the functions it
+ *  might look up.
+ *
+ * Returns the name of the "best" profile on success, NULL if none of the
+ *  available profiles will work on this system. "Best" is a relative term,
+ *  but it generally means the best trade off between feature set and
+ *  performance. The selection algorithm may be arbitrary and complex.
+ *
+ * The returned value is an internal static string, and should not be free()'d
+ *  by the caller. If you get a NULL, calling MOJOSHADER_glGetError() might
+ *  shed some light on why.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ */
+const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname));
+
+
 /*
  * Prepare MojoShader to manage OpenGL shaders.
  *

@@ -41,6 +41,10 @@ typedef int32_t int32;
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
+#ifndef SUPPORT_PROFILE_GLSL
+#define SUPPORT_PROFILE_GLSL 1
+#endif
+
 struct MOJOSHADER_glShader
 {
     const MOJOSHADER_parseData *parseData;
@@ -96,7 +100,7 @@ struct MOJOSHADER_glContext
     int opengl_major;
     int opengl_minor;
     MOJOSHADER_glProgram *bound_program;
-    const char *profile;
+    char profile[16];
 
     // Extensions...
     int have_base_opengl;
@@ -223,6 +227,9 @@ static int verify_extension(const char *ext, int have, const char *extlist,
     if (have == 0)
         return 0;  // don't bother checking, we're missing an entry point.
 
+    else if (!ctx->have_base_opengl)
+        return 0;  // don't bother checking, we're missing basic functionality.
+
     // See if it's in the spec for this GL implementation's version.
     if (major >= 0)
     {
@@ -253,8 +260,10 @@ static void parse_opengl_version(const char *verstr)
 } // parse_opengl_version
 
 
-static int check_extensions(void *(*lookup)(const char *fnname))
+static void load_extensions(void *(*lookup)(const char *fnname))
 {
+    const char *extlist = NULL;
+
     ctx->have_base_opengl = 1;
     ctx->have_GL_ARB_shader_objects = 1;
     ctx->have_GL_ARB_vertex_shader = 1;
@@ -264,15 +273,14 @@ static int check_extensions(void *(*lookup)(const char *fnname))
 
     lookup_entry_points(lookup);
 
-    if (!ctx->have_base_opengl)   // a func we should definitely have is MIA?
-    {
+    if (!ctx->have_base_opengl)
         set_error("missing basic OpenGL entry points");
-        return 0;
-    } // if
+    else
+    {
+        parse_opengl_version((const char *) ctx->glGetString(GL_VERSION));
+        extlist = (const char *) ctx->glGetString(GL_EXTENSIONS);
+    } // else
 
-    parse_opengl_version((const char *) ctx->glGetString(GL_VERSION));
-
-    const char *extlist = (const char *) ctx->glGetString(GL_EXTENSIONS);
     if (extlist == NULL)
         extlist = "";  // just in case.
 
@@ -286,31 +294,77 @@ static int check_extensions(void *(*lookup)(const char *fnname))
     VERIFY_EXT(GL_NV_half_float, -1, -1);
 
     #undef VERIFY_EXT
+} // load_extensions
 
-    #define REQUIRE_GL_EXTENSION(x) \
-        if (!ctx->have_##x) { set_error("profile requires " #x); return 0; }
 
-    if (strcmp(ctx->profile, MOJOSHADER_PROFILE_GLSL) == 0)
+static int valid_profile(const char *profile)
+{
+    if (!ctx->have_base_opengl)
+        return 0;
+
+    #define MUST_HAVE(p, x) \
+        if (!ctx->have_##x) { set_error(#p " profile needs " #x); return 0; }
+
+    if (0) {}
+
+    #if SUPPORT_PROFILE_GLSL
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
     {
-        REQUIRE_GL_EXTENSION(GL_ARB_shader_objects);
-        REQUIRE_GL_EXTENSION(GL_ARB_vertex_shader);
-        REQUIRE_GL_EXTENSION(GL_ARB_fragment_shader);
-        REQUIRE_GL_EXTENSION(GL_ARB_shading_language_100);
-    } // if
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_fragment_shader);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shading_language_100);
+    } // else if
+    #endif
 
     else
     {
-        set_error("unknown profile");
+        set_error("unknown or unsupported profile");
         return 0;
     } // else
 
-    #undef REQUIRE_GL_EXTENSION
+    #undef MUST_HAVE
 
     return 1;
-} // check_extensions
+} // valid_profile
 
 
-MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
+const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
+{
+    const char *retval = NULL;
+    MOJOSHADER_glContext _ctx;
+    MOJOSHADER_glContext *current_ctx = ctx;
+
+    ctx = &_ctx;
+    memset(ctx, '\0', sizeof (MOJOSHADER_glContext));
+    load_extensions(lookup);
+
+    if (ctx->have_base_opengl)
+    {
+        static const char *priority[] = {
+            MOJOSHADER_PROFILE_GLSL,
+        };
+
+        int i;
+        for (i = 0; i < STATICARRAYLEN(priority); i++)
+        {
+            if (valid_profile(priority[i]))
+            {
+                retval = priority[i];
+                break;
+            } // if
+        } // for
+
+        if (retval == NULL)
+            set_error("no profiles available");
+    } // if
+
+    ctx = current_ctx;
+    return retval;
+} // MOJOSHADER_glBestProfile
+
+
+MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
                                         void *(*lookup)(const char *fnname),
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
                                         void *d)
@@ -333,16 +387,10 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *_profile,
     ctx->malloc_fn = m;
     ctx->free_fn = f;
     ctx->malloc_data = d;
+    snprintf(ctx->profile, sizeof (ctx->profile), "%s", profile);
 
-    if (strcmp(_profile, MOJOSHADER_PROFILE_GLSL) == 0)
-        ctx->profile = MOJOSHADER_PROFILE_GLSL;
-    else
-    {
-        set_error("unknown profile");
-        goto init_fail;
-    } // else
-
-    if (!check_extensions(lookup))
+    load_extensions(lookup);
+    if (!valid_profile(profile))
         goto init_fail;
 
     MOJOSHADER_glBindProgram(NULL);
