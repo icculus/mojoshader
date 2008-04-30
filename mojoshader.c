@@ -2247,7 +2247,8 @@ static void emit_GLSL_RSQ(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
-static void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1)
+static void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1,
+                              const char *extra)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     char castleft[16] = { '\0' };
@@ -2258,8 +2259,8 @@ static void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1)
         castright = ")";
     } // if
 
-    const char *code = make_GLSL_destarg_assign(ctx, "%sdot(%s, %s)%s",
-                        castleft, src0, src1, castright);
+    const char *code = make_GLSL_destarg_assign(ctx, "%sdot(%s, %s)%s%s",
+                        castleft, src0, src1, extra, castright);
     output_line(ctx, "%s", code);
 } // emit_GLSL_dotprod
 
@@ -2267,14 +2268,14 @@ static void emit_GLSL_DP3(Context *ctx)
 {
     const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    emit_GLSL_dotprod(ctx, src0, src1);
+    emit_GLSL_dotprod(ctx, src0, src1, "");
 } // emit_GLSL_DP3
 
 static void emit_GLSL_DP4(Context *ctx)
 {
     const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_full(ctx, 1);
-    emit_GLSL_dotprod(ctx, src0, src1);
+    emit_GLSL_dotprod(ctx, src0, src1, "");
 } // emit_GLSL_DP4
 
 static void emit_GLSL_MIN(Context *ctx)
@@ -2952,8 +2953,9 @@ static void emit_GLSL_DP2ADD(Context *ctx)
     const char *src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_vec2(ctx, 1);
     const char *src2 = make_GLSL_srcarg_string_scalar(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, "dot(%s, %s) + %s", src0, src1, src2);
-    output_line(ctx, "%s", code);
+    char extra[64];
+    snprintf(extra, sizeof (extra), " + %s", src2);
+    emit_GLSL_dotprod(ctx, src0, src1, extra);
 } // emit_GLSL_DP2ADD
 
 static void emit_GLSL_DSX(Context *ctx)
