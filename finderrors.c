@@ -13,7 +13,6 @@
 #include <stdarg.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <unistd.h>
 
 #include "mojoshader.h"
 
