@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <assert.h>
 
@@ -21,12 +20,22 @@
 
 // Get basic wankery out of the way here...
 
-#define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
-
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
+
+#ifdef _MSC_VER
+#define snprintf _snprintf
+typedef unsigned __int8 uint8;
+typedef unsigned __int32 uint32;
+typedef unsigned __int32 int32;
+typedef
+#else
+#include <stdint.h>
 typedef uint8_t uint8;
 typedef uint32_t uint32;
 typedef int32_t int32;
+#endif
+
+#define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
 struct MOJOSHADER_glShader
 {
