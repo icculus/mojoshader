@@ -3970,6 +3970,7 @@ static void state_IF(Context *ctx)
 {
     if (ctx->source_args[0].regtype != REG_TYPE_CONSTBOOL)
         fail(ctx, "IF src0 must be CONSTBOOL");
+    // !!! FIXME: track if nesting depth.
 } // state_IF
 
 static void state_IFC(Context *ctx)
@@ -3978,6 +3979,7 @@ static void state_IFC(Context *ctx)
         fail(ctx, "IFC src0 must have replicate swizzle");
     else if (!replicate_swizzle(ctx->source_args[1].swizzle))
         fail(ctx, "IFC src1 must have replicate swizzle");
+    // !!! FIXME: track if nesting depth.
 } // state_IFC
 
 static void state_BREAKC(Context *ctx)
@@ -4076,8 +4078,8 @@ static const Instruction instructions[] =
     INSTRUCTION_STATE(ENDREP, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(IF, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(IFC, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ELSE, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ENDIF, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ELSE, NULL, MOJOSHADER_TYPE_ANY),  // !!! FIXME: state!
+    INSTRUCTION(ENDIF, NULL, MOJOSHADER_TYPE_ANY), // !!! FIXME: state!
     INSTRUCTION_STATE(BREAK, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(BREAKC, SS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(MOVA, DS, MOJOSHADER_TYPE_VERTEX),
