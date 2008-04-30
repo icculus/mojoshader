@@ -24,6 +24,10 @@
 #include "SDL.h"
 #endif
 
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#endif
+
 #define report printf
 
 static int do_dir(const char *dname, const char *profile)

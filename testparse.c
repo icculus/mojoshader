@@ -11,6 +11,9 @@
 #include <stdlib.h>
 #include "mojoshader.h"
 
+#ifdef _MSC_VER
+#define snprintf _snprintf
+#endif
 
 #if MOJOSHADER_DEBUG_MALLOC
 static void *Malloc(int len)

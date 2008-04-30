@@ -13,6 +13,11 @@
 #include <stdarg.h>
 #include <assert.h>
 
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN 1
+#include <windows.h>  // GL headers need this for WINGDIAPI definition.
+#endif
+
 #include "mojoshader.h"
 #define GL_GLEXT_LEGACY 1
 #include "GL/gl.h"

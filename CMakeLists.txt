@@ -8,6 +8,11 @@ ENDIF(CMAKE_COMPILER_IS_GNUCC)
 # testparse uses this when I'm looking at memory usage patterns.
 #ADD_DEFINITIONS(-DMOJOSHADER_DEBUG_MALLOC=1)
 
+IF(MSVC)
+    ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS=1)
+    ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
+ENDIF(MSVC)
+
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
