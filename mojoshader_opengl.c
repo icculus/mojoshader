@@ -27,7 +27,6 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef unsigned __int8 uint8;
 typedef unsigned __int32 uint32;
 typedef unsigned __int32 int32;
-typedef
 #else
 #include <stdint.h>
 typedef uint8_t uint8;
