@@ -1727,7 +1727,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
 
 
 static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
-                                        const int writemask)
+                                     const int writemask)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
