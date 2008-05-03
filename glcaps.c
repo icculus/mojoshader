@@ -12,6 +12,20 @@
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 
+#ifndef GL_MAX_VERTEX_BINDABLE_UNIFORMS_EXT
+#define GL_MAX_VERTEX_BINDABLE_UNIFORMS_EXT 0x8DE2
+#endif
+#ifndef GL_MAX_FRAGMENT_BINDABLE_UNIFORMS_EXT
+#define GL_MAX_FRAGMENT_BINDABLE_UNIFORMS_EXT 0x8DE3
+#endif
+#ifndef GL_MAX_GEOMETRY_BINDABLE_UNIFORMS_EXT
+#define GL_MAX_GEOMETRY_BINDABLE_UNIFORMS_EXT 0x8DE4
+#endif
+#ifndef GL_MAX_BINDABLE_UNIFORM_SIZE_EXT
+#define GL_MAX_BINDABLE_UNIFORM_SIZE_EXT 0x8DED
+#endif
+
+
 int main(int argc, char **argv)
 {
     GLint val = 0;
@@ -91,6 +105,13 @@ int main(int argc, char **argv)
 	getval(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS_ARB);
 	getval(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS_ARB);
 	getval(GL_MAX_TEXTURE_COORDS_ARB);
+
+    printf("\nGL_EXT_bindable_uniform values...\n\n");
+
+    getval(GL_MAX_VERTEX_BINDABLE_UNIFORMS_EXT);
+    getval(GL_MAX_FRAGMENT_BINDABLE_UNIFORMS_EXT);
+    getval(GL_MAX_GEOMETRY_BINDABLE_UNIFORMS_EXT);
+    getval(GL_MAX_BINDABLE_UNIFORM_SIZE_EXT);
 
     #undef getval
 
