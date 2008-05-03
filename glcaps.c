@@ -9,6 +9,10 @@
 #include "GL/glext.h"
 #include "SDL.h"
 
+#ifndef WINGDIAPI
+#define WINGDIAPI
+#endif
+
 typedef WINGDIAPI void (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 

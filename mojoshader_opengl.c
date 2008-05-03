@@ -77,6 +77,10 @@ struct MOJOSHADER_glProgram
     uint32 refcount;
 };
 
+#ifndef WINGDIAPI
+#define WINGDIAPI
+#endif
+
 // Entry points in base OpenGL that lack function pointer prototypes...
 typedef WINGDIAPI void (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
