@@ -9,7 +9,7 @@
 #include "GL/glext.h"
 #include "SDL.h"
 
-typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
+typedef WINGDIAPI void (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 
 #ifndef GL_MAX_VERTEX_BINDABLE_UNIFORMS_EXT
