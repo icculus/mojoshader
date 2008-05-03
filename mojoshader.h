@@ -463,6 +463,23 @@ void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
 const char *MOJOSHADER_glGetError(void);
 
 /*
+ * Get the maximum uniforms a shader can support for the current GL context,
+ *  MojoShader profile, and shader type. You can use this to make decisions
+ *  about what shaders you want to use (for example, a less complicated
+ *  shader may be swapped in for lower-end systems).
+ *
+ * Returns the number, or -1 on error.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
+
+/*
  * Compile a buffer of Direct3D shader bytecode into an OpenGL shader.
  *  You still need to link the shader before you may render with it.
  *

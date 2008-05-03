@@ -78,7 +78,8 @@ struct MOJOSHADER_glProgram
 };
 
 // Entry points in base OpenGL that lack function pointer prototypes...
-typedef const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
+typedef WINGDIAPI void (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
+typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 
 struct MOJOSHADER_glContext
 {
@@ -112,6 +113,7 @@ struct MOJOSHADER_glContext
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;
+    PFNGLGETINTEGERVPROC glGetIntegerv;
     PFNGLDELETEOBJECTARBPROC glDeleteObject;
     PFNGLATTACHOBJECTARBPROC glAttachObject;
     PFNGLCOMPILESHADERARBPROC glCompileShader;
@@ -199,6 +201,7 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
 {
     #define DO_LOOKUP(ext, typ, fn) ctx->fn = (typ) loadsym(lookup, #fn, &ctx->have_##ext)
     DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
+    DO_LOOKUP(base_opengl, PFNGLGETINTEGERVPROC, glGetIntegerv);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLDELETEOBJECTARBPROC, glDeleteObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLATTACHOBJECTARBPROC, glAttachObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLCOMPILESHADERARBPROC, glCompileShader);
@@ -411,6 +414,22 @@ void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *_ctx)
 {
     ctx = _ctx;
 } // MOJOSHADER_glMakeContextCurrent
+
+
+int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
+{
+    GLenum pname = GL_NONE;
+    GLint val = 0;
+    if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        pname = GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB;
+    else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+        pname = GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB;
+    else
+        return -1;
+
+    ctx->glGetIntegerv(pname, &val);
+    return (int) val;
+} // MOJOSHADER_glMaxUniforms
 
 
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
