@@ -5,6 +5,7 @@ Makefile
 cmake_install.cmake
 testparse
 finderrors
+glcaps
 *.exe
 ps_?_?
 vs_?_?
