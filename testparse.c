@@ -95,6 +95,40 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
             } // for
         } // else
 
+        printf("CONSTANTS:");
+        if (pd->constant_count == 0)
+            printf(" (none.)\n");
+        else
+        {
+            int i;
+            printf("\n");
+            for (i = 0; i < pd->constant_count; i++)
+            {
+                static const char *typenames[] = { "float", "int", "bool" };
+                const MOJOSHADER_constant *c = &pd->constants[i];
+                printf("    * %d: %s (", c->index, typenames[(int) c->type]);
+                if (c->type == MOJOSHADER_UNIFORM_FLOAT)
+                {
+                    printf("%f %f %f %f", c->value.f[0], c->value.f[1],
+                                          c->value.f[2], c->value.f[3]);
+                } // if
+                else if (c->type == MOJOSHADER_UNIFORM_INT)
+                {
+                    printf("%d %d %d %d", c->value.i[0], c->value.i[1],
+                                          c->value.i[2], c->value.i[3]);
+                } // else if
+                else if (c->type == MOJOSHADER_UNIFORM_BOOL)
+                {
+                    printf("%s", c->value.b ? "true" : "false");
+                } // else if
+                else
+                {
+                    printf("???");
+                } // else
+                printf(")\n");
+            } // for
+        } // else
+
         printf("UNIFORMS:");
         if (pd->uniform_count == 0)
             printf(" (none.)\n");

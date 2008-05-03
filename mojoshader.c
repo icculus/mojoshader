@@ -228,6 +228,11 @@ typedef struct RegisterList
     struct RegisterList *next;
 } RegisterList;
 
+typedef struct ConstantsList
+{
+    MOJOSHADER_constant constant;
+    struct ConstantsList *next;
+} ConstantsList;
 
 // result modifiers.
 #define MOD_SATURATE 0x01
@@ -348,6 +353,8 @@ struct Context
     int cmps;
     RegisterList used_registers;
     RegisterList defined_registers;
+    int constant_count;
+    ConstantsList *constants;
     int uniform_count;
     RegisterList uniforms;
     int attribute_count;
@@ -3594,8 +3601,21 @@ static int parse_args_TEX(Context *ctx)
 } // parse_args_TEX
 
 
-
 // State machine functions...
+
+static ConstantsList *alloc_constant_listitem(Context *ctx)
+{
+    ConstantsList *item = (ConstantsList *) Malloc(ctx, sizeof (ConstantsList));
+    if (item == NULL)
+        return NULL;
+
+    memset(&item->constant, '\0', sizeof (MOJOSHADER_constant));
+    item->next = ctx->constants;
+    ctx->constants = item;
+    ctx->constant_count++;
+
+    return item;
+} // alloc_constant_listitem
 
 static void state_DEF(Context *ctx)
 {
@@ -3604,10 +3624,19 @@ static void state_DEF(Context *ctx)
 
     ctx->instruction_count--;  // these don't increase your instruction count.
 
+    // !!! FIXME: fail if same register is defined twice.
+
     if (regtype != REG_TYPE_CONST)
         fail(ctx, "DEF token using invalid register");
     else
+    {
+        ConstantsList *item = alloc_constant_listitem(ctx);
+        item->constant.index = regnum;
+        item->constant.type = MOJOSHADER_UNIFORM_FLOAT;
+        memcpy(item->constant.value.f, ctx->dwords,
+               sizeof (item->constant.value.f));
         set_defined_register(ctx, regtype, regnum);
+    } // else
 } // state_DEF
 
 static void state_DEFI(Context *ctx)
@@ -3615,12 +3644,22 @@ static void state_DEFI(Context *ctx)
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
 
+    // !!! FIXME: fail if same register is defined twice.
+
     ctx->instruction_count--;  // these don't increase your instruction count.
 
     if (regtype != REG_TYPE_CONSTINT)
         fail(ctx, "DEFI token using invalid register");
     else
+    {
+        ConstantsList *item = alloc_constant_listitem(ctx);
+        item->constant.index = regnum;
+        item->constant.type = MOJOSHADER_UNIFORM_INT;
+        memcpy(item->constant.value.i, ctx->dwords,
+               sizeof (item->constant.value.i));
+
         set_defined_register(ctx, regtype, regnum);
+    } // else
 } // state_DEFI
 
 static void state_DEFB(Context *ctx)
@@ -3628,12 +3667,20 @@ static void state_DEFB(Context *ctx)
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
 
+    // !!! FIXME: fail if same register is defined twice.
+
     ctx->instruction_count--;  // these don't increase your instruction count.
 
     if (regtype != REG_TYPE_CONSTBOOL)
         fail(ctx, "DEFB token using invalid register");
     else
+    {
+        ConstantsList *item = alloc_constant_listitem(ctx);
+        item->constant.index = regnum;
+        item->constant.type = MOJOSHADER_UNIFORM_BOOL;
+        item->constant.value.b = ctx->dwords[0] ? 1 : 0;
         set_defined_register(ctx, regtype, regnum);
+    } // else
 } // state_DEFB
 
 static void state_DCL(Context *ctx)
@@ -4458,6 +4505,17 @@ static void free_output_list(MOJOSHADER_free f, void *d, OutputListNode *item)
 } // free_output_list
 
 
+static void free_constants_list(MOJOSHADER_free f, void *d, ConstantsList *item)
+{
+    while (item != NULL)
+    {
+        ConstantsList *next = item->next;
+        f(item, d);
+        item = next;
+    } // while
+} // free_constants_list
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -4472,6 +4530,7 @@ static void destroy_context(Context *ctx)
         free_output_list(f, d, ctx->mainline_intro.head.next);
         free_output_list(f, d, ctx->mainline.head.next);
         free_output_list(f, d, ctx->ignore.head.next);
+        free_constants_list(f, d, ctx->constants);
         free_reglist(f, d, ctx->used_registers.next);
         free_reglist(f, d, ctx->defined_registers.next);
         free_reglist(f, d, ctx->uniforms.next);
@@ -4591,6 +4650,33 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
     return retval;
 } // build_uniforms
+
+
+static MOJOSHADER_constant *build_constants(Context *ctx)
+{
+    const size_t len = sizeof (MOJOSHADER_constant) * ctx->constant_count;
+    MOJOSHADER_constant *retval = (MOJOSHADER_constant *) Malloc(ctx, len);
+
+    if (retval != NULL)
+    {
+        ConstantsList *item = ctx->constants;
+        int i;
+
+        for (i = 0; i < ctx->constant_count; i++)
+        {
+            if (item == NULL)
+            {
+                fail(ctx, "BUG: mismatched constant list and count");
+                break;
+            } // if
+
+            memcpy(&retval[i], &item->constant, sizeof (MOJOSHADER_constant));
+            item = item->next;
+        } // for
+    } // if
+
+    return retval;
+} // build_constants
 
 
 static MOJOSHADER_sampler *build_samplers(Context *ctx)
@@ -4718,6 +4804,7 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 {
     char *output = NULL;
+    MOJOSHADER_constant *constants = NULL;
     MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_attribute *attributes = NULL;
     MOJOSHADER_sampler *samplers = NULL;
@@ -4734,6 +4821,9 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         output = build_output(ctx);
 
     if (!isfail(ctx))
+        constants = build_constants(ctx);
+
+    if (!isfail(ctx))
         uniforms = build_uniforms(ctx);
 
     if (!isfail(ctx))
@@ -4748,6 +4838,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         int i;
 
         Free(ctx, output);
+        Free(ctx, constants);
 
         if (uniforms != NULL)
         {
@@ -4784,6 +4875,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->minor_ver = (int) ctx->minor_ver;
         retval->uniform_count = ctx->uniform_count;
         retval->uniforms = uniforms;
+        retval->constant_count = ctx->constant_count;
+        retval->constants = constants;
         retval->attribute_count = attribute_count;
         retval->attributes = attributes;
         retval->sampler_count = ctx->sampler_count;
@@ -4944,6 +5037,9 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     if (data->output != NULL)  // check for NULL in case of dumb free() impl.
         f((void *) data->output, d);
+
+    if (data->constants != NULL)
+        f((void *) data->constants, d);
 
     if (data->uniforms != NULL)
     {

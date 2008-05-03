@@ -95,6 +95,29 @@ typedef struct
 } MOJOSHADER_uniform;
 
 /*
+ * These are the constants defined in a shader. These are data values
+ *  hardcoded in a shader (with the DEF, DEFI, DEFB instructions), which
+ *  override your Uniforms. This data is largely for informational purposes,
+ *  since they are compiled in and can't be changed, like Uniforms can be.
+ * These integers are register indexes. So if index==6 and
+ *  type==MOJOSHADER_UNIFORM_FLOAT, that means we'd expect a 4-float vector
+ *  to be specified for what would be register "c6" in D3D assembly language,
+ *  before drawing with the shader.
+ * (value) is the value of the constant, unioned by type.
+ */
+typedef struct
+{
+    MOJOSHADER_uniformType type;
+    int index;
+    union
+    {
+        float f[4];  /* if type==MOJOSHADER_UNIFORM_FLOAT */
+        int i[4];    /* if type==MOJOSHADER_UNIFORM_INT */
+        int b;       /* if type==MOJOSHADER_UNIFORM_BOOL */
+    } value;
+} MOJOSHADER_constant;
+
+/*
  * Data types for samplers. See MOJOSHADER_sampler for more information.
  */
 typedef enum
@@ -231,6 +254,21 @@ typedef struct
      * This can be NULL on error or if (uniform_count) is zero.
      */
     MOJOSHADER_uniform *uniforms;
+
+    /*
+     * The number of elements pointed to by (constants).
+     */
+    int constant_count;
+
+    /*
+     * (constant_count) elements of data that specify constants used in
+     *  this shader. See discussion on MOJOSHADER_constant for details.
+     * This can be NULL on error or if (constant_count) is zero.
+     *  This is largely informational: constants are hardcoded into a shader.
+     *  The constants that you can set like parameters are in the "uniforms"
+     *  list.
+     */
+    MOJOSHADER_constant *constants;
 
     /*
      * The number of elements pointed to by (samplers).
