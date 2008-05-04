@@ -1836,7 +1836,6 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     const char *rel_lbracket = "";
     const char *rel_rbracket = "";
     char rel_swizzle[4] = { '\0' };
-    char rel_regnum_str[16] = { '\0' };
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
@@ -1845,10 +1844,8 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
         rel_swizzle[2] = '\0';
         rel_lbracket = "[";
         rel_rbracket = "]";
-        rel_regtype_str = get_GLSL_register_string(ctx, arg->relative_regtype,
-                                                   arg->relative_regnum,
-                                                   rel_regnum_str,
-                                                   sizeof (rel_regnum_str));
+        rel_regtype_str = get_GLSL_varname(ctx, arg->relative_regtype,
+                                           arg->relative_regnum);
 
         if (regtype_str == NULL)
         {
@@ -1873,9 +1870,9 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     const char *shader_type_str = get_shader_type_string(ctx);
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s%s%s%s%s%s",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s%s%s%s%s",
              premod_str, shader_type_str, regtype_str, regnum_str,
-             rel_lbracket, rel_regtype_str, rel_regnum_str, rel_swizzle,
+             rel_lbracket, rel_regtype_str, rel_swizzle,
              rel_rbracket, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
