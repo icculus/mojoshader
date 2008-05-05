@@ -84,6 +84,14 @@ typedef enum
  *  index==6 and type==MOJOSHADER_UNIFORM_FLOAT, that means we'd expect a
  *  4-float vector to be specified for what would be register "c6" in D3D
  *  assembly language, before drawing with the shader.
+ * (array_count) means this is an array of uniforms...this happens in some
+ *  profiles when we see a relative address ("c0[a0.x]", not the usual "c0").
+ *  In those cases, the shader was built to set some range of constant
+ *  registers as an array. You should set this array with (array_count)
+ *  elements from the constant register file, starting at (index) instead of
+ *  just a single uniform. To be extra difficult, you'll need to fill in the
+ *  correct values from the MOJOSHADER_constant data into the appropriate
+ *  parts of the array, overriding the constant register file. Fun!
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
  */
@@ -91,6 +99,7 @@ typedef struct
 {
     MOJOSHADER_uniformType type;
     int index;
+    int array_count;
     const char *name;
 } MOJOSHADER_uniform;
 

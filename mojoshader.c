@@ -157,6 +157,9 @@ typedef void (*emit_finalize)(Context *ctx);
 // one emit function for global definitions in each profile.
 typedef void (*emit_global)(Context *ctx, RegisterType regtype, int regnum);
 
+// one emit function for relative uniform arrays in each profile.
+typedef void (*emit_relative)(Context *ctx, int size);
+
 // one emit function for uniforms in each profile.
 typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum);
 
@@ -179,6 +182,7 @@ typedef struct
     emit_start start_emitter;
     emit_end end_emitter;
     emit_global global_emitter;
+    emit_relative relative_emitter;
     emit_uniform uniform_emitter;
     emit_sampler sampler_emitter;
     emit_attribute attribute_emitter;
@@ -293,6 +297,7 @@ typedef struct
 } SourceArgInfo;
 
 
+// !!! FIXME: get rid of this. use a bitfield instead.
 typedef enum
 {
     // Specific to GLSL profile...
@@ -348,6 +353,8 @@ struct Context
     uint32 previous_opcode;
     ContextFlags flags;
     int predicated;
+    int max_constreg;
+    int uniform_array;
     int loops;
     int reps;
     int cmps;
@@ -680,6 +687,9 @@ static inline void set_used_register(Context *ctx, const RegisterType regtype,
                                      const int regnum)
 {
     reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
+
+    if ((regtype == REG_TYPE_CONST) && (ctx->max_constreg < regnum))
+        ctx->max_constreg = regnum;
 } // set_used_register
 
 static inline int get_used_register(Context *ctx, const RegisterType regtype,
@@ -1122,6 +1132,12 @@ static void emit_D3D_global(Context *ctx, RegisterType regtype, int regnum)
 } // emit_D3D_global
 
 
+static void emit_D3D_relative(Context *ctx, int size)
+{
+    // no-op.
+} // emit_D3D_relative
+
+
 static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum)
 {
     // no-op.
@@ -1499,6 +1515,7 @@ static void emit_PASSTHROUGH_start(Context *ctx)
 static void emit_PASSTHROUGH_end(Context *ctx) {}
 static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
+static void emit_PASSTHROUGH_relative(Context *ctx, int size) {}
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
@@ -1628,6 +1645,16 @@ static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
              regtype_str, regnum_str);
     return retval;
 } // get_GLSL_varname
+
+
+static const char *get_GLSL_const_array_varname(Context *ctx)
+{
+    const char *shader_type_str = get_shader_type_string(ctx);
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array", shader_type_str);
+    return retval;
+} // get_GLSL_const_array_varname
+
 
 static const char *get_GLSL_destarg_varname(Context *ctx)
 {
@@ -1822,30 +1849,36 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     } // switch
 
 
-    char regnum_str[16];
-    const char *regtype_str = get_GLSL_register_string(ctx, arg->regtype,
-                                                       arg->regnum, regnum_str,
-                                                       sizeof (regnum_str));
+    char regnum_str[16] = { '\0' };
+    const char *regtype_str = NULL;
 
-    if (regtype_str == NULL)
+    // !!! FIXME: use get_GLSL_varname() instead?
+    const char *shader_type_str = get_shader_type_string(ctx);
+    if (!arg->relative)
     {
-        fail(ctx, "Unknown source register type.");
-        return "";
+        regtype_str = get_GLSL_register_string(ctx, arg->regtype,
+                                               arg->regnum, regnum_str,
+                                               sizeof (regnum_str));
     } // if
 
     const char *rel_lbracket = "";
+    char rel_offset[32] = { '\0' };
     const char *rel_rbracket = "";
     char rel_swizzle[4] = { '\0' };
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
+        // !!! FIXME: use get_GLSL_const_array_varname() instead?  (can't, because of shader_type_str nonsense).
+        regtype_str = "const_array";
+        rel_lbracket = "[";
+        if (arg->regnum != 0)
+            snprintf(rel_offset, sizeof (rel_offset), "%d + ", arg->regnum);
+        rel_regtype_str = get_GLSL_varname(ctx, arg->relative_regtype,
+                                           arg->relative_regnum);
         rel_swizzle[0] = '.';
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
         rel_swizzle[2] = '\0';
-        rel_lbracket = "[";
         rel_rbracket = "]";
-        rel_regtype_str = get_GLSL_varname(ctx, arg->relative_regtype,
-                                           arg->relative_regnum);
 
         if (regtype_str == NULL)
         {
@@ -1868,11 +1901,16 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     swiz_str[i] = '\0';
     assert(i < sizeof (swiz_str));
 
-    const char *shader_type_str = get_shader_type_string(ctx);
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown source register type.");
+        return "";
+    } // if
+
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s%s%s%s%s",
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s%s%s%s%s%s",
              premod_str, shader_type_str, regtype_str, regnum_str,
-             rel_lbracket, rel_regtype_str, rel_swizzle,
+             rel_lbracket, rel_offset, rel_regtype_str, rel_swizzle,
              rel_rbracket, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
@@ -2031,6 +2069,14 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
     pop_output(ctx);
 } // emit_GLSL_global
 
+static void emit_GLSL_relative(Context *ctx, int size)
+{
+    const char *varname = get_GLSL_const_array_varname(ctx);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "uniform vec4 %s[%d];", varname, size);
+    pop_output(ctx);
+} // emit_GLSL_relative
+
 static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
 {
     const char *varname = get_GLSL_varname(ctx, regtype, regnum);
@@ -2044,7 +2090,17 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum)
     } // switch
 
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "uniform %s %s;", type, varname);
+
+    if ((regtype == REG_TYPE_CONST) && (ctx->uniform_array))
+    {
+        const char *constarray = get_GLSL_const_array_varname(ctx);
+        output_line(ctx, "#define %s %s[%d]", varname, constarray, regnum);
+    } // if
+    else
+    {
+        output_line(ctx, "uniform %s %s;", type, varname);
+    } // else
+
     pop_output(ctx);
 } // emit_GLSL_uniform
 
@@ -3058,6 +3114,7 @@ static void emit_GLSL_RESERVED(Context *ctx)
     emit_##prof##_start, \
     emit_##prof##_end, \
     emit_##prof##_global, \
+    emit_##prof##_relative, \
     emit_##prof##_uniform, \
     emit_##prof##_sampler, \
     emit_##prof##_attribute, \
@@ -3280,6 +3337,12 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
         if (!replicate_swizzle(relswiz))
             return fail(ctx, "relative address needs replicate swizzle");
+
+        ctx->uniform_array = 1;
+        // !!! FIXME: maybe do some codeflow analysis to see if we can
+        // !!! FIXME:  drop this value lower?
+        if (ctx->max_constreg < (info->regnum + 127))
+            ctx->max_constreg = info->regnum + 127;
 
         set_used_register(ctx, info->relative_regtype, info->relative_regnum);
         retval++;
@@ -4587,6 +4650,7 @@ static char *build_output(Context *ctx)
 
 static char *alloc_varname(Context *ctx, const RegisterList *reg)
 {
+    // !!! FIXME: may not be GLSL...
     const char *varname = get_GLSL_varname(ctx, reg->regtype, reg->regnum);
     const size_t len = strlen(varname) + 1;
     char *retval = (char *) Malloc(ctx, len);
@@ -4603,6 +4667,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
     if (retval != NULL)
     {
+        MOJOSHADER_uniform *wptr = retval;
         RegisterList *item = ctx->uniforms.next;
         MOJOSHADER_uniformType type = MOJOSHADER_UNIFORM_FLOAT;
         int index = 0;
@@ -4610,8 +4675,12 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
         memset(retval, '\0', len);
 
+        int array_items = 0;
+
         for (i = 0; i < ctx->uniform_count; i++)
         {
+            int skip = 0;
+
             if (item == NULL)
             {
                 fail(ctx, "BUG: mismatched uniform list and count");
@@ -4622,6 +4691,11 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
             switch (item->regtype)
             {
                 case REG_TYPE_CONST:
+                    if (ctx->uniform_array)
+                    {
+                        skip = 1;
+                        array_items++;
+                    } // if
                     type = MOJOSHADER_UNIFORM_FLOAT;
                     break;
 
@@ -4638,11 +4712,31 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
                     break;
             } // switch
 
-            retval[i].type = type;
-            retval[i].index = index;
-            retval[i].name = alloc_varname(ctx, item);
+
+            if (!skip)
+            {
+                wptr->type = type;
+                wptr->index = index;
+                wptr->name = alloc_varname(ctx, item);
+                wptr++;
+            } // if
+
             item = item->next;
         } // for
+
+        if (ctx->uniform_array)
+        {
+            char *name = (char *) Malloc(ctx, 16);  // !!! FIXME
+            if (name != NULL)
+            {
+                strcpy(name, get_GLSL_const_array_varname(ctx)); // !!! FIXME
+                wptr->type = type;
+                wptr->index = index;
+                wptr->array_count = ctx->max_constreg + 1;
+                wptr->name = name;
+                ctx->uniform_count -= (array_items - 1);
+            } // if
+        } // if
     } // if
 
     return retval;
@@ -4953,6 +5047,9 @@ static void process_definitions(Context *ctx)
     } // while
 
     // okay, now deal with uniforms...
+    if (ctx->uniform_array)
+        ctx->profile->relative_emitter(ctx, ctx->max_constreg + 1);
+
     for (item = ctx->uniforms.next; item != NULL; item = item->next)
     {
         ctx->uniform_count++;
