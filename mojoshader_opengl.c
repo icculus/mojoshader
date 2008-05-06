@@ -619,6 +619,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     MOJOSHADER_glProgram *retval = NULL;
     const GLhandleARB program = ctx->glCreateProgramObject();
     int numregs = 0;
+    uint32 const_count = 0;
 
     if (vshader != NULL) ctx->glAttachObject(program, vshader->handle);
     if (pshader != NULL) ctx->glAttachObject(program, pshader->handle);
@@ -659,8 +660,6 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     retval->vertex = vshader;
     retval->fragment = pshader;
     retval->refcount = 1;
-
-    uint32 const_count = 0;
 
     if (vshader != NULL)
     {
