@@ -70,6 +70,8 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
     GLhandleARB handle;
+    uint32 constant_count;  // !!! FIXME: misnamed.
+    GLfloat *constants;  // !!! FIXME: misnamed.
     uint32 uniform_count;
     UniformMap *uniforms;
     uint32 attribute_count;
@@ -524,6 +526,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
             shader_unref(program->fragment);
             Free(program->attributes);
             Free(program->uniforms);
+            Free(program->constants);
             Free(program);
         } // else
     } // if
@@ -614,8 +617,12 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     retval->fragment = pshader;
     retval->refcount = 1;
 
+    uint32 const_count = 0;
+
     if (vshader != NULL)
     {
+        if (const_count < vshader->parseData->constant_count)
+            const_count = vshader->parseData->constant_count;
         retval->attributes = (AttributeMap *) Malloc(sizeof (AttributeMap) *
                                         vshader->parseData->attribute_count);
         if (retval->attributes == NULL)
@@ -628,8 +635,19 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (pshader != NULL)
     {
+        if (const_count < pshader->parseData->constant_count)
+            const_count = pshader->parseData->constant_count;
+
         lookup_uniforms(retval, pshader);
         pshader->refcount++;
+    } // if
+
+    if (const_count > 0)    
+    {
+        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * const_count);
+        if (retval->constants == NULL)
+            goto link_program_fail;
+        retval->constant_count = const_count;
     } // if
 
     return retval;
@@ -639,6 +657,7 @@ link_program_fail:
     {
         Free(retval->uniforms);
         Free(retval->attributes);
+        Free(retval->constants);
         Free(retval);
     } // if
 
@@ -853,9 +872,95 @@ void MOJOSHADER_glProgramReady(void)
         const MOJOSHADER_uniformType type = u->type;
         const MOJOSHADER_shaderType shader_type = map->shader_type;
         const int index = u->index;
+        const int size = u->array_count;
         const GLint location = map->location;
 
-        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        // only use arrays for 'c' registers.
+        assert((size == 0) || (type == MOJOSHADER_UNIFORM_FLOAT));
+
+        if (size != 0)  // !!! FIXME: this code sucks.
+        {
+            // !!! FIXME: calculate this all at link time.
+            if (shader_type == MOJOSHADER_TYPE_VERTEX)
+            {
+                const MOJOSHADER_constant *c = ctx->bound_program->vertex->parseData->constants;
+                int hi = ctx->bound_program->vertex->parseData->constant_count;
+
+                int j;
+                GLfloat *ptr = ctx->bound_program->constants;
+
+                for (j = 0; j < hi; j++)
+                {
+                    if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
+                        continue;
+
+                    const int idx = c[j].index;
+                    if ( (idx >= index) && (idx < (index + size)) )
+                    {
+                        memcpy(ptr, &ctx->vs_reg_file_f[idx * 4], 16);  // !!! FIXME: 16
+                        memcpy(&ctx->vs_reg_file_f[idx * 4], &c->value.f, 16);  // !!! FIXME: 16
+                        ptr += 4;
+                    } // if
+                } // for
+
+                ctx->glUniform4fv(location, size, &ctx->vs_reg_file_f[index * 4]);
+
+                ptr = ctx->bound_program->constants;
+                for (j = 0; j < hi; j++)
+                {
+                    if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
+                        continue;
+
+                    const int idx = c[j].index;
+                    if ( (idx >= index) && (idx < (index + size)) )
+                    {
+                        memcpy(&ctx->vs_reg_file_f[idx * 4], ptr, 16);  // !!! FIXME: 16
+                        ptr += 4;
+                    } // if
+                } // for
+            } // if
+
+            else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            {
+                const MOJOSHADER_constant *c = ctx->bound_program->fragment->parseData->constants;
+                int hi = ctx->bound_program->fragment->parseData->constant_count;
+
+                int j;
+                GLfloat *ptr = ctx->bound_program->constants;
+
+                for (j = 0; j < hi; j++)
+                {
+                    if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
+                        continue;
+
+                    const int idx = c[j].index;
+                    if ( (idx >= index) && (idx < (index + size)) )
+                    {
+                        memcpy(ptr, &ctx->ps_reg_file_f[idx * 4], 16);  // !!! FIXME: 16
+                        memcpy(&ctx->ps_reg_file_f[idx * 4], &c->value.f, 16);  // !!! FIXME: 16
+                        ptr += 4;
+                    } // if
+                } // for
+
+                ctx->glUniform4fv(location, size, &ctx->ps_reg_file_f[index * 4]);
+
+                ptr = ctx->bound_program->constants;
+                for (j = 0; j < hi; j++)
+                {
+                    if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
+                        continue;
+
+                    const int idx = c[j].index;
+                    if ( (idx >= index) && (idx < (index + size)) )
+                    {
+                        memcpy(&ctx->ps_reg_file_f[idx * 4], ptr, 16);  // !!! FIXME: 16
+                        ptr += 4;
+                    } // if
+                } // for
+            } // else if
+        } // if
+
+        else if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {
             if (type == MOJOSHADER_UNIFORM_FLOAT)
                 ctx->glUniform4fv(location, 1, &ctx->vs_reg_file_f[index * 4]);
