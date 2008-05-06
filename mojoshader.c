@@ -2812,7 +2812,7 @@ static void emit_GLSL_TEXCOORD(Context *ctx)
     //    emit_D3D_opcode_dss(ctx, "texcrd");
     //else
     //    emit_D3D_opcode_d(ctx, "texcoord");
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXCOORD unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXCOORD
 
 static void emit_GLSL_TEXKILL(Context *ctx)
@@ -2828,57 +2828,57 @@ static void emit_GLSL_TEX(Context *ctx)
     //    emit_D3D_opcode_ds(ctx, "tex");
     //else
     //    emit_D3D_opcode_d(ctx, "texld");
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEX unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEX
 
 static void emit_GLSL_TEXBEM(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXBEM unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXBEM
 
 static void emit_GLSL_TEXBEML(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXBEML unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXBEML
 
 static void emit_GLSL_TEXREG2AR(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXREG2AR unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2AR
 
 static void emit_GLSL_TEXREG2GB(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXREG2GB unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2GB
 
 static void emit_GLSL_TEXM3X2PAD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X2PAD unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2PAD
 
 static void emit_GLSL_TEXM3X2TEX(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X2TEX unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2TEX
 
 static void emit_GLSL_TEXM3X3PAD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X3PAD unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3PAD
 
 static void emit_GLSL_TEXM3X3TEX(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X3TEX unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3TEX
 
 static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X3SPEC unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3SPEC
 
 static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X3VSPEC unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3VSPEC
 
 static void emit_GLSL_EXPP(Context *ctx)
@@ -2998,32 +2998,32 @@ static void emit_GLSL_DEF(Context *ctx)
 
 static void emit_GLSL_TEXREG2RGB(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXREG2RGB unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXREG2RGB
 
 static void emit_GLSL_TEXDP3TEX(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXDP3TEX unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDP3TEX
 
 static void emit_GLSL_TEXM3X2DEPTH(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X2DEPTH unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X2DEPTH
 
 static void emit_GLSL_TEXDP3(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXDP3 unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDP3
 
 static void emit_GLSL_TEXM3X3(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXM3X3 unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXM3X3
 
 static void emit_GLSL_TEXDEPTH(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXDEPTH unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXDEPTH
 
 static void emit_GLSL_CMP(Context *ctx)
@@ -3033,7 +3033,7 @@ static void emit_GLSL_CMP(Context *ctx)
 
 static void emit_GLSL_BEM(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "BEM unimplemented.");  // !!! FIXME
 } // emit_GLSL_BEM
 
 static void emit_GLSL_DP2ADD(Context *ctx)
@@ -3062,7 +3062,7 @@ static void emit_GLSL_DSY(Context *ctx)
 
 static void emit_GLSL_TEXLDD(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXLDD unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXLDD
 
 static void emit_GLSL_SETP(Context *ctx)
@@ -3089,7 +3089,7 @@ static void emit_GLSL_SETP(Context *ctx)
 
 static void emit_GLSL_TEXLDL(Context *ctx)
 {
-    fail(ctx, "unimplemented.");  // !!! FIXME
+    fail(ctx, "TEXLDL unimplemented.");  // !!! FIXME
 } // emit_GLSL_TEXLDL
 
 static void emit_GLSL_BREAKP(Context *ctx)
