@@ -767,6 +767,37 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      const void *ptr);
 
 /*
+ * Set a sampler.
+ *
+ * There is a single array of samplers shared by all shaders.
+ *  This is the "s" register file in Direct3D (s0, s1, s2, etc...), also
+ *  known as the "sampler stages." MojoShader will take care of synchronizing
+ *  this internal array with the appropriate variables in the GL shaders.
+ *
+ * Unlike the float and int counterparts, samplers are single values, not
+ *  four-element vectors...so idx==1 is the second sampler in the internal
+ *  array, not the fifth.
+ *
+ * (sampler) is the index into the internal array.
+ * (unit) is an OpenGL TEXTURE UNIT (not a texture name!). This is the
+ *  unit's index, not the GLenum. So if you want GL_TEXTURE_0, use 0.
+ *
+ * Bind the texture unit, set state, call this to assign it to the internal
+ *  array, where it will propagate to the shader during
+ *  MOJOSHADER_glProgramReady().
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Samplers are not shared between contexts.
+ */
+void MOJOSHADER_glSetSampler(unsigned int sampler, unsigned int unit);
+
+/*
  * Inform MojoShader that it should commit any pending state to the GL. This
  *  must be called after you bind a program and update any inputs, right
  *  before you start drawing, so any outstanding changes made to the shared

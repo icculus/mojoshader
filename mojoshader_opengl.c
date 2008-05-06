@@ -61,6 +61,13 @@ typedef struct
 
 typedef struct
 {
+    MOJOSHADER_shaderType shader_type;
+    const MOJOSHADER_sampler *sampler;
+    GLuint location;
+} SamplerMap;
+
+typedef struct
+{
     const MOJOSHADER_attribute *attribute;
     GLuint location;
 } AttributeMap;
@@ -74,6 +81,8 @@ struct MOJOSHADER_glProgram
     GLfloat *constants;  // !!! FIXME: misnamed.
     uint32 uniform_count;
     UniformMap *uniforms;
+    uint32 sampler_count;
+    SamplerMap *samplers;
     uint32 attribute_count;
     AttributeMap *attributes;
     uint32 refcount;
@@ -102,6 +111,7 @@ struct MOJOSHADER_glContext
     GLfloat ps_reg_file_f[8192 * 4];
     GLint ps_reg_file_i[2047 * 4];
     GLint ps_reg_file_b[2047];
+    GLuint sampler_reg_file[16];
 
     // GL stuff...
     int opengl_major;
@@ -524,9 +534,10 @@ static void program_unref(MOJOSHADER_glProgram *program)
             ctx->glDeleteObject(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
-            Free(program->attributes);
-            Free(program->uniforms);
             Free(program->constants);
+            Free(program->samplers);
+            Free(program->uniforms);
+            Free(program->attributes);
             Free(program);
         } // else
     } // if
@@ -554,6 +565,29 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
         } // if
     } // for
 } // lookup_uniforms
+
+
+static void lookup_samplers(MOJOSHADER_glProgram *program,
+                            MOJOSHADER_glShader *shader)
+{
+    int i;
+    const MOJOSHADER_parseData *pd = shader->parseData;
+    const MOJOSHADER_sampler *s = pd->samplers;
+    const MOJOSHADER_shaderType shader_type = pd->shader_type;
+
+    for (i = 0; i < pd->sampler_count; i++)
+    {
+        const GLint loc = ctx->glGetUniformLocation(program->handle, s[i].name);
+        if (loc != -1)  // maybe the Sampler was optimized out?
+        {
+            SamplerMap *map = &program->samplers[program->sampler_count];
+            map->shader_type = shader_type;
+            map->sampler = &s[i];
+            map->location = (GLuint) loc;
+            program->sampler_count++;
+        } // if
+    } // for
+} // lookup_samplers
 
 
 static void lookup_attributes(MOJOSHADER_glProgram *program)
@@ -605,12 +639,21 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         goto link_program_fail;
     memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
 
+    numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->uniform_count;
     if (pshader != NULL) numregs += pshader->parseData->uniform_count;
     retval->uniforms = (UniformMap *) Malloc(sizeof (UniformMap) * numregs);
     if (retval->uniforms == NULL)
         goto link_program_fail;
     memset(retval->uniforms, '\0', sizeof (UniformMap) * numregs);
+
+    numregs = 0;
+    if (vshader != NULL) numregs += vshader->parseData->sampler_count;
+    if (pshader != NULL) numregs += pshader->parseData->sampler_count;
+    retval->samplers = (SamplerMap *) Malloc(sizeof (SamplerMap) * numregs);
+    if (retval->samplers == NULL)
+        goto link_program_fail;
+    memset(retval->samplers, '\0', sizeof (SamplerMap) * numregs);
 
     retval->handle = program;
     retval->vertex = vshader;
@@ -630,6 +673,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
         lookup_attributes(retval);
         lookup_uniforms(retval, vshader);
+        lookup_samplers(retval, vshader);
         vshader->refcount++;
     } // if
 
@@ -639,6 +683,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
             const_count = pshader->parseData->constant_count;
 
         lookup_uniforms(retval, pshader);
+        lookup_samplers(retval, vshader);
         pshader->refcount++;
     } // if
 
@@ -655,9 +700,10 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 link_program_fail:
     if (retval != NULL)
     {
+        Free(retval->constants);
+        Free(retval->samplers);
         Free(retval->uniforms);
         Free(retval->attributes);
-        Free(retval->constants);
         Free(retval);
     } // if
 
@@ -785,6 +831,14 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
 } // MOJOSHADER_glSetPixelShaderUniformB
 
 
+void MOJOSHADER_glSetSampler(unsigned int idx, unsigned int unit)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->sampler_reg_file);
+    if (idx < maxregs)
+        ctx->sampler_reg_file[idx] = (GLuint) unit;
+} // MOJOSHADER_glSetSampler
+
+
 static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
 {
     switch (type)
@@ -809,6 +863,7 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
 } // opengl_attr_type
 
 
+// !!! FIXME: shouldn't (index) be unsigned?
 void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
                                      MOJOSHADER_attributeType type,
@@ -857,14 +912,15 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 void MOJOSHADER_glProgramReady(void)
 {
     int i;
+    int count;
 
     if (ctx->bound_program == NULL)
         return;  // nothing to do.
 
-    // !!! FIXME: don't push Uniforms if we know they haven't changed.
+    // !!! FIXME: don't push Uniforms/Samplers if they haven't changed.
 
     // push Uniforms to the program from our register files...
-    const int count = ctx->bound_program->uniform_count;
+    count = ctx->bound_program->uniform_count;
     for (i = 0; i < count; i++)
     {
         const UniformMap *map = &ctx->bound_program->uniforms[i];
@@ -979,6 +1035,15 @@ void MOJOSHADER_glProgramReady(void)
             else if (type == MOJOSHADER_UNIFORM_BOOL)
                 ctx->glUniform1i(location, ctx->ps_reg_file_b[index]);
         } // else if
+    } // for
+
+    // push Samplers to the program from our register files...
+    count = ctx->bound_program->sampler_count;
+    for (i = 0; i < count; i++)
+    {
+        const SamplerMap *map = &ctx->bound_program->samplers[i];
+        const MOJOSHADER_sampler *s = map->sampler;
+        ctx->glUniform1i(map->location, ctx->sampler_reg_file[s->index]);
     } // for
 } // MOJOSHADER_glProgramReady
 

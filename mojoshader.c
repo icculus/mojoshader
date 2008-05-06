@@ -3757,6 +3757,9 @@ static void state_DCL(Context *ctx)
 
     // !!! FIXME: fail if DCL opcode comes after real instructions.
 
+    // !!! FIXME: apparently vs_3_0 can use sampler registers now.
+    // !!! FIXME:  (but only s0 through s3, not all 16 of them.)
+
     if (shader_is_vertex(ctx))
     {
         const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
@@ -4986,6 +4989,10 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
 static void process_definitions(Context *ctx)
 {
+    // !!! FIXME: apparently, pre ps_3_0, sampler registers don't need to be
+    // !!! FIXME:  DCL'd before use (default to 2d?). We aren't checking
+    // !!! FIXME:  this at the moment, though.
+
     RegisterList *uitem = &ctx->uniforms;
     RegisterList *prev = &ctx->used_registers;
     RegisterList *item = prev->next;
