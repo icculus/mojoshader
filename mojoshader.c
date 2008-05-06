@@ -2029,6 +2029,7 @@ static void emit_GLSL_finalize(Context *ctx)
     push_output(ctx, &ctx->mainline_intro);
     ctx->indent++;
 
+#if 0  // !!! FIXME: probably not necessary?
     // Make sure this is always set, moved from our generic attribute.
     reg = declared_attribute(ctx, MOJOSHADER_USAGE_POSITION, 0);
     if (reg != NULL)
@@ -2037,6 +2038,7 @@ static void emit_GLSL_finalize(Context *ctx)
         output_line(ctx, "gl_Position = %s;",
                             get_GLSL_varname(ctx, reg->regtype, reg->regnum));
     } // if
+#endif
 
     ctx->indent--;
     pop_output(ctx);
