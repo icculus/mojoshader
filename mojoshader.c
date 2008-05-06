@@ -3800,6 +3800,12 @@ static void state_DCL(Context *ctx)
     set_defined_register(ctx, regtype, regnum);
 } // state_DCL
 
+static void state_TEXCOORD(Context *ctx)
+{
+    if (shader_version_atleast(ctx, 2, 0))
+        fail(ctx, "TEXCOORD in Shader Model >= 2.0");  // apparently removed.
+} // state_TEXCOORD
+
 static void state_FRC(Context *ctx)
 {
     const DestArgInfo *dst = &ctx->dest_arg;
@@ -4255,7 +4261,7 @@ static const Instruction instructions[] =
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(TEXCOORD, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXCOORD, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEX, TEX, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEM, DS, MOJOSHADER_TYPE_PIXEL),
