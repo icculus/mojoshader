@@ -1456,7 +1456,7 @@ static void emit_D3D_DCL(Context *ctx)
 } // emit_D3D_DCL
 
 
-static void emit_D3D_TEXCOORD(Context *ctx)
+static void emit_D3D_TEXCRD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     if (shader_version_atleast(ctx, 1, 4))
@@ -1465,14 +1465,14 @@ static void emit_D3D_TEXCOORD(Context *ctx)
         emit_D3D_opcode_d(ctx, "texcoord");
 } // emit_D3D_TEXCOORD
 
-static void emit_D3D_TEX(Context *ctx)
+static void emit_D3D_TEXLD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     if (shader_version_atleast(ctx, 1, 4))
-        emit_D3D_opcode_dss(ctx, "tex");
+        emit_D3D_opcode_dss(ctx, "texld");
     else
-        emit_D3D_opcode_d(ctx, "texld");
-} // emit_D3D_TEX
+        emit_D3D_opcode_d(ctx, "tex");
+} // emit_D3D_TEXLD
 
 static void emit_D3D_SINCOS(Context *ctx)
 {
@@ -1604,8 +1604,8 @@ EMIT_PASSTHROUGH_OPCODE_FUNC(DEF)
 EMIT_PASSTHROUGH_OPCODE_FUNC(DEFI)
 EMIT_PASSTHROUGH_OPCODE_FUNC(DEFB)
 EMIT_PASSTHROUGH_OPCODE_FUNC(DCL)
-EMIT_PASSTHROUGH_OPCODE_FUNC(TEXCOORD)
-EMIT_PASSTHROUGH_OPCODE_FUNC(TEX)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXCRD)
+EMIT_PASSTHROUGH_OPCODE_FUNC(TEXLD)
 
 #undef EMIT_PASSTHROUGH_OPCODE_FUNC
 
@@ -2805,15 +2805,15 @@ static void emit_GLSL_DEFI(Context *ctx)
     pop_output(ctx);
 } // emit_GLSL_DEFI
 
-static void emit_GLSL_TEXCOORD(Context *ctx)
+static void emit_GLSL_TEXCRD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     //if (shader_version_atleast(ctx, 1, 4))
     //    emit_D3D_opcode_dss(ctx, "texcrd");
     //else
     //    emit_D3D_opcode_d(ctx, "texcoord");
-    fail(ctx, "TEXCOORD unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXCOORD
+    fail(ctx, "TEXCRD unimplemented.");  // !!! FIXME
+} // emit_GLSL_TEXCRD
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
@@ -2821,15 +2821,15 @@ static void emit_GLSL_TEXKILL(Context *ctx)
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst0);
 } // emit_GLSL_TEXKILL
 
-static void emit_GLSL_TEX(Context *ctx)
+static void emit_GLSL_TEXLD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     //if (shader_version_atleast(ctx, 1, 4))
-    //    emit_D3D_opcode_ds(ctx, "tex");
+    //    emit_D3D_opcode_ds(ctx, "texld");
     //else
-    //    emit_D3D_opcode_d(ctx, "texld");
-    fail(ctx, "TEX unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEX
+    //    emit_D3D_opcode_d(ctx, "tex");
+    fail(ctx, "TEXLD unimplemented.");  // !!! FIXME
+} // emit_GLSL_TEXLD
 
 static void emit_GLSL_TEXBEM(Context *ctx)
 {
@@ -3645,22 +3645,22 @@ static int parse_args_SINCOS(Context *ctx)
 } // parse_args_SINCOS
 
 
-static int parse_args_TEXCOORD(Context *ctx)
+static int parse_args_TEXCRD(Context *ctx)
 {
     // added extra register in ps_1_4.
     if (shader_version_atleast(ctx, 1, 4))
         return parse_args_DS(ctx);
     return parse_args_D(ctx);
-} // parse_args_TEXCOORD
+} // parse_args_TEXCRD
 
 
-static int parse_args_TEX(Context *ctx)
+static int parse_args_TEXLD(Context *ctx)
 {
     // added extra registers in ps_1_4.
     if (shader_version_atleast(ctx, 1, 4))
         return parse_args_DSS(ctx);
     return parse_args_D(ctx);
-} // parse_args_TEX
+} // parse_args_TEXLD
 
 
 // State machine functions...
@@ -3800,11 +3800,11 @@ static void state_DCL(Context *ctx)
     set_defined_register(ctx, regtype, regnum);
 } // state_DCL
 
-static void state_TEXCOORD(Context *ctx)
+static void state_TEXCRD(Context *ctx)
 {
     if (shader_version_atleast(ctx, 2, 0))
-        fail(ctx, "TEXCOORD in Shader Model >= 2.0");  // apparently removed.
-} // state_TEXCOORD
+        fail(ctx, "TEXCRD in Shader Model >= 2.0");  // apparently removed.
+} // state_TEXCRD
 
 static void state_FRC(Context *ctx)
 {
@@ -4261,9 +4261,9 @@ static const Instruction instructions[] =
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION_STATE(TEXCOORD, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXCRD, TEXCOORD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEX, TEX, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXLD, TEXLD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEM, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEML, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXREG2AR, DS, MOJOSHADER_TYPE_PIXEL),
