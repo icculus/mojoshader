@@ -741,6 +741,7 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
 static inline void add_sampler(Context *ctx, const RegisterType rtype,
                                const int regnum, const TextureType ttype)
 {
+    // !!! FIXME: make sure it doesn't exist?
     RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
     item->index = (int) ttype;
 } // add_sampler
