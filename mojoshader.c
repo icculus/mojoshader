@@ -754,6 +754,12 @@ static inline int replicate_swizzle(const int swizzle)
 } // replicate_swizzle
 
 
+static inline int no_swizzle(const int swizzle)
+{
+    return (swizzle != 0xE4);  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
+} // no_swizzle
+
+
 static inline int vecsize_from_writemask(const int m)
 {
     return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
@@ -997,7 +1003,7 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 
     char swizzle_str[6];
     int i = 0;
-    if (arg->swizzle != 0xE4)  // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
+    if (no_swizzle(arg->swizzle))
     {
         swizzle_str[i++] = '.';
         swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
@@ -1894,8 +1900,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     char swiz_str[6];
     int i = 0;
-    // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
-    if ((arg->swizzle != 0xE4) || (writemask != 0xF))
+    if ( (no_swizzle(arg->swizzle)) || (writemask != 0xF) )
     {
         swiz_str[i++] = '.';
         if (writemask0) swiz_str[i++] = swizzle_channels[arg->swizzle_x];
@@ -3370,16 +3375,13 @@ static int parse_predicated_token(Context *ctx)
     SourceArgInfo *arg = &ctx->predicate_arg;
     if (parse_source_token(ctx, arg) == FAIL)
         return FAIL;
-    if (arg->regtype != REG_TYPE_PREDICATE)
+    else if (arg->regtype != REG_TYPE_PREDICATE)
         return fail(ctx, "Predicated instruction but not predicate register!");
-    if ((arg->src_mod != SRCMOD_NONE) && (arg->src_mod != SRCMOD_NOT))
+    else if ((arg->src_mod != SRCMOD_NONE) && (arg->src_mod != SRCMOD_NOT))
         return fail(ctx, "Predicated instruction register is not NONE or NOT");
-
-    // 0xE4 == 11100100 ... 3 2 1 0. No swizzle.
-    if ( (arg->swizzle != 0xE4) && (!replicate_swizzle(arg->swizzle)) )
+    else if ( no_swizzle(arg->swizzle) && !replicate_swizzle(arg->swizzle) )
         return fail(ctx, "Predicated instruction register has wrong swizzle");
-
-    if (arg->relative)  // I'm pretty sure this is illegal...?
+    else if (arg->relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in predicated token");
 
     return 1;
@@ -4172,6 +4174,37 @@ static void state_TEXKILL(Context *ctx)
     // !!! FIXME: there are further limitations in ps_1_3 and earlier.
 } // state_TEXKILL
 
+static void state_TEXLD(Context *ctx)
+{
+    if (shader_version_atleast(ctx, 2, 0))
+    {
+        const SourceArgInfo *src0 = &ctx->source_args[0];
+        const SourceArgInfo *src1 = &ctx->source_args[1];
+        const RegisterType rt0 = src0->regtype;
+        if (ctx->dest_arg.regtype != REG_TYPE_TEMP)
+            fail(ctx, "TEXLD dest must be a temp register");
+        else if ((rt0 != REG_TYPE_TEXTURE) && (rt0 != REG_TYPE_TEMP))
+            fail(ctx, "TEXLD src0 must be texture or temp register");
+        else if (src0->src_mod != SRCMOD_NONE)
+            fail(ctx, "TEXLD src0 must have no modifiers");
+        else if (src1->regtype != REG_TYPE_SAMPLER)
+            fail(ctx, "TEXLD src1 must be sampler register");
+        else if (src1->src_mod != SRCMOD_NONE)
+            fail(ctx, "TEXLD src0 must have no modifiers");
+
+        // Shader Model 3 added swizzle support to this opcode.
+        if (!shader_version_atleast(ctx, 3, 0))
+        {
+            if (!no_swizzle(src0->swizzle))
+                fail(ctx, "TEXLD src0 must not swizzle");
+            else if (!no_swizzle(src1->swizzle))
+                fail(ctx, "TEXLD src1 must not swizzle");
+        } // if
+    } // if
+
+    // !!! FIXME: checks for ps_1_4 and ps_1_0 versions...
+} // state_TEXLD
+
 static void state_DP2ADD(Context *ctx)
 {
     if (!replicate_swizzle(ctx->source_args[2].swizzle))
@@ -4272,7 +4305,7 @@ static const Instruction instructions[] =
     INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
     INSTRUCTION_STATE(TEXCRD, TEXCRD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXLD, TEXLD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXLD, TEXLD, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEM, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXBEML, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXREG2AR, DS, MOJOSHADER_TYPE_PIXEL),
