@@ -5219,7 +5219,6 @@ static void process_definitions(Context *ctx)
                                       (TextureType) item->index);
     } // for
 
-
     // ...and attributes...
     for (item = ctx->attributes.next; item != NULL; item = item->next)
     {
