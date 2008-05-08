@@ -2705,7 +2705,7 @@ static void emit_GLSL_POW(Context *ctx)
 {
     const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
     const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "pow(abs(%s), %s))", src0, src1);
+    const char *code = make_GLSL_destarg_assign(ctx, "pow(abs(%s), %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_POW
 
