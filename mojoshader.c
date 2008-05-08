@@ -2304,35 +2304,27 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         else
         {
-            fail(ctx, "unknown attribute register");
+            fail(ctx, "unknown vertex shader attribute register");
         } // else
     } // if
 
-#if 0 // !!! FIXME: write me.
     else if (shader_is_pixel(ctx))
     {
-        if (regtype == REG_TYPE_SAMPLER)
-        {
-            switch ((const TextureType) usage)
-            {
-                case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
-                case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
-                case TEXTURE_TYPE_VOLUME: usage_str = "_volume"; break;
-                default: fail(ctx, "unknown sampler texture type"); return;
-            } // switch
-        } // if
+        // samplers DCLs get handled in emit_GLSL_uniform().
 
-        else if (regtype == REG_TYPE_COLOROUT)
-        {
-            retval = "oC";
-        } // else if
+        if (regtype == REG_TYPE_COLOROUT)
+            usage_str = "gl_FragColor";
 
         else if (regtype == REG_TYPE_DEPTHOUT)
-        {
-            retval = "oDepth";
-        } // else if
+            usage_str = "gl_FragDepth";
+
+        else
+            fail(ctx, "unknown pixel shader attribute register");
+
+        push_output(ctx, &ctx->globals);
+        output_line(ctx, "#define %s %s", varname, usage_str);
+        pop_output(ctx);
     } // else if
-#endif
 
     else
     {
