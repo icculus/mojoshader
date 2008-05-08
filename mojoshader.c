@@ -1468,8 +1468,10 @@ static void emit_D3D_TEXCRD(Context *ctx)
 static void emit_D3D_TEXLD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
-    if (shader_version_atleast(ctx, 1, 4))
+    if (shader_version_atleast(ctx, 2, 0))
         emit_D3D_opcode_dss(ctx, "texld");
+    else if (shader_version_atleast(ctx, 1, 4))
+        emit_D3D_opcode_ds(ctx, "texld");
     else
         emit_D3D_opcode_d(ctx, "tex");
 } // emit_D3D_TEXLD
@@ -2824,7 +2826,9 @@ static void emit_GLSL_TEXKILL(Context *ctx)
 static void emit_GLSL_TEXLD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
-    //if (shader_version_atleast(ctx, 1, 4))
+    //if (shader_version_atleast(ctx, 2, 0))
+    //    emit_D3D_opcode_dss(ctx, "texld");
+    //else if (shader_version_atleast(ctx, 1, 4))
     //    emit_D3D_opcode_ds(ctx, "texld");
     //else
     //    emit_D3D_opcode_d(ctx, "tex");
@@ -3656,9 +3660,11 @@ static int parse_args_TEXCRD(Context *ctx)
 
 static int parse_args_TEXLD(Context *ctx)
 {
-    // added extra registers in ps_1_4.
-    if (shader_version_atleast(ctx, 1, 4))
+    // different registers in px_1_3, ps_1_4, and ps_2_0!
+    if (shader_version_atleast(ctx, 2, 0))
         return parse_args_DSS(ctx);
+    else if (shader_version_atleast(ctx, 1, 4))
+        return parse_args_DS(ctx);
     return parse_args_D(ctx);
 } // parse_args_TEXLD
 
