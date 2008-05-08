@@ -4205,6 +4205,16 @@ static void state_TEXLD(Context *ctx)
     // !!! FIXME: checks for ps_1_4 and ps_1_0 versions...
 } // state_TEXLD
 
+static void state_TEXLDL(Context *ctx)
+{
+    if (!shader_version_atleast(ctx, 3, 0))
+        fail(ctx, "TEXLDL in version < Shader Model 3.0");
+    else if (ctx->source_args[0].regtype != REG_TYPE_TEXTURE)
+        fail(ctx, "TEXLDL src0 must be texture register");
+    else if (ctx->source_args[1].regtype != REG_TYPE_SAMPLER)
+        fail(ctx, "TEXLDL src1 must be sampler register");
+} // state_TEXLDL
+
 static void state_DP2ADD(Context *ctx)
 {
     if (!replicate_swizzle(ctx->source_args[2].swizzle))
@@ -4334,7 +4344,7 @@ static const Instruction instructions[] =
     INSTRUCTION(DSY, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXLDD, DSSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(SETP, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(TEXLDL, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(TEXLDL, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(BREAKP, S, MOJOSHADER_TYPE_ANY),
 
     #undef INSTRUCTION
