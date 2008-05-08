@@ -786,7 +786,7 @@ static inline int replicate_swizzle(const int swizzle)
 
 static inline int no_swizzle(const int swizzle)
 {
-    return (swizzle != 0xE4);  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
+    return (swizzle == 0xE4);  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
 } // no_swizzle
 
 
