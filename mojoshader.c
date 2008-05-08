@@ -746,6 +746,36 @@ static inline void add_sampler(Context *ctx, const RegisterType rtype,
 } // add_sampler
 
 
+static inline int writemask_xyzw(const int writemask)
+{
+    return (writemask == 0xF);  // 0xF == 1111. No explicit mask (full!).
+} // writemask_xyzw
+
+
+static inline int writemask_xyz(const int writemask)
+{
+    return (writemask == 0x7);  // 0x7 == 0111. (that is: xyz)
+} // writemask_xyz
+
+
+static inline int writemask_xy(const int writemask)
+{
+    return (writemask == 0x3);  // 0x3 == 0011. (that is: xy)
+} // writemask_xy
+
+
+static inline int writemask_x(const int writemask)
+{
+    return (writemask == 0x1);  // 0x1 == 0001. (that is: x)
+} // writemask_x
+
+
+static inline int writemask_y(const int writemask)
+{
+    return (writemask == 0x2);  // 0x1 == 0010. (that is: y)
+} // writemask_y
+
+
 static inline int replicate_swizzle(const int swizzle)
 {
     return ( (((swizzle >> 0) & 0x3) == ((swizzle >> 2) & 0x3)) &&
@@ -1058,7 +1088,7 @@ static const char *make_D3D_destarg_string(Context *ctx)
 
     char writemask_str[6];
     int i = 0;
-    if (arg->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    if (!writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
         if (arg->writemask0) writemask_str[i++] = 'x';
@@ -1692,7 +1722,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_arg;
 
-    if (arg->writemask == 0x0)
+    if (arg->writemask == 0)
         fail(ctx, "BUG: empty writemask");  // !!! FIXME: make this a no-op?
 
     char clampbuf[32] = { '\0' };
@@ -1755,7 +1785,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
                                                        sizeof (regnum_str));
     char writemask_str[6];
     int i = 0;
-    if (arg->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    if (!writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
         if (arg->writemask0) writemask_str[i++] = 'x';
@@ -1909,7 +1939,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     char swiz_str[6];
     int i = 0;
-    if ( (no_swizzle(arg->swizzle)) || (writemask != 0xF) )
+    if ( (no_swizzle(arg->swizzle)) || (!writemask_xyzw(writemask)) )
     {
         swiz_str[i++] = '.';
         if (writemask0) swiz_str[i++] = swizzle_channels[arg->swizzle_x];
@@ -2713,11 +2743,11 @@ static void emit_GLSL_SINCOS(Context *ctx)
     const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
     const char *code = NULL;
 
-    if (mask == 0x1)  // .x
+    if (writemask_x(mask))
         code = make_GLSL_destarg_assign(ctx, "cos(%s)", src0);
-    else if (mask == 0x2)  // .y
+    else if (writemask_y(mask))
         code = make_GLSL_destarg_assign(ctx, "sin(%s)", src0);
-    else if (mask == 0x3)  // .xy
+    else if (writemask_xy(mask))
         code = make_GLSL_destarg_assign(ctx, "vec2(cos(%s), sin(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SINCOS
@@ -2923,7 +2953,7 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
     const char *src1 = get_GLSL_srcarg_varname(ctx, 1);
     const char *src2 = get_GLSL_srcarg_varname(ctx, 2);
 
-    if (dst->writemask == 0x0)
+    if (dst->writemask == 0)
         return;  // nothing to do, drop out early.
 
     // !!! FIXME: for replicate swizzles, don't redo compares...
@@ -2931,7 +2961,7 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
     if (replicate_swizzle(ctx->source_args[0].swizzle))
     {
         const char swiz = swizzle_channels[ctx->source_args[0].swizzle_x];
-        if (dst->writemask == 0xF)
+        if (writemask_xyzw(dst->writemask))
         {
             const char *code = make_GLSL_destarg_assign(ctx,
                                                 "((%s.%c %s) ? %s : %s)",
@@ -3474,7 +3504,7 @@ static int parse_args_DCL(Context *ctx)
             else if (mt == MISCTYPE_TYPE_FACE)
             {
                 reserved_mask = 0x7FFFFFFF;
-                if (ctx->dest_arg.writemask != 0xF)
+                if (!writemask_xyzw(ctx->dest_arg.writemask))
                     return fail(ctx, "DCL face writemask must be full");
                 else if (ctx->dest_arg.result_mod != 0)
                     return fail(ctx, "DCL face result modifier must be zero");
@@ -3835,7 +3865,7 @@ static void state_FRC(Context *ctx)
 
     else if (!shader_version_atleast(ctx, 2, 0))
     {
-        if ((dst->writemask != 0x2) && (dst->writemask != 0x3))
+        if (!writemask_y(dst->writemask) && !writemask_xy(dst->writemask))
             fail(ctx, "FRC writemask must be .y or .xy for shader model 1.x");
     } // else if
 } // state_FRC
@@ -3861,8 +3891,8 @@ static void srcarg_matrix_replicate(Context *ctx, const int idx,
 static void state_M4X4(Context *ctx)
 {
     const DestArgInfo *info = &ctx->dest_arg;
-    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
-        fail(ctx, "M4X4 writemask must be .xyzw");
+    if (!writemask_xyzw(info->writemask))
+        fail(ctx, "M4X4 writemask must be full");
 
 // !!! FIXME: MSDN:
 //The xyzw (default) mask is required for the destination register. Negate and swizzle modifiers are allowed for src0, but not for src1.
@@ -3874,7 +3904,7 @@ static void state_M4X4(Context *ctx)
 static void state_M4X3(Context *ctx)
 {
     const DestArgInfo *info = &ctx->dest_arg;
-    if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
+    if (!writemask_xyz(info->writemask))
         fail(ctx, "M4X3 writemask must be .xyz");
 
 // !!! FIXME: MSDN stuff
@@ -3885,7 +3915,7 @@ static void state_M4X3(Context *ctx)
 static void state_M3X4(Context *ctx)
 {
     const DestArgInfo *info = &ctx->dest_arg;
-    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    if (!writemask_xyzw(info->writemask))
         fail(ctx, "M3X4 writemask must be .xyzw");
 
 // !!! FIXME: MSDN stuff
@@ -3896,7 +3926,7 @@ static void state_M3X4(Context *ctx)
 static void state_M3X3(Context *ctx)
 {
     const DestArgInfo *info = &ctx->dest_arg;
-    if (info->writemask != 0x7)  // 0x7 == 0111. (that is: xyz)
+    if (!writemask_xyz(info->writemask))
         fail(ctx, "M3X3 writemask must be .xyz");
 
 // !!! FIXME: MSDN stuff
@@ -3907,7 +3937,7 @@ static void state_M3X3(Context *ctx)
 static void state_M3X2(Context *ctx)
 {
     const DestArgInfo *info = &ctx->dest_arg;
-    if (info->writemask != 0x3)  // 0x3 == 0011. (that is: xy)
+    if (!writemask_xy(info->writemask))
         fail(ctx, "M3X2 writemask must be .xy");
 
 // !!! FIXME: MSDN stuff
@@ -4114,7 +4144,7 @@ static void state_SINCOS(Context *ctx)
 {
     const DestArgInfo *dst = &ctx->dest_arg;
     const int mask = dst->writemask;
-    if ((mask < 0x1) || (mask > 0x3))
+    if (!writemask_x(mask) && !writemask_y(mask) && !writemask_xy(mask))
         fail(ctx, "SINCOS write mask must be .x or .y or .xy");
 
     else if (!replicate_swizzle(ctx->source_args[0].swizzle))
@@ -4173,7 +4203,7 @@ static void state_TEXKILL(Context *ctx)
     //  say it's a dest arg. That's annoying.
     const DestArgInfo *info = &ctx->dest_arg;
     const RegisterType regtype = info->regtype;
-    if (info->writemask != 0xF)  // 0xF == 1111. No explicit mask.
+    if (!writemask_xyzw(info->writemask))
         fail(ctx, "TEXKILL writemask must be .xyzw");
     else if ((regtype != REG_TYPE_TEMP) && (regtype != REG_TYPE_TEXTURE))
         fail(ctx, "TEXKILL must use a temp or texture register");
