@@ -1811,6 +1811,34 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
 } // make_GLSL_destarg_assign
 
 
+static char *make_GLSL_swizzle_string(char *swiz_str, const size_t strsize,
+                                      const int swizzle, const int writemask)
+{
+    size_t i = 0;
+    if ( (!no_swizzle(swizzle)) || (!writemask_xyzw(writemask)) )
+    {
+        const int writemask0 = (writemask >> 0) & 0x1;
+        const int writemask1 = (writemask >> 1) & 0x1;
+        const int writemask2 = (writemask >> 2) & 0x1;
+        const int writemask3 = (writemask >> 3) & 0x1;
+
+        const int swizzle_x = (swizzle >> 0) & 0x3;
+        const int swizzle_y = (swizzle >> 2) & 0x3;
+        const int swizzle_z = (swizzle >> 4) & 0x3;
+        const int swizzle_w = (swizzle >> 6) & 0x3;
+
+        swiz_str[i++] = '.';
+        if (writemask0) swiz_str[i++] = swizzle_channels[swizzle_x];
+        if (writemask1) swiz_str[i++] = swizzle_channels[swizzle_y];
+        if (writemask2) swiz_str[i++] = swizzle_channels[swizzle_z];
+        if (writemask3) swiz_str[i++] = swizzle_channels[swizzle_w];
+    } // if
+    assert(i < strsize);
+    swiz_str[i] = '\0';
+    return swiz_str;
+} // make_GLSL_swizzle_string
+
+
 static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
                                      const int writemask)
 {
@@ -1822,11 +1850,6 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
 // !!! FIXME: not right.
     const SourceArgInfo *arg = &ctx->source_args[idx];
-
-    const int writemask0 = (writemask >> 0) & 0x1;
-    const int writemask1 = (writemask >> 1) & 0x1;
-    const int writemask2 = (writemask >> 2) & 0x1;
-    const int writemask3 = (writemask >> 3) & 0x1;
 
     const char *premod_str = "";
     const char *postmod_str = "";
@@ -1939,17 +1962,8 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     } // if
 
     char swiz_str[6];
-    int i = 0;
-    if ( (no_swizzle(arg->swizzle)) || (!writemask_xyzw(writemask)) )
-    {
-        swiz_str[i++] = '.';
-        if (writemask0) swiz_str[i++] = swizzle_channels[arg->swizzle_x];
-        if (writemask1) swiz_str[i++] = swizzle_channels[arg->swizzle_y];
-        if (writemask2) swiz_str[i++] = swizzle_channels[arg->swizzle_z];
-        if (writemask3) swiz_str[i++] = swizzle_channels[arg->swizzle_w];
-    } // if
-    swiz_str[i] = '\0';
-    assert(i < sizeof (swiz_str));
+    make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
+                             arg->swizzle, writemask);
 
     if (regtype_str == NULL)
     {
