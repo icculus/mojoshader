@@ -2193,6 +2193,8 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *varname = get_GLSL_varname(ctx, regtype, regnum);
     const char *usage_str = NULL;
+    const char *arrayleft = "";
+    const char *arrayright = "";
     char index_str[16] = { '\0' };
 
     if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
@@ -2256,9 +2258,6 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         else if (regtype == REG_TYPE_OUTPUT)
         {
-            const char *arrayleft = "";
-            const char *arrayright = "";
-
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
@@ -2310,7 +2309,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
     else if (shader_is_pixel(ctx))
     {
-        // samplers DCLs get handled in emit_GLSL_uniform().
+        // samplers DCLs get handled in emit_GLSL_sampler().
 
         if (regtype == REG_TYPE_COLOROUT)
             usage_str = "gl_FragColor";
@@ -2318,11 +2317,22 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         else if (regtype == REG_TYPE_DEPTHOUT)
             usage_str = "gl_FragDepth";
 
+        else if (regtype == REG_TYPE_TEXTURE)
+        {
+            snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
+            usage_str = "gl_TexCoord";
+            arrayleft = "[";
+            arrayright = "]";
+        } // else if
+
         else
+        {
             fail(ctx, "unknown pixel shader attribute register");
+        } // else
 
         push_output(ctx, &ctx->globals);
-        output_line(ctx, "#define %s %s", varname, usage_str);
+        output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+                    arrayleft, index_str, arrayright);
         pop_output(ctx);
     } // else if
 
@@ -3849,6 +3859,7 @@ static void state_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_arg;
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
+    const int writemask = arg->writemask;
 
     ctx->instruction_count--;  // these don't increase your instruction count.
 
@@ -3863,7 +3874,6 @@ static void state_DCL(Context *ctx)
     {
         const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
         const int index = ctx->dwords[1];
-        const int writemask = arg->writemask;
         if (usage >= MOJOSHADER_USAGE_TOTAL)
         {
             fail(ctx, "unknown DCL usage");
@@ -3874,7 +3884,9 @@ static void state_DCL(Context *ctx)
 
     else if (shader_is_pixel(ctx))
     {
-        if (regtype == REG_TYPE_SAMPLER)
+        if (regtype == REG_TYPE_TEXTURE)
+            add_attribute_register(ctx, regtype, regnum, 0, 0, writemask);
+        else if (regtype == REG_TYPE_SAMPLER)
         {
             const TextureType ttype = (const TextureType) ctx->dwords[0];
             switch (ttype)
@@ -3888,7 +3900,7 @@ static void state_DCL(Context *ctx)
                     return;
             } // switch
             add_sampler(ctx, regtype, regnum, ttype);
-        } // if
+        } // else if
     } // else if
 
     else
@@ -5021,7 +5033,9 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
             {
                 if (shader_is_pixel(ctx))
                 {
-                    fail(ctx, "BUG: pixel shader with vertex attributes");
+                    // !!! FIXME: sort of wedged this if statement in here.
+                    if (item->regtype != REG_TYPE_TEXTURE)
+                        fail(ctx, "BUG: pixel shader with vertex attributes");
                     break;
                 } // if
                 else
