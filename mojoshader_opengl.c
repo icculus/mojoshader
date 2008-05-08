@@ -32,6 +32,9 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef unsigned __int8 uint8;
 typedef unsigned __int32 uint32;
 typedef unsigned __int32 int32;
+// Warning Level 4 considered harmful.  :)
+#pragma warning(disable: 4100)  // "unreferenced formal parameter"
+#pragma warning(disable: 4389)  // "signed/unsigned mismatch"
 #else
 #include <stdint.h>
 typedef uint8_t uint8;
@@ -324,7 +327,11 @@ static int valid_profile(const char *profile)
     #define MUST_HAVE(p, x) \
         if (!ctx->have_##x) { set_error(#p " profile needs " #x); return 0; }
 
-    if (0) {}
+    if (profile == NULL)
+    {
+        set_error("NULL profile");
+        return 0;
+    } // if
 
     #if SUPPORT_PROFILE_GLSL
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
