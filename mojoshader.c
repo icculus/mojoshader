@@ -2887,14 +2887,56 @@ static void emit_GLSL_TEXKILL(Context *ctx)
 
 static void emit_GLSL_TEXLD(Context *ctx)
 {
-    // this opcode looks and acts differently depending on the shader model.
-    //if (shader_version_atleast(ctx, 2, 0))
-    //    emit_D3D_opcode_dss(ctx, "texld");
-    //else if (shader_version_atleast(ctx, 1, 4))
-    //    emit_D3D_opcode_ds(ctx, "texld");
-    //else
-    //    emit_D3D_opcode_d(ctx, "tex");
-    fail(ctx, "TEXLD unimplemented.");  // !!! FIXME
+    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
+
+    if (!shader_version_atleast(ctx, 2, 0))
+    {
+        // ps_1_0 and ps_1_4 are both different, too!
+        fail(ctx, "TEXLD <= Shader Model 2.0 unimplemented.");  // !!! FIXME
+        return;
+    } // if
+    else
+    {
+        const SourceArgInfo *samp_arg = &ctx->source_args[1];
+        RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                          samp_arg->regnum);
+        const char *funcname = NULL;
+        const char *src0 = NULL;
+        const char *src1 = get_GLSL_srcarg_varname(ctx, 1);
+        char swiz_str[6];
+
+        if (sreg == NULL)
+        {
+            fail(ctx, "TEXLD using undeclared sampler");
+            return;
+        } // if
+
+        switch ((const TextureType) sreg->index)
+        {
+            case TEXTURE_TYPE_2D:
+                funcname = "texture2D";
+                src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
+                break;
+            case TEXTURE_TYPE_CUBE:
+                funcname = "textureCube";
+                src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                break;
+            case TEXTURE_TYPE_VOLUME:
+                funcname = "texture3D";
+                src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                break;
+            default:
+                fail(ctx, "unknown texture type");
+                return;
+        } // switch
+
+        make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
+                                 samp_arg->swizzle, ctx->dest_arg.writemask);
+
+        const char *code = make_GLSL_destarg_assign(ctx,
+                            "%s(%s, %s)%s", funcname, src1, src0, swiz_str);
+        output_line(ctx, "%s", code);
+    } // else
 } // emit_GLSL_TEXLD
 
 static void emit_GLSL_TEXBEM(Context *ctx)
