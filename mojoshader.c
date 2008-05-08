@@ -1714,8 +1714,17 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
 
     // MSDN says MOD_PP is a hint and many implementations ignore it. So do we.
 
-    if (arg->result_mod & MOD_CENTROID) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
-    if (ctx->predicated) { fail(ctx, "unsupported"); return ""; } // !!! FIXME
+    if (arg->result_mod & MOD_CENTROID)
+    {
+        fail(ctx, "MOD_CENTROID unsupported");  // !!! FIXME
+        return "";
+    } // if
+
+    if (ctx->predicated)
+    {
+        fail(ctx, "predicated destinations unsupported");  // !!! FIXME
+        return "";
+    } // if
 
     char *operation = get_scratch_buffer(ctx);
     va_list ap;
@@ -1800,7 +1809,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_BIAS:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_BIAS unsupported"); return ""; // !!! FIXME
             postmod_str = "_bias";
             break;
 
@@ -1808,35 +1817,35 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_SIGN:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_SIGN unsupported"); return ""; // !!! FIXME
             postmod_str = "_bx2";
             break;
 
         case SRCMOD_COMPLEMENT:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_COMPLEMENT unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "(1.0 - (";
             postmod_str = "))";
             break;
 
         case SRCMOD_X2NEGATE:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_X2NEGATE unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "-(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_X2:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_X2 unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
             premod_str = "(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_DZ:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_DZ unsupported"); return ""; // !!! FIXME
             postmod_str = "_dz";
             break;
 
         case SRCMOD_DW:
-            fail(ctx, "unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_DW unsupported"); return ""; // !!! FIXME
             postmod_str = "_dw";
             break;
 
