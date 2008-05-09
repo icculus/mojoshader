@@ -1724,7 +1724,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const DestArgInfo *arg = &ctx->dest_arg;
 
     if (arg->writemask == 0)
-        fail(ctx, "BUG: empty writemask");  // !!! FIXME: make this a no-op?
+        return "";  // no writemask? It's a no-op.
 
     char clampbuf[32] = { '\0' };
     const char *clampleft = "";
