@@ -3004,82 +3004,60 @@ static void emit_GLSL_LOGP(Context *ctx)
 } // emit_GLSL_LOGP
 
 // common code between CMP and CND.
-// !!! FIXME: this code stinks.
 static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
 {
-    const DestArgInfo *dst = &ctx->dest_arg;
-    const char *src0 = get_GLSL_srcarg_varname(ctx, 0);
-    const char *src1 = get_GLSL_srcarg_varname(ctx, 1);
-    const char *src2 = get_GLSL_srcarg_varname(ctx, 2);
+    int i, j;
+    DestArgInfo *dst = &ctx->dest_arg;
+    const SourceArgInfo *srcarg0 = &ctx->source_args[0];
+    const int origmask = dst->writemask;
+    int used_swiz[4] = { 0, 0, 0, 0 };
+    const int writemask[4] = { dst->writemask0, dst->writemask1,
+                               dst->writemask2, dst->writemask3 };
+    const int src0swiz[4] = { srcarg0->swizzle_x, srcarg0->swizzle_y,
+                              srcarg0->swizzle_z, srcarg0->swizzle_w };
 
-    if (dst->writemask == 0)
-        return;  // nothing to do, drop out early.
-
-    // !!! FIXME: for replicate swizzles, don't redo compares...
-
-    if (replicate_swizzle(ctx->source_args[0].swizzle))
+    for (i = 0; i < 4; i++)
     {
-        const char swiz = swizzle_channels[ctx->source_args[0].swizzle_x];
-        if (writemask_xyzw(dst->writemask))
-        {
-            const char *code = make_GLSL_destarg_assign(ctx,
-                                                "((%s.%c %s) ? %s : %s)",
-                                                src0, swiz, cmp, src1, src2);
-            output_line(ctx, "%s", code);
-        } // if
-        else
-        {
-            const char *dst0 = get_GLSL_destarg_varname(ctx);
-            const char *x1 = (dst->writemask0) ? src1 : dst0;
-            const char *y1 = (dst->writemask1) ? src1 : dst0;
-            const char *z1 = (dst->writemask2) ? src1 : dst0;
-            const char *w1 = (dst->writemask3) ? src1 : dst0;
-            const char *x2 = (dst->writemask0) ? src2 : dst0;
-            const char *y2 = (dst->writemask1) ? src2 : dst0;
-            const char *z2 = (dst->writemask2) ? src2 : dst0;
-            const char *w2 = (dst->writemask3) ? src2 : dst0;
-            const char *code1 = make_GLSL_destarg_assign(ctx,
-                                                "vec4(%s.x, %s.y, %s.z, %s.w)",
-                                                x1, y1, z1, w1);
-            const char *code2 = make_GLSL_destarg_assign(ctx,
-                                                "vec4(%s.x, %s.y, %s.z, %s.w)",
-                                                x2, y2, z2, w2);
+        int mask = (1 << i);
 
-            output_line(ctx, "if (%s.%c %s) {", src0, swiz, cmp);
-            ctx->indent++; output_line(ctx, "%s", code1); ctx->indent--;
-            output_line(ctx, "} else {");
-            ctx->indent++; output_line(ctx, "%s", code2); ctx->indent--;
-            output_line(ctx, "}");
-        } // else
-    } // if
+        if (!writemask[i]) continue;
+        if (used_swiz[i]) continue;
 
-    else
-    {
-        if (dst->writemask0)
+        // This is a swizzle we haven't checked yet.
+        used_swiz[i] = 1;
+
+        // see if there are any other elements swizzled to match (.yyyy)
+        for (j = i + 1; j < 4; j++)
         {
-            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, "((%s.x %s) ? %s.x : %s.x)", src0, cmp, src1, src2);
-            output_line(ctx, "%s", code);
-        } // if
-        if (dst->writemask1)
-        {
-            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, "((%s.y %s) ? %s.y : %s.y)", src0, cmp, src1, src2);
-            output_line(ctx, "%s", code);
-        } // if
-        if (dst->writemask2)
-        {
-            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, "((%s.z %s) ? %s.z : %s.z)", src0, cmp, src1, src2);
-            output_line(ctx, "%s", code);
-        } // if
-        if (dst->writemask3)
-        {
-            fail(ctx, "!!! FIXME: need to figure out source swizzle here");
-            const char *code = make_GLSL_destarg_assign(ctx, "((%s.w %s) ? %s.w : %s.w)", src0, cmp, src1, src2);
-            output_line(ctx, "%s", code);
-        } // if
-    } // else
+            if (!writemask[j]) continue;
+            if (src0swiz[i] != src0swiz[j]) continue;
+            mask |= (1 << j);
+            used_swiz[j] = 1;
+        } // for
+
+        // okay, (mask) should be the writemask of swizzles we like.
+
+        //return make_GLSL_srcarg_string(ctx, idx, (1 << 0));
+
+        const char *src0 = make_GLSL_srcarg_string(ctx, 0, (1 << i));
+        const char *src1 = make_GLSL_srcarg_string(ctx, 1, mask);
+        const char *src2 = make_GLSL_srcarg_string(ctx, 2, mask);
+
+        dst->writemask = mask;
+        dst->writemask0 = ((mask >> 0) & 1);
+        dst->writemask1 = ((mask >> 1) & 1);
+        dst->writemask2 = ((mask >> 2) & 1);
+        dst->writemask3 = ((mask >> 3) & 1);
+
+        const char *code = make_GLSL_destarg_assign(ctx, "((%s %s) ? %s : %s)",
+                                                    src0, cmp, src1, src2);
+        dst->writemask = origmask;
+        dst->writemask0 = ((origmask >> 0) & 1);
+        dst->writemask1 = ((origmask >> 1) & 1);
+        dst->writemask2 = ((origmask >> 2) & 1);
+        dst->writemask3 = ((origmask >> 3) & 1);
+        output_line(ctx, "%s", code);
+    } // for
 } // emit_GLSL_comparison_operations
 
 static void emit_GLSL_CND(Context *ctx)
