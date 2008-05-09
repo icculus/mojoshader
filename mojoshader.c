@@ -1034,7 +1034,7 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 
     char swizzle_str[6];
     int i = 0;
-    if (no_swizzle(arg->swizzle))
+    if (!no_swizzle(arg->swizzle))
     {
         swizzle_str[i++] = '.';
         swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
@@ -3477,7 +3477,7 @@ static int parse_predicated_token(Context *ctx)
         return fail(ctx, "Predicated instruction but not predicate register!");
     else if ((arg->src_mod != SRCMOD_NONE) && (arg->src_mod != SRCMOD_NOT))
         return fail(ctx, "Predicated instruction register is not NONE or NOT");
-    else if ( no_swizzle(arg->swizzle) && !replicate_swizzle(arg->swizzle) )
+    else if ( !no_swizzle(arg->swizzle) && !replicate_swizzle(arg->swizzle) )
         return fail(ctx, "Predicated instruction register has wrong swizzle");
     else if (arg->relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in predicated token");
