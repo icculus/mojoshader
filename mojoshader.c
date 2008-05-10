@@ -2317,12 +2317,26 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         else if (regtype == REG_TYPE_DEPTHOUT)
             usage_str = "gl_FragDepth";
 
-        else if (regtype == REG_TYPE_TEXTURE)
+        // !!! FIXME: can you actualy have a texture register with COLOR usage?
+        else if ((regtype == REG_TYPE_TEXTURE) || (regtype == REG_TYPE_INPUT))
         {
-            snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
-            usage_str = "gl_TexCoord";
-            arrayleft = "[";
-            arrayright = "]";
+            if (usage == MOJOSHADER_USAGE_TEXCOORD)
+            {
+                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+                usage_str = "gl_TexCoord";
+                arrayleft = "[";
+                arrayright = "]";
+            } // if
+
+            else if (usage == MOJOSHADER_USAGE_COLOR)
+            {
+                if (index == 0)
+                    usage_str = "gl_Color";
+                else if (index == 1)
+                    usage_str = "gl_SecondaryColor";
+                else
+                    fail(ctx, "unsupported color index");
+            } // else if
         } // else if
 
         else
@@ -3508,6 +3522,20 @@ static int parse_args_DEFB(Context *ctx)
 } // parse_args_DEFB
 
 
+static int valid_texture_type(const uint32 ttype)
+{
+    switch ((const TextureType) ttype)
+    {
+        case TEXTURE_TYPE_2D:
+        case TEXTURE_TYPE_CUBE:
+        case TEXTURE_TYPE_VOLUME:
+            return 1;  // it's okay.
+    } // switch
+
+    return 0;
+} // valid_texture_type
+
+
 // !!! FIXME: this function is kind of a mess.
 static int parse_args_DCL(Context *ctx)
 {
@@ -3587,8 +3615,11 @@ static int parse_args_DCL(Context *ctx)
 
         else if (regtype == REG_TYPE_SAMPLER)
         {
+            const uint32 ttype = ((token >> 27) & 0xF);
+            if (!valid_texture_type(ttype))
+                return fail(ctx, "unknown sampler texture type");
             reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
+            ctx->dwords[0] = ttype;
         } // else if
 
         else
@@ -3600,13 +3631,24 @@ static int parse_args_DCL(Context *ctx)
     else if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
     {
         if (regtype == REG_TYPE_INPUT)
+        {
+            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_COLOR;
+            ctx->dwords[1] = regnum;
             reserved_mask = 0x7FFFFFFF;
+        } // if
         else if (regtype == REG_TYPE_TEXTURE)
+        {
+            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_TEXCOORD;
+            ctx->dwords[1] = regnum;
             reserved_mask = 0x7FFFFFFF;
+        } // else if
         else if (regtype == REG_TYPE_SAMPLER)
         {
+            const uint32 ttype = ((token >> 27) & 0xF);
+            if (!valid_texture_type(ttype))
+                return fail(ctx, "unknown sampler texture type");
             reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ((token >> 27) & 0xF);  // TextureType
+            ctx->dwords[0] = ttype;
         } // else if
         else
         {
@@ -3844,7 +3886,7 @@ static void state_DCL(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_arg;
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
-    const int writemask = arg->writemask;
+    const int wmask = arg->writemask;
 
     ctx->instruction_count--;  // these don't increase your instruction count.
 
@@ -3864,33 +3906,27 @@ static void state_DCL(Context *ctx)
             fail(ctx, "unknown DCL usage");
             return;
         } // if
-        add_attribute_register(ctx, regtype, regnum, usage, index, writemask);
+        add_attribute_register(ctx, regtype, regnum, usage, index, wmask);
     } // if
 
     else if (shader_is_pixel(ctx))
     {
-        if (regtype == REG_TYPE_TEXTURE)
-            add_attribute_register(ctx, regtype, regnum, MOJOSHADER_USAGE_UNKNOWN, 0, writemask);
-        else if (regtype == REG_TYPE_SAMPLER)
+        if (regtype == REG_TYPE_SAMPLER)
+            add_sampler(ctx, regtype, regnum, (TextureType) ctx->dwords[0]);
+        else if (regtype == REG_TYPE_MISCTYPE)
+            fail(ctx, "vFace and vPos unsupported.");  // !!! FIXME: where do these hook up to GL state?
+        else
         {
-            const TextureType ttype = (const TextureType) ctx->dwords[0];
-            switch (ttype)
-            {
-                case TEXTURE_TYPE_2D:
-                case TEXTURE_TYPE_CUBE:
-                case TEXTURE_TYPE_VOLUME:
-                    break;  // it's okay.
-                default:
-                    fail(ctx, "unknown sampler texture type");
-                    return;
-            } // switch
-            add_sampler(ctx, regtype, regnum, ttype);
-        } // else if
+            const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
+            const int index = ctx->dwords[1];
+            add_attribute_register(ctx, regtype, regnum, usage, index, wmask);
+        } // else
     } // else if
 
     else
     {
-        assert(0 && "Unsupported shader type."); // should be caught elsewhere.
+        fail(ctx, "unsupported shader type."); // should be caught elsewhere.
+        return;
     } // else
 
     set_defined_register(ctx, regtype, regnum);
@@ -4987,7 +5023,7 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
     {
         RegisterList *item = ctx->attributes.next;
         MOJOSHADER_attribute *wptr = retval;
-        int is_output = 0;
+        int ignore = 0;
         int i;
 
         memset(retval, '\0', len);
@@ -5007,22 +5043,22 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
                 case REG_TYPE_TEXCRDOUT:
                 case REG_TYPE_COLOROUT:
                 case REG_TYPE_DEPTHOUT:
-                    is_output = 1;
+                    ignore = 1;
+                    break;
+                case REG_TYPE_TEXTURE:
+                case REG_TYPE_MISCTYPE:
+                case REG_TYPE_INPUT:
+                    ignore = shader_is_pixel(ctx);
                     break;
                 default:
-                    is_output = 0;
+                    ignore = 0;
                     break;
             } // switch
 
-            if (!is_output)
+            if (!ignore)
             {
                 if (shader_is_pixel(ctx))
-                {
-                    // !!! FIXME: sort of wedged this if statement in here.
-                    if (item->regtype != REG_TYPE_TEXTURE)
-                        fail(ctx, "BUG: pixel shader with vertex attributes");
-                    break;
-                } // if
+                    fail(ctx, "BUG: pixel shader with vertex attributes");
                 else
                 {
                     wptr->usage = item->usage;
