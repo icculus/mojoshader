@@ -388,9 +388,9 @@ static inline int out_of_memory(Context *ctx)
     return FAIL;
 } // out_of_memory
 
-static inline void *Malloc(Context *ctx, const int len)
+static inline void *Malloc(Context *ctx, const size_t len)
 {
-    void *retval = ctx->malloc(len, ctx->malloc_data);
+    void *retval = ctx->malloc((int) len, ctx->malloc_data);
     if (retval == NULL)
         out_of_memory(ctx);
     return retval;
@@ -3863,7 +3863,7 @@ static void state_DCL(Context *ctx)
     else if (shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_TEXTURE)
-            add_attribute_register(ctx, regtype, regnum, 0, 0, writemask);
+            add_attribute_register(ctx, regtype, regnum, MOJOSHADER_USAGE_UNKNOWN, 0, writemask);
         else if (regtype == REG_TYPE_SAMPLER)
         {
             const TextureType ttype = (const TextureType) ctx->dwords[0];

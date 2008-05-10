@@ -177,7 +177,7 @@ static void internal_free(void *ptr, void *d) { free(ptr); }
 
 static inline void *Malloc(const size_t len)
 {
-    void *retval = ctx->malloc_fn(len, ctx->malloc_data);
+    void *retval = ctx->malloc_fn((int) len, ctx->malloc_data);
     if (retval == NULL)
         set_error("out of memory");
     return retval;
@@ -626,7 +626,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     MOJOSHADER_glProgram *retval = NULL;
     const GLhandleARB program = ctx->glCreateProgramObject();
     int numregs = 0;
-    uint32 const_count = 0;
+    int const_count = 0;
 
     if (vshader != NULL) ctx->glAttachObject(program, vshader->handle);
     if (pshader != NULL) ctx->glAttachObject(program, pshader->handle);
@@ -698,7 +698,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * const_count);
         if (retval->constants == NULL)
             goto link_program_fail;
-        retval->constant_count = const_count;
+        retval->constant_count = (uint32) const_count;
     } // if
 
     return retval;
