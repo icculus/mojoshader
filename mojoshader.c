@@ -2349,7 +2349,14 @@ static void emit_GLSL_NOP(Context *ctx)
 
 static void emit_GLSL_MOV(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
+    const char *src0 = NULL;
+
+    // oDepth is a float, not a vec4, but the writemask is .xyzw ... tweak it.
+    if (ctx->dest_arg.regtype == REG_TYPE_DEPTHOUT)
+        src0 = make_GLSL_srcarg_string_x(ctx, 0);
+    else
+        src0 = make_GLSL_srcarg_string_masked(ctx, 0);
+
     const char *code = make_GLSL_destarg_assign(ctx, "%s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOV
