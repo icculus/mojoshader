@@ -2330,6 +2330,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             else if (usage == MOJOSHADER_USAGE_COLOR)
             {
+                index_str[0] = '\0';  // no explicit number.
                 if (index == 0)
                     usage_str = "gl_Color";
                 else if (index == 1)
