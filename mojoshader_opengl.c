@@ -695,7 +695,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (const_count > 0)    
     {
-        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * const_count);
+        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * const_count * 4);
         if (retval->constants == NULL)
             goto link_program_fail;
         retval->constant_count = (uint32) const_count;
