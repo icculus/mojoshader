@@ -626,7 +626,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     MOJOSHADER_glProgram *retval = NULL;
     const GLhandleARB program = ctx->glCreateProgramObject();
     int numregs = 0;
-    int const_count = 0;
+    int consts = 0;
 
     if (vshader != NULL) ctx->glAttachObject(program, vshader->handle);
     if (pshader != NULL) ctx->glAttachObject(program, pshader->handle);
@@ -670,8 +670,8 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (vshader != NULL)
     {
-        if (const_count < vshader->parseData->constant_count)
-            const_count = vshader->parseData->constant_count;
+        if (consts < vshader->parseData->constant_count)
+            consts = vshader->parseData->constant_count;
         retval->attributes = (AttributeMap *) Malloc(sizeof (AttributeMap) *
                                         vshader->parseData->attribute_count);
         if (retval->attributes == NULL)
@@ -685,20 +685,20 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (pshader != NULL)
     {
-        if (const_count < pshader->parseData->constant_count)
-            const_count = pshader->parseData->constant_count;
+        if (consts < pshader->parseData->constant_count)
+            consts = pshader->parseData->constant_count;
 
         lookup_uniforms(retval, pshader);
         lookup_samplers(retval, vshader);
         pshader->refcount++;
     } // if
 
-    if (const_count > 0)    
+    if (consts > 0)    
     {
-        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * const_count * 4);
+        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * consts * 4);
         if (retval->constants == NULL)
             goto link_program_fail;
-        retval->constant_count = (uint32) const_count;
+        retval->constant_count = (uint32) consts;
     } // if
 
     return retval;
