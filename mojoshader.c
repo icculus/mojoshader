@@ -2383,8 +2383,6 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         else if (regtype == REG_TYPE_MISCTYPE)
         {
             const MiscTypeType mt = (MiscTypeType) regnum;
-
-
             if (mt == MISCTYPE_TYPE_FACE)
             {
                 push_output(ctx, &ctx->globals);
