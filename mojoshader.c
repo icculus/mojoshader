@@ -1498,8 +1498,7 @@ static void emit_D3D_DCL(Context *ctx)
 
     if (arg->regtype == REG_TYPE_SAMPLER)
     {
-        const TextureType ttype = (const TextureType) ctx->dwords[0];
-        switch (ttype)
+        switch ((const TextureType) ctx->dwords[0])
         {
             case TEXTURE_TYPE_2D: usage_str = "_2d"; break;
             case TEXTURE_TYPE_CUBE: usage_str = "_cube"; break;
@@ -1507,6 +1506,18 @@ static void emit_D3D_DCL(Context *ctx)
             default: fail(ctx, "unknown sampler texture type"); return;
         } // switch
     } // if
+
+    else if (arg->regtype == REG_TYPE_MISCTYPE)
+    {
+        switch ((const MiscTypeType) arg->regnum)
+        {
+            case MISCTYPE_TYPE_POSITION:
+            case MISCTYPE_TYPE_FACE:
+                usage_str = "";  // just become "dcl vFace" or whatever.
+                break;
+            default: fail(ctx, "unknown misc register type"); return;
+        } // switch
+    } // else if
 
     else
     {
