@@ -3257,7 +3257,11 @@ static void emit_GLSL_SETP(Context *ctx)
 
 static void emit_GLSL_TEXLDL(Context *ctx)
 {
-    fail(ctx, "TEXLDL unimplemented.");  // !!! FIXME
+    // !!! FIXME: The spec says we can't use GLSL's texture*Lod() built-ins
+    // !!! FIXME:  from fragment shaders for some inexplicable reason.
+    // !!! FIXME:  For now, you'll just have to suffer with the potentially
+    // !!! FIXME:  wrong mipmap until I can figure something out.
+    emit_GLSL_TEXLD(ctx);
 } // emit_GLSL_TEXLDL
 
 static void emit_GLSL_BREAKP(Context *ctx)
