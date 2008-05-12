@@ -4302,12 +4302,20 @@ static void state_TEXLD(Context *ctx)
     {
         const SourceArgInfo *src0 = &ctx->source_args[0];
         const SourceArgInfo *src1 = &ctx->source_args[1];
-        const RegisterType rt0 = src0->regtype;
-        if (ctx->dest_arg.regtype != REG_TYPE_TEMP)
-            fail(ctx, "TEXLD dest must be a temp register");
-        else if ((rt0 != REG_TYPE_TEXTURE) && (rt0 != REG_TYPE_TEMP))
-            fail(ctx, "TEXLD src0 must be texture or temp register");
-        else if (src0->src_mod != SRCMOD_NONE)
+
+        //const RegisterType rt0 = src0->regtype;
+
+        // !!! FIXME: msdn says it has to be temp, but Microsoft's HLSL
+        // !!! FIXME:  compiler is generating code that uses oC0 for a dest.
+        //if (ctx->dest_arg.regtype != REG_TYPE_TEMP)
+        //    fail(ctx, "TEXLD dest must be a temp register");
+
+        // !!! FIXME: this can be an REG_TYPE_INPUT, DCL'd to TEXCOORD.
+        //else if ((rt0 != REG_TYPE_TEXTURE) && (rt0 != REG_TYPE_TEMP))
+        //    fail(ctx, "TEXLD src0 must be texture or temp register");
+        //else
+
+        if (src0->src_mod != SRCMOD_NONE)
             fail(ctx, "TEXLD src0 must have no modifiers");
         else if (src1->regtype != REG_TYPE_SAMPLER)
             fail(ctx, "TEXLD src1 must be sampler register");
