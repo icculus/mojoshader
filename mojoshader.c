@@ -277,6 +277,7 @@ typedef struct
     int writemask1;  // y or green
     int writemask2;  // z or blue
     int writemask3;  // w or alpha
+    int orig_writemask;   // writemask before mojoshader tweaks it.
     int result_mod;
     int result_shift;
     RegisterType regtype;
@@ -785,6 +786,28 @@ static inline int replicate_swizzle(const int swizzle)
 } // replicate_swizzle
 
 
+static inline int scalar_register(const RegisterType regtype, const int regnum)
+{
+    switch (regtype)
+    {
+        case REG_TYPE_DEPTHOUT:
+        case REG_TYPE_CONSTBOOL:
+        case REG_TYPE_PREDICATE:
+        case REG_TYPE_LOOP:
+            return 1;
+
+        case REG_TYPE_MISCTYPE:
+            if ( ((const MiscTypeType) regnum) == MISCTYPE_TYPE_FACE )
+                return 1;
+            return 0;
+
+        default: break;
+    } // switch
+
+    return 0;
+} // scalar_register
+
+
 static inline int no_swizzle(const int swizzle)
 {
     return (swizzle == 0xE4);  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
@@ -1034,7 +1057,8 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 
     char swizzle_str[6];
     int i = 0;
-    if (!no_swizzle(arg->swizzle))
+    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    if (!scalar && !no_swizzle(arg->swizzle))
     {
         swizzle_str[i++] = '.';
         swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
@@ -1089,7 +1113,8 @@ static const char *make_D3D_destarg_string(Context *ctx)
 
     char writemask_str[6];
     int i = 0;
-    if (!writemask_xyzw(arg->writemask))
+    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    if (!scalar && !writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
         if (arg->writemask0) writemask_str[i++] = 'x';
@@ -1786,7 +1811,8 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
                                                        sizeof (regnum_str));
     char writemask_str[6];
     int i = 0;
-    if (!writemask_xyzw(arg->writemask))
+    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    if (!scalar && !writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
         if (arg->writemask0) writemask_str[i++] = 'x';
@@ -1961,9 +1987,12 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
         } // if
     } // if
 
-    char swiz_str[6];
-    make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
-                             arg->swizzle, writemask);
+    char swiz_str[6] = { '\0' };
+    if (!scalar_register(arg->regtype, arg->regnum))
+    {
+        make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
+                                 arg->swizzle, writemask);
+    } // if
 
     if (regtype_str == NULL)
     {
@@ -2364,14 +2393,7 @@ static void emit_GLSL_NOP(Context *ctx)
 
 static void emit_GLSL_MOV(Context *ctx)
 {
-    const char *src0 = NULL;
-
-    // oDepth is a float, not a vec4, but the writemask is .xyzw ... tweak it.
-    if (ctx->dest_arg.regtype == REG_TYPE_DEPTHOUT)
-        src0 = make_GLSL_srcarg_string_x(ctx, 0);
-    else
-        src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-
+    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
     const char *code = make_GLSL_destarg_assign(ctx, "%s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOV
@@ -2927,7 +2949,6 @@ static void emit_GLSL_TEXLD(Context *ctx)
         const char *funcname = NULL;
         const char *src0 = NULL;
         const char *src1 = get_GLSL_srcarg_varname(ctx, 1);
-        char swiz_str[6];
 
         if (sreg == NULL)
         {
@@ -2954,6 +2975,8 @@ static void emit_GLSL_TEXLD(Context *ctx)
                 return;
         } // switch
 
+        assert(!scalar_register(samp_arg->regtype, samp_arg->regnum));
+        char swiz_str[6] = { '\0' };
         make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
 
@@ -3272,14 +3295,22 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->token = ctx->tokens;
     info->regnum = (int) (token & 0x7ff);  // bits 0 through 10
     info->relative = (int) ((token >> 13) & 0x1); // bit 13
-    info->writemask = (int) ((token >> 16) & 0xF); // bits 16 through 19
-    info->writemask0 = (int) ((token >> 16) & 0x1); // bit 16
-    info->writemask1 = (int) ((token >> 17) & 0x1); // bit 17
-    info->writemask2 = (int) ((token >> 18) & 0x1); // bit 18
-    info->writemask3 = (int) ((token >> 19) & 0x1); // bit 19
+    info->orig_writemask = (int) ((token >> 16) & 0xF); // bits 16 through 19
     info->result_mod = (int) ((token >> 20) & 0xF); // bits 20 through 23
     info->result_shift = (int) ((token >> 24) & 0xF); // bits 24 through 27      abc
     info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
+
+    int writemask;
+    if (scalar_register(info->regtype, info->regnum))
+        writemask = 0x1;  // just x.
+    else
+        writemask = info->orig_writemask;
+
+    info->writemask = writemask;
+    info->writemask0 = (int) ((writemask >> 0) & 0x1); // bit 16
+    info->writemask1 = (int) ((writemask >> 1) & 0x1); // bit 17
+    info->writemask2 = (int) ((writemask >> 2) & 0x1); // bit 18
+    info->writemask3 = (int) ((writemask >> 3) & 0x1); // bit 19
 
     // all the REG_TYPE_CONSTx types are the same register type, it's just
     //  split up so its regnum can be > 2047 in the bytecode. Clean it up.
@@ -3577,7 +3608,7 @@ static int parse_args_DCL(Context *ctx)
             else if (mt == MISCTYPE_TYPE_FACE)
             {
                 reserved_mask = 0x7FFFFFFF;
-                if (!writemask_xyzw(ctx->dest_arg.writemask))
+                if (!writemask_xyzw(ctx->dest_arg.orig_writemask))
                     return fail(ctx, "DCL face writemask must be full");
                 else if (ctx->dest_arg.result_mod != 0)
                     return fail(ctx, "DCL face result modifier must be zero");
