@@ -4339,8 +4339,6 @@ static void state_TEXLDL(Context *ctx)
 {
     if (!shader_version_atleast(ctx, 3, 0))
         fail(ctx, "TEXLDL in version < Shader Model 3.0");
-    else if (ctx->source_args[0].regtype != REG_TYPE_TEXTURE)
-        fail(ctx, "TEXLDL src0 must be texture register");
     else if (ctx->source_args[1].regtype != REG_TYPE_SAMPLER)
         fail(ctx, "TEXLDL src1 must be sampler register");
 } // state_TEXLDL
