@@ -905,7 +905,7 @@ static const char *get_D3D_register_string(Context *ctx,
             break;
 
         case REG_TYPE_MISCTYPE:
-            switch ((MiscTypeType) regnum)
+            switch ((const MiscTypeType) regnum)
             {
                 case MISCTYPE_TYPE_POSITION: retval = "vPos"; break;
                 case MISCTYPE_TYPE_FACE: retval = "vFace"; break;
@@ -2369,15 +2369,41 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             } // else if
         } // else if
 
+        else if (regtype == REG_TYPE_MISCTYPE)
+        {
+            const MiscTypeType mt = (MiscTypeType) regnum;
+
+
+            if (mt == MISCTYPE_TYPE_FACE)
+            {
+                push_output(ctx, &ctx->globals);
+                output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;",
+                            varname);
+                pop_output(ctx);
+            } // if
+            else if (mt == MISCTYPE_TYPE_POSITION)
+            {
+                index_str[0] = '\0';  // no explicit number.
+                usage_str = "gl_FragCoord";  // !!! FIXME: is this the same coord space as D3D?
+            } // else if
+            else
+            {
+                fail(ctx, "BUG: unhandled misc register");
+            } // else
+        } // else if
+
         else
         {
             fail(ctx, "unknown pixel shader attribute register");
         } // else
 
-        push_output(ctx, &ctx->globals);
-        output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
-                    arrayleft, index_str, arrayright);
-        pop_output(ctx);
+        if (usage_str != NULL)
+        {
+            push_output(ctx, &ctx->globals);
+            output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+                        arrayleft, index_str, arrayright);
+            pop_output(ctx);
+        } // if
     } // else if
 
     else
@@ -3619,6 +3645,9 @@ static int parse_args_DCL(Context *ctx)
             {
                 unsupported = 1;
             } // else
+
+            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_UNKNOWN;
+            ctx->dwords[1] = 0;
         } // else if
 
         else if (regtype == REG_TYPE_TEXTURE)
@@ -3945,8 +3974,6 @@ static void state_DCL(Context *ctx)
     {
         if (regtype == REG_TYPE_SAMPLER)
             add_sampler(ctx, regtype, regnum, (TextureType) ctx->dwords[0]);
-        else if (regtype == REG_TYPE_MISCTYPE)
-            fail(ctx, "vFace and vPos unsupported.");  // !!! FIXME: where do these hook up to GL state?
         else
         {
             const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
