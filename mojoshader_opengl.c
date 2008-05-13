@@ -605,7 +605,7 @@ static void lookup_attributes(MOJOSHADER_glProgram *program)
 
     for (i = 0; i < pd->attribute_count; i++)
     {
-        const GLint loc = ctx->glGetAttribLocation(program->handle, a->name);
+        const GLint loc = ctx->glGetAttribLocation(program->handle, a[i].name);
         if (loc != -1)  // maybe the Attribute was optimized out?
         {
             AttributeMap *map = &program->attributes[program->attribute_count];
