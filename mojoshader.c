@@ -310,6 +310,10 @@ typedef struct
 // !!! FIXME: get rid of this. use a bitfield instead.
 typedef enum
 {
+    // Specific to ARB1 profile...
+    CTX_FLAGS_ARB1_USES_SCRATCH1 = (1 << 0),
+    CTX_FLAGS_ARB1_USES_SCRATCH2 = (1 << 1),
+
     // Specific to GLSL profile...
     CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
     CTX_FLAGS_MASK = 0xFFFFFFFF
@@ -3685,72 +3689,29 @@ EMIT_ARB1_OPCODE_DSS_FUNC(DP3)
 EMIT_ARB1_OPCODE_DSS_FUNC(DP4)
 EMIT_ARB1_OPCODE_DSS_FUNC(MIN)
 EMIT_ARB1_OPCODE_DSS_FUNC(MAX)
+EMIT_ARB1_OPCODE_DSS_FUNC(SLT)
+EMIT_ARB1_OPCODE_DSS_FUNC(SGE)
 
-static void emit_ARB1_SLT(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_SLT
+static void emit_ARB1_EXP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 
-static void emit_ARB1_SGE(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_SGE
+// !!! FIXME: LG2 needs to abs() the value, and deal with zero values.
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOG)
 
-static void emit_ARB1_EXP(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_EXP
+EMIT_ARB1_OPCODE_DS_FUNC(LIT)
+EMIT_ARB1_OPCODE_DSS_FUNC(DST)
+EMIT_ARB1_OPCODE_DSSS_FUNC(LRP)
+EMIT_ARB1_OPCODE_DS_FUNC(FRC)
 
-static void emit_ARB1_LOG(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_LOG
+// !!! FIXME: these could be implemented with vector opcodes, but it looks
+// !!! FIXME:  like the Microsoft HLSL compiler never generates matrix
+// !!! FIXME:  operations for some reason.
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M4X4)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M4X3)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X4)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X3)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X2)
 
-static void emit_ARB1_LIT(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_LIT
-
-static void emit_ARB1_DST(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_DST
-
-static void emit_ARB1_LRP(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_LRP
-
-static void emit_ARB1_FRC(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_FRC
-
-static void emit_ARB1_M4X4(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_M4X4
-
-static void emit_ARB1_M4X3(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_M4X3
-
-static void emit_ARB1_M3X4(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_M3X4
-
-static void emit_ARB1_M3X3(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_M3X3
-
-static void emit_ARB1_M3X2(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_M3X2
-
+// !!! FIXME: these are available in nvidia's post-arb1 extensions
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALL)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALLNZ)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOOP)
@@ -3758,34 +3719,54 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(RET)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDLOOP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LABEL)
 
-static void emit_ARB1_POW(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_POW
+// !!! FIXME: POW needs to abs() the value, and deal with zero values.
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(POW)
 
-static void emit_ARB1_CRS(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_CRS
+static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
 
 static void emit_ARB1_SGN(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "SLT scratch, %s, { 0.0 }", src0);
+    output_line(ctx, "SLT scratch2, -%s, { 0.0 }", src0);
+    output_line(ctx, "ADD%s -scratch, scratch2", dst0);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
 } // emit_ARB1_SGN
 
-static void emit_ARB1_ABS(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_ABS
+EMIT_ARB1_OPCODE_DS_FUNC(ABS)
 
 static void emit_ARB1_NRM(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "MUL scratch, %s, %s", src0, src0);
+    output_line(ctx, "ADD scratch2.x, scratch.x, scratch.y");
+    output_line(ctx, "ADD scratch2.x, scratch2.x, scratch.z");
+    output_line(ctx, "RSQ%s, scratch2.x", dst0);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // we don't care about the temp registers that <= sm2 demands; ignore them.
+    //  sm2 also talks about what components are left untouched vs. undefined,
+    //  but we just leave those all untouched with GLSL write masks (which
+    //  would fulfill the "undefined" requirement, too).
+    const int mask = ctx->dest_arg.writemask;
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+
+    if (writemask_x(mask))
+        output_line(ctx, "COS%s, %s", dst0, src0);
+    else if (writemask_y(mask))
+        output_line(ctx, "SIN%s, %s", dst0, src0);
+    else if (writemask_xy(mask))
+        output_line(ctx, "SCS%s, %s", dst0, src0);
+    else
+        fail(ctx, "unhandled SINCOS writemask in arb1 profile");
 } // emit_ARB1_SINCOS
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
@@ -5000,6 +4981,14 @@ static void state_CND(Context *ctx)
     } // if
 } // state_CND
 
+static void state_POW(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "POW src0 must have replicate swizzle");
+    else if (!replicate_swizzle(ctx->source_args[1].swizzle))
+        fail(ctx, "POW src1 must have replicate swizzle");
+} // state_POW
+
 static void state_SINCOS(Context *ctx)
 {
     const DestArgInfo *dst = &ctx->dest_arg;
@@ -5186,7 +5175,7 @@ static const Instruction instructions[] =
     INSTRUCTION_STATE(ENDLOOP, NULL, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(LABEL, S, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(DCL, DCL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(POW, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(POW, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(CRS, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(SGN, DSSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(ABS, DS, MOJOSHADER_TYPE_ANY),
