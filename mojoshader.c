@@ -3448,13 +3448,13 @@ static const char *make_ARB1_destarg_string(Context *ctx)
         case 0xF: result_shift_str = "_d2"; break;
     } // switch
 
-    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_sat" : "";
-    const char *pp_str = (arg->result_mod & MOD_PP) ? "_pp" : "";
-    const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
+    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_SAT" : "";
+    const char *pp_str = "";  // no partial precision, but that's okay.
+    const char *cent_str = "";
 
-    if (arg->result_mod != 0x0)
+    if (arg->result_mod & MOD_CENTROID)
     {
-        fail(ctx, "dest register modifiers currently unsupported in arb1");
+        fail(ctx, "dest register MOD_CENTROID currently unsupported in arb1");
         return "";
     } // if
 
