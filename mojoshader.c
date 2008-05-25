@@ -49,6 +49,10 @@
 #define SUPPORT_PROFILE_GLSL 1
 #endif
 
+#ifndef SUPPORT_PROFILE_ARB1
+#define SUPPORT_PROFILE_ARB1 1
+#endif
+
 
 // Get basic wankery out of the way here...
 
@@ -3281,6 +3285,702 @@ static void emit_GLSL_RESERVED(Context *ctx)
 
 
 
+#if !SUPPORT_PROFILE_ARB1
+#define PROFILE_EMITTER_ARB1(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
+
+static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
+                                                  const SourceArgInfo *arg,
+                                                  char *buf, size_t buflen)
+{
+    const char *premod_str = "";
+    const char *postmod_str = "";
+    switch (arg->src_mod)
+    {
+        case SRCMOD_NEGATE:
+            premod_str = "-";
+            break;
+
+        case SRCMOD_BIASNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_BIAS:
+            fail(ctx, "SRCMOD_BIAS currently unsupported in arb1");
+            postmod_str = "_bias";
+            break;
+
+        case SRCMOD_SIGNNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_SIGN:
+            fail(ctx, "SRCMOD_SIGN currently unsupported in arb1");
+            postmod_str = "_bx2";
+            break;
+
+        case SRCMOD_COMPLEMENT:
+            fail(ctx, "SRCMOD_COMPLEMENT currently unsupported in arb1");
+            premod_str = "1-";
+            break;
+
+        case SRCMOD_X2NEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_X2:
+            fail(ctx, "SRCMOD_X2 currently unsupported in arb1");
+            postmod_str = "_x2";
+            break;
+
+        case SRCMOD_DZ:
+            fail(ctx, "SRCMOD_DZ currently unsupported in arb1");
+            postmod_str = "_dz";
+            break;
+
+        case SRCMOD_DW:
+            fail(ctx, "SRCMOD_DW currently unsupported in arb1");
+            postmod_str = "_dw";
+            break;
+
+        case SRCMOD_ABSNEGATE:
+            premod_str = "-";
+            // fall through.
+        case SRCMOD_ABS:
+            fail(ctx, "SRCMOD_ABS currently unsupported in arb1");
+            postmod_str = "_abs";
+            break;
+
+        case SRCMOD_NOT:
+            fail(ctx, "SRCMOD_NOT currently unsupported in arb1");
+            premod_str = "!";
+            break;
+
+        case SRCMOD_NONE:
+        case SRCMOD_TOTAL:
+             break;  // stop compiler whining.
+    } // switch
+
+
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
+
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown source register type.");
+        return "";
+    } // if
+
+    const char *rel_lbracket = "";
+    const char *rel_rbracket = "";
+    char rel_swizzle[4] = { '\0' };
+    char rel_regnum_str[16] = { '\0' };
+    const char *rel_regtype_str = "";
+    if (arg->relative)
+    {
+        rel_swizzle[0] = '.';
+        rel_swizzle[1] = swizzle_channels[arg->relative_component];
+        rel_swizzle[2] = '\0';
+        rel_lbracket = "[";
+        rel_rbracket = "]";
+        rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
+                                                  arg->relative_regnum,
+                                                  rel_regnum_str,
+                                                  sizeof (rel_regnum_str));
+
+        if (regtype_str == NULL)
+        {
+            fail(ctx, "Unknown relative source register type.");
+            return "";
+        } // if
+    } // if
+
+    char swizzle_str[6];
+    int i = 0;
+    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    if (!scalar && !no_swizzle(arg->swizzle))
+    {
+        swizzle_str[i++] = '.';
+
+        // .xxxx is the same as .x, but .xx is illegal...scalar or full!
+        if (replicate_swizzle(arg->swizzle))
+            swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
+        else
+        {
+            swizzle_str[i++] = swizzle_channels[arg->swizzle_x];
+            swizzle_str[i++] = swizzle_channels[arg->swizzle_y];
+            swizzle_str[i++] = swizzle_channels[arg->swizzle_z];
+            swizzle_str[i++] = swizzle_channels[arg->swizzle_w];
+        } // else
+    } // if
+    swizzle_str[i] = '\0';
+    assert(i < sizeof (swizzle_str));
+
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s",
+             premod_str, regtype_str, regnum_str, postmod_str,
+             rel_lbracket, rel_regtype_str, rel_regnum_str, rel_swizzle,
+             rel_rbracket, swizzle_str);
+    // !!! FIXME: make sure the scratch buffer was large enough.
+    return buf;
+} // make_ARB1_srcarg_string_in_buf
+
+
+static const char *make_ARB1_destarg_string(Context *ctx)
+{
+    const DestArgInfo *arg = &ctx->dest_arg;
+
+    const char *result_shift_str = "";
+    if (arg->result_shift != 0x0)
+    {
+        fail(ctx, "dest register shifting currently unsupported in arb1");
+        return "";
+    } // if
+
+    switch (arg->result_shift)
+    {
+        case 0x1: result_shift_str = "_x2"; break;
+        case 0x2: result_shift_str = "_x4"; break;
+        case 0x3: result_shift_str = "_x8"; break;
+        case 0xD: result_shift_str = "_d8"; break;
+        case 0xE: result_shift_str = "_d4"; break;
+        case 0xF: result_shift_str = "_d2"; break;
+    } // switch
+
+    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_sat" : "";
+    const char *pp_str = (arg->result_mod & MOD_PP) ? "_pp" : "";
+    const char *cent_str = (arg->result_mod & MOD_CENTROID) ? "_centroid" : "";
+
+    if (arg->result_mod != 0x0)
+    {
+        fail(ctx, "dest register modifiers currently unsupported in arb1");
+        return "";
+    } // if
+
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown destination register type.");
+        return "";
+    } // if
+
+    char writemask_str[6];
+    int i = 0;
+    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    if (!scalar && !writemask_xyzw(arg->writemask))
+    {
+        writemask_str[i++] = '.';
+        if (arg->writemask0) writemask_str[i++] = 'x';
+        if (arg->writemask1) writemask_str[i++] = 'y';
+        if (arg->writemask2) writemask_str[i++] = 'z';
+        if (arg->writemask3) writemask_str[i++] = 'w';
+    } // if
+    writemask_str[i] = '\0';
+    assert(i < sizeof (writemask_str));
+
+    const char *pred_left = "";
+    const char *pred_right = "";
+    char pred[32] = { '\0' };
+    if (ctx->predicated)
+    {
+        fail(ctx, "dest register predication currently unsupported in arb1");
+        return "";
+        pred_left = "(";
+        pred_right = ") ";
+        make_D3D_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
+                                         pred, sizeof (pred));
+    } // if
+
+    // may turn out something like "_x2_sat_pp_centroid (!p0.x) r0.xyzw" ...
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s",
+             result_shift_str, sat_str, pp_str, cent_str,
+             pred_left, pred, pred_right,
+             regtype_str, regnum_str, writemask_str);
+    // !!! FIXME: make sure the scratch buffer was large enough.
+    return retval;
+} // make_ARB1_destarg_string
+
+
+static const char *make_ARB1_srcarg_string(Context *ctx, const int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
+        return "";
+    } // if
+
+    const SourceArgInfo *arg = &ctx->source_args[idx];
+    char *buf = get_scratch_buffer(ctx);
+    return make_ARB1_srcarg_string_in_buf(ctx, arg, buf, SCRATCH_BUFFER_SIZE);
+} // make_ARB1_srcarg_string
+
+
+static void emit_ARB1_opcode_d(Context *ctx, const char *opcode)
+{
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    output_line(ctx, "%s%s", opcode, dst0);
+} // emit_ARB1_opcode_d
+
+static void emit_ARB1_opcode_s(Context *ctx, const char *opcode)
+{
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "%s %s", opcode, src0);
+} // emit_ARB1_opcode_s
+
+static void emit_ARB1_opcode_ss(Context *ctx, const char *opcode)
+{
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    output_line(ctx, "%s %s, %s", opcode, src0, src1);
+} // emit_ARB1_opcode_ss
+
+static void emit_ARB1_opcode_ds(Context *ctx, const char *opcode)
+{
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "%s%s, %s", opcode, dst0, src0);
+} // emit_ARB1_opcode_ds
+
+static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
+{
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    output_line(ctx, "%s%s, %s, %s", opcode, dst0, src0, src1);
+} // emit_ARB1_opcode_dss
+
+static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
+{
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst0, src0, src1, src2);
+} // emit_ARB1_opcode_dsss
+
+
+static void emit_ARB1_opcode_dssss(Context *ctx, const char *opcode)
+{
+    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    const char *src3 = make_ARB1_srcarg_string(ctx, 3);
+    output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst0,src0,src1,src2,src3);
+} // emit_ARB1_opcode_dssss
+
+#define EMIT_ARB1_OPCODE_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_D_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_d(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_S_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_s(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_SS_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_ss(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_DS_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_ds(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_DSS_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_dss(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_DSSS_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_dsss(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_DSSSS_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        emit_ARB1_opcode_dssss(ctx, #op); \
+    }
+#define EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(op) \
+    static void emit_ARB1_##op(Context *ctx) { \
+        fail(ctx, #op " unimplemented in arb1 profile"); \
+    }
+
+
+static void emit_ARB1_start(Context *ctx)
+{
+    const char *shader_str = NULL;
+    if (shader_is_vertex(ctx))
+        shader_str = "vp";
+    else if (shader_is_pixel(ctx))
+        shader_str = "fp";
+    else
+    {
+        failf(ctx, "Shader type %u unsupported in this profile.",
+              (uint) ctx->shader_type);
+        return;
+    } // if
+
+    ctx->output = &ctx->globals;
+    output_line(ctx, "!!ARB%s1.0", shader_str);
+    ctx->output = &ctx->mainline;
+} // emit_ARB1_start
+
+static void emit_ARB1_end(Context *ctx)
+{
+    output_line(ctx, "END");
+} // emit_ARB1_end
+
+static void emit_ARB1_finalize(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_finalize
+
+static void emit_ARB1_global(Context *ctx, RegisterType t, int n)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_global
+
+static void emit_ARB1_relative(Context *ctx, int size)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_relative
+
+static void emit_ARB1_uniform(Context *ctx, RegisterType t, int n)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_uniform
+
+static void emit_ARB1_sampler(Context *ctx, int s, TextureType ttype)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_sampler
+
+static void emit_ARB1_attribute(Context *ctx, RegisterType t, int n,
+                                       MOJOSHADER_usage u, int i, int w)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_attribute
+
+static void emit_ARB1_RESERVED(Context *ctx) { /* no-op. */ }
+
+static void emit_ARB1_NOP(Context *ctx)
+{
+    // There is no NOP in arb1. Just don't output anything here.
+} // emit_ARB1_NOP
+
+EMIT_ARB1_OPCODE_DS_FUNC(MOV)
+EMIT_ARB1_OPCODE_DSS_FUNC(ADD)
+EMIT_ARB1_OPCODE_DSS_FUNC(SUB)
+EMIT_ARB1_OPCODE_DSSS_FUNC(MAD)
+EMIT_ARB1_OPCODE_DSS_FUNC(MUL)
+EMIT_ARB1_OPCODE_DS_FUNC(RCP)
+EMIT_ARB1_OPCODE_DS_FUNC(RSQ)
+EMIT_ARB1_OPCODE_DSS_FUNC(DP3)
+EMIT_ARB1_OPCODE_DSS_FUNC(DP4)
+EMIT_ARB1_OPCODE_DSS_FUNC(MIN)
+EMIT_ARB1_OPCODE_DSS_FUNC(MAX)
+
+static void emit_ARB1_SLT(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_SLT
+
+static void emit_ARB1_SGE(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_SGE
+
+static void emit_ARB1_EXP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_EXP
+
+static void emit_ARB1_LOG(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_LOG
+
+static void emit_ARB1_LIT(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_LIT
+
+static void emit_ARB1_DST(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DST
+
+static void emit_ARB1_LRP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_LRP
+
+static void emit_ARB1_FRC(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_FRC
+
+static void emit_ARB1_M4X4(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_M4X4
+
+static void emit_ARB1_M4X3(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_M4X3
+
+static void emit_ARB1_M3X4(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_M3X4
+
+static void emit_ARB1_M3X3(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_M3X3
+
+static void emit_ARB1_M3X2(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_M3X2
+
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALL)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALLNZ)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOOP)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(RET)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDLOOP)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LABEL)
+
+static void emit_ARB1_POW(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_POW
+
+static void emit_ARB1_CRS(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_CRS
+
+static void emit_ARB1_SGN(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_SGN
+
+static void emit_ARB1_ABS(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_ABS
+
+static void emit_ARB1_NRM(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_NRM
+
+static void emit_ARB1_SINCOS(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_SINCOS
+
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IF)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ELSE)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDIF)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
+
+static void emit_ARB1_MOVA(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_MOVA
+
+static void emit_ARB1_TEXKILL(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXKILL
+
+static void emit_ARB1_TEXBEM(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXBEM
+
+static void emit_ARB1_TEXBEML(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXBEML
+
+static void emit_ARB1_TEXREG2AR(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXREG2AR
+
+static void emit_ARB1_TEXREG2GB(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXREG2GB
+
+static void emit_ARB1_TEXM3X2PAD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X2PAD
+
+static void emit_ARB1_TEXM3X2TEX(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X2TEX
+
+static void emit_ARB1_TEXM3X3PAD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X3PAD
+
+static void emit_ARB1_TEXM3X3TEX(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X3TEX
+
+static void emit_ARB1_TEXM3X3SPEC(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X3SPEC
+
+static void emit_ARB1_TEXM3X3VSPEC(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X3VSPEC
+
+static void emit_ARB1_EXPP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_EXPP
+
+static void emit_ARB1_LOGP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_LOGP
+
+static void emit_ARB1_CND(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_CND
+
+static void emit_ARB1_TEXREG2RGB(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXREG2RGB
+
+static void emit_ARB1_TEXDP3TEX(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXDP3TEX
+
+static void emit_ARB1_TEXM3X2DEPTH(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X2DEPTH
+
+static void emit_ARB1_TEXDP3(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXDP3
+
+static void emit_ARB1_TEXM3X3(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXM3X3
+
+static void emit_ARB1_TEXDEPTH(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXDEPTH
+
+static void emit_ARB1_CMP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_CMP
+
+static void emit_ARB1_BEM(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_BEM
+
+static void emit_ARB1_DP2ADD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DP2ADD
+
+static void emit_ARB1_DSX(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DSX
+
+static void emit_ARB1_DSY(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DSY
+
+static void emit_ARB1_TEXLDD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXLDD
+
+static void emit_ARB1_TEXLDL(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXLDL
+
+static void emit_ARB1_BREAKP(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_BREAKP
+
+static void emit_ARB1_BREAKC(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_BREAKC
+
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IFC)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(SETP)
+
+static void emit_ARB1_DEF(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DEF
+
+static void emit_ARB1_DEFI(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DEFI
+
+static void emit_ARB1_DEFB(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DEFB
+
+static void emit_ARB1_DCL(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_DCL
+
+static void emit_ARB1_TEXCRD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXCRD
+
+static void emit_ARB1_TEXLD(Context *ctx)
+{
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+} // emit_ARB1_TEXLD
+
+#endif  // SUPPORT_PROFILE_ARB1
+
+
 #if !AT_LEAST_ONE_PROFILE
 #error No profiles are supported. Fix your build.
 #endif
@@ -3308,6 +4008,9 @@ static const Profile profiles[] =
 #if SUPPORT_PROFILE_GLSL
     DEFINE_PROFILE(GLSL)
 #endif
+#if SUPPORT_PROFILE_ARB1
+    DEFINE_PROFILE(ARB1)
+#endif
 };
 
 #undef DEFINE_PROFILE
@@ -3317,6 +4020,7 @@ static const Profile profiles[] =
      PROFILE_EMITTER_D3D(op) \
      PROFILE_EMITTER_PASSTHROUGH(op) \
      PROFILE_EMITTER_GLSL(op) \
+     PROFILE_EMITTER_ARB1(op) \
 }
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)

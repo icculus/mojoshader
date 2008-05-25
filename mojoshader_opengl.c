@@ -48,10 +48,14 @@ typedef int32_t int32;
 #define SUPPORT_PROFILE_GLSL 1
 #endif
 
+#ifndef SUPPORT_PROFILE_ARB1
+#define SUPPORT_PROFILE_ARB1 1
+#endif
+
 struct MOJOSHADER_glShader
 {
     const MOJOSHADER_parseData *parseData;
-    GLhandleARB handle;
+    GLuint handle;
     uint32 refcount;
 };
 
@@ -79,7 +83,7 @@ struct MOJOSHADER_glProgram
 {
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
-    GLhandleARB handle;
+    GLuint handle;
     uint32 constant_count;  // !!! FIXME: misnamed.
     GLfloat *constants;  // !!! FIXME: misnamed.
     uint32 uniform_count;
@@ -124,6 +128,8 @@ struct MOJOSHADER_glContext
 
     // Extensions...
     int have_base_opengl;
+    int have_GL_ARB_vertex_program;
+    int have_GL_ARB_fragment_program;
     int have_GL_ARB_shader_objects;
     int have_GL_ARB_vertex_shader;
     int have_GL_ARB_fragment_shader;
@@ -151,7 +157,23 @@ struct MOJOSHADER_glContext
     PFNGLUNIFORM4IVARBPROC glUniform4iv;
     PFNGLUSEPROGRAMOBJECTARBPROC glUseProgramObject;
     PFNGLVERTEXATTRIBPOINTERARBPROC glVertexAttribPointer;
+
+    // interface for profile-specific things.
+    int (*profileMaxUniforms)(MOJOSHADER_shaderType shader_type);
+    int (*profileCompileShader)(const MOJOSHADER_parseData *pd);
+    void (*profileDeleteShader)(const GLuint shader);
+    void (*profileDeleteProgram)(const GLuint program);
 };
+
+// predeclare some profile implementation stuff...
+static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type);
+static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd);
+static int impl_GLSL_DeleteShader(const GLuint shader);
+static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type);
+static int impl_ARB1_CompileShader(const MOJOSHADER_parseData *pd);
+static int impl_ARB1_DeleteShader(const GLuint shader);
+
+
 
 static MOJOSHADER_glContext *ctx = NULL;
 
@@ -287,6 +309,8 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     const char *extlist = NULL;
 
     ctx->have_base_opengl = 1;
+    ctx->have_GL_ARB_vertex_program = 1;
+    ctx->have_GL_ARB_fragment_program = 1;
     ctx->have_GL_ARB_shader_objects = 1;
     ctx->have_GL_ARB_vertex_shader = 1;
     ctx->have_GL_ARB_fragment_shader = 1;
@@ -309,6 +333,8 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     #define VERIFY_EXT(ext, major, minor) \
         ctx->have_##ext = verify_extension(#ext, ctx->have_##ext, extlist, major, minor)
 
+    VERIFY_EXT(GL_ARB_vertex_program, -1, -1);
+    VERIFY_EXT(GL_ARB_fragment_program, -1, -1);
     VERIFY_EXT(GL_ARB_shader_objects, 2, 0);
     VERIFY_EXT(GL_ARB_vertex_shader, 2, 0);
     VERIFY_EXT(GL_ARB_fragment_shader, 2, 0);
@@ -332,6 +358,14 @@ static int valid_profile(const char *profile)
         set_error("NULL profile");
         return 0;
     } // if
+
+    #if SUPPORT_PROFILE_ARB1
+    else if (strcmp(profile, MOJOSHADER_PROFILE_ARB1) == 0)
+    {
+        MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_vertex_program);
+        MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_fragment_program);
+    } // else if
+    #endif
 
     #if SUPPORT_PROFILE_GLSL
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
@@ -369,6 +403,7 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
     {
         static const char *priority[] = {
             MOJOSHADER_PROFILE_GLSL,
+            MOJOSHADER_PROFILE_ARB1,
         };
 
         int i;
@@ -421,6 +456,34 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 
     MOJOSHADER_glBindProgram(NULL);
 
+    // !!! FIXME: generalize this part.
+    if (profile == NULL) {}
+
+#if SUPPORT_PROFILE_GLSL
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
+    {
+        ctx->profileMaxUniforms = impl_GLSL_MaxUniforms;
+        ctx->profileCompileShader = impl_GLSL_CompileShader;
+        ctx->profileDeleteShader = impl_GLSL_DeleteShader;
+        ctx->profileDeleteProgram = impl_GLSL_DeleteProgram;
+    } // if
+#endif
+
+#if SUPPORT_PROFILE_ARB1
+    else if (strcmp(profile, MOJOSHADER_PROFILE_ARB1) == 0)
+    {
+        ctx->profileMaxUniforms = impl_ARB1_MaxUniforms;
+        ctx->profileCompileShader = impl_ARB1_CompileShader;
+        ctx->profileDeleteShader = impl_ARB1_DeleteShader;
+        ctx->profileDeleteProgram = impl_ARB1_DeleteProgram;
+    } // if
+#endif
+
+    assert(ctx->profileMaxUniforms != NULL);
+    assert(ctx->profileCompileShader != NULL);
+    assert(ctx->profileDeleteShader != NULL);
+    assert(ctx->profileDeleteProgram != NULL);
+
     retval = ctx;
     ctx = current_ctx;
     return retval;
@@ -439,7 +502,7 @@ void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *_ctx)
 } // MOJOSHADER_glMakeContextCurrent
 
 
-int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
+static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
     GLenum pname = GL_NONE;
     GLint val = 0;
@@ -452,22 +515,61 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
 
     ctx->glGetIntegerv(pname, &val);
     return (int) val;
+} // impl_GLSL_MaxUniforms
+
+
+int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
+{
+    return ctx->profileMaxUniforms(shader_type);
 } // MOJOSHADER_glMaxUniforms
+
+
+static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
+{
+    GLint ok = 0;
+    GLint shaderlen = (GLint) pd->output_len;
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
+    GLuint shader = ctx->glCreateShaderObject(shader_type);
+
+    ctx->glShaderSource(shader, 1, (const GLchar **) &pd->output, &shaderlen);
+    ctx->glCompileShader(shader);
+    ctx->glGetObjectParameteriv(shader, GL_OBJECT_COMPILE_STATUS_ARB, &ok);
+
+    if (!ok)
+    {
+        GLsizei len = 0;
+        ctx->glGetInfoLog(shader, sizeof (error_buffer), &len,
+                          (GLchar *) error_buffer);
+        *s = 0;
+        return 0;
+    } // if
+
+    *s = shader;
+    return 1;
+} // impl_GLSL_CompileShader
+
+
+static void impl_GLSL_DeleteShader(const GLuint shader)
+{
+    ctx->glDeleteObject(shader);
+} // impl_GLSL_DeleteShader
+
+
+static void impl_GLSL_DeleteProgram(const GLuint program)
+{
+    ctx->glDeleteObject(program);
+} // impl_GLSL_DeleteProgram
 
 
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize)
 {
     MOJOSHADER_glShader *retval = NULL;
-    GLhandleARB shader = 0;
+    GLuint shader = 0;
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(ctx->profile, tokenbuf,
                                                       bufsize, ctx->malloc_fn,
                                                       ctx->free_fn,
                                                       ctx->malloc_data);
-    GLint ok = 0;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
-    GLint shaderlen = (GLint) pd->output_len;
-
     if (pd->error != NULL)
     {
         set_error(pd->error);
@@ -478,18 +580,8 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
     if (retval == NULL)
         goto compile_shader_fail;
 
-    shader = ctx->glCreateShaderObject(shader_type);
-
-    ctx->glShaderSource(shader, 1, (const GLchar **) &pd->output, &shaderlen);
-    ctx->glCompileShader(shader);
-    ctx->glGetObjectParameteriv(shader, GL_OBJECT_COMPILE_STATUS_ARB, &ok);
-
-    if (!ok)
-    {
-        GLsizei len = 0;
-        ctx->glGetInfoLog(shader, sizeof (error_buffer), &len, (GLchar *) error_buffer);
+    if (!ctx->profileCompileShader(pd, &shader))
         goto compile_shader_fail;
-    } // if
 
     retval->parseData = pd;
     retval->handle = shader;
@@ -500,7 +592,7 @@ compile_shader_fail:
     MOJOSHADER_freeParseData(pd);
     Free(retval);
     if (shader != 0)
-        ctx->glDeleteObject(shader);
+        ctx->profileDeleteShader(shader);
     return NULL;
 } // MOJOSHADER_glCompileShader
 
@@ -521,7 +613,7 @@ static void shader_unref(MOJOSHADER_glShader *shader)
             shader->refcount--;
         else
         {
-            ctx->glDeleteObject(shader->handle);
+            ctx->profileDeleteShader(shader->handle);
             MOJOSHADER_freeParseData(shader->parseData);
             Free(shader);
         } // else
@@ -538,7 +630,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
             program->refcount--;
         else
         {
-            ctx->glDeleteObject(program->handle);
+            ctx->profileDeleteProgram(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
             Free(program->constants);
@@ -624,7 +716,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         return NULL;
 
     MOJOSHADER_glProgram *retval = NULL;
-    const GLhandleARB program = ctx->glCreateProgramObject();
+    const GLuint program = ctx->glCreateProgramObject();
     int numregs = 0;
     int consts = 0;
 
@@ -713,14 +805,14 @@ link_program_fail:
         Free(retval);
     } // if
 
-    ctx->glDeleteObject(program);
+    ctx->profileDeleteProgram(program);
     return NULL;
 } // MOJOSHADER_glLinkProgram
 
 
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
-    GLhandleARB handle = 0;
+    GLuint handle = 0;
     int i;
 
     if (program == ctx->bound_program)

@@ -335,6 +335,11 @@ typedef struct
  */
 #define MOJOSHADER_PROFILE_GLSL "glsl"
 
+/*
+ * Profile string for OpenGL ARB 1.0 shaders: GL_ARB_(vertex|fragment)_program.
+ */
+#define MOJOSHADER_PROFILE_ARB1 "arb1"
+
 
 /*
  * Parse a compiled Direct3D shader's bytecode.
