@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: this file really needs to be split up.
+
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
 
 // !!! FIXME: do DEF* opcodes have to come before instructions?
