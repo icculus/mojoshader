@@ -3741,12 +3741,10 @@ static void emit_ARB1_NRM(Context *ctx)
 {
     const char *dst0 = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "MUL scratch, %s, %s", src0, src0);
-    output_line(ctx, "ADD scratch2.x, scratch.x, scratch.y");
-    output_line(ctx, "ADD scratch2.x, scratch2.x, scratch.z");
-    output_line(ctx, "RSQ%s, scratch2.x", dst0);
+    output_line(ctx, "DP3 scratch.w, %s, %s", src0, src0);
+    output_line(ctx, "RSQ scratch.w, scratch.w");
+    output_line(ctx, "MUL%s, scratch.w, %s", dst0, src0);
     ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
