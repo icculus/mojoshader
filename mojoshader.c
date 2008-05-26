@@ -3307,6 +3307,49 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
                                                   const SourceArgInfo *arg,
                                                   char *buf, size_t buflen)
 {
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
+                                                      arg->regnum, regnum_str,
+                                                      sizeof (regnum_str));
+
+    if (regtype_str == NULL)
+    {
+        fail(ctx, "Unknown source register type.");
+        return "";
+    } // if
+
+    const char *rel_lbracket = "";
+    const char *rel_rbracket = "";
+    char rel_swizzle[4] = { '\0' };
+    char rel_regnum_str[16] = { '\0' };
+    const char *rel_regtype_str = "";
+    if (arg->relative)
+    {
+        rel_swizzle[0] = '.';
+        rel_swizzle[1] = swizzle_channels[arg->relative_component];
+        rel_swizzle[2] = '\0';
+        rel_lbracket = "[";
+        rel_rbracket = "]";
+        rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
+                                                  arg->relative_regnum,
+                                                  rel_regnum_str,
+                                                  sizeof (rel_regnum_str));
+
+        if (regtype_str == NULL)
+        {
+            fail(ctx, "Unknown relative source register type.");
+            return "";
+        } // if
+    } // if
+
+    // This is the source register with everything but swizzle and source mods.
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s",
+             regtype_str, regnum_str, rel_lbracket, rel_regtype_str,
+             rel_regnum_str, rel_swizzle, rel_rbracket);
+
+    // Some of the source mods need to generate instructions to a temp
+    //  register, in which case we'll replace the register name.
+
     const char *premod_str = "";
     const char *postmod_str = "";
     switch (arg->src_mod)
@@ -3358,8 +3401,10 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            fail(ctx, "SRCMOD_ABS currently unsupported in arb1");
-            postmod_str = "_abs";
+            regtype_str = "scratch";
+            snprintf(regnum_str, sizeof (regnum_str), "%d",
+                     allocate_scratch_register(ctx));
+            output_line(ctx, "ABS %s%s, %s", regtype_str, regnum_str, buf);
             break;
 
         case SRCMOD_NOT:
@@ -3371,42 +3416,6 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         case SRCMOD_TOTAL:
              break;  // stop compiler whining.
     } // switch
-
-
-    char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
-                                                      arg->regnum, regnum_str,
-                                                      sizeof (regnum_str));
-
-    if (regtype_str == NULL)
-    {
-        fail(ctx, "Unknown source register type.");
-        return "";
-    } // if
-
-    const char *rel_lbracket = "";
-    const char *rel_rbracket = "";
-    char rel_swizzle[4] = { '\0' };
-    char rel_regnum_str[16] = { '\0' };
-    const char *rel_regtype_str = "";
-    if (arg->relative)
-    {
-        rel_swizzle[0] = '.';
-        rel_swizzle[1] = swizzle_channels[arg->relative_component];
-        rel_swizzle[2] = '\0';
-        rel_lbracket = "[";
-        rel_rbracket = "]";
-        rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
-                                                  arg->relative_regnum,
-                                                  rel_regnum_str,
-                                                  sizeof (rel_regnum_str));
-
-        if (regtype_str == NULL)
-        {
-            fail(ctx, "Unknown relative source register type.");
-            return "";
-        } // if
-    } // if
 
     char swizzle_str[6];
     int i = 0;
