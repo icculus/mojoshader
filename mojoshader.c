@@ -310,10 +310,6 @@ typedef struct
 // !!! FIXME: get rid of this. use a bitfield instead.
 typedef enum
 {
-    // Specific to ARB1 profile...
-    CTX_FLAGS_ARB1_USES_SCRATCH1 = (1 << 0),
-    CTX_FLAGS_ARB1_USES_SCRATCH2 = (1 << 1),
-
     // Specific to GLSL profile...
     CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
     CTX_FLAGS_MASK = 0xFFFFFFFF
@@ -372,6 +368,8 @@ struct Context
     int loops;
     int reps;
     int cmps;
+    int scratch_registers;
+    int max_scratch_registers;
     RegisterList used_registers;
     RegisterList defined_registers;
     int constant_count;
@@ -828,6 +826,14 @@ static inline int vecsize_from_writemask(const int m)
 {
     return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
 } // vecsize_from_writemask
+
+static int allocate_scratch_register(Context *ctx)
+{
+    const int retval = ctx->scratch_registers++;
+    if (retval >= ctx->max_scratch_registers)
+        ctx->max_scratch_registers = retval + 1;
+    return retval;
+} // allocate_scratch_register
 
 
 // D3D stuff that's used in more than just the d3d profile...
@@ -3613,11 +3619,10 @@ static void emit_ARB1_end(Context *ctx)
 
 static void emit_ARB1_finalize(Context *ctx)
 {
+    int i;
     push_output(ctx, &ctx->globals);
-    if (ctx->flags & CTX_FLAGS_ARB1_USES_SCRATCH1)
-        output_line(ctx, "TEMP scratch;");
-    if (ctx->flags & CTX_FLAGS_ARB1_USES_SCRATCH2)
-        output_line(ctx, "TEMP scratch2;");
+    for (i = 0; i < ctx->max_scratch_registers; i++)
+        output_line(ctx, "TEMP scratch%d;", i);
     pop_output(ctx);
 } // emit_ARB1_finalize
 
@@ -3713,9 +3718,9 @@ static void emit_ARB1_LOG(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "ABS scratch, %s", src0);
-    output_line(ctx, "LG2%s scratch.x", dst);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    const int scratch = allocate_scratch_register(ctx);
+    output_line(ctx, "ABS scratch%d, %s", scratch, src0);
+    output_line(ctx, "LG2%s scratch%d.x", dst, scratch);
 } // emit_ARB1_LOG
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
@@ -3745,9 +3750,9 @@ static void emit_ARB1_POW(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    output_line(ctx, "ABS scratch, %s", src0);
-    output_line(ctx, "POW%s scratch.x, %s", dst, src1);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    const int scratch = allocate_scratch_register(ctx);
+    output_line(ctx, "ABS scratch%d, %s", scratch, src0);
+    output_line(ctx, "POW%s scratch%d.x, %s", dst, scratch, src1);
 } // emit_ARB1_POW
 
 static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
@@ -3756,11 +3761,11 @@ static void emit_ARB1_SGN(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "SLT scratch, %s, { 0.0 }", src0);
-    output_line(ctx, "SLT scratch2, -%s, { 0.0 }", src0);
-    output_line(ctx, "ADD%s -scratch, scratch2", dst);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
+    const int scratch1 = allocate_scratch_register(ctx);
+    const int scratch2 = allocate_scratch_register(ctx);
+    output_line(ctx, "SLT scratch%d, %s, { 0.0 }", scratch1, src0);
+    output_line(ctx, "SLT scratch%d, -%s, { 0.0 }", scratch2, src0);
+    output_line(ctx, "ADD%s -scratch%d, scratch%d", dst, scratch1, scratch2);
 } // emit_ARB1_SGN
 
 EMIT_ARB1_OPCODE_DS_FUNC(ABS)
@@ -3769,10 +3774,10 @@ static void emit_ARB1_NRM(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "DP3 scratch.w, %s, %s", src0, src0);
-    output_line(ctx, "RSQ scratch.w, scratch.w");
-    output_line(ctx, "MUL%s, scratch.w, %s", dst, src0);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    const int scratch = allocate_scratch_register(ctx);
+    output_line(ctx, "DP3 scratch%d.w, %s, %s", scratch, src0, src0);
+    output_line(ctx, "RSQ scratch%d.w, scratch%d.w", scratch, scratch);
+    output_line(ctx, "MUL%s, scratch%d.w, %s", dst, scratch, src0);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
@@ -3807,16 +3812,16 @@ static void emit_ARB1_MOVA(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const int scratch1 = allocate_scratch_register(ctx);
+    const int scratch2 = allocate_scratch_register(ctx);
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
-    output_line(ctx, "CMP scratch2, %s, { 0.0 }, { -1.0 }, { 1.0 }", src0);
-    output_line(ctx, "ABS scratch, %s", src0);
-    output_line(ctx, "ADD scratch, { 0.5 }");
-    output_line(ctx, "FLR scratch, scratch");
-    output_line(ctx, "MUL scratch, scratch2");
-    output_line(ctx, "ARL %s, scratch", dst);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
+    output_line(ctx, "CMP scratch%d, %s, { 0.0 }, { -1.0 }, { 1.0 }", scratch1, src0);
+    output_line(ctx, "ABS scratch%d, %s", scratch2, src0);
+    output_line(ctx, "ADD scratch%d, { 0.5 }", scratch2);
+    output_line(ctx, "FLR scratch%d, scratch%d", scratch2, scratch2);
+    output_line(ctx, "MUL scratch%d, scratch%d", scratch2, scratch1);
+    output_line(ctx, "ARL %s, scratch%d", dst, scratch2);
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
@@ -5269,6 +5274,7 @@ static int parse_instruction_token(Context *ctx)
         emitter(ctx);  // call the profile's emitter.
 
     ctx->previous_opcode = opcode;
+    ctx->scratch_registers = 0;  // reset after every instruction.
 
     if (!isfail(ctx))
     {
