@@ -13,7 +13,7 @@ IF(MSVC)
     ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
 ENDIF(MSVC)
 
-FIND_PACKAGE(SDL)
+#FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
     ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
@@ -22,7 +22,8 @@ IF(SDL_FOUND)
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
-ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c mojoshader_opengl.c)
+#ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c mojoshader_opengl.c)
+ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c)
 TARGET_LINK_LIBRARIES(finderrors ${SDL_LIBRARY} ${EXTRA_LIBS})
 
 # End of CMakeLists.txt ...

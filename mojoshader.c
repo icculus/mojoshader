@@ -2972,8 +2972,9 @@ static void emit_GLSL_TEXCRD(Context *ctx)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
-    const char *dst0 = get_GLSL_destarg_varname(ctx);
-    output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst0);
+    // !!! FIXME: can texkill swizzle?
+    const char *dst = get_GLSL_destarg_varname(ctx);
+    output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
 static void emit_GLSL_TEXLD(Context *ctx)
@@ -2993,7 +2994,7 @@ static void emit_GLSL_TEXLD(Context *ctx)
                                           samp_arg->regnum);
         const char *funcname = NULL;
         const char *src0 = NULL;
-        const char *src1 = get_GLSL_srcarg_varname(ctx, 1);
+        const char *src1 = get_GLSL_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
 
         if (sreg == NULL)
         {
@@ -3523,60 +3524,30 @@ static const char *make_ARB1_srcarg_string(Context *ctx, const int idx)
     return make_ARB1_srcarg_string_in_buf(ctx, arg, buf, SCRATCH_BUFFER_SIZE);
 } // make_ARB1_srcarg_string
 
-
-static void emit_ARB1_opcode_d(Context *ctx, const char *opcode)
-{
-    const char *dst0 = make_ARB1_destarg_string(ctx);
-    output_line(ctx, "%s%s", opcode, dst0);
-} // emit_ARB1_opcode_d
-
-static void emit_ARB1_opcode_s(Context *ctx, const char *opcode)
-{
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "%s %s", opcode, src0);
-} // emit_ARB1_opcode_s
-
-static void emit_ARB1_opcode_ss(Context *ctx, const char *opcode)
-{
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    output_line(ctx, "%s %s, %s", opcode, src0, src1);
-} // emit_ARB1_opcode_ss
-
 static void emit_ARB1_opcode_ds(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "%s%s, %s", opcode, dst0, src0);
+    output_line(ctx, "%s%s, %s", opcode, dst, src0);
 } // emit_ARB1_opcode_ds
 
 static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    output_line(ctx, "%s%s, %s, %s", opcode, dst0, src0, src1);
+    output_line(ctx, "%s%s, %s, %s", opcode, dst, src0, src1);
 } // emit_ARB1_opcode_dss
 
 static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst0, src0, src1, src2);
+    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst, src0, src1, src2);
 } // emit_ARB1_opcode_dsss
 
-
-static void emit_ARB1_opcode_dssss(Context *ctx, const char *opcode)
-{
-    const char *dst0 = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-    const char *src3 = make_ARB1_srcarg_string(ctx, 3);
-    output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst0,src0,src1,src2,src3);
-} // emit_ARB1_opcode_dssss
 
 #define EMIT_ARB1_OPCODE_FUNC(op) \
     static void emit_ARB1_##op(Context *ctx) { \
@@ -3642,33 +3613,77 @@ static void emit_ARB1_end(Context *ctx)
 
 static void emit_ARB1_finalize(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    if (ctx->flags & CTX_FLAGS_ARB1_USES_SCRATCH1)
+        output_line(ctx, "TEMP scratch;");
+    if (ctx->flags & CTX_FLAGS_ARB1_USES_SCRATCH2)
+        output_line(ctx, "TEMP scratch2;");
+    pop_output(ctx);
 } // emit_ARB1_finalize
 
-static void emit_ARB1_global(Context *ctx, RegisterType t, int n)
+static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // !!! FIXME: dependency on GLSL profile.
+    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+
+    push_output(ctx, &ctx->globals);
+    switch (regtype)
+    {
+        case REG_TYPE_ADDRESS:
+            output_line(ctx, "ADDRESS %s;", varname);
+            break;
+        //case REG_TYPE_PREDICATE:
+        //    output_line(ctx, "bvec4 %s;", varname);
+        //    break;
+        case REG_TYPE_TEMP:
+            output_line(ctx, "TEMP %s;", varname);
+            break;
+        //case REG_TYPE_LOOP:
+        //    break; // no-op. We declare these in for loops at the moment.
+        //case REG_TYPE_LABEL:
+        //    break; // no-op. If we see it here, it means we optimized it out.
+        default:
+            fail(ctx, "BUG: we used a register we don't know how to define.");
+            break;
+    } // switch
+    pop_output(ctx);
 } // emit_ARB1_global
 
 static void emit_ARB1_relative(Context *ctx, int size)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "RELATIVE ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_relative
 
 static void emit_ARB1_uniform(Context *ctx, RegisterType t, int n)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "UNIFORM ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_uniform
 
 static void emit_ARB1_sampler(Context *ctx, int s, TextureType ttype)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "SAMPLER ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_sampler
 
 static void emit_ARB1_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "ATTRIB ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_attribute
 
 static void emit_ARB1_RESERVED(Context *ctx) { /* no-op. */ }
@@ -3694,8 +3709,14 @@ EMIT_ARB1_OPCODE_DSS_FUNC(SGE)
 
 static void emit_ARB1_EXP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 
-// !!! FIXME: LG2 needs to abs() the value, and deal with zero values.
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOG)
+static void emit_ARB1_LOG(Context *ctx)
+{
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "ABS scratch, %s", src0);
+    output_line(ctx, "LG2%s scratch.x", dst);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+} // emit_ARB1_LOG
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
 EMIT_ARB1_OPCODE_DSS_FUNC(DST)
@@ -3719,18 +3740,25 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(RET)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDLOOP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LABEL)
 
-// !!! FIXME: POW needs to abs() the value, and deal with zero values.
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(POW)
+static void emit_ARB1_POW(Context *ctx)
+{
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    output_line(ctx, "ABS scratch, %s", src0);
+    output_line(ctx, "POW%s scratch.x, %s", dst, src1);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+} // emit_ARB1_POW
 
 static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
 
 static void emit_ARB1_SGN(Context *ctx)
 {
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     output_line(ctx, "SLT scratch, %s, { 0.0 }", src0);
     output_line(ctx, "SLT scratch2, -%s, { 0.0 }", src0);
-    output_line(ctx, "ADD%s -scratch, scratch2", dst0);
+    output_line(ctx, "ADD%s -scratch, scratch2", dst);
     ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
     ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
 } // emit_ARB1_SGN
@@ -3739,11 +3767,11 @@ EMIT_ARB1_OPCODE_DS_FUNC(ABS)
 
 static void emit_ARB1_NRM(Context *ctx)
 {
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     output_line(ctx, "DP3 scratch.w, %s, %s", src0, src0);
     output_line(ctx, "RSQ scratch.w, scratch.w");
-    output_line(ctx, "MUL%s, scratch.w, %s", dst0, src0);
+    output_line(ctx, "MUL%s, scratch.w, %s", dst, src0);
     ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
 } // emit_ARB1_NRM
 
@@ -3754,19 +3782,20 @@ static void emit_ARB1_SINCOS(Context *ctx)
     //  but we just leave those all untouched with GLSL write masks (which
     //  would fulfill the "undefined" requirement, too).
     const int mask = ctx->dest_arg.writemask;
-    const char *dst0 = make_ARB1_destarg_string(ctx);
+    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
     if (writemask_x(mask))
-        output_line(ctx, "COS%s, %s", dst0, src0);
+        output_line(ctx, "COS%s, %s", dst, src0);
     else if (writemask_y(mask))
-        output_line(ctx, "SIN%s, %s", dst0, src0);
+        output_line(ctx, "SIN%s, %s", dst, src0);
     else if (writemask_xy(mask))
-        output_line(ctx, "SCS%s, %s", dst0, src0);
+        output_line(ctx, "SCS%s, %s", dst, src0);
     else
         fail(ctx, "unhandled SINCOS writemask in arb1 profile");
 } // emit_ARB1_SINCOS
 
+// !!! FIXME: nvidia's extensions to arb1 can handle these.
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IF)
@@ -3776,186 +3805,103 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
 
 static void emit_ARB1_MOVA(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    // ARL uses floor(), but D3D expects round-to-nearest.
+    // There is probably a more efficient way to do this.
+    output_line(ctx, "CMP scratch2, %s, { 0.0 }, { -1.0 }, { 1.0 }", src0);
+    output_line(ctx, "ABS scratch, %s", src0);
+    output_line(ctx, "ADD scratch, { 0.5 }");
+    output_line(ctx, "FLR scratch, scratch");
+    output_line(ctx, "MUL scratch, scratch2");
+    output_line(ctx, "ARL %s, scratch", dst);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH1);
+    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_ARB1_USES_SCRATCH2);
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // !!! FIXME: d3d kills on xyz, arb1 kills on xyzw. Fix the swizzle!
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    output_line(ctx, "KIL %s", src0);
 } // emit_ARB1_TEXKILL
 
-static void emit_ARB1_TEXBEM(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXBEM
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEML)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2TEX)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3PAD)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
 
-static void emit_ARB1_TEXBEML(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXBEML
-
-static void emit_ARB1_TEXREG2AR(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXREG2AR
-
-static void emit_ARB1_TEXREG2GB(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXREG2GB
-
-static void emit_ARB1_TEXM3X2PAD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X2PAD
-
-static void emit_ARB1_TEXM3X2TEX(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X2TEX
-
-static void emit_ARB1_TEXM3X3PAD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X3PAD
-
-static void emit_ARB1_TEXM3X3TEX(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X3TEX
-
-static void emit_ARB1_TEXM3X3SPEC(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X3SPEC
-
-static void emit_ARB1_TEXM3X3VSPEC(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X3VSPEC
-
-static void emit_ARB1_EXPP(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_EXPP
-
-static void emit_ARB1_LOGP(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_LOGP
+static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_EXP(ctx); }
+static void emit_ARB1_LOGP(Context *ctx) { emit_ARB1_LOG(ctx); }
 
 static void emit_ARB1_CND(Context *ctx)
 {
     failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_CND
 
-static void emit_ARB1_TEXREG2RGB(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXREG2RGB
-
-static void emit_ARB1_TEXDP3TEX(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXDP3TEX
-
-static void emit_ARB1_TEXM3X2DEPTH(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X2DEPTH
-
-static void emit_ARB1_TEXDP3(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXDP3
-
-static void emit_ARB1_TEXM3X3(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXM3X3
-
-static void emit_ARB1_TEXDEPTH(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXDEPTH
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH)
 
 static void emit_ARB1_CMP(Context *ctx)
 {
     failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_CMP
 
-static void emit_ARB1_BEM(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_BEM
-
-static void emit_ARB1_DP2ADD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_DP2ADD
-
-static void emit_ARB1_DSX(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_DSX
-
-static void emit_ARB1_DSY(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_DSY
-
-static void emit_ARB1_TEXLDD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXLDD
-
-static void emit_ARB1_TEXLDL(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXLDL
-
-static void emit_ARB1_BREAKP(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_BREAKP
-
-static void emit_ARB1_BREAKC(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_BREAKC
-
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DP2ADD)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSX)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSY)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDL)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKP)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKC)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IFC)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(SETP)
 
 static void emit_ARB1_DEF(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "DEF ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEF
 
 static void emit_ARB1_DEFI(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "DEFI ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEFI
 
 static void emit_ARB1_DEFB(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "DEFB ----NOT IMPLEMENTED----");
+    pop_output(ctx);
+    // !!! FIXME
+    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEFB
 
 static void emit_ARB1_DCL(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // no-op. We do this in our emit_attribute() and emit_uniform().
 } // emit_ARB1_DCL
 
-static void emit_ARB1_TEXCRD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXCRD
-
-static void emit_ARB1_TEXLD(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_TEXLD
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLD)
 
 #endif  // SUPPORT_PROFILE_ARB1
 
@@ -4987,6 +4933,12 @@ static void state_POW(Context *ctx)
         fail(ctx, "POW src1 must have replicate swizzle");
 } // state_POW
 
+static void state_LOG(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "LOG src0 must have replicate swizzle");
+} // state_LOG
+
 static void state_SINCOS(Context *ctx)
 {
     const DestArgInfo *dst = &ctx->dest_arg;
@@ -5156,7 +5108,7 @@ static const Instruction instructions[] =
     INSTRUCTION(SLT, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(SGE, DSS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(EXP, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LOG, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LOG, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(LIT, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(DST, DSS, MOJOSHADER_TYPE_VERTEX),
     INSTRUCTION(LRP, DSSS, MOJOSHADER_TYPE_ANY),
