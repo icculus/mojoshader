@@ -2006,12 +2006,6 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
         rel_swizzle[2] = '\0';
         rel_rbracket = "]";
-
-        if (regtype_str == NULL)
-        {
-            fail(ctx, "Unknown relative source register type.");
-            return "";
-        } // if
     } // if
 
     char swiz_str[6] = { '\0' };
@@ -3303,49 +3297,83 @@ static void emit_GLSL_RESERVED(Context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
 
+const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
+                                     int regnum, char *regnum_str, int len)
+{
+    const char *retval = get_D3D_register_string(ctx, regtype, regnum,
+                                                 regnum_str, len);
+    if (retval == NULL)
+    {
+        fail(ctx, "Unknown D3D register type.");
+        return "";
+    } // if
+
+    return retval;
+} // get_ARB1_register_string
+
+static const char *get_ARB1_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char regnum_str[16];
+    const char *shader_type_str = get_shader_type_string(ctx);
+    const char *regtype_str = get_ARB1_register_string(ctx, rt, regnum,
+                                              regnum_str, sizeof (regnum_str));
+
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", shader_type_str,
+             regtype_str, regnum_str);
+    return retval;
+} // get_ARB1_varname
+
+
+static const char *get_ARB1_const_array_varname(Context *ctx)
+{
+    const char *shader_type_str = get_shader_type_string(ctx);
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array", shader_type_str);
+    return retval;
+} // get_ARB1_const_array_varname
+
+
 static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
                                                   const SourceArgInfo *arg,
                                                   char *buf, size_t buflen)
 {
-    char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
-                                                      arg->regnum, regnum_str,
-                                                      sizeof (regnum_str));
+    char regnum_str[16] = { '\0' };
 
-    if (regtype_str == NULL)
+    // !!! FIXME: use get_ARB1_varname() instead?
+    const char *shader_type_str = get_shader_type_string(ctx);
+    const char *regtype_str = NULL;
+    if (!arg->relative)
     {
-        fail(ctx, "Unknown source register type.");
-        return "";
+        regtype_str = get_ARB1_register_string(ctx, arg->regtype,
+                                               arg->regnum, regnum_str,
+                                               sizeof (regnum_str));
     } // if
 
     const char *rel_lbracket = "";
+    char rel_offset[32] = { '\0' };
     const char *rel_rbracket = "";
     char rel_swizzle[4] = { '\0' };
-    char rel_regnum_str[16] = { '\0' };
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
+        // !!! FIXME: use get_ARB1_const_array_varname() instead?  (can't, because of shader_type_str nonsense).
+        regtype_str = "const_array";
+        rel_lbracket = "[";
+        if (arg->regnum != 0)
+            snprintf(rel_offset, sizeof (rel_offset), " + %d", arg->regnum);
+        rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
+                                           arg->relative_regnum);
         rel_swizzle[0] = '.';
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
         rel_swizzle[2] = '\0';
-        rel_lbracket = "[";
         rel_rbracket = "]";
-        rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
-                                                  arg->relative_regnum,
-                                                  rel_regnum_str,
-                                                  sizeof (rel_regnum_str));
-
-        if (regtype_str == NULL)
-        {
-            fail(ctx, "Unknown relative source register type.");
-            return "";
-        } // if
     } // if
 
     // This is the source register with everything but swizzle and source mods.
-    snprintf(buf, buflen, "%s%s%s%s%s%s%s",
+    snprintf(buf, buflen, "%s_%s%s%s%s%s%s%s", shader_type_str,
              regtype_str, regnum_str, rel_lbracket, rel_regtype_str,
-             rel_regnum_str, rel_swizzle, rel_rbracket);
+             rel_swizzle, rel_offset, rel_rbracket);
 
     // Some of the source mods need to generate instructions to a temp
     //  register, in which case we'll replace the register name.
@@ -3401,10 +3429,17 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            regtype_str = "scratch";
+            regtype_str = "scratch";   // move value to scratch register.
+            rel_lbracket = "";   // scratch register won't use array.
+            rel_rbracket = "";
+            rel_offset[0] = '\0';
+            rel_swizzle[0] = '\0';
+            rel_regtype_str = "";
+
             snprintf(regnum_str, sizeof (regnum_str), "%d",
                      allocate_scratch_register(ctx));
-            output_line(ctx, "ABS %s%s, %s", regtype_str, regnum_str, buf);
+            output_line(ctx, "ABS %s_%s%s, %s;", shader_type_str,
+                        regtype_str, regnum_str, buf);
             break;
 
         case SRCMOD_NOT:
@@ -3438,18 +3473,24 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
-    snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s",
-             premod_str, regtype_str, regnum_str, postmod_str,
-             rel_lbracket, rel_regtype_str, rel_regnum_str, rel_swizzle,
+    snprintf(buf, buflen, "%s%s_%s%s%s%s%s%s%s%s%s", premod_str,
+             shader_type_str, regtype_str, regnum_str, postmod_str,
+             rel_lbracket, rel_regtype_str, rel_swizzle, rel_offset,
              rel_rbracket, swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return buf;
 } // make_ARB1_srcarg_string_in_buf
 
+static const char *get_ARB1_destarg_varname(Context *ctx)
+{
+    const DestArgInfo *arg = &ctx->dest_arg;
+    return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
+} // get_ARB1_destarg_varname
 
 static const char *make_ARB1_destarg_string(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
+    const char *shader_type_str = get_shader_type_string(ctx);
 
     const char *result_shift_str = "";
     if (arg->result_shift != 0x0)
@@ -3469,8 +3510,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     } // switch
 
     const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_SAT" : "";
-    const char *pp_str = "";  // no partial precision, but that's okay.
-    const char *cent_str = "";
+    // no partial precision (MOD_PP), but that's okay.
 
     if (arg->result_mod & MOD_CENTROID)
     {
@@ -3479,9 +3519,9 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     } // if
 
     char regnum_str[16];
-    const char *regtype_str = get_D3D_register_string(ctx, arg->regtype,
-                                                      arg->regnum, regnum_str,
-                                                      sizeof (regnum_str));
+    const char *regtype_str = get_ARB1_register_string(ctx, arg->regtype,
+                                                       arg->regnum, regnum_str,
+                                                       sizeof (regnum_str));
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
@@ -3511,16 +3551,13 @@ static const char *make_ARB1_destarg_string(Context *ctx)
         return "";
         pred_left = "(";
         pred_right = ") ";
-        make_D3D_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
-                                         pred, sizeof (pred));
+        make_ARB1_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
+                                       pred, sizeof (pred));
     } // if
 
-    // may turn out something like "_x2_sat_pp_centroid (!p0.x) r0.xyzw" ...
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s",
-             result_shift_str, sat_str, pp_str, cent_str,
-             pred_left, pred, pred_right,
-             regtype_str, regnum_str, writemask_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s %s_%s%s%s", sat_str,
+             shader_type_str, regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_ARB1_destarg_string
@@ -3543,7 +3580,7 @@ static void emit_ARB1_opcode_ds(Context *ctx, const char *opcode)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "%s%s, %s", opcode, dst, src0);
+    output_line(ctx, "%s%s, %s;", opcode, dst, src0);
 } // emit_ARB1_opcode_ds
 
 static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
@@ -3551,7 +3588,7 @@ static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    output_line(ctx, "%s%s, %s, %s", opcode, dst, src0, src1);
+    output_line(ctx, "%s%s, %s, %s;", opcode, dst, src0, src1);
 } // emit_ARB1_opcode_dss
 
 static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
@@ -3560,7 +3597,7 @@ static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst, src0, src1, src2);
+    output_line(ctx, "%s%s, %s, %s, %s;", opcode, dst, src0, src1, src2);
 } // emit_ARB1_opcode_dsss
 
 
@@ -3629,16 +3666,18 @@ static void emit_ARB1_end(Context *ctx)
 static void emit_ARB1_finalize(Context *ctx)
 {
     int i;
+    const char *shader_type_str = get_shader_type_string(ctx);
+
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "TEMP scratch%d;", i);
+        output_line(ctx, "TEMP %s_scratch%d;", shader_type_str, i);
     pop_output(ctx);
 } // emit_ARB1_finalize
 
 static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
 {
-    // !!! FIXME: dependency on GLSL profile.
-    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+    // !!! FIXME: dependency on ARB1 profile.
+    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
 
     push_output(ctx, &ctx->globals);
     switch (regtype)
@@ -3665,29 +3704,36 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
 
 static void emit_ARB1_relative(Context *ctx, int size)
 {
+    const char *varname = get_ARB1_const_array_varname(ctx);
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "RELATIVE ----NOT IMPLEMENTED----");
+    output_line(ctx, "PARAM %s[%d] = { program.env[0..%d] };", varname,
+                size, size - 1);
     pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_relative
 
-static void emit_ARB1_uniform(Context *ctx, RegisterType t, int n)
+static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
 {
+    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "UNIFORM ----NOT IMPLEMENTED----");
+
+    if ((regtype == REG_TYPE_CONST) && (ctx->uniform_array))
+    {
+        const char *constarray = get_ARB1_const_array_varname(ctx);
+        output_line(ctx, "ALIAS %s = %s[%d];", varname, constarray, regnum);
+    } // if
+    else
+    {
+        // !!! FIXME: uniform_count is wrong here if ctx->uniform_array is set.
+        output_line(ctx, "PARAM %s = program.env[%d];", varname,
+                    ctx->uniform_count - 1);
+    } // else
+
     pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_uniform
 
 static void emit_ARB1_sampler(Context *ctx, int s, TextureType ttype)
 {
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "SAMPLER ----NOT IMPLEMENTED----");
-    pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_sampler
 
 static void emit_ARB1_attribute(Context *ctx, RegisterType t, int n,
@@ -3728,8 +3774,8 @@ static void emit_ARB1_LOG(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s", scratch, src0);
-    output_line(ctx, "LG2%s scratch%d.x", dst, scratch);
+    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
+    output_line(ctx, "LG2%s scratch%d.x;", dst, scratch);
 } // emit_ARB1_LOG
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
@@ -3760,8 +3806,8 @@ static void emit_ARB1_POW(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s", scratch, src0);
-    output_line(ctx, "POW%s scratch%d.x, %s", dst, scratch, src1);
+    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
+    output_line(ctx, "POW%s scratch%d.x, %s;", dst, scratch, src1);
 } // emit_ARB1_POW
 
 static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
@@ -3772,9 +3818,9 @@ static void emit_ARB1_SGN(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
     const int scratch2 = allocate_scratch_register(ctx);
-    output_line(ctx, "SLT scratch%d, %s, { 0.0 }", scratch1, src0);
-    output_line(ctx, "SLT scratch%d, -%s, { 0.0 }", scratch2, src0);
-    output_line(ctx, "ADD%s -scratch%d, scratch%d", dst, scratch1, scratch2);
+    output_line(ctx, "SLT scratch%d, %s, { 0.0 };", scratch1, src0);
+    output_line(ctx, "SLT scratch%d, -%s, { 0.0 };", scratch2, src0);
+    output_line(ctx, "ADD%s -scratch%d, scratch%d;", dst, scratch1, scratch2);
 } // emit_ARB1_SGN
 
 EMIT_ARB1_OPCODE_DS_FUNC(ABS)
@@ -3784,27 +3830,24 @@ static void emit_ARB1_NRM(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "DP3 scratch%d.w, %s, %s", scratch, src0, src0);
-    output_line(ctx, "RSQ scratch%d.w, scratch%d.w", scratch, scratch);
-    output_line(ctx, "MUL%s, scratch%d.w, %s", dst, scratch, src0);
+    output_line(ctx, "DP3 scratch%d.w, %s, %s;", scratch, src0, src0);
+    output_line(ctx, "RSQ scratch%d.w, scratch%d.w;", scratch, scratch);
+    output_line(ctx, "MUL%s, scratch%d.w, %s;", dst, scratch, src0);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
 {
     // we don't care about the temp registers that <= sm2 demands; ignore them.
-    //  sm2 also talks about what components are left untouched vs. undefined,
-    //  but we just leave those all untouched with GLSL write masks (which
-    //  would fulfill the "undefined" requirement, too).
     const int mask = ctx->dest_arg.writemask;
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
     if (writemask_x(mask))
-        output_line(ctx, "COS%s, %s", dst, src0);
+        output_line(ctx, "COS%s, %s;", dst, src0);
     else if (writemask_y(mask))
-        output_line(ctx, "SIN%s, %s", dst, src0);
+        output_line(ctx, "SIN%s, %s;", dst, src0);
     else if (writemask_xy(mask))
-        output_line(ctx, "SCS%s, %s", dst, src0);
+        output_line(ctx, "SCS%s, %s;", dst, src0);
     else
         fail(ctx, "unhandled SINCOS writemask in arb1 profile");
 } // emit_ARB1_SINCOS
@@ -3825,19 +3868,19 @@ static void emit_ARB1_MOVA(Context *ctx)
     const int scratch2 = allocate_scratch_register(ctx);
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
-    output_line(ctx, "CMP scratch%d, %s, { 0.0 }, { -1.0 }, { 1.0 }", scratch1, src0);
-    output_line(ctx, "ABS scratch%d, %s", scratch2, src0);
-    output_line(ctx, "ADD scratch%d, { 0.5 }", scratch2);
-    output_line(ctx, "FLR scratch%d, scratch%d", scratch2, scratch2);
-    output_line(ctx, "MUL scratch%d, scratch%d", scratch2, scratch1);
-    output_line(ctx, "ARL %s, scratch%d", dst, scratch2);
+    output_line(ctx, "CMP scratch%d, %s, { 0.0 }, { -1.0 }, { 1.0 };", scratch1, src0);
+    output_line(ctx, "ABS scratch%d, %s;", scratch2, src0);
+    output_line(ctx, "ADD scratch%d, { 0.5 };", scratch2);
+    output_line(ctx, "FLR scratch%d, scratch%d;", scratch2, scratch2);
+    output_line(ctx, "MUL scratch%d, scratch%d;", scratch2, scratch1);
+    output_line(ctx, "ARL %s, scratch%d;", dst, scratch2);
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
 {
     // !!! FIXME: d3d kills on xyz, arb1 kills on xyzw. Fix the swizzle!
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "KIL %s", src0);
+    output_line(ctx, "KIL %s;", src0);
 } // emit_ARB1_TEXKILL
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)
@@ -3884,29 +3927,39 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(SETP)
 
 static void emit_ARB1_DEF(Context *ctx)
 {
+    const char *varname = get_ARB1_destarg_varname(ctx);
+    const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
+    char val0[32];
+    char val1[32];
+    char val2[32];
+    char val3[32];
+    floatstr(ctx, val0, sizeof (val0), val[0], 1);
+    floatstr(ctx, val1, sizeof (val1), val[1], 1);
+    floatstr(ctx, val2, sizeof (val2), val[2], 1);
+    floatstr(ctx, val3, sizeof (val3), val[3], 1);
+
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "DEF ----NOT IMPLEMENTED----");
+    output_line(ctx, "PARAM %s = { %s, %s, %s, %s };",
+                varname, val0, val1, val2, val3);
     pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEF
 
 static void emit_ARB1_DEFI(Context *ctx)
 {
+    const char *varname = get_ARB1_destarg_varname(ctx);
+    const int32 *x = (const int32 *) ctx->dwords;
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "DEFI ----NOT IMPLEMENTED----");
+    output_line(ctx, "PARAM %s = { %d, %d, %d, %d };",
+                varname, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
     pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEFI
 
 static void emit_ARB1_DEFB(Context *ctx)
 {
+    const char *varname = get_ARB1_destarg_varname(ctx);
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "DEFB ----NOT IMPLEMENTED----");
+    output_line(ctx, "PARAM %s = { %d };", varname, ctx->dwords[0] ? 1 : 0);
     pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_DEFB
 
 static void emit_ARB1_DCL(Context *ctx)
