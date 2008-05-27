@@ -370,6 +370,7 @@ struct Context
     int cmps;
     int scratch_registers;
     int max_scratch_registers;
+    int assigned_vertex_attributes;
     RegisterList used_registers;
     RegisterList defined_registers;
     int constant_count;
@@ -3723,9 +3724,7 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
     } // if
     else
     {
-        // !!! FIXME: uniform_count is wrong here if ctx->uniform_array is set.
-        output_line(ctx, "PARAM %s = program.env[%d];", varname,
-                    ctx->uniform_count - 1);
+        output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
     } // else
 
     pop_output(ctx);
@@ -3736,14 +3735,203 @@ static void emit_ARB1_sampler(Context *ctx, int s, TextureType ttype)
     failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
 } // emit_ARB1_sampler
 
-static void emit_ARB1_attribute(Context *ctx, RegisterType t, int n,
-                                       MOJOSHADER_usage u, int i, int w)
+// !!! FIXME: a lot of cut-and-paste here from emit_GLSL_attribute().
+static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
+                                MOJOSHADER_usage usage, int index, int wmask)
 {
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "ATTRIB ----NOT IMPLEMENTED----");
-    pop_output(ctx);
-    // !!! FIXME
-    //failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // !!! FIXME: this function doesn't deal with write masks at all yet!
+    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
+    const char *usage_str = NULL;
+    const char *arrayleft = "";
+    const char *arrayright = "";
+    char index_str[16] = { '\0' };
+
+    if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
+        snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+
+    if (shader_is_vertex(ctx))
+    {
+        // pre-vs3 output registers.
+        // these don't ever happen in DCL opcodes, I think. Map to vs_3_*
+        //  output registers.
+        if (!shader_version_atleast(ctx, 3, 0))
+        {
+            if (regtype == REG_TYPE_RASTOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                index = regnum;
+                switch ((const RastOutType) regnum)
+                {
+                    case RASTOUT_TYPE_POSITION:
+                        usage = MOJOSHADER_USAGE_POSITION;
+                        break;
+                    case RASTOUT_TYPE_FOG:
+                        usage = MOJOSHADER_USAGE_FOG;
+                        break;
+                    case RASTOUT_TYPE_POINT_SIZE:
+                        usage = MOJOSHADER_USAGE_POINTSIZE;
+                        break;
+                } // switch
+            } // if
+
+            else if (regtype == REG_TYPE_ATTROUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_COLOR;
+                index = regnum;
+            } // else if
+
+            else if (regtype == REG_TYPE_TEXCRDOUT)
+            {
+                regtype = REG_TYPE_OUTPUT;
+                usage = MOJOSHADER_USAGE_TEXCOORD;
+                index = regnum;
+            } // else if
+        } // if
+
+        // to avoid limitations of various GL entry points for input
+        // attributes (glSecondaryColorPointer() can only take 3 component
+        // items, glVertexPointer() can't do GL_UNSIGNED_BYTE, many other
+        // issues), we set up all inputs as generic vertex attributes, so we
+        // can pass data in just about any form, and ignore the built-in GLSL
+        // attributes like gl_SecondaryColor. Output needs to use the the
+        // built-ins, though, but we don't have to worry about the GL entry
+        // point limitations there.
+
+        if (regtype == REG_TYPE_INPUT)
+        {
+            int attr = 0;  // POSITION0 _must_ be vertex.attrib[0]!
+            if ((usage != MOJOSHADER_USAGE_POSITION) || (index != 0))
+                attr = ++ctx->assigned_vertex_attributes;
+            push_output(ctx, &ctx->globals);
+            output_line(ctx, "ATTRIB %s = vertex.attrib[%d];", varname, attr);
+            pop_output(ctx);
+        } // if
+
+        else if (regtype == REG_TYPE_OUTPUT)
+        {
+            switch (usage)
+            {
+                case MOJOSHADER_USAGE_POSITION:
+                    usage_str = "result.position";
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    usage_str = "result.pointsize";
+                    break;
+                case MOJOSHADER_USAGE_COLOR:
+                    index_str[0] = '\0';  // no explicit number.
+                    if (index == 0)
+                        usage_str = "result.color.primary";
+                    else if (index == 1)
+                        usage_str = "result.color.secondary";
+                    break;
+                case MOJOSHADER_USAGE_FOG:
+                    usage_str = "result.fogcoord";
+                    break;
+                case MOJOSHADER_USAGE_TEXCOORD:
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+                    usage_str = "result.texcoord";
+                    arrayleft = "[";
+                    arrayright = "]";
+                    break;
+                default:
+                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    break;
+            } // switch
+
+            // !!! FIXME: the #define is a little hacky, but it means we don't
+            // !!! FIXME:  have to track these separately if this works.
+            push_output(ctx, &ctx->globals);
+            // no mapping to built-in var? Just make it a regular global, pray.
+            if (usage_str == NULL)
+                output_line(ctx, "TEMP %s;", varname);
+            else
+            {
+                output_line(ctx, "OUTPUT %s = %s%s%s%s;", varname, usage_str,
+                            arrayleft, index_str, arrayright);
+            } // else
+            pop_output(ctx);
+        } // else if
+
+        else
+        {
+            fail(ctx, "unknown vertex shader attribute register");
+        } // else
+    } // if
+
+    else if (shader_is_pixel(ctx))
+    {
+        // samplers DCLs get handled in emit_ARB1_sampler().
+
+        if (regtype == REG_TYPE_COLOROUT)
+            usage_str = "result.color";
+
+        else if (regtype == REG_TYPE_DEPTHOUT)
+            usage_str = "result.depth";
+
+        // !!! FIXME: can you actualy have a texture register with COLOR usage?
+        else if ((regtype == REG_TYPE_TEXTURE) || (regtype == REG_TYPE_INPUT))
+        {
+            if (usage == MOJOSHADER_USAGE_TEXCOORD)
+            {
+                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+                usage_str = "fragment.texcoord";
+                arrayleft = "[";
+                arrayright = "]";
+            } // if
+
+            else if (usage == MOJOSHADER_USAGE_COLOR)
+            {
+                index_str[0] = '\0';  // no explicit number.
+                if (index == 0)
+                    usage_str = "fragment.color.primary";
+                else if (index == 1)
+                    usage_str = "fragment.color.secondary";
+                else
+                    fail(ctx, "unsupported color index");
+            } // else if
+        } // else if
+
+        else if (regtype == REG_TYPE_MISCTYPE)
+        {
+            const MiscTypeType mt = (MiscTypeType) regnum;
+            if (mt == MISCTYPE_TYPE_FACE)
+            {
+                fail(ctx, "Can't handle vFace in arb1 profile"); // !!! FIXME
+                //push_output(ctx, &ctx->globals);
+                //output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;",
+                //            varname);
+                //pop_output(ctx);
+            } // if
+            else if (mt == MISCTYPE_TYPE_POSITION)
+            {
+                index_str[0] = '\0';  // no explicit number.
+                usage_str = "fragment.position";  // !!! FIXME: is this the same coord space as D3D?
+            } // else if
+            else
+            {
+                fail(ctx, "BUG: unhandled misc register");
+            } // else
+        } // else if
+
+        else
+        {
+            fail(ctx, "unknown pixel shader attribute register");
+        } // else
+
+        if (usage_str != NULL)
+        {
+            push_output(ctx, &ctx->globals);
+            output_line(ctx, "ATTRIB %s = %s%s%s%s;", varname, usage_str,
+                        arrayleft, index_str, arrayright);
+            pop_output(ctx);
+        } // if
+    } // else if
+
+    else
+    {
+        fail(ctx, "Unknown shader type");  // state machine should catch this.
+    } // else
 } // emit_ARB1_attribute
 
 static void emit_ARB1_RESERVED(Context *ctx) { /* no-op. */ }
@@ -3873,7 +4061,7 @@ static void emit_ARB1_MOVA(Context *ctx)
     output_line(ctx, "ADD scratch%d, { 0.5 };", scratch2);
     output_line(ctx, "FLR scratch%d, scratch%d;", scratch2, scratch2);
     output_line(ctx, "MUL scratch%d, scratch%d;", scratch2, scratch1);
-    output_line(ctx, "ARL %s, scratch%d;", dst, scratch2);
+    output_line(ctx, "ARL%s, scratch%d;", dst, scratch2);
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
