@@ -3724,6 +3724,7 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
     } // if
     else
     {
+        // !!! FIXME: this only works if you have no bool or int uniforms.
         output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
     } // else
 
