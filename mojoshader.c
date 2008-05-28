@@ -344,6 +344,7 @@ struct Context
     int output_stack_len;
     int output_len; // total strlen; prevents walking the lists just to malloc.
     int indent;
+    const char *shader_type_str;
     const char *endline;
     int endline_len;
     const char *failstr;
@@ -955,17 +956,6 @@ static const char *get_D3D_register_string(Context *ctx,
 } // get_D3D_register_string
 
 
-static inline const char *get_shader_type_string(Context *ctx)
-{
-    if (shader_is_pixel(ctx))
-        return "ps";
-    else if (shader_is_vertex(ctx))
-        return "vs";
-    fail(ctx, "Unknown shader type.");
-    return "";
-} // get_shader_type_string
-
-
 #define AT_LEAST_ONE_PROFILE 0
 
 #if !SUPPORT_PROFILE_D3D
@@ -1182,7 +1172,6 @@ static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
-    const char *shadertype_str = get_shader_type_string(ctx);
     char minor_str[16];
 
     if (minor == 0xFF)
@@ -1192,7 +1181,7 @@ static void emit_D3D_start(Context *ctx)
     else
         snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
 
-    output_line(ctx, "%s_%u_%s", shadertype_str, major, minor_str);
+    output_line(ctx, "%s_%u_%s", ctx->shader_type_str, major, minor_str);
 } // emit_D3D_start
 
 
@@ -1731,12 +1720,11 @@ const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
 static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
 {
     char regnum_str[16];
-    const char *shader_type_str = get_shader_type_string(ctx);
     const char *regtype_str = get_GLSL_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", shader_type_str,
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", ctx->shader_type_str,
              regtype_str, regnum_str);
     return retval;
 } // get_GLSL_varname
@@ -1744,7 +1732,7 @@ static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
 
 static const char *get_GLSL_const_array_varname(Context *ctx)
 {
-    const char *shader_type_str = get_shader_type_string(ctx);
+    const char *shader_type_str = ctx->shader_type_str;
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array", shader_type_str);
     return retval;
@@ -1854,10 +1842,9 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const char *leftparen = (need_parens) ? "(" : "";
     const char *rightparen = (need_parens) ? ")" : "";
 
-    const char *shader_type_str = get_shader_type_string(ctx);
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s%s = %s%s%s%s%s%s;",
-             shader_type_str, regtype_str, regnum_str, writemask_str,
+             ctx->shader_type_str, regtype_str, regnum_str, writemask_str,
              clampleft, leftparen, operation, rightparen, result_shift_str,
              clampright);
     // !!! FIXME: make sure the scratch buffer was large enough.
@@ -1981,7 +1968,6 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     const char *regtype_str = NULL;
 
     // !!! FIXME: use get_GLSL_varname() instead?
-    const char *shader_type_str = get_shader_type_string(ctx);
     if (!arg->relative)
     {
         regtype_str = get_GLSL_register_string(ctx, arg->regtype,
@@ -2024,7 +2010,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
 
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s_%s%s%s%s%s%s%s%s%s",
-             premod_str, shader_type_str, regtype_str, regnum_str,
+             premod_str, ctx->shader_type_str, regtype_str, regnum_str,
              rel_lbracket, rel_offset, rel_regtype_str, rel_swizzle,
              rel_rbracket, swiz_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
@@ -3315,12 +3301,11 @@ const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
 static const char *get_ARB1_varname(Context *ctx, RegisterType rt, int regnum)
 {
     char regnum_str[16];
-    const char *shader_type_str = get_shader_type_string(ctx);
     const char *regtype_str = get_ARB1_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", shader_type_str,
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", ctx->shader_type_str,
              regtype_str, regnum_str);
     return retval;
 } // get_ARB1_varname
@@ -3328,7 +3313,7 @@ static const char *get_ARB1_varname(Context *ctx, RegisterType rt, int regnum)
 
 static const char *get_ARB1_const_array_varname(Context *ctx)
 {
-    const char *shader_type_str = get_shader_type_string(ctx);
+    const char *shader_type_str = ctx->shader_type_str;
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array", shader_type_str);
     return retval;
@@ -3342,7 +3327,6 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     char regnum_str[16] = { '\0' };
 
     // !!! FIXME: use get_ARB1_varname() instead?
-    const char *shader_type_str = get_shader_type_string(ctx);
     const char *regtype_str = NULL;
     if (!arg->relative)
     {
@@ -3372,7 +3356,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     } // if
 
     // This is the source register with everything but swizzle and source mods.
-    snprintf(buf, buflen, "%s_%s%s%s%s%s%s%s", shader_type_str,
+    snprintf(buf, buflen, "%s_%s%s%s%s%s%s%s", ctx->shader_type_str,
              regtype_str, regnum_str, rel_lbracket, rel_regtype_str,
              rel_swizzle, rel_offset, rel_rbracket);
 
@@ -3439,7 +3423,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 
             snprintf(regnum_str, sizeof (regnum_str), "%d",
                      allocate_scratch_register(ctx));
-            output_line(ctx, "ABS %s_%s%s, %s;", shader_type_str,
+            output_line(ctx, "ABS %s_%s%s, %s;", ctx->shader_type_str,
                         regtype_str, regnum_str, buf);
             break;
 
@@ -3475,7 +3459,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     assert(i < sizeof (swizzle_str));
 
     snprintf(buf, buflen, "%s%s_%s%s%s%s%s%s%s%s%s", premod_str,
-             shader_type_str, regtype_str, regnum_str, postmod_str,
+             ctx->shader_type_str, regtype_str, regnum_str, postmod_str,
              rel_lbracket, rel_regtype_str, rel_swizzle, rel_offset,
              rel_rbracket, swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
@@ -3491,7 +3475,6 @@ static const char *get_ARB1_destarg_varname(Context *ctx)
 static const char *make_ARB1_destarg_string(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
-    const char *shader_type_str = get_shader_type_string(ctx);
 
     const char *result_shift_str = "";
     if (arg->result_shift != 0x0)
@@ -3558,7 +3541,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
 
     char *retval = get_scratch_buffer(ctx);
     snprintf(retval, SCRATCH_BUFFER_SIZE, "%s %s_%s%s%s", sat_str,
-             shader_type_str, regtype_str, regnum_str, writemask_str);
+             ctx->shader_type_str, regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_ARB1_destarg_string
@@ -3667,11 +3650,9 @@ static void emit_ARB1_end(Context *ctx)
 static void emit_ARB1_finalize(Context *ctx)
 {
     int i;
-    const char *shader_type_str = get_shader_type_string(ctx);
-
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "TEMP %s_scratch%d;", shader_type_str, i);
+        output_line(ctx, "TEMP %s_scratch%d;", ctx->shader_type_str, i);
     pop_output(ctx);
 } // emit_ARB1_finalize
 
@@ -5565,11 +5546,19 @@ static int parse_version_token(Context *ctx)
 
     // 0xFFFF == pixel shader, 0xFFFE == vertex shader
     if (shadertype == 0xFFFF)
+    {
         ctx->shader_type = MOJOSHADER_TYPE_PIXEL;
+        ctx->shader_type_str = "ps";
+    } // if
     else if (shadertype == 0xFFFE)
+    {
         ctx->shader_type = MOJOSHADER_TYPE_VERTEX;
+        ctx->shader_type_str = "vs";
+    } // else if
     else  // geometry shader? Bogus data?
+    {
         return fail(ctx, "Unsupported shader type or not a shader at all");
+    } // else
 
     ctx->major_ver = major;
     ctx->minor_ver = minor;
