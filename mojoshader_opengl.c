@@ -175,9 +175,9 @@ struct MOJOSHADER_glContext
     GLint (*profileGetUniformLocation)(GLuint, const MOJOSHADER_parseData *, int);
     GLuint (*profileLinkProgram)(MOJOSHADER_glShader *, MOJOSHADER_glShader *);
     void (*profileUseProgramObject)(MOJOSHADER_glProgram *program);
-    void (*profileUniform4fv)(GLint loc, GLsizei siz, GLfloat *v);
-    void (*profileUniform4iv)(GLint loc, GLsizei siz, GLint *v);
-    void (*profileUniform1i)(GLint loc, GLint v);
+    void (*profileUniform4fv)(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLfloat *v);
+    void (*profileUniform4iv)(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLint *v);
+    void (*profileUniform1i)(const MOJOSHADER_parseData *pd, GLint loc, GLint v);
     void (*profileSetSampler)(GLint loc, GLuint sampler);
 };
 
@@ -189,9 +189,9 @@ static void impl_GLSL_DeleteProgram(const GLuint program);
 static GLint impl_GLSL_GetUniformLocation(GLuint, const MOJOSHADER_parseData *, int);
 static GLuint impl_GLSL_LinkProgram(MOJOSHADER_glShader *, MOJOSHADER_glShader *);
 static void impl_GLSL_UseProgramObject(MOJOSHADER_glProgram *program);
-static void impl_GLSL_Uniform4fv(GLint loc, GLsizei siz, GLfloat *v);
-static void impl_GLSL_Uniform4iv(GLint loc, GLsizei siz, GLint *v);
-static void impl_GLSL_Uniform1i(GLint loc, GLint v);
+static void impl_GLSL_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLfloat *v);
+static void impl_GLSL_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLint *v);
+static void impl_GLSL_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc, GLint v);
 static void impl_GLSL_SetSampler(GLint loc, GLuint sampler);
 
 static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type);
@@ -201,9 +201,9 @@ static void impl_ARB1_DeleteProgram(const GLuint program);
 static GLint impl_ARB1_GetUniformLocation(GLuint, const MOJOSHADER_parseData *, int);
 static GLuint impl_ARB1_LinkProgram(MOJOSHADER_glShader *, MOJOSHADER_glShader *);
 static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program);
-static void impl_ARB1_Uniform4fv(GLint loc, GLsizei siz, GLfloat *v);
-static void impl_ARB1_Uniform4iv(GLint loc, GLsizei siz, GLint *v);
-static void impl_ARB1_Uniform1i(GLint loc, GLint v);
+static void impl_ARB1_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLfloat *v);
+static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc, GLsizei siz, GLint *v);
+static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc, GLint v);
 static void impl_ARB1_SetSampler(GLint loc, GLuint sampler);
 
 
@@ -1201,17 +1201,20 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 } // MOJOSHADER_glSetVertexAttribute
 
 
-static void impl_GLSL_Uniform4fv(GLint loc, GLsizei siz, GLfloat *v)
+static void impl_GLSL_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
+                                 GLsizei siz, GLfloat *v)
 {
     ctx->glUniform4fv(loc, siz, v);
 } // impl_GLSL_Uniform4fv
 
-static void impl_GLSL_Uniform4iv(GLint loc, GLsizei siz, GLint *v)
+static void impl_GLSL_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
+                                 GLsizei siz, GLint *v)
 {
     ctx->glUniform4iv(loc, siz, v);
 } // impl_GLSL_Uniform4iv
 
-static void impl_GLSL_Uniform1i(GLint loc, GLint v)
+static void impl_GLSL_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
+                                GLint v)
 {
     ctx->glUniform1i(loc, v);
 } // impl_GLSL_Uniform1i
@@ -1222,19 +1225,36 @@ static void impl_GLSL_SetSampler(GLint loc, GLuint sampler)
 } // impl_GLSL_SetSampler
 
 
-static void impl_ARB1_Uniform4fv(GLint loc, GLsizei siz, GLfloat *v)
+static void impl_ARB1_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
+                                 GLsizei siz, GLfloat *v)
 {
-    // !!! FIXME: write me
+    int i;
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    for (i = 0; i < siz; i++, v += 4)
+        ctx->glProgramEnvParameter4fvARB(shader_type, loc + i, v);
 } // impl_ARB1_Uniform4fv
 
-static void impl_ARB1_Uniform4iv(GLint loc, GLsizei siz, GLint *v)
+static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
+                                 GLsizei siz, GLint *v)
 {
-    // !!! FIXME: write me
+    int i;
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    for (i = 0; i < siz; i++, v += 4)
+    {
+        GLfloat f[4] = {
+            (GLfloat) v[0], (GLfloat) v[1], (GLfloat) v[2], (GLfloat) v[3]
+        };
+        ctx->glProgramEnvParameter4fvARB(shader_type, loc + i, f);
+    } // for
 } // impl_ARB1_Uniform4iv
 
-static void impl_ARB1_Uniform1i(GLint loc, GLint v)
+static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
+                                GLint _v)
 {
-    // !!! FIXME: write me
+    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    const GLfloat v = (GLfloat) _v;
+    GLfloat f[4] = { v, v, v, v };
+    ctx->glProgramEnvParameter4fvARB(shader_type, loc, f);
 } // impl_ARB1_Uniform1i
 
 static void impl_ARB1_SetSampler(GLint loc, GLuint sampler)
@@ -1264,6 +1284,7 @@ void MOJOSHADER_glProgramReady(void)
         const int index = u->index;
         const int size = u->array_count;
         const GLint location = map->location;
+        const MOJOSHADER_parseData *pd;
         const MOJOSHADER_constant *c;
         float *regfilef;
         GLint *regfilei;
@@ -1272,20 +1293,21 @@ void MOJOSHADER_glProgramReady(void)
 
         if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {
-            c = ctx->bound_program->vertex->parseData->constants;
-            hi = ctx->bound_program->vertex->parseData->constant_count;
+            pd = ctx->bound_program->vertex->parseData;
             regfilef = ctx->vs_reg_file_f;
             regfilei = ctx->vs_reg_file_i;
             regfileb = ctx->vs_reg_file_b;
         } // if
         else
         {
-            c = ctx->bound_program->fragment->parseData->constants;
-            hi = ctx->bound_program->fragment->parseData->constant_count;
+            pd = ctx->bound_program->fragment->parseData;
             regfilef = ctx->ps_reg_file_f;
             regfilei = ctx->ps_reg_file_i;
             regfileb = ctx->ps_reg_file_b;
         } // else
+
+        c = pd->constants;
+        hi = pd->constant_count;
 
         // only use arrays for 'c' registers.
         assert((size == 0) || (type == MOJOSHADER_UNIFORM_FLOAT));
@@ -1310,7 +1332,7 @@ void MOJOSHADER_glProgramReady(void)
                 } // if
             } // for
 
-            ctx->profileUniform4fv(location, size, &regfilef[index * 4]);
+            ctx->profileUniform4fv(pd, location, size, &regfilef[index * 4]);
 
             ptr = ctx->bound_program->constants;
             for (j = 0; j < hi; j++)
@@ -1330,11 +1352,11 @@ void MOJOSHADER_glProgramReady(void)
         else
         {
             if (type == MOJOSHADER_UNIFORM_FLOAT)
-                ctx->profileUniform4fv(location, 1, &regfilef[index * 4]);
+                ctx->profileUniform4fv(pd, location, 1, &regfilef[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_INT)
-                ctx->profileUniform4iv(location, 1, &regfilei[index * 4]);
+                ctx->profileUniform4iv(pd, location, 1, &regfilei[index * 4]);
             else if (type == MOJOSHADER_UNIFORM_BOOL)
-                ctx->profileUniform1i(location, regfileb[index]);
+                ctx->profileUniform1i(pd, location, regfileb[index]);
         } // if
     } // for
 
