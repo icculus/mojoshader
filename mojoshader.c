@@ -3944,13 +3944,35 @@ static void emit_ARB1_LOG(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
-    output_line(ctx, "LG2%s scratch%d.x;", dst, scratch);
+    const char *shader_type_str = ctx->shader_type_str;
+    output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
+    output_line(ctx, "LG2%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
 } // emit_ARB1_LOG
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
 EMIT_ARB1_OPCODE_DSS_FUNC(DST)
-EMIT_ARB1_OPCODE_DSSS_FUNC(LRP)
+
+static void emit_ARB1_LRP(Context *ctx)
+{
+    if (shader_is_pixel(ctx))  // fragment shaders have a matching LRP opcode.
+        emit_ARB1_opcode_dsss(ctx, "LRP");
+    else
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+        const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+        const int scratch = allocate_scratch_register(ctx);
+        const char *stype = ctx->shader_type_str;
+        char sstr[32];
+        snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+
+        // LRP is: dest = src2 + src0 * (src1 - src2)
+        output_line(ctx, "SUB %s, %s, %s;", sstr, src1, src2);
+        output_line(ctx, "MAD%s, %s, %s, %s;", dst, sstr, src0, src2);
+    } // else
+} // emit_ARB1_LRP
+
 EMIT_ARB1_OPCODE_DS_FUNC(FRC)
 
 // !!! FIXME: these could be implemented with vector opcodes, but it looks
@@ -3976,8 +3998,9 @@ static void emit_ARB1_POW(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
-    output_line(ctx, "POW%s scratch%d.x, %s;", dst, scratch, src1);
+    const char *stype = ctx->shader_type_str;
+    output_line(ctx, "ABS %s_scratch%d, %s;", stype, scratch, src0);
+    output_line(ctx, "POW%s %s_scratch%d.x, %s;", stype, dst, scratch, src1);
 } // emit_ARB1_POW
 
 static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
@@ -3988,9 +4011,11 @@ static void emit_ARB1_SGN(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
     const int scratch2 = allocate_scratch_register(ctx);
-    output_line(ctx, "SLT scratch%d, %s, { 0.0 };", scratch1, src0);
-    output_line(ctx, "SLT scratch%d, -%s, { 0.0 };", scratch2, src0);
-    output_line(ctx, "ADD%s -scratch%d, scratch%d;", dst, scratch1, scratch2);
+    const char *stype = ctx->shader_type_str;
+    output_line(ctx, "SLT %s_scratch%d, %s, 0.0;", stype, scratch1, src0);
+    output_line(ctx, "SLT %s_scratch%d, -%s, 0.0;", stype, scratch2, src0);
+    output_line(ctx, "ADD%s -%s_scratch%d, %s_scratch%d;",
+                dst, stype, scratch1, stype, scratch2);
 } // emit_ARB1_SGN
 
 EMIT_ARB1_OPCODE_DS_FUNC(ABS)
@@ -4000,9 +4025,12 @@ static void emit_ARB1_NRM(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "DP3 scratch%d.w, %s, %s;", scratch, src0, src0);
-    output_line(ctx, "RSQ scratch%d.w, scratch%d.w;", scratch, scratch);
-    output_line(ctx, "MUL%s, scratch%d.w, %s;", dst, scratch, src0);
+    const char *stype = ctx->shader_type_str;
+    char sstr[32];
+    snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+    output_line(ctx, "DP3 %s.w, %s, %s;", sstr, src0, src0);
+    output_line(ctx, "RSQ %s.w, %s.w;", sstr, sstr);
+    output_line(ctx, "MUL%s, %s.w, %s;", dst, sstr, src0);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
@@ -4036,14 +4064,28 @@ static void emit_ARB1_MOVA(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
     const int scratch2 = allocate_scratch_register(ctx);
+    const char *stype = ctx->shader_type_str;
+    char sstr1[32];
+    char sstr2[32];
+    snprintf(sstr1, sizeof (sstr1), "%s_scratch%d", stype, scratch1);
+    snprintf(sstr2, sizeof (sstr2), "%s_scratch%d", stype, scratch2);
+
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
-    output_line(ctx, "CMP scratch%d, %s, { 0.0 }, { -1.0 }, { 1.0 };", scratch1, src0);
-    output_line(ctx, "ABS scratch%d, %s;", scratch2, src0);
-    output_line(ctx, "ADD scratch%d, { 0.5 };", scratch2);
-    output_line(ctx, "FLR scratch%d, scratch%d;", scratch2, scratch2);
-    output_line(ctx, "MUL scratch%d, scratch%d;", scratch2, scratch1);
-    output_line(ctx, "ARL%s, scratch%d;", dst, scratch2);
+
+    if (shader_is_pixel(ctx))  // CMP only exists in fragment programs.  :/
+        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", sstr1, src0);
+    else
+    {
+        output_line(ctx, "SLT %s, %s, 0.0;", sstr1, src0);
+        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", sstr1, sstr1);
+    } // else
+
+    output_line(ctx, "ABS %s, %s;", sstr2, src0);
+    output_line(ctx, "ADD %s, %s, 0.5;", sstr2, sstr2);
+    output_line(ctx, "FLR %s, %s;", sstr2, sstr2);
+    output_line(ctx, "MUL %s, %s, %s;", sstr2, sstr2, sstr1);
+    output_line(ctx, "ARL%s.x, %s.x;", dst, sstr2);
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
@@ -4064,8 +4106,17 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
 
-static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_EXP(ctx); }
-static void emit_ARB1_LOGP(Context *ctx) { emit_ARB1_LOG(ctx); }
+static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EXP"); }
+
+static void emit_ARB1_LOGP(Context *ctx)
+{
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const int scratch = allocate_scratch_register(ctx);
+    const char *shader_type_str = ctx->shader_type_str;
+    output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
+    output_line(ctx, "LOG%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
+} // emit_ARB1_LOG
 
 static void emit_ARB1_CND(Context *ctx)
 {
@@ -4081,7 +4132,13 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH)
 
 static void emit_ARB1_CMP(Context *ctx)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    // D3D tests (src0 >= 0.0), but ARB1 tests (src0 < 0.0) ... so just
+    //  switch src1 and src2 to get the same results.
+    output_line(ctx, "CMP%s, %s, %s, %s;", dst, src0, src2, src1);
 } // emit_ARB1_CMP
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
@@ -4128,7 +4185,7 @@ static void emit_ARB1_DEFB(Context *ctx)
 {
     const char *varname = get_ARB1_destarg_varname(ctx);
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "PARAM %s = { %d };", varname, ctx->dwords[0] ? 1 : 0);
+    output_line(ctx, "PARAM %s = %d;", varname, ctx->dwords[0] ? 1 : 0);
     pop_output(ctx);
 } // emit_ARB1_DEFB
 
