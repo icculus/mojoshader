@@ -372,6 +372,7 @@ struct Context
     int scratch_registers;
     int max_scratch_registers;
     int assigned_vertex_attributes;
+    int last_address_reg_component;
     RegisterList used_registers;
     RegisterList defined_registers;
     int constant_count;
@@ -3342,6 +3343,22 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
+        rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
+                                           arg->relative_regnum);
+
+        // The address register in ARB1 only allows the '.x' component, so
+        //  we need to load the component we need from a temp vector register
+        //  into .x as needed.
+        assert(arg->relative_regtype == REG_TYPE_ADDRESS);
+        assert(arg->relative_regnum == 0);
+        if (ctx->last_address_reg_component != arg->relative_component)
+        {
+            output_line(ctx, "ARL %s.x, %s_addr%d.%c;", rel_regtype_str,
+                        ctx->shader_type_str, arg->relative_regnum,
+                        swizzle_channels[arg->relative_component]);
+            ctx->last_address_reg_component = arg->relative_component;
+        } // if
+
         // !!! FIXME: use get_ARB1_const_array_varname() instead?  (can't, because of shader_type_str nonsense).
         regtype_str = "const_array";
         rel_lbracket = "[";
@@ -3350,7 +3367,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
                                            arg->relative_regnum);
         rel_swizzle[0] = '.';
-        rel_swizzle[1] = swizzle_channels[arg->relative_component];
+        rel_swizzle[1] = 'x';
         rel_swizzle[2] = '\0';
         rel_rbracket = "]";
     } // if
@@ -3666,6 +3683,7 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     {
         case REG_TYPE_ADDRESS:
             output_line(ctx, "ADDRESS %s;", varname);
+            output_line(ctx, "TEMP %s_addr%d;", ctx->shader_type_str, regnum);
             break;
         //case REG_TYPE_PREDICATE:
         //    output_line(ctx, "bvec4 %s;", varname);
@@ -4060,32 +4078,37 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
 
 static void emit_ARB1_MOVA(Context *ctx)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
-    const int scratch2 = allocate_scratch_register(ctx);
     const char *stype = ctx->shader_type_str;
-    char sstr1[32];
-    char sstr2[32];
-    snprintf(sstr1, sizeof (sstr1), "%s_scratch%d", stype, scratch1);
-    snprintf(sstr2, sizeof (sstr2), "%s_scratch%d", stype, scratch2);
+    char sstr[32];
+    char addr[32];
+    snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch1);
+    snprintf(addr, sizeof (addr), "%s_addr%d", stype, ctx->dest_arg.regnum);
 
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
 
     if (shader_is_pixel(ctx))  // CMP only exists in fragment programs.  :/
-        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", sstr1, src0);
+        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", sstr, src0);
     else
     {
-        output_line(ctx, "SLT %s, %s, 0.0;", sstr1, src0);
-        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", sstr1, sstr1);
+        output_line(ctx, "SLT %s, %s, 0.0;", sstr, src0);
+        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", sstr, sstr);
     } // else
 
-    output_line(ctx, "ABS %s, %s;", sstr2, src0);
-    output_line(ctx, "ADD %s, %s, 0.5;", sstr2, sstr2);
-    output_line(ctx, "FLR %s, %s;", sstr2, sstr2);
-    output_line(ctx, "MUL %s, %s, %s;", sstr2, sstr2, sstr1);
-    output_line(ctx, "ARL%s.x, %s.x;", dst, sstr2);
+    output_line(ctx, "ABS %s, %s;", addr, src0);
+    output_line(ctx, "ADD %s, %s, 0.5;", addr, addr);
+    output_line(ctx, "FLR %s, %s;", addr, addr);
+    output_line(ctx, "MUL %s, %s, %s;", addr, addr, sstr);
+
+    // we don't handle these right now, since emit_ARB1_dest_modifiers(ctx)
+    //  wants to look at dest_arg, not our temp register.
+    assert(ctx->dest_arg.result_mod == 0);
+    assert(ctx->dest_arg.result_shift == 0);
+
+    // we assign to the actual address register as needed.
+    ctx->last_address_reg_component = -1;
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
@@ -5750,6 +5773,7 @@ static Context *build_context(const char *profile,
     ctx->mainline.tail = &ctx->mainline.head;
     ctx->ignore.tail = &ctx->ignore.head;
     ctx->output = &ctx->mainline;
+    ctx->last_address_reg_component = -1;
 
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
