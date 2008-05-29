@@ -4085,7 +4085,9 @@ static void emit_ARB1_SINCOS(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
-    if (writemask_x(mask))
+    if (shader_is_vertex(ctx))
+        fail(ctx, "SINCOS not supported in arb1 vertex shaders");
+    else if (writemask_x(mask))
         output_line(ctx, "COS%s, %s;", dst, src0);
     else if (writemask_y(mask))
         output_line(ctx, "SIN%s, %s;", dst, src0);
