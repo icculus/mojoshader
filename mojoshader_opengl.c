@@ -998,7 +998,7 @@ static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program)
     } // if
 
     ctx->glBindProgramARB(GL_VERTEX_PROGRAM_ARB, vhandle);
-    ctx->glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, vhandle);
+    ctx->glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, phandle);
 } // impl_GLSL_UseProgramObject
 
 
