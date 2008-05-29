@@ -3510,7 +3510,12 @@ static const char *make_ARB1_destarg_string(Context *ctx)
         case 0xF: result_shift_str = "_d2"; break;
     } // switch
 
-    const char *sat_str = (arg->result_mod & MOD_SATURATE) ? "_SAT" : "";
+    const char *sat_str = "";
+    // The "_SAT" modifier is only available in fragment shaders, but we'll
+    //  fake it for them later in emit_ARB1_dest_modifiers() ...
+    if ( (arg->result_mod & MOD_SATURATE) && (shader_is_pixel(ctx)) )
+        sat_str = "_SAT";
+
     // no partial precision (MOD_PP), but that's okay.
 
     if (arg->result_mod & MOD_CENTROID)
@@ -3564,6 +3569,20 @@ static const char *make_ARB1_destarg_string(Context *ctx)
 } // make_ARB1_destarg_string
 
 
+static void emit_ARB1_dest_modifiers(Context *ctx)
+{
+    const DestArgInfo *arg = &ctx->dest_arg;
+    if ( (arg->result_mod & MOD_SATURATE) && (!shader_is_pixel(ctx)) )
+    {
+        const char *varname = get_ARB1_destarg_varname(ctx);
+        const char *dst = make_ARB1_destarg_string(ctx);
+        // pixel shaders just use the "_SAT" modifier here, instead.
+        output_line(ctx, "MIN%s, %s, 1.0;", dst, varname);
+        output_line(ctx, "MAX%s, %s, 0.0;", dst, varname);
+    } // if
+} // emit_ARB1_dest_modifiers
+
+
 static const char *make_ARB1_srcarg_string(Context *ctx, const int idx)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
@@ -3582,6 +3601,7 @@ static void emit_ARB1_opcode_ds(Context *ctx, const char *opcode)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     output_line(ctx, "%s%s, %s;", opcode, dst, src0);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_ds
 
 static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
@@ -3590,6 +3610,7 @@ static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     output_line(ctx, "%s%s, %s, %s;", opcode, dst, src0, src1);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_dss
 
 static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
@@ -3599,6 +3620,7 @@ static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *src2 = make_ARB1_srcarg_string(ctx, 2);
     output_line(ctx, "%s%s, %s, %s, %s;", opcode, dst, src0, src1, src2);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_dsss
 
 
@@ -3965,6 +3987,7 @@ static void emit_ARB1_LOG(Context *ctx)
     const char *shader_type_str = ctx->shader_type_str;
     output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
     output_line(ctx, "LG2%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
@@ -3988,6 +4011,7 @@ static void emit_ARB1_LRP(Context *ctx)
         // LRP is: dest = src2 + src0 * (src1 - src2)
         output_line(ctx, "SUB %s, %s, %s;", sstr, src1, src2);
         output_line(ctx, "MAD%s, %s, %s, %s;", dst, sstr, src0, src2);
+        emit_ARB1_dest_modifiers(ctx);
     } // else
 } // emit_ARB1_LRP
 
@@ -4019,6 +4043,7 @@ static void emit_ARB1_POW(Context *ctx)
     const char *stype = ctx->shader_type_str;
     output_line(ctx, "ABS %s_scratch%d, %s;", stype, scratch, src0);
     output_line(ctx, "POW%s %s_scratch%d.x, %s;", stype, dst, scratch, src1);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_POW
 
 static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
@@ -4034,6 +4059,7 @@ static void emit_ARB1_SGN(Context *ctx)
     output_line(ctx, "SLT %s_scratch%d, -%s, 0.0;", stype, scratch2, src0);
     output_line(ctx, "ADD%s -%s_scratch%d, %s_scratch%d;",
                 dst, stype, scratch1, stype, scratch2);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SGN
 
 EMIT_ARB1_OPCODE_DS_FUNC(ABS)
@@ -4049,6 +4075,7 @@ static void emit_ARB1_NRM(Context *ctx)
     output_line(ctx, "DP3 %s.w, %s, %s;", sstr, src0, src0);
     output_line(ctx, "RSQ %s.w, %s.w;", sstr, sstr);
     output_line(ctx, "MUL%s, %s.w, %s;", dst, sstr, src0);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_NRM
 
 static void emit_ARB1_SINCOS(Context *ctx)
@@ -4066,6 +4093,9 @@ static void emit_ARB1_SINCOS(Context *ctx)
         output_line(ctx, "SCS%s, %s;", dst, src0);
     else
         fail(ctx, "unhandled SINCOS writemask in arb1 profile");
+
+    if (!isfail(ctx))
+        emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SINCOS
 
 // !!! FIXME: nvidia's extensions to arb1 can handle these.
@@ -4139,6 +4169,7 @@ static void emit_ARB1_LOGP(Context *ctx)
     const char *shader_type_str = ctx->shader_type_str;
     output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
     output_line(ctx, "LOG%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
 static void emit_ARB1_CND(Context *ctx)
@@ -4162,6 +4193,7 @@ static void emit_ARB1_CMP(Context *ctx)
     // D3D tests (src0 >= 0.0), but ARB1 tests (src0 < 0.0) ... so just
     //  switch src1 and src2 to get the same results.
     output_line(ctx, "CMP%s, %s, %s, %s;", dst, src0, src2, src1);
+    emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_CMP
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
