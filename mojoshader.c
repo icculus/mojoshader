@@ -317,7 +317,7 @@ typedef enum
 
 
 #define SCRATCH_BUFFER_SIZE 128
-#define SCRATCH_BUFFERS 16
+#define SCRATCH_BUFFERS 32
 
 // !!! FIXME: the scratch buffers make Context pretty big.
 // !!! FIXME:  might be worth having one set of static scratch buffers that
