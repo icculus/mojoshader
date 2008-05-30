@@ -3295,6 +3295,14 @@ static void emit_GLSL_RESERVED(Context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
 
+static const char *allocate_ARB1_scratch_reg_name(Context *ctx)
+{
+    char *buf = get_scratch_buffer(ctx);
+    const int scratch = allocate_scratch_register(ctx);
+    snprintf(buf, SCRATCH_BUFFER_SIZE, "scratch%d", scratch);
+    return buf;
+} // allocate_ARB1_scratch_reg_name
+
 const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
                                      int regnum, char *regnum_str, int len)
 {
@@ -3436,16 +3444,14 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            regtype_str = "scratch";   // move value to scratch register.
+            regtype_str = allocate_ARB1_scratch_reg_name(ctx);
+            regnum_str[0] = '\0'; // move value to scratch register.
             rel_lbracket = "";   // scratch register won't use array.
             rel_rbracket = "";
             rel_offset[0] = '\0';
             rel_swizzle[0] = '\0';
             rel_regtype_str = "";
-
-            snprintf(regnum_str, sizeof (regnum_str), "%d",
-                     allocate_scratch_register(ctx));
-            output_line(ctx, "ABS %s%s, %s;", regtype_str, regnum_str, buf);
+            output_line(ctx, "ABS %s, %s;", regtype_str, buf);
             break;
 
         case SRCMOD_NOT:
@@ -3708,8 +3714,9 @@ static void emit_ARB1_finalize(Context *ctx)
     int i;
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "TEMP scratch%d;", i);
+        output_line(ctx, "TEMP %s;", allocate_ARB1_scratch_reg_name(ctx));
     pop_output(ctx);
+    assert(ctx->scratch_registers == ctx->max_scratch_registers);
 } // emit_ARB1_finalize
 
 static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
@@ -4000,9 +4007,9 @@ static void emit_ARB1_LOG(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
-    output_line(ctx, "LG2%s, scratch%d.x;", dst, scratch);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+    output_line(ctx, "ABS %s, %s;", scratch, src0);
+    output_line(ctx, "LG2%s, %s.x;", dst, scratch);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
@@ -4019,13 +4026,11 @@ static void emit_ARB1_LRP(Context *ctx)
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
         const char *src1 = make_ARB1_srcarg_string(ctx, 1);
         const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-        const int scratch = allocate_scratch_register(ctx);
-        char sstr[32];
-        snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
         // LRP is: dest = src2 + src0 * (src1 - src2)
-        output_line(ctx, "SUB %s, %s, %s;", sstr, src1, src2);
-        output_line(ctx, "MAD%s, %s, %s, %s;", dst, sstr, src0, src2);
+        output_line(ctx, "SUB %s, %s, %s;", scratch, src1, src2);
+        output_line(ctx, "MAD%s, %s, %s, %s;", dst, scratch, src0, src2);
         emit_ARB1_dest_modifiers(ctx);
     } // else
 } // emit_ARB1_LRP
@@ -4054,9 +4059,9 @@ static void emit_ARB1_POW(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
-    output_line(ctx, "POW%s scratch%d.x, %s;", dst, scratch, src1);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+    output_line(ctx, "ABS %s, %s;", scratch, src0);
+    output_line(ctx, "POW%s %s.x, %s;", dst, scratch, src1);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_POW
 
@@ -4066,11 +4071,11 @@ static void emit_ARB1_SGN(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const int scratch1 = allocate_scratch_register(ctx);
-    const int scratch2 = allocate_scratch_register(ctx);
-    output_line(ctx, "SLT scratch%d, %s, 0.0;", scratch1, src0);
-    output_line(ctx, "SLT scratch%d, -%s, 0.0;", scratch2, src0);
-    output_line(ctx, "ADD%s -scratch%d, scratch%d;", dst, scratch1, scratch2);
+    const char *scratch1 = allocate_ARB1_scratch_reg_name(ctx);
+    const char *scratch2 = allocate_ARB1_scratch_reg_name(ctx);
+    output_line(ctx, "SLT %s, %s, 0.0;", scratch1, src0);
+    output_line(ctx, "SLT %s, -%s, 0.0;", scratch2, src0);
+    output_line(ctx, "ADD%s -%s, %s;", dst, scratch1, scratch2);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SGN
 
@@ -4080,12 +4085,10 @@ static void emit_ARB1_NRM(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const int scratch = allocate_scratch_register(ctx);
-    char sstr[32];
-    snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
-    output_line(ctx, "DP3 %s.w, %s, %s;", sstr, src0, src0);
-    output_line(ctx, "RSQ %s.w, %s.w;", sstr, sstr);
-    output_line(ctx, "MUL%s, %s.w, %s;", dst, sstr, src0);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+    output_line(ctx, "DP3 %s.w, %s, %s;", scratch, src0, src0);
+    output_line(ctx, "RSQ %s.w, %s.w;", scratch, scratch);
+    output_line(ctx, "MUL%s, %s.w, %s;", dst, scratch, src0);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_NRM
 
@@ -4114,9 +4117,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
         const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
         const int need_sin = (writemask_x(mask) || writemask_xy(mask));
         const int need_cos = (writemask_y(mask) || writemask_xy(mask));
-        char sstr[32];
-        const int scratch = allocate_scratch_register(ctx);
-        snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
         // These sin() and cos() approximations originally found here:
         //    http://www.devmaster.net/forums/showthread.php?t=5784
@@ -4140,18 +4141,18 @@ static void emit_ARB1_SINCOS(Context *ctx)
         {
             output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
             output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
-            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", sstr, src0);
-            output_line(ctx, "MAD %s.x, %s.x, %s.x, %s.x;", dst, dst, src0, sstr);
+            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", scratch, src0);
+            output_line(ctx, "MAD %s.x, %s.x, %s.x, %s.x;", dst, dst, src0, scratch);
         } // if
 
         if (need_cos)
         {
             // !!! FIXME: we need to wrap x if > pi after ADD.
-            output_line(ctx, "ADD %s.x, %s.x, 1.57079637050628662109375;", sstr, src0);
+            output_line(ctx, "ADD %s.x, %s.x, 1.57079637050628662109375;", scratch, src0);
             output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
             output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
-            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", sstr, src0);
-            output_line(ctx, "MAD %s.y, %s.x, %s.x, %s.x;", dst, dst, src0, sstr);
+            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", scratch, src0);
+            output_line(ctx, "MAD %s.y, %s.x, %s.x, %s.x;", dst, dst, src0, scratch);
         } // if
     } // else
 
@@ -4170,27 +4171,25 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
 static void emit_ARB1_MOVA(Context *ctx)
 {
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const int scratch1 = allocate_scratch_register(ctx);
-    char sstr[32];
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
     char addr[32];
-    snprintf(sstr, sizeof (sstr), "scratch%d", scratch1);
     snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
 
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
 
     if (shader_is_pixel(ctx))  // CMP only exists in fragment programs.  :/
-        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", sstr, src0);
+        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", scratch, src0);
     else
     {
-        output_line(ctx, "SLT %s, %s, 0.0;", sstr, src0);
-        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", sstr, sstr);
+        output_line(ctx, "SLT %s, %s, 0.0;", scratch, src0);
+        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", scratch, scratch);
     } // else
 
     output_line(ctx, "ABS %s, %s;", addr, src0);
     output_line(ctx, "ADD %s, %s, 0.5;", addr, addr);
     output_line(ctx, "FLR %s, %s;", addr, addr);
-    output_line(ctx, "MUL %s, %s, %s;", addr, addr, sstr);
+    output_line(ctx, "MUL %s, %s, %s;", addr, addr, scratch);
 
     // we don't handle these right now, since emit_ARB1_dest_modifiers(ctx)
     //  wants to look at dest_arg, not our temp register.
@@ -4225,9 +4224,9 @@ static void emit_ARB1_LOGP(Context *ctx)
 {
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const int scratch = allocate_scratch_register(ctx);
-    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
-    output_line(ctx, "LOG%s, scratch%d.x;", dst, scratch);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+    output_line(ctx, "ABS %s, %s;", scratch, src0);
+    output_line(ctx, "LOG%s, %s.x;", dst, scratch);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
