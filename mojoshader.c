@@ -467,19 +467,29 @@ static inline int shader_is_vertex(const Context *ctx)
 } // shader_is_vertex
 
 
-// Bit arrays (for storing large arrays of booleans...
-
-static inline char *get_scratch_buffer(Context *ctx)
-{
-    ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
-    return ctx->scratch[ctx->scratchidx];
-} // get_scratch_buffer
-
-
 static inline int isfail(const Context *ctx)
 {
     return (ctx->failstr != NULL);
 } // isfail
+
+
+static inline char *get_scratch_buffer(Context *ctx)
+{
+    if ((ctx->scratchidx >= SCRATCH_BUFFERS) && !isfail(ctx))
+    {
+        // can't call fail() here, since it calls back into here.
+        const char *errstr = "BUG: overflowed scratch buffers";
+        char *failstr = (char *) Malloc(ctx, strlen(errstr) + 1);
+        if (failstr != NULL)
+        {
+            strcpy(failstr, errstr);
+            ctx->failstr = failstr;
+        } // if
+    } // if
+
+    ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
+    return ctx->scratch[ctx->scratchidx];
+} // get_scratch_buffer
 
 
 static int failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
@@ -6420,6 +6430,9 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     // parse out the rest of the tokens after the version token...
     while ( (rc > 0) && (!isfail(ctx)) )
     {
+        // reset for every token, and consider an error if it ever overflows!
+        ctx->scratchidx = 0;
+
         ctx->tokens += rc;
         ctx->tokencount -= rc;
         rc = parse_token(ctx);
