@@ -3306,18 +3306,14 @@ static const char *get_ARB1_varname(Context *ctx, RegisterType rt, int regnum)
                                               regnum_str, sizeof (regnum_str));
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", ctx->shader_type_str,
-             regtype_str, regnum_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
     return retval;
 } // get_ARB1_varname
 
 
 static const char *get_ARB1_const_array_varname(Context *ctx)
 {
-    const char *shader_type_str = ctx->shader_type_str;
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array", shader_type_str);
-    return retval;
+    return "const_array";
 } // get_ARB1_const_array_varname
 
 
@@ -3353,14 +3349,13 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         assert(arg->relative_regnum == 0);
         if (ctx->last_address_reg_component != arg->relative_component)
         {
-            output_line(ctx, "ARL %s.x, %s_addr%d.%c;", rel_regtype_str,
-                        ctx->shader_type_str, arg->relative_regnum,
+            output_line(ctx, "ARL %s.x, addr%d.%c;", rel_regtype_str,
+                        arg->relative_regnum,
                         swizzle_channels[arg->relative_component]);
             ctx->last_address_reg_component = arg->relative_component;
         } // if
 
-        // !!! FIXME: use get_ARB1_const_array_varname() instead?  (can't, because of shader_type_str nonsense).
-        regtype_str = "const_array";
+        regtype_str = get_ARB1_const_array_varname(ctx);
         rel_lbracket = "[";
         if (arg->regnum != 0)
             snprintf(rel_offset, sizeof (rel_offset), " + %d", arg->regnum);
@@ -3373,9 +3368,9 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     } // if
 
     // This is the source register with everything but swizzle and source mods.
-    snprintf(buf, buflen, "%s_%s%s%s%s%s%s%s", ctx->shader_type_str,
-             regtype_str, regnum_str, rel_lbracket, rel_regtype_str,
-             rel_swizzle, rel_offset, rel_rbracket);
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s", regtype_str, regnum_str,
+             rel_lbracket, rel_regtype_str, rel_swizzle, rel_offset,
+             rel_rbracket);
 
     // Some of the source mods need to generate instructions to a temp
     //  register, in which case we'll replace the register name.
@@ -3440,8 +3435,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 
             snprintf(regnum_str, sizeof (regnum_str), "%d",
                      allocate_scratch_register(ctx));
-            output_line(ctx, "ABS %s_%s%s, %s;", ctx->shader_type_str,
-                        regtype_str, regnum_str, buf);
+            output_line(ctx, "ABS %s%s, %s;", regtype_str, regnum_str, buf);
             break;
 
         case SRCMOD_NOT:
@@ -3475,10 +3469,10 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
-    snprintf(buf, buflen, "%s%s_%s%s%s%s%s%s%s%s%s", premod_str,
-             ctx->shader_type_str, regtype_str, regnum_str, postmod_str,
-             rel_lbracket, rel_regtype_str, rel_swizzle, rel_offset,
-             rel_rbracket, swizzle_str);
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s", premod_str,
+             regtype_str, regnum_str, postmod_str, rel_lbracket,
+             rel_regtype_str, rel_swizzle, rel_offset, rel_rbracket,
+             swizzle_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return buf;
 } // make_ARB1_srcarg_string_in_buf
@@ -3575,8 +3569,8 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     } // if
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s %s_%s%s%s", sat_str,
-             ctx->shader_type_str, regtype_str, regnum_str, writemask_str);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s %s%s%s", sat_str,
+             regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
 } // make_ARB1_destarg_string
@@ -3704,7 +3698,7 @@ static void emit_ARB1_finalize(Context *ctx)
     int i;
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "TEMP %s_scratch%d;", ctx->shader_type_str, i);
+        output_line(ctx, "TEMP scratch%d;", i);
     pop_output(ctx);
 } // emit_ARB1_finalize
 
@@ -3718,7 +3712,7 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     {
         case REG_TYPE_ADDRESS:
             output_line(ctx, "ADDRESS %s;", varname);
-            output_line(ctx, "TEMP %s_addr%d;", ctx->shader_type_str, regnum);
+            output_line(ctx, "TEMP addr%d;", regnum);
             break;
         //case REG_TYPE_PREDICATE:
         //    output_line(ctx, "bvec4 %s;", varname);
@@ -3997,9 +3991,8 @@ static void emit_ARB1_LOG(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    const char *shader_type_str = ctx->shader_type_str;
-    output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
-    output_line(ctx, "LG2%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
+    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
+    output_line(ctx, "LG2%s, scratch%d.x;", dst, scratch);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
@@ -4017,9 +4010,8 @@ static void emit_ARB1_LRP(Context *ctx)
         const char *src1 = make_ARB1_srcarg_string(ctx, 1);
         const char *src2 = make_ARB1_srcarg_string(ctx, 2);
         const int scratch = allocate_scratch_register(ctx);
-        const char *stype = ctx->shader_type_str;
         char sstr[32];
-        snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+        snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
 
         // LRP is: dest = src2 + src0 * (src1 - src2)
         output_line(ctx, "SUB %s, %s, %s;", sstr, src1, src2);
@@ -4053,9 +4045,8 @@ static void emit_ARB1_POW(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const int scratch = allocate_scratch_register(ctx);
-    const char *stype = ctx->shader_type_str;
-    output_line(ctx, "ABS %s_scratch%d, %s;", stype, scratch, src0);
-    output_line(ctx, "POW%s %s_scratch%d.x, %s;", stype, dst, scratch, src1);
+    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
+    output_line(ctx, "POW%s scratch%d.x, %s;", dst, scratch, src1);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_POW
 
@@ -4067,11 +4058,9 @@ static void emit_ARB1_SGN(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
     const int scratch2 = allocate_scratch_register(ctx);
-    const char *stype = ctx->shader_type_str;
-    output_line(ctx, "SLT %s_scratch%d, %s, 0.0;", stype, scratch1, src0);
-    output_line(ctx, "SLT %s_scratch%d, -%s, 0.0;", stype, scratch2, src0);
-    output_line(ctx, "ADD%s -%s_scratch%d, %s_scratch%d;",
-                dst, stype, scratch1, stype, scratch2);
+    output_line(ctx, "SLT scratch%d, %s, 0.0;", scratch1, src0);
+    output_line(ctx, "SLT scratch%d, -%s, 0.0;", scratch2, src0);
+    output_line(ctx, "ADD%s -scratch%d, scratch%d;", dst, scratch1, scratch2);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SGN
 
@@ -4082,9 +4071,8 @@ static void emit_ARB1_NRM(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    const char *stype = ctx->shader_type_str;
     char sstr[32];
-    snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+    snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
     output_line(ctx, "DP3 %s.w, %s, %s;", sstr, src0, src0);
     output_line(ctx, "RSQ %s.w, %s.w;", sstr, sstr);
     output_line(ctx, "MUL%s, %s.w, %s;", dst, sstr, src0);
@@ -4118,8 +4106,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
         const int need_cos = (writemask_y(mask) || writemask_xy(mask));
         char sstr[32];
         const int scratch = allocate_scratch_register(ctx);
-        const char *stype = ctx->shader_type_str;
-        snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+        snprintf(sstr, sizeof (sstr), "scratch%d", scratch);
 
         // These sin() and cos() approximations originally found here:
         //    http://www.devmaster.net/forums/showthread.php?t=5784
@@ -4174,11 +4161,10 @@ static void emit_ARB1_MOVA(Context *ctx)
 {
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch1 = allocate_scratch_register(ctx);
-    const char *stype = ctx->shader_type_str;
     char sstr[32];
     char addr[32];
-    snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch1);
-    snprintf(addr, sizeof (addr), "%s_addr%d", stype, ctx->dest_arg.regnum);
+    snprintf(sstr, sizeof (sstr), "scratch%d", scratch1);
+    snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
 
     // ARL uses floor(), but D3D expects round-to-nearest.
     // There is probably a more efficient way to do this.
@@ -4230,9 +4216,8 @@ static void emit_ARB1_LOGP(Context *ctx)
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const int scratch = allocate_scratch_register(ctx);
-    const char *shader_type_str = ctx->shader_type_str;
-    output_line(ctx, "ABS %s_scratch%d, %s;", shader_type_str, scratch, src0);
-    output_line(ctx, "LOG%s, %s_scratch%d.x;", dst, shader_type_str, scratch);
+    output_line(ctx, "ABS scratch%d, %s;", scratch, src0);
+    output_line(ctx, "LOG%s, scratch%d.x;", dst, scratch);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
