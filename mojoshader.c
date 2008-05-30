@@ -3489,6 +3489,19 @@ static const char *get_ARB1_destarg_varname(Context *ctx)
     return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
 } // get_ARB1_destarg_varname
 
+static const char *get_ARB1_srcarg_varname(Context *ctx, int idx)
+{
+    if (idx >= STATICARRAYLEN(ctx->source_args))
+    {
+        fail(ctx, "Too many source args");
+        return "";
+    } // if
+
+    const SourceArgInfo *arg = &ctx->source_args[idx];
+    return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
+} // get_ARB1_srcarg_varname
+
+
 static const char *make_ARB1_destarg_string(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
@@ -4082,19 +4095,68 @@ static void emit_ARB1_SINCOS(Context *ctx)
 {
     // we don't care about the temp registers that <= sm2 demands; ignore them.
     const int mask = ctx->dest_arg.writemask;
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
-    if (shader_is_vertex(ctx))
-        fail(ctx, "SINCOS not supported in arb1 vertex shaders");
-    else if (writemask_x(mask))
-        output_line(ctx, "COS%s, %s;", dst, src0);
-    else if (writemask_y(mask))
-        output_line(ctx, "SIN%s, %s;", dst, src0);
-    else if (writemask_xy(mask))
-        output_line(ctx, "SCS%s, %s;", dst, src0);
-    else
-        fail(ctx, "unhandled SINCOS writemask in arb1 profile");
+    if (shader_is_pixel(ctx))  // fragment shaders have sin/cos/sincos opcodes.
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        if (writemask_x(mask))
+            output_line(ctx, "COS%s, %s;", dst, src0);
+        else if (writemask_y(mask))
+            output_line(ctx, "SIN%s, %s;", dst, src0);
+        else if (writemask_xy(mask))
+            output_line(ctx, "SCS%s, %s;", dst, src0);
+        else
+            fail(ctx, "unhandled SINCOS writemask in arb1 profile");
+    } // if
+
+    else  // big nasty.
+    {
+        const char *dst = get_ARB1_destarg_varname(ctx);
+        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
+        const int need_sin = (writemask_x(mask) || writemask_xy(mask));
+        const int need_cos = (writemask_y(mask) || writemask_xy(mask));
+        char sstr[32];
+        const int scratch = allocate_scratch_register(ctx);
+        const char *stype = ctx->shader_type_str;
+        snprintf(sstr, sizeof (sstr), "%s_scratch%d", stype, scratch);
+
+        // These sin() and cos() approximations originally found here:
+        //    http://www.devmaster.net/forums/showthread.php?t=5784
+        //
+        // const float B = 4.0f / M_PI;
+        // const float C = -4.0f / (M_PI * M_PI);
+        // float y = B * x + C * x * fabs(x);
+        //
+        // // optional better precision...
+        // const float P = 0.225f;
+        // y = P * (y * fabs(y) - y) + y;
+        //
+        //
+        // That first thing can be reduced to:
+        // const float y = ((1.2732395447351626861510701069801f * x) +
+        //             ((-0.40528473456935108577551785283891f * x) * fabs(x)));
+        //
+        // cosine is sin(x + M_PI/2), but you have to wrap x to pi.
+
+        if (need_sin)
+        {
+            output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
+            output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
+            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", sstr, src0);
+            output_line(ctx, "MAD %s.x, %s.x, %s.x, %s.x;", dst, dst, src0, sstr);
+        } // if
+
+        if (need_cos)
+        {
+            // !!! FIXME: we need to wrap x if > pi after ADD.
+            output_line(ctx, "ADD %s.x, %s.x, 1.57079637050628662109375;", sstr, src0);
+            output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
+            output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
+            output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", sstr, src0);
+            output_line(ctx, "MAD %s.y, %s.x, %s.x, %s.x;", dst, dst, src0, sstr);
+        } // if
+    } // else
 
     if (!isfail(ctx))
         emit_ARB1_dest_modifiers(ctx);
