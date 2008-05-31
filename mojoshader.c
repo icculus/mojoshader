@@ -4134,8 +4134,6 @@ static void emit_ARB1_SINCOS(Context *ctx)
         // That first thing can be reduced to:
         // const float y = ((1.2732395447351626861510701069801f * x) +
         //             ((-0.40528473456935108577551785283891f * x) * fabs(x)));
-        //
-        // cosine is sin(x + M_PI/2), but you have to wrap x to pi.
 
         if (need_sin)
         {
@@ -4145,10 +4143,19 @@ static void emit_ARB1_SINCOS(Context *ctx)
             output_line(ctx, "MAD %s.x, %s.x, %s.x, %s.x;", dst, dst, src0, scratch);
         } // if
 
+        // cosine is sin(x + M_PI/2), but you have to wrap x to pi:
+        //  if (x+(M_PI/2) > M_PI)
+        //      x -= 2 * M_PI;
+        //
+        // which is...
+        //  if (x+(1.57079637050628662109375) > 3.1415927410125732421875)
+        //      x += -6.283185482025146484375;
+
         if (need_cos)
         {
-            // !!! FIXME: we need to wrap x if > pi after ADD.
             output_line(ctx, "ADD %s.x, %s.x, 1.57079637050628662109375;", scratch, src0);
+            output_line(ctx, "SGE %s.y, %s.x, 3.1415927410125732421875;", scratch, scratch);
+            output_line(ctx, "MAD %s.x, %s.y, -6.283185482025146484375, %s.x;", scratch, scratch, scratch);
             output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
             output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
             output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", scratch, src0);
