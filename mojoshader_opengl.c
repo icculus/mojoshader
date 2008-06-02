@@ -987,7 +987,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
             consts = pshader->parseData->constant_count;
 
         lookup_uniforms(retval, pshader);
-        lookup_samplers(retval, vshader);
+        lookup_samplers(retval, pshader);
         pshader->refcount++;
     } // if
 
