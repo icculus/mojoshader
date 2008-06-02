@@ -3832,9 +3832,9 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
     pop_output(ctx);
 } // emit_ARB1_uniform
 
-static void emit_ARB1_sampler(Context *ctx, int s, TextureType ttype)
+static void emit_ARB1_sampler(Context *ctx, int stage, TextureType ttype)
 {
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
+    // this is a no-op...you don't predeclare samplers in arb1.
 } // emit_ARB1_sampler
 
 // !!! FIXME: a lot of cut-and-paste here from emit_GLSL_attribute().
@@ -4374,13 +4374,48 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_ARB1_TEXLD(Context *ctx)
 {
-    // this opcode looks and acts differently depending on the shader model.
-    if (shader_version_atleast(ctx, 2, 0))
-        emit_D3D_opcode_dss(ctx, "texld");
-    else if (shader_version_atleast(ctx, 1, 4))
-        emit_D3D_opcode_ds(ctx, "texld");
+    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
+
+    if (!shader_version_atleast(ctx, 2, 0))
+    {
+        // ps_1_0 and ps_1_4 are both different, too!
+        fail(ctx, "TEXLD <= Shader Model 2.0 unimplemented.");  // !!! FIXME
+        return;
+    } // if
     else
-        emit_D3D_opcode_d(ctx, "tex");
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const SourceArgInfo *samp_arg = &ctx->source_args[1];
+        RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                          samp_arg->regnum);
+        const char *ttype = NULL;
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        //const char *src1 = get_ARB1_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
+
+        // !!! FIXME: this should be in state_TEXLD, not in the arb1/glsl emitters.
+        if (sreg == NULL)
+        {
+            fail(ctx, "TEXLD using undeclared sampler");
+            return;
+        } // if
+
+        if (!no_swizzle(samp_arg->swizzle))
+        {
+            // !!! FIXME: does this ever actually happen?
+            fail(ctx, "BUG: can't handle TEXLD with sampler swizzle at the moment");
+        } // if
+
+        switch ((const TextureType) sreg->index)
+        {
+            case TEXTURE_TYPE_2D: ttype = "2D"; break; // !!! FIXME: "RECT"?
+            case TEXTURE_TYPE_CUBE: ttype = "CUBE"; break;
+            case TEXTURE_TYPE_VOLUME: ttype = "3D"; break;
+            default: fail(ctx, "unknown texture type"); return;
+        } // switch
+
+        output_line(ctx, "TEX%s, %s, texture[%d], %s;", dst, src0,
+                    samp_arg->regnum, ttype);
+    } // else
 } // emit_ARB1_TEXLD
 
 #endif  // SUPPORT_PROFILE_ARB1
