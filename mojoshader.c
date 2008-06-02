@@ -185,6 +185,12 @@ typedef int (*args_function)(Context *ctx);
 // one state function for each opcode where we have state machine updates.
 typedef void (*state_function)(Context *ctx);
 
+// one function for varnames in each profile.
+typedef const char *(*varname_function)(Context *c, RegisterType t, int num);
+
+// one function for const var array in each profile.
+typedef const char *(*const_array_varname_function)(Context *c);
+
 typedef struct
 {
     const char *name;
@@ -196,6 +202,8 @@ typedef struct
     emit_sampler sampler_emitter;
     emit_attribute attribute_emitter;
     emit_finalize finalize_emitter;
+    varname_function get_varname;
+    const_array_varname_function get_const_array_varname;
 } Profile;
 
 typedef enum
@@ -1179,6 +1187,24 @@ static const char *make_D3D_srcarg_string(Context *ctx, const int idx)
 } // make_D3D_srcarg_string
 
 
+static const char *get_D3D_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, rt, regnum,
+                                              regnum_str, sizeof (regnum_str));
+
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
+    return retval;
+} // get_D3D_varname
+
+static const char *get_D3D_const_array_varname(Context *ctx)
+{
+    fail(ctx, "BUG: D3D profile shouldn't ever have a relative array");
+    return "c";
+} // get_D3D_const_array_varname
+
+
 static void emit_D3D_start(Context *ctx)
 {
     const uint major = (uint) ctx->major_ver;
@@ -1199,6 +1225,7 @@ static void emit_D3D_start(Context *ctx)
 static void emit_D3D_end(Context *ctx)
 {
     output_line(ctx, "end");
+    ctx->uniform_array = 0;  // in case anything changed this during parse.
 } // emit_D3D_end
 
 
@@ -1607,7 +1634,11 @@ static void emit_PASSTHROUGH_start(Context *ctx)
         memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
 } // emit_PASSTHROUGH_start
 
-static void emit_PASSTHROUGH_end(Context *ctx) {}
+static void emit_PASSTHROUGH_end(Context *ctx)
+{
+    ctx->uniform_array = 0;  // in case anything changed this during parse.
+} // emit_PASSTHROUGH_end
+
 static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_relative(Context *ctx, int size) {}
@@ -1615,6 +1646,23 @@ static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
                                        MOJOSHADER_usage u, int i, int w) {}
+
+static const char *get_PASSTHROUGH_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char regnum_str[16];
+    const char *regtype_str = get_D3D_register_string(ctx, rt, regnum,
+                                              regnum_str, sizeof (regnum_str));
+
+    char *retval = get_scratch_buffer(ctx);
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
+    return retval;
+} // get_PASSTHROUGH_varname
+
+static const char *get_PASSTHROUGH_const_array_varname(Context *ctx)
+{
+    fail(ctx, "BUG: PASSTHROUGH profile shouldn't ever have a relative array");
+    return "c";
+} // get_PASSTHROUGH_const_array_varname
 
 #define EMIT_PASSTHROUGH_OPCODE_FUNC(op) \
     static void emit_PASSTHROUGH_##op(Context *ctx) {}
@@ -3770,7 +3818,10 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
     else
     {
         // !!! FIXME: this only works if you have no bool or int uniforms.
-        output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
+        if (regtype != REG_TYPE_CONST)
+            fail(ctx, "BUG: non-float uniforms not supported in arb1 at the moment");
+        else
+            output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
     } // else
 
     pop_output(ctx);
@@ -4315,7 +4366,17 @@ static void emit_ARB1_DCL(Context *ctx)
 } // emit_ARB1_DCL
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLD)
+
+static void emit_ARB1_TEXLD(Context *ctx)
+{
+    // this opcode looks and acts differently depending on the shader model.
+    if (shader_version_atleast(ctx, 2, 0))
+        emit_D3D_opcode_dss(ctx, "texld");
+    else if (shader_version_atleast(ctx, 1, 4))
+        emit_D3D_opcode_ds(ctx, "texld");
+    else
+        emit_D3D_opcode_d(ctx, "tex");
+} // emit_ARB1_TEXLD
 
 #endif  // SUPPORT_PROFILE_ARB1
 
@@ -4334,6 +4395,8 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLD)
     emit_##prof##_sampler, \
     emit_##prof##_attribute, \
     emit_##prof##_finalize, \
+    get_##prof##_varname, \
+    get_##prof##_const_array_varname, \
 },
 
 static const Profile profiles[] =
@@ -5981,8 +6044,8 @@ static char *build_output(Context *ctx)
 
 static char *alloc_varname(Context *ctx, const RegisterList *reg)
 {
-    // !!! FIXME: may not be GLSL...
-    const char *varname = get_GLSL_varname(ctx, reg->regtype, reg->regnum);
+    const char *varname = ctx->profile->get_varname(ctx, reg->regtype,
+                                                    reg->regnum);
     const size_t len = strlen(varname) + 1;
     char *retval = (char *) Malloc(ctx, len);
     if (retval != NULL)
@@ -6057,14 +6120,15 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 
         if (ctx->uniform_array)
         {
-            char *name = (char *) Malloc(ctx, 16);  // !!! FIXME
-            if (name != NULL)
+            const char *name = ctx->profile->get_const_array_varname(ctx);
+            char *namecpy = (char *) Malloc(ctx, strlen(name) + 1);
+            if (namecpy != NULL)
             {
-                strcpy(name, get_GLSL_const_array_varname(ctx)); // !!! FIXME
+                strcpy(namecpy, name);
                 wptr->type = type;
-                wptr->index = index;
+                wptr->index = 0;
                 wptr->array_count = ctx->max_constreg + 1;
-                wptr->name = name;
+                wptr->name = namecpy;
                 ctx->uniform_count -= (array_items - 1);
             } // if
         } // if
@@ -6401,13 +6465,29 @@ static void process_definitions(Context *ctx)
                                       (TextureType) item->index);
     } // for
 
-    // ...and attributes...
+    // ...and attributes... (find POSITION0 here, so it's always first).
     for (item = ctx->attributes.next; item != NULL; item = item->next)
     {
-        ctx->attribute_count++;
-        ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
-                                        item->usage, item->index,
-                                        item->writemask);
+        if ((item->usage == MOJOSHADER_USAGE_POSITION) && (item->index == 0))
+        {
+            ctx->attribute_count++;
+            ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
+                                            MOJOSHADER_USAGE_POSITION, 0,
+                                            item->writemask);
+            break;
+        } // if
+    } // for
+
+    // ...and attributes... (everything but POSITION0).
+    for (item = ctx->attributes.next; item != NULL; item = item->next)
+    {
+        if ((item->usage != MOJOSHADER_USAGE_POSITION) || (item->index != 0))
+        {
+            ctx->attribute_count++;
+            ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
+                                            item->usage, item->index,
+                                            item->writemask);
+        } // if
     } // for
 } // process_definitions
 
