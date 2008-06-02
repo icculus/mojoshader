@@ -3812,8 +3812,13 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
 
     if ((regtype == REG_TYPE_CONST) && (ctx->uniform_array))
     {
-        const char *constarray = get_ARB1_const_array_varname(ctx);
-        output_line(ctx, "ALIAS %s = %s[%d];", varname, constarray, regnum);
+        // The ALIAS version works on Apple's OpenGL, but not Nvidia's.
+        //const char *constarray = get_ARB1_const_array_varname(ctx);
+        //output_line(ctx, "ALIAS %s = %s[%d];", varname, constarray, regnum);
+
+        // This works everywhere.
+        // !!! FIXME: does this eat more resources?
+        output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
     } // if
     else
     {
