@@ -3963,13 +3963,20 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
 
     else if (shader_is_pixel(ctx))
     {
+        const char *paramtype_str = "ATTRIB";
         // samplers DCLs get handled in emit_ARB1_sampler().
 
         if (regtype == REG_TYPE_COLOROUT)
+        {
+            paramtype_str = "OUTPUT";
             usage_str = "result.color";
+        } // if
 
         else if (regtype == REG_TYPE_DEPTHOUT)
+        {
+            paramtype_str = "OUTPUT";
             usage_str = "result.depth";
+        } // else if
 
         // !!! FIXME: can you actualy have a texture register with COLOR usage?
         else if ((regtype == REG_TYPE_TEXTURE) || (regtype == REG_TYPE_INPUT))
@@ -4024,8 +4031,8 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
         if (usage_str != NULL)
         {
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "ATTRIB %s = %s%s%s%s;", varname, usage_str,
-                        arrayleft, index_str, arrayright);
+            output_line(ctx, "%s %s = %s%s%s%s;", paramtype_str, varname,
+                        usage_str, arrayleft, index_str, arrayright);
             pop_output(ctx);
         } // if
     } // else if
