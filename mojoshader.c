@@ -4325,7 +4325,25 @@ static void emit_ARB1_CMP(Context *ctx)
 } // emit_ARB1_CMP
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DP2ADD)
+
+
+static void emit_ARB1_DP2ADD(Context *ctx)
+{
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+
+    // DP2ADD is:
+    //  dest = src0.r * src1.r + src0.g * src1.g + src2.replicate_swizzle
+    output_line(ctx, "MUL %s, %s, %s;", scratch, src0, src1);
+    output_line(ctx, "ADD %s, %s.x, %s.y;", scratch, scratch, scratch);
+    output_line(ctx, "ADD%s, %s.x, %s;", dst, scratch, src2);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_DP2ADD
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSY)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
