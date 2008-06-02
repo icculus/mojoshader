@@ -4124,7 +4124,7 @@ static void emit_ARB1_POW(Context *ctx)
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
     output_line(ctx, "ABS %s, %s;", scratch, src0);
-    output_line(ctx, "POW%s %s.x, %s;", dst, scratch, src1);
+    output_line(ctx, "POW%s, %s.x, %s;", dst, scratch, src1);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_POW
 
