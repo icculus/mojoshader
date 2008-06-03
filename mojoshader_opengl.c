@@ -948,18 +948,26 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->uniform_count;
     if (pshader != NULL) numregs += pshader->parseData->uniform_count;
-    retval->uniforms = (UniformMap *) Malloc(sizeof (UniformMap) * numregs);
-    if (retval->uniforms == NULL)
-        goto link_program_fail;
-    memset(retval->uniforms, '\0', sizeof (UniformMap) * numregs);
+    if (numregs > 0)
+    {
+        const size_t len = sizeof (UniformMap) * numregs;
+        retval->uniforms = (UniformMap *) Malloc(len);
+        if (retval->uniforms == NULL)
+            goto link_program_fail;
+        memset(retval->uniforms, '\0', len);
+    } // if
 
     numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->sampler_count;
     if (pshader != NULL) numregs += pshader->parseData->sampler_count;
-    retval->samplers = (SamplerMap *) Malloc(sizeof (SamplerMap) * numregs);
-    if (retval->samplers == NULL)
-        goto link_program_fail;
-    memset(retval->samplers, '\0', sizeof (SamplerMap) * numregs);
+    if (numregs > 0)
+    {
+        const size_t len = sizeof (SamplerMap) * numregs;
+        retval->samplers = (SamplerMap *) Malloc(len);
+        if (retval->samplers == NULL)
+            goto link_program_fail;
+        memset(retval->samplers, '\0', len);
+    } // if
 
     retval->handle = program;
     retval->vertex = vshader;
@@ -970,12 +978,19 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     {
         if (consts < vshader->parseData->constant_count)
             consts = vshader->parseData->constant_count;
-        retval->attributes = (AttributeMap *) Malloc(sizeof (AttributeMap) *
-                                        vshader->parseData->attribute_count);
-        if (retval->attributes == NULL)
-            goto link_program_fail;
 
-        lookup_attributes(retval);
+        if (vshader->parseData->attribute_count > 0)
+        {
+            const int count = vshader->parseData->attribute_count;
+            const size_t len = sizeof (AttributeMap) * count;
+            retval->attributes = (AttributeMap *) Malloc(len);
+            if (retval->attributes == NULL)
+                goto link_program_fail;
+
+            memset(retval->attributes, '\0', len);
+            lookup_attributes(retval);
+        } // if
+
         lookup_uniforms(retval, vshader);
         lookup_samplers(retval, vshader);
         vshader->refcount++;
@@ -993,10 +1008,12 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (consts > 0)    
     {
-        retval->constants = (GLfloat *) Malloc(sizeof (GLfloat) * consts * 4);
+        const size_t len = sizeof (GLfloat) * consts * 4;
+        retval->constants = (GLfloat *) Malloc(len);
         if (retval->constants == NULL)
             goto link_program_fail;
         retval->constant_count = (uint32) consts;
+        memset(retval->constants, '\0', len);
     } // if
 
     return retval;
