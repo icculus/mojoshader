@@ -11,11 +11,6 @@
 
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
 
-// !!! FIXME: do DEF* opcodes have to come before instructions?
-// !!! FIXME:  my reading of the msdn spec suggests no, but it sounds like
-// !!! FIXME:  something they'd require. DCL_* _does_ have to be first.
-
-
 // Shader bytecode format is described at MSDN:
 //  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
 
@@ -5067,11 +5062,11 @@ static void state_DEF(Context *ctx)
     const RegisterType regtype = ctx->dest_arg.regtype;
     const int regnum = ctx->dest_arg.regnum;
 
-    ctx->instruction_count--;  // these don't increase your instruction count.
-
     // !!! FIXME: fail if same register is defined twice.
 
-    if (regtype != REG_TYPE_CONST)
+    if (ctx->instruction_count != 0)
+        fail(ctx, "DEF token must come before any instructions");
+    else if (regtype != REG_TYPE_CONST)
         fail(ctx, "DEF token using invalid register");
     else
     {
@@ -5091,9 +5086,9 @@ static void state_DEFI(Context *ctx)
 
     // !!! FIXME: fail if same register is defined twice.
 
-    ctx->instruction_count--;  // these don't increase your instruction count.
-
-    if (regtype != REG_TYPE_CONSTINT)
+    if (ctx->instruction_count != 0)
+        fail(ctx, "DEFI token must come before any instructions");
+    else if (regtype != REG_TYPE_CONSTINT)
         fail(ctx, "DEFI token using invalid register");
     else
     {
@@ -5114,9 +5109,9 @@ static void state_DEFB(Context *ctx)
 
     // !!! FIXME: fail if same register is defined twice.
 
-    ctx->instruction_count--;  // these don't increase your instruction count.
-
-    if (regtype != REG_TYPE_CONSTBOOL)
+    if (ctx->instruction_count != 0)
+        fail(ctx, "DEFB token must come before any instructions");
+    else if (regtype != REG_TYPE_CONSTBOOL)
         fail(ctx, "DEFB token using invalid register");
     else
     {
@@ -5135,16 +5130,15 @@ static void state_DCL(Context *ctx)
     const int regnum = arg->regnum;
     const int wmask = arg->writemask;
 
-    ctx->instruction_count--;  // these don't increase your instruction count.
-
     // parse_args_DCL() does a lot of state checking before we get here.
-
-    // !!! FIXME: fail if DCL opcode comes after real instructions.
 
     // !!! FIXME: apparently vs_3_0 can use sampler registers now.
     // !!! FIXME:  (but only s0 through s3, not all 16 of them.)
 
-    if (shader_is_vertex(ctx))
+    if (ctx->instruction_count != 0)
+        fail(ctx, "DCL token must come before any instructions");
+
+    else if (shader_is_vertex(ctx))
     {
         const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
         const int index = ctx->dwords[1];
@@ -5446,8 +5440,17 @@ static void state_CMP(Context *ctx)
             if ((dregtype == sregtype) && (dregnum == sregnum))
                 fail(ctx, "CMP dest can't match sources in this shader model");
         } // for
+
+        ctx->instruction_count++;  // takes an extra slot in ps_1_2 and _3.
     } // if
 } // state_CMP
+
+static void state_DP4(Context *ctx)
+{
+    // extra limitations for ps <= 1.4 ...
+    if (!shader_version_atleast(ctx, 1, 4))
+        ctx->instruction_count++;  // takes an extra slot in ps_1_2 and _3.
+} // state_DP4
 
 static void state_CND(Context *ctx)
 {
@@ -5588,9 +5591,12 @@ static void state_TEXLD(Context *ctx)
             else if (!no_swizzle(src1->swizzle))
                 fail(ctx, "TEXLD src1 must not swizzle");
         } // if
+
+        if ( ((TextureType) ctx->source_args[1].regnum) == TEXTURE_TYPE_CUBE )
+            ctx->instruction_count += 3;
     } // if
 
-    // !!! FIXME: checks for ps_1_4 and ps_1_0 versions...
+    // !!! FIXME: checks for ps_1_4 and ps_1_0 versions here...
 } // state_TEXLD
 
 static void state_TEXLDL(Context *ctx)
@@ -5599,6 +5605,11 @@ static void state_TEXLDL(Context *ctx)
         fail(ctx, "TEXLDL in version < Shader Model 3.0");
     else if (ctx->source_args[1].regtype != REG_TYPE_SAMPLER)
         fail(ctx, "TEXLDL src1 must be sampler register");
+    else
+    {
+        if ( ((TextureType) ctx->source_args[1].regnum) == TEXTURE_TYPE_CUBE )
+            ctx->instruction_count += 3;
+    } // else
 } // state_TEXLDL
 
 static void state_DP2ADD(Context *ctx)
@@ -5612,6 +5623,7 @@ static void state_DP2ADD(Context *ctx)
 typedef struct
 {
     const char *opcode_string;
+    int slots;  // number of instruction slots this opcode eats.
     MOJOSHADER_shaderType shader_types;  // mask of types that can use opcode.
     args_function parse_args;
     state_function state;
@@ -5625,113 +5637,115 @@ static const Instruction instructions[] =
     // INSTRUCTION_STATE means this opcode has to update the state machine
     //  (we're entering an ELSE block, etc). INSTRUCTION means there's no
     //  state, just go straight to the emitters.
-    #define INSTRUCTION_STATE(op, argsseq, t) { \
-        #op, t, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
+    #define INSTRUCTION_STATE(op, slots, argsseq, t) { \
+        #op, slots, t, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
     }
-    #define INSTRUCTION(op, argsseq, t) { \
-        #op, t, parse_args_##argsseq, 0, PROFILE_EMITTERS(op) \
+    #define INSTRUCTION(op, slots, argsseq, t) { \
+        #op, slots, t, parse_args_##argsseq, 0, PROFILE_EMITTERS(op) \
     }
 
     // !!! FIXME: Some of these MOJOSHADER_TYPE_ANYs need to have their scope
     // !!! FIXME:  reduced to just PIXEL or VERTEX.
 
-    INSTRUCTION(NOP, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MOV, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ADD, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SUB, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MAD, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MUL, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RCP, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RSQ, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DP3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DP4, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MIN, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MAX, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SLT, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SGE, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(EXP, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LOG, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LIT, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DST, DSS, MOJOSHADER_TYPE_VERTEX),
-    INSTRUCTION(LRP, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(FRC, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M4X4, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M4X3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X4, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X2, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CALL, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CALLNZ, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LOOP, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RET, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(ENDLOOP, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LABEL, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(DCL, DCL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(POW, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CRS, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SGN, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ABS, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(NRM, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(SINCOS, SINCOS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(REP, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(ENDREP, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(IF, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(IFC, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ELSE, NULL, MOJOSHADER_TYPE_ANY),  // !!! FIXME: state!
-    INSTRUCTION(ENDIF, NULL, MOJOSHADER_TYPE_ANY), // !!! FIXME: state!
-    INSTRUCTION_STATE(BREAK, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(BREAKC, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(MOVA, DS, MOJOSHADER_TYPE_VERTEX),
-    INSTRUCTION_STATE(DEFB, DEFB, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(DEFI, DEF, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION_STATE(TEXCRD, TEXCRD, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(TEXKILL, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(TEXLD, TEXLD, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXBEM, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXBEML, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXREG2AR, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXREG2GB, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2PAD, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2TEX, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3PAD, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3TEX, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(RESERVED, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(TEXM3X3SPEC, DSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3VSPEC, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(EXPP, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LOGP, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CND, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(DEF, DEF, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(TEXREG2RGB, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDP3TEX, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2DEPTH, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDP3, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDEPTH, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(CMP, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(BEM, DSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(DP2ADD, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(DSX, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(DSY, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXLDD, DSSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(SETP, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(TEXLDL, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(BREAKP, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(NOP, 1, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MOV, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ADD, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SUB, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MAD, 1, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MUL, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RCP, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RSQ, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DP3, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DP4, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MIN, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(MAX, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SLT, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SGE, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(EXP, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LOG, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LIT, 3, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(DST, 1, DSS, MOJOSHADER_TYPE_VERTEX),
+    INSTRUCTION(LRP, 2, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(FRC, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M4X4, 4, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M4X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X4, 4, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X3, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(M3X2, 2, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CALL, 2, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CALLNZ, 3, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LOOP, 3, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(RET, 1, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(ENDLOOP, 2, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LABEL, 0, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DCL, 0, DCL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(POW, 3, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(CRS, 2, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(SGN, 3, DSSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ABS, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(NRM, 3, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(SINCOS, 8, SINCOS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(REP, 3, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(ENDREP, 2, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(IF, 3, S, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(IFC, 3, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(ELSE, 1, NULL, MOJOSHADER_TYPE_ANY),  // !!! FIXME: state!
+    INSTRUCTION(ENDIF, 1, NULL, MOJOSHADER_TYPE_ANY), // !!! FIXME: state!
+    INSTRUCTION_STATE(BREAK, 1, NULL, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(BREAKC, 3, SS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(MOVA, 1, DS, MOJOSHADER_TYPE_VERTEX),
+    INSTRUCTION_STATE(DEFB, 0, DEFB, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(DEFI, 0, DEF, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION_STATE(TEXCRD, 1, TEXCRD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXKILL, 2, D, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(TEXLD, 1, TEXLD, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXBEM, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXBEML, 2, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXREG2AR, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXREG2GB, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X2PAD, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X2TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X3PAD, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X3TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
+    INSTRUCTION(TEXM3X3SPEC, 1, DSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X3VSPEC, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(EXPP, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(LOGP, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(CND, 1, DSSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(DEF, 0, DEF, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION(TEXREG2RGB, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXDP3TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X2DEPTH, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXDP3, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXM3X3, 1, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXDEPTH, 1, D, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(CMP, 1, DSSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(BEM, 2, DSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(DP2ADD, 2, DSSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION(TEXLDD, 3, DSSSS, MOJOSHADER_TYPE_PIXEL),
+    INSTRUCTION_STATE(SETP, 1, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(TEXLDL, 2, DSS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(BREAKP, 3, S, MOJOSHADER_TYPE_ANY),
+
+    // !!! FIXME: TEXLDB?
 
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
@@ -5779,7 +5793,6 @@ static int parse_instruction_token(Context *ctx)
     } // if
 
     memset(ctx->dwords, '\0', sizeof (ctx->dwords));
-    ctx->instruction_count++;
     ctx->instruction_controls = controls;
     ctx->predicated = predicated;
 
@@ -5804,6 +5817,8 @@ static int parse_instruction_token(Context *ctx)
         if (instruction->state != NULL)
             instruction->state(ctx);
     } // if
+
+    ctx->instruction_count += instruction->slots;
 
     if (isfail(ctx))
         retval = FAIL;
@@ -5913,6 +5928,8 @@ static int parse_end_token(Context *ctx)
 
 static int parse_phase_token(Context *ctx)
 {
+    // !!! FIXME: explanation is here: http://msdn.microsoft.com/en-us/library/bb147266(VS.85).aspx
+    // !!! FIXME:  (it's ps_1_4 only.)
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
     return fail(ctx, "not sure what this thing is yet.");

@@ -228,11 +228,13 @@ typedef struct
     int output_len;
 
     /*
-     * Count of Direct3D instructions we parsed. This is meaningless in terms
+     * Count of Direct3D instruction slots used. This is meaningless in terms
      *  of the actual output, as the profile will probably grow or reduce
      *  the count (or for high-level languages, not have that information at
-     *  all), but it can give you a rough idea of the size of your shader.
-     *  Will be zero on error.
+     *  all). Also, as with Microsoft's own assembler, this value is just a
+     *  rough estimate, as unpredicable real-world factors make the actual
+     *  value vary at least a little from this count. Still, it can give you
+     *  a rough idea of the size of your shader. Will be zero on error.
      */
     int instruction_count;
 
