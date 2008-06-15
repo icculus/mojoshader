@@ -667,23 +667,8 @@ static int impl_ARB1_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 
     ctx->glGetError();  // flush any existing error state.
     ctx->glBindProgramARB(shader_type, shader);
-
-#if 0
-    if (shader_type == GL_FRAGMENT_PROGRAM_ARB) {
-        const char *prog =
-            "!!ARBfp1.0\n"
-            "OUTPUT oC0 = result.color;\n"
-            "MOV oC0, { 1.0, 0.0, 0.0, 1.0 };\n"
-            "END\n";
-        ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
-                                strlen(prog), prog);
-    } else
-#endif
-
-    {
-        ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
+    ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
                                 shaderlen, pd->output);
-    }
 
     if (ctx->glGetError() == GL_INVALID_OPERATION)
     { 
