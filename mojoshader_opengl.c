@@ -103,6 +103,8 @@ struct MOJOSHADER_glProgram
 typedef WINGDIAPI void (APIENTRYP PFNGLGETINTEGERVPROC) (GLenum pname, GLint *params);
 typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 typedef WINGDIAPI GLenum (APIENTRYP PFNGLGETERRORPROC) (void);
+typedef WINGDIAPI void (APIENTRYP PFNGLENABLEPROC) (GLenum cap);
+typedef WINGDIAPI void (APIENTRYP PFNGLDISABLEPROC) (GLenum cap);
 
 struct MOJOSHADER_glContext
 {
@@ -141,6 +143,8 @@ struct MOJOSHADER_glContext
     PFNGLGETSTRINGPROC glGetString;
     PFNGLGETERRORPROC glGetError;
     PFNGLGETINTEGERVPROC glGetIntegerv;
+    PFNGLENABLEPROC glEnable;
+    PFNGLDISABLEPROC glDisable;
     PFNGLDELETEOBJECTARBPROC glDeleteObject;
     PFNGLATTACHOBJECTARBPROC glAttachObject;
     PFNGLCOMPILESHADERARBPROC glCompileShader;
@@ -255,6 +259,15 @@ const char *MOJOSHADER_glGetError(void)
 } // MOJOSHADER_glGetError
 
 
+static inline void toggle_gl_state(GLenum state, int val)
+{
+    if (val)
+        ctx->glEnable(state);
+    else
+        ctx->glDisable(state);
+} // toggle_gl_state
+
+
 static void *loadsym(void *(*lookup)(const char *fn), const char *fn, int *ext)
 {
     void *retval = NULL;
@@ -281,6 +294,8 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
     DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
     DO_LOOKUP(base_opengl, PFNGLGETERRORPROC, glGetError);
     DO_LOOKUP(base_opengl, PFNGLGETINTEGERVPROC, glGetIntegerv);
+    DO_LOOKUP(base_opengl, PFNGLENABLEPROC, glEnable);
+    DO_LOOKUP(base_opengl, PFNGLDISABLEPROC, glDisable);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLDELETEOBJECTARBPROC, glDeleteObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLATTACHOBJECTARBPROC, glAttachObject);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLCOMPILESHADERARBPROC, glCompileShader);
@@ -552,9 +567,6 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileDeleteShader != NULL);
     assert(ctx->profileDeleteProgram != NULL);
     assert(ctx->profileMaxUniforms != NULL);
-    assert(ctx->profileCompileShader != NULL);
-    assert(ctx->profileDeleteShader != NULL);
-    assert(ctx->profileDeleteProgram != NULL);
     assert(ctx->profileGetAttribLocation != NULL);
     assert(ctx->profileGetUniformLocation != NULL);
     assert(ctx->profileGetSamplerLocation != NULL);
@@ -611,7 +623,7 @@ static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type)
         return -1;
 
     ctx->glGetProgramivARB(program_type, GL_MAX_PROGRAM_PARAMETERS_ARB, &retval);
-    return (int) retval;
+    return (int) retval;  // !!! FIXME: times four?
 } // impl_ARB1_MaxUniforms
 
 
@@ -655,8 +667,23 @@ static int impl_ARB1_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 
     ctx->glGetError();  // flush any existing error state.
     ctx->glBindProgramARB(shader_type, shader);
-    ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
-                            shaderlen, pd->output);
+
+#if 0
+    if (shader_type == GL_FRAGMENT_PROGRAM_ARB) {
+        const char *prog =
+            "!!ARBfp1.0\n"
+            "OUTPUT oC0 = result.color;\n"
+            "MOV oC0, { 1.0, 0.0, 0.0, 1.0 };\n"
+            "END\n";
+        ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
+                                strlen(prog), prog);
+    } else
+#endif
+
+    {
+        ctx->glProgramStringARB(shader_type, GL_PROGRAM_FORMAT_ASCII_ARB,
+                                shaderlen, pd->output);
+    }
 
     if (ctx->glGetError() == GL_INVALID_OPERATION)
     { 
@@ -1052,6 +1079,9 @@ static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program)
         if (program->fragment != NULL)
             phandle = program->fragment->handle;
     } // if
+
+    toggle_gl_state(GL_VERTEX_PROGRAM_ARB, vhandle != 0);
+    toggle_gl_state(GL_FRAGMENT_PROGRAM_ARB, phandle != 0);
 
     ctx->glBindProgramARB(GL_VERTEX_PROGRAM_ARB, vhandle);
     ctx->glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, phandle);
