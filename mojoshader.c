@@ -4067,13 +4067,75 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X4)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X3)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X2)
 
-// !!! FIXME: these are available in nvidia's post-arb1 extensions
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALL)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CALLNZ)
+static void emit_ARB1_CALL(Context *ctx)
+{
+    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
+
+    if (!ctx->support_nv2)  // no branching in stock ARB1.
+    {
+        fail(ctx, "branching unsupported in this profile");
+        return;
+    } // if
+
+    output_line(ctx, "CAL %s", labelstr);
+} // emit_ARB1_CALL
+
+static void emit_ARB1_CALLNZ(Context *ctx)
+{
+    // !!! FIXME: if src1 is a constbool that's true, we can remove the
+    // !!! FIXME:  if. If it's false, we can make this a no-op.
+    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 0);
+    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+
+    if (!ctx->support_nv2)  // no branching in stock ARB1.
+        fail(ctx, "branching unsupported in this profile");
+    else
+    {
+        // !!! FIXME: double-check this.
+        output_line(ctx, "MOVC %s, %s", scratch, src1);
+        output_line(ctx, "CAL %s (NE.x)", labelstr);
+    } // else
+} // emit_ARB1_CALLNZ
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOOP)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(RET)
+
+static void emit_ARB1_RET(Context *ctx)
+{
+    // don't fail() if no nv2...maybe we're just ending the mainline?
+    //  if we're ending a LABEL that had no CALL, this would all be written
+    //  to ctx->ignore anyhow, so this should be "safe" ... arb1 profile will
+    //  just end up throwing all this code out.
+    if (ctx->support_nv2)  // no branching in stock ARB1.
+        output_line(ctx, "RET");
+    ctx->output = &ctx->mainline;  // in case we were ignoring this function.
+} // emit_ARB1_RET
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDLOOP)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LABEL)
+
+static void emit_ARB1_LABEL(Context *ctx)
+{
+    if (!ctx->support_nv2)  // no branching in stock ARB1.
+        return;  // don't fail()...maybe we never use it, but do fail in CALL.
+
+    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
+    const int label = ctx->source_args[0].regnum;
+    RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, label);
+
+    // MSDN specs say CALL* has to come before the LABEL, so we know if we
+    //  can ditch the entire function here as unused.
+    if (reg == NULL)
+        ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
+
+    // !!! FIXME: it would be nice if we could determine if a function is
+    // !!! FIXME:  only called once and, if so, forcibly inline it.
+
+    //const char *uses_loopreg = ((reg) && (reg->misc == 1)) ? "int aL" : "";
+    output_line(ctx, "%s:", labelstr);
+} // emit_ARB1_LABEL
+
 
 static void emit_ARB1_POW(Context *ctx)
 {
