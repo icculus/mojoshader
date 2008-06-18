@@ -302,7 +302,12 @@ static void *loadsym(void *(*lookup)(const char *fn), const char *fn, int *ext)
 
 static void lookup_entry_points(void *(*lookup)(const char *fnname))
 {
-    #define DO_LOOKUP(ext, typ, fn) ctx->fn = (typ) loadsym(lookup, #fn, &ctx->have_##ext)
+    #define DO_LOOKUP(ext, typ, fn) { \
+        int exist = ctx->have_##ext; \
+        ctx->fn = (typ) loadsym(lookup, #fn, &exist); \
+        ctx->have_##ext = exist; \
+    }
+
     DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
     DO_LOOKUP(base_opengl, PFNGLGETERRORPROC, glGetError);
     DO_LOOKUP(base_opengl, PFNGLGETINTEGERVPROC, glGetIntegerv);
