@@ -48,6 +48,16 @@
 #define SUPPORT_PROFILE_ARB1 1
 #endif
 
+#ifndef SUPPORT_PROFILE_NV2
+#define SUPPORT_PROFILE_NV2 1
+#endif
+
+
+#if SUPPORT_PROFILE_NV2 && !SUPPORT_PROFILE_ARB1
+#error nv2 profile requires arb1 profile.
+#endif
+
+
 
 // Get basic wankery out of the way here...
 
@@ -150,7 +160,7 @@ typedef struct Context Context;
 typedef void (*emit_function)(Context *ctx);
 
 // one emit function for starting output in each profile.
-typedef void (*emit_start)(Context *ctx);
+typedef void (*emit_start)(Context *ctx, const char *profilestr);
 
 // one emit function for ending output in each profile.
 typedef void (*emit_end)(Context *ctx);
@@ -369,6 +379,7 @@ struct Context
     int predicated;
     int max_constreg;
     int uniform_array;
+    int support_nv2;
     int loops;
     int reps;
     int cmps;
@@ -1200,7 +1211,7 @@ static const char *get_D3D_const_array_varname(Context *ctx)
 } // get_D3D_const_array_varname
 
 
-static void emit_D3D_start(Context *ctx)
+static void emit_D3D_start(Context *ctx, const char *profilestr)
 {
     const uint major = (uint) ctx->major_ver;
     const uint minor = (uint) ctx->minor_ver;
@@ -1620,7 +1631,7 @@ static void emit_D3D_SINCOS(Context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_PASSTHROUGH(op) emit_PASSTHROUGH_##op,
 
-static void emit_PASSTHROUGH_start(Context *ctx)
+static void emit_PASSTHROUGH_start(Context *ctx, const char *profilestr)
 {
     // just copy the whole token stream and make all other emitters no-ops.
     ctx->output_len = (ctx->tokencount * sizeof (uint32));
@@ -2153,7 +2164,7 @@ static const char *get_GLSL_comparison_string_vector(Context *ctx)
 } // get_GLSL_comparison_string_vector
 
 
-static void emit_GLSL_start(Context *ctx)
+static void emit_GLSL_start(Context *ctx, const char *profilestr)
 {
     if (!shader_is_vertex(ctx) && !shader_is_pixel(ctx))
     {
@@ -3332,28 +3343,33 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
                                            arg->relative_regnum);
 
-        // The address register in ARB1 only allows the '.x' component, so
-        //  we need to load the component we need from a temp vector register
-        //  into .x as needed.
-        assert(arg->relative_regtype == REG_TYPE_ADDRESS);
-        assert(arg->relative_regnum == 0);
-        if (ctx->last_address_reg_component != arg->relative_component)
+        rel_swizzle[0] = '.';
+        rel_swizzle[1] = swizzle_channels[arg->relative_component];
+        rel_swizzle[2] = '\0';
+
+        if (!ctx->support_nv2)
         {
-            output_line(ctx, "ARL %s.x, addr%d.%c;", rel_regtype_str,
-                        arg->relative_regnum,
-                        swizzle_channels[arg->relative_component]);
-            ctx->last_address_reg_component = arg->relative_component;
+            // The address register in ARB1 only allows the '.x' component, so
+            //  we need to load the component we need from a temp vector
+            //  register into .x as needed.
+            assert(arg->relative_regtype == REG_TYPE_ADDRESS);
+            assert(arg->relative_regnum == 0);
+            if (ctx->last_address_reg_component != arg->relative_component)
+            {
+                output_line(ctx, "ARL %s.x, addr%d.%c;", rel_regtype_str,
+                            arg->relative_regnum,
+                            swizzle_channels[arg->relative_component]);
+                ctx->last_address_reg_component = arg->relative_component;
+            } // if
+
+            rel_swizzle[1] = 'x';
         } // if
 
         regtype_str = get_ARB1_const_array_varname(ctx);
-        rel_lbracket = "[";
         if (arg->regnum != 0)
             snprintf(rel_offset, sizeof (rel_offset), " + %d", arg->regnum);
-        rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
-                                           arg->relative_regnum);
-        rel_swizzle[0] = '.';
-        rel_swizzle[1] = 'x';
-        rel_swizzle[2] = '\0';
+
+        rel_lbracket = "[";
         rel_rbracket = "]";
     } // if
 
@@ -3657,7 +3673,7 @@ static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
     }
 
 
-static void emit_ARB1_start(Context *ctx)
+static void emit_ARB1_start(Context *ctx, const char *profilestr)
 {
     const char *shader_str = NULL;
     if (shader_is_vertex(ctx))
@@ -3672,7 +3688,24 @@ static void emit_ARB1_start(Context *ctx)
     } // if
 
     ctx->output = &ctx->globals;
-    output_line(ctx, "!!ARB%s1.0", shader_str);
+
+    if (strcmp(profilestr, MOJOSHADER_PROFILE_ARB1) == 0)
+        output_line(ctx, "!!ARB%s1.0", shader_str);
+
+    #if SUPPORT_PROFILE_NV2
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV2) == 0)
+    {
+        ctx->support_nv2 = 1;
+        output_line(ctx, "!!ARB%s1.0", shader_str);
+        output_line(ctx, "OPTION NV_vertex_program2;");
+    } // else if
+    #endif
+
+    else
+    {
+        failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
+    } // else
+
     ctx->output = &ctx->mainline;
 } // emit_ARB1_start
 
@@ -3701,7 +3734,8 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     {
         case REG_TYPE_ADDRESS:
             output_line(ctx, "ADDRESS %s;", varname);
-            output_line(ctx, "TEMP addr%d;", regnum);
+            if (!ctx->support_nv2)
+                output_line(ctx, "TEMP addr%d;", regnum);
             break;
         //case REG_TYPE_PREDICATE:
         //    output_line(ctx, "bvec4 %s;", varname);
@@ -4056,14 +4090,19 @@ static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
 
 static void emit_ARB1_SGN(Context *ctx)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *scratch1 = allocate_ARB1_scratch_reg_name(ctx);
-    const char *scratch2 = allocate_ARB1_scratch_reg_name(ctx);
-    output_line(ctx, "SLT %s, %s, 0.0;", scratch1, src0);
-    output_line(ctx, "SLT %s, -%s, 0.0;", scratch2, src0);
-    output_line(ctx, "ADD%s -%s, %s;", dst, scratch1, scratch2);
-    emit_ARB1_dest_modifiers(ctx);
+    if (ctx->support_nv2)
+        emit_ARB1_opcode_ds(ctx, "SSG");
+    else
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        const char *scratch1 = allocate_ARB1_scratch_reg_name(ctx);
+        const char *scratch2 = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "SLT %s, %s, 0.0;", scratch1, src0);
+        output_line(ctx, "SLT %s, -%s, 0.0;", scratch2, src0);
+        output_line(ctx, "ADD%s -%s, %s;", dst, scratch1, scratch2);
+        emit_ARB1_dest_modifiers(ctx);
+    } // else
 } // emit_ARB1_SGN
 
 EMIT_ARB1_OPCODE_DS_FUNC(ABS)
@@ -4084,7 +4123,8 @@ static void emit_ARB1_SINCOS(Context *ctx)
     // we don't care about the temp registers that <= sm2 demands; ignore them.
     const int mask = ctx->dest_arg.writemask;
 
-    if (shader_is_pixel(ctx))  // fragment shaders have sin/cos/sincos opcodes.
+    // arb1 fragment shaders have sin/cos/sincos opcodes.
+    if (shader_is_pixel(ctx))
     {
         const char *dst = make_ARB1_destarg_string(ctx);
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
@@ -4094,8 +4134,22 @@ static void emit_ARB1_SINCOS(Context *ctx)
             output_line(ctx, "SIN%s, %s;", dst, src0);
         else if (writemask_xy(mask))
             output_line(ctx, "SCS%s, %s;", dst, src0);
-        else
-            fail(ctx, "unhandled SINCOS writemask in arb1 profile");
+    } // if
+
+    // nv2+ shaders have sin and cos opcodes.
+    else if (ctx->support_nv2)
+    {
+        const char *dst = get_ARB1_destarg_varname(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        if (writemask_x(mask))
+            output_line(ctx, "COS%s.x, %s;", dst, src0);
+        else if (writemask_y(mask))
+            output_line(ctx, "SIN%s.y, %s;", dst, src0);
+        else if (writemask_xy(mask))
+        {
+            output_line(ctx, "SIN%s.x, %s;", dst, src0);
+            output_line(ctx, "COS%s.y, %s;", dst, src0);
+        } // else if
     } // if
 
     else  // big nasty.
@@ -4164,34 +4218,39 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
 
 static void emit_ARB1_MOVA(Context *ctx)
 {
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-    char addr[32];
-    snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
-
-    // ARL uses floor(), but D3D expects round-to-nearest.
-    // There is probably a more efficient way to do this.
-
-    if (shader_is_pixel(ctx))  // CMP only exists in fragment programs.  :/
-        output_line(ctx, "CMP %s, %s, -1.0, 1.0;", scratch, src0);
+    // NV_vertex_program2_option and later can use the ARR opcode.
+    if (ctx->support_nv2)
+        emit_ARB1_opcode_ds(ctx, "ARR");
     else
     {
-        output_line(ctx, "SLT %s, %s, 0.0;", scratch, src0);
-        output_line(ctx, "MAD %s, %s, -2.0, 1.0;", scratch, scratch);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        char addr[32];
+        snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
+
+        // ARL uses floor(), but D3D expects round-to-nearest.
+        // There is probably a more efficient way to do this.
+        if (shader_is_pixel(ctx))  // CMP only exists in fragment programs.  :/
+            output_line(ctx, "CMP %s, %s, -1.0, 1.0;", scratch, src0);
+        else
+        {
+            output_line(ctx, "SLT %s, %s, 0.0;", scratch, src0);
+            output_line(ctx, "MAD %s, %s, -2.0, 1.0;", scratch, scratch);
+        } // else
+
+        output_line(ctx, "ABS %s, %s;", addr, src0);
+        output_line(ctx, "ADD %s, %s, 0.5;", addr, addr);
+        output_line(ctx, "FLR %s, %s;", addr, addr);
+        output_line(ctx, "MUL %s, %s, %s;", addr, addr, scratch);
+
+        // we don't handle these right now, since emit_ARB1_dest_modifiers(ctx)
+        //  wants to look at dest_arg, not our temp register.
+        assert(ctx->dest_arg.result_mod == 0);
+        assert(ctx->dest_arg.result_shift == 0);
+
+        // we assign to the actual address register as needed.
+        ctx->last_address_reg_component = -1;
     } // else
-
-    output_line(ctx, "ABS %s, %s;", addr, src0);
-    output_line(ctx, "ADD %s, %s, 0.5;", addr, addr);
-    output_line(ctx, "FLR %s, %s;", addr, addr);
-    output_line(ctx, "MUL %s, %s, %s;", addr, addr, scratch);
-
-    // we don't handle these right now, since emit_ARB1_dest_modifiers(ctx)
-    //  wants to look at dest_arg, not our temp register.
-    assert(ctx->dest_arg.result_mod == 0);
-    assert(ctx->dest_arg.result_shift == 0);
-
-    // we assign to the actual address register as needed.
-    ctx->last_address_reg_component = -1;
 } // emit_ARB1_MOVA
 
 static void emit_ARB1_TEXKILL(Context *ctx)
@@ -4401,6 +4460,15 @@ static const Profile profiles[] =
 };
 
 #undef DEFINE_PROFILE
+
+// This is for profiles that extend other profiles...
+static const struct { const char *from; const char *to; } profileMap[] =
+{
+#if SUPPORT_PROFILE_NV2
+    { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
+#endif
+};
+
 
 // The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
 #define PROFILE_EMITTERS(op) { \
@@ -5776,7 +5844,7 @@ static int parse_instruction_token(Context *ctx)
 } // parse_instruction_token
 
 
-static int parse_version_token(Context *ctx)
+static int parse_version_token(Context *ctx, const char *profilestr)
 {
     if (isfail(ctx))  // catch preexisting errors here.
         return FAIL;
@@ -5814,7 +5882,7 @@ static int parse_version_token(Context *ctx)
                      (uint) major, (uint) minor);
     } // if
 
-    ctx->profile->start_emitter(ctx);
+    ctx->profile->start_emitter(ctx, profilestr);
     return 1;  // ate one token.
 } // parse_version_token
 
@@ -5903,12 +5971,23 @@ static void internal_free(void *ptr, void *d) { free(ptr); }
 static int find_profile_id(const char *profile)
 {
     int i;
+    for (i = 0; i < STATICARRAYLEN(profileMap); i++)
+    {
+        const char *name = profileMap[i].from;
+        if (strcmp(name, profile) == 0)
+        {
+            profile = profileMap[i].to;
+            break;
+        } // if
+    } // for
+
     for (i = 0; i < STATICARRAYLEN(profiles); i++)
     {
         const char *name = profiles[i].name;
         if (strcmp(name, profile) == 0)
             return i;
     } // for
+
     return -1;  // no match.
 } // find_profile_id
 
@@ -6518,7 +6597,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         return &out_of_mem_data;
 
     // Version token always comes first.
-    rc = parse_version_token(ctx);
+    rc = parse_version_token(ctx, profile);
 
     // parse out the rest of the tokens after the version token...
     while ( (rc > 0) && (!isfail(ctx)) )

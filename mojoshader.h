@@ -342,6 +342,24 @@ typedef struct
  */
 #define MOJOSHADER_PROFILE_ARB1 "arb1"
 
+/*
+ * Profile string for OpenGL ARB 1.0 shaders with Nvidia 2.0 extensions:
+ *  GL_NV_vertex_program2_option and GL_NV_fragment_program2
+ */
+#define MOJOSHADER_PROFILE_NV2 "nv2"
+
+/*
+ * Profile string for OpenGL ARB 1.0 shaders with Nvidia 3.0 extensions:
+ *  GL_NV_vertex_program3 and GL_NV_fragment_program2
+ */
+// Not yet. #define MOJOSHADER_PROFILE_NV3 "nv3"
+
+/*
+ * Profile string for OpenGL ARB 1.0 shaders with Nvidia 4.0 extensions:
+ *  NV_gpu_program4
+ */
+// Not yet. #define MOJOSHADER_PROFILE_NV4 "nv4"
+
 
 /*
  * Parse a compiled Direct3D shader's bytecode.
