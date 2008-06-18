@@ -3424,14 +3424,22 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            regtype_str = allocate_ARB1_scratch_reg_name(ctx);
-            regnum_str[0] = '\0'; // move value to scratch register.
-            rel_lbracket = "";   // scratch register won't use array.
-            rel_rbracket = "";
-            rel_offset[0] = '\0';
-            rel_swizzle[0] = '\0';
-            rel_regtype_str = "";
-            output_line(ctx, "ABS %s, %s;", regtype_str, buf);
+            if (ctx->support_nv2)  // GL_NV_vertex_program2_option adds this.
+            {
+                premod_str = (arg->src_mod == SRCMOD_ABSNEGATE) ? "-|" : "|";
+                postmod_str = "|";
+            } // if
+            else
+            {
+                regtype_str = allocate_ARB1_scratch_reg_name(ctx);
+                regnum_str[0] = '\0'; // move value to scratch register.
+                rel_lbracket = "";   // scratch register won't use array.
+                rel_rbracket = "";
+                rel_offset[0] = '\0';
+                rel_swizzle[0] = '\0';
+                rel_regtype_str = "";
+                output_line(ctx, "ABS %s, %s;", regtype_str, buf);
+            } // else
             break;
 
         case SRCMOD_NOT:
