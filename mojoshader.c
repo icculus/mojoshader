@@ -1757,6 +1757,11 @@ EMIT_PASSTHROUGH_OPCODE_FUNC(TEXLD)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
 
+#define EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(op) \
+    static void emit_GLSL_##op(Context *ctx) { \
+        fail(ctx, #op " unimplemented in glsl profile"); \
+    }
+
 const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
                                      int regnum, char *regnum_str, int len)
 {
@@ -3001,15 +3006,7 @@ static void emit_GLSL_DEFI(Context *ctx)
     pop_output(ctx);
 } // emit_GLSL_DEFI
 
-static void emit_GLSL_TEXCRD(Context *ctx)
-{
-    // this opcode looks and acts differently depending on the shader model.
-    //if (shader_version_atleast(ctx, 1, 4))
-    //    emit_D3D_opcode_dss(ctx, "texcrd");
-    //else
-    //    emit_D3D_opcode_d(ctx, "texcoord");
-    fail(ctx, "TEXCRD unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXCRD
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
@@ -3073,55 +3070,16 @@ static void emit_GLSL_TEXLD(Context *ctx)
     } // else
 } // emit_GLSL_TEXLD
 
-static void emit_GLSL_TEXBEM(Context *ctx)
-{
-    fail(ctx, "TEXBEM unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXBEM
-
-static void emit_GLSL_TEXBEML(Context *ctx)
-{
-    fail(ctx, "TEXBEML unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXBEML
-
-static void emit_GLSL_TEXREG2AR(Context *ctx)
-{
-    fail(ctx, "TEXREG2AR unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXREG2AR
-
-static void emit_GLSL_TEXREG2GB(Context *ctx)
-{
-    fail(ctx, "TEXREG2GB unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXREG2GB
-
-static void emit_GLSL_TEXM3X2PAD(Context *ctx)
-{
-    fail(ctx, "TEXM3X2PAD unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X2PAD
-
-static void emit_GLSL_TEXM3X2TEX(Context *ctx)
-{
-    fail(ctx, "TEXM3X2TEX unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X2TEX
-
-static void emit_GLSL_TEXM3X3PAD(Context *ctx)
-{
-    fail(ctx, "TEXM3X3PAD unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X3PAD
-
-static void emit_GLSL_TEXM3X3TEX(Context *ctx)
-{
-    fail(ctx, "TEXM3X3TEX unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X3TEX
-
-static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
-{
-    fail(ctx, "TEXM3X3SPEC unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X3SPEC
-
-static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
-{
-    fail(ctx, "TEXM3X3VSPEC unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X3VSPEC
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)  // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEML) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2TEX) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3PAD) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC) // !!! FIXME
 
 static void emit_GLSL_EXPP(Context *ctx)
 {
@@ -3216,45 +3174,19 @@ static void emit_GLSL_DEF(Context *ctx)
     pop_output(ctx);
 } // emit_GLSL_DEF
 
-static void emit_GLSL_TEXREG2RGB(Context *ctx)
-{
-    fail(ctx, "TEXREG2RGB unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXREG2RGB
-
-static void emit_GLSL_TEXDP3TEX(Context *ctx)
-{
-    fail(ctx, "TEXDP3TEX unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXDP3TEX
-
-static void emit_GLSL_TEXM3X2DEPTH(Context *ctx)
-{
-    fail(ctx, "TEXM3X2DEPTH unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X2DEPTH
-
-static void emit_GLSL_TEXDP3(Context *ctx)
-{
-    fail(ctx, "TEXDP3 unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXDP3
-
-static void emit_GLSL_TEXM3X3(Context *ctx)
-{
-    fail(ctx, "TEXM3X3 unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXM3X3
-
-static void emit_GLSL_TEXDEPTH(Context *ctx)
-{
-    fail(ctx, "TEXDEPTH unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXDEPTH
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3) // !!! FIXME
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH) // !!! FIXME
 
 static void emit_GLSL_CMP(Context *ctx)
 {
     emit_GLSL_comparison_operations(ctx, ">= 0.0");
 } // emit_GLSL_CMP
 
-static void emit_GLSL_BEM(Context *ctx)
-{
-    fail(ctx, "BEM unimplemented.");  // !!! FIXME
-} // emit_GLSL_BEM
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(BEM) // !!! FIXME
 
 static void emit_GLSL_DP2ADD(Context *ctx)
 {
@@ -3280,10 +3212,7 @@ static void emit_GLSL_DSY(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
-static void emit_GLSL_TEXLDD(Context *ctx)
-{
-    fail(ctx, "TEXLDD unimplemented.");  // !!! FIXME
-} // emit_GLSL_TEXLDD
+EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD) // !!! FIXME
 
 static void emit_GLSL_SETP(Context *ctx)
 {
@@ -4295,11 +4224,7 @@ static void emit_ARB1_LOGP(Context *ctx)
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
-static void emit_ARB1_CND(Context *ctx)
-{
-    failf(ctx, "%s unimplemented in arb1 profile", __FUNCTION__);
-} // emit_ARB1_CND
-
+EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CND)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH)
