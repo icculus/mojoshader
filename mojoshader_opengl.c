@@ -140,16 +140,16 @@ struct MOJOSHADER_glContext
     char profile[16];
 
     // Extensions...
-    int have_base_opengl;
-    int have_GL_ARB_vertex_program;
-    int have_GL_ARB_fragment_program;
-    int have_GL_NV_vertex_program2_option;
-    int have_GL_NV_fragment_program2;
-    int have_GL_ARB_shader_objects;
-    int have_GL_ARB_vertex_shader;
-    int have_GL_ARB_fragment_shader;
-    int have_GL_ARB_shading_language_100;
-    int have_GL_NV_half_float;
+    int have_base_opengl:1;
+    int have_GL_ARB_vertex_program:1;
+    int have_GL_ARB_fragment_program:1;
+    int have_GL_NV_vertex_program2_option:1;
+    int have_GL_NV_fragment_program2:1;
+    int have_GL_ARB_shader_objects:1;
+    int have_GL_ARB_vertex_shader:1;
+    int have_GL_ARB_fragment_shader:1;
+    int have_GL_ARB_shading_language_100:1;
+    int have_GL_NV_half_float:1;
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;

@@ -320,14 +320,6 @@ typedef struct
 } SourceArgInfo;
 
 
-// !!! FIXME: get rid of this. use a bitfield instead.
-typedef enum
-{
-    // Specific to GLSL profile...
-    CTX_FLAGS_GLSL_LIT_OPCODE = (1 << 0),
-    CTX_FLAGS_MASK = 0xFFFFFFFF
-} ContextFlags;
-
 
 #define SCRATCH_BUFFER_SIZE 128
 #define SCRATCH_BUFFERS 32
@@ -375,11 +367,7 @@ struct Context
     int instruction_count;
     uint32 instruction_controls;
     uint32 previous_opcode;
-    ContextFlags flags;
-    int predicated;
     int max_constreg;
-    int uniform_array;
-    int support_nv2;
     int loops;
     int reps;
     int cmps;
@@ -397,6 +385,10 @@ struct Context
     RegisterList attributes;
     int sampler_count;
     RegisterList samplers;
+    int predicated:1;
+    int uniform_array:1;
+    int support_nv2:1;
+    int glsl_generated_lit_opcode:1;
 };
 
 
@@ -2648,10 +2640,10 @@ static void emit_GLSL_LIT_helper(Context *ctx)
 {
     const char *maxp = "127.9961f"; // value from the dx9 reference.
 
-    if (ctx->flags & CTX_FLAGS_GLSL_LIT_OPCODE)
+    if (ctx->glsl_generated_lit_opcode)
         return;
 
-    ctx->flags = (ContextFlags) (ctx->flags | CTX_FLAGS_GLSL_LIT_OPCODE);
+    ctx->glsl_generated_lit_opcode = 1;
 
     push_output(ctx, &ctx->helpers);
     output_line(ctx, "const vec4 LIT(const vec4 src)");
