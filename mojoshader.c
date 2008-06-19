@@ -3685,10 +3685,17 @@ static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
 static void emit_ARB1_start(Context *ctx, const char *profilestr)
 {
     const char *shader_str = NULL;
+    const char *shader_full_str = NULL;
     if (shader_is_vertex(ctx))
+    {
         shader_str = "vp";
+        shader_full_str = "vertex";
+    } // if
     else if (shader_is_pixel(ctx))
+    {
         shader_str = "fp";
+        shader_full_str = "fragment";
+    } // else if
     else
     {
         failf(ctx, "Shader type %u unsupported in this profile.",
@@ -3705,7 +3712,7 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
     {
         ctx->support_nv2 = 1;
         output_line(ctx, "!!ARB%s1.0", shader_str);
-        output_line(ctx, "OPTION NV_vertex_program2;");
+        output_line(ctx, "OPTION NV_%s_program2;", shader_full_str);
     } // else if
 
     else
