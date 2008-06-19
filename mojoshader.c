@@ -3734,7 +3734,7 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     {
         case REG_TYPE_ADDRESS:
             output_line(ctx, "ADDRESS %s;", varname);
-            if (!ctx->support_nv2)
+            if (!ctx->support_nv2)  // nv2 has four-component address already.
                 output_line(ctx, "TEMP addr%d;", regnum);
             break;
         //case REG_TYPE_PREDICATE:
