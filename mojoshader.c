@@ -48,16 +48,6 @@
 #define SUPPORT_PROFILE_ARB1 1
 #endif
 
-#ifndef SUPPORT_PROFILE_NV2
-#define SUPPORT_PROFILE_NV2 1
-#endif
-
-
-#if SUPPORT_PROFILE_NV2 && !SUPPORT_PROFILE_ARB1
-#error nv2 profile requires arb1 profile.
-#endif
-
-
 
 // Get basic wankery out of the way here...
 
@@ -3711,14 +3701,12 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
     if (strcmp(profilestr, MOJOSHADER_PROFILE_ARB1) == 0)
         output_line(ctx, "!!ARB%s1.0", shader_str);
 
-    #if SUPPORT_PROFILE_NV2
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV2) == 0)
     {
         ctx->support_nv2 = 1;
         output_line(ctx, "!!ARB%s1.0", shader_str);
         output_line(ctx, "OPTION NV_vertex_program2;");
     } // else if
-    #endif
 
     else
     {
@@ -4645,9 +4633,7 @@ static const Profile profiles[] =
 // This is for profiles that extend other profiles...
 static const struct { const char *from; const char *to; } profileMap[] =
 {
-#if SUPPORT_PROFILE_NV2
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
-#endif
 };
 
 
