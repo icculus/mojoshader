@@ -5683,6 +5683,12 @@ static void state_LOG(Context *ctx)
         fail(ctx, "LOG src0 must have replicate swizzle");
 } // state_LOG
 
+static void state_LOGP(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "LOGP src0 must have replicate swizzle");
+} // state_LOGP
+
 static void state_SINCOS(Context *ctx)
 {
     const DestArgInfo *dst = &ctx->dest_arg;
@@ -5925,7 +5931,7 @@ static const Instruction instructions[] =
     INSTRUCTION(TEXM3X3SPEC, 1, DSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(TEXM3X3VSPEC, 1, DS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION(EXPP, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LOGP, 1, DS, MOJOSHADER_TYPE_ANY),
+    INSTRUCTION_STATE(LOGP, 1, DS, MOJOSHADER_TYPE_ANY),
     INSTRUCTION_STATE(CND, 1, DSSS, MOJOSHADER_TYPE_PIXEL),
     INSTRUCTION_STATE(DEF, 0, DEF, MOJOSHADER_TYPE_ANY),
     INSTRUCTION(TEXREG2RGB, 1, DS, MOJOSHADER_TYPE_PIXEL),
