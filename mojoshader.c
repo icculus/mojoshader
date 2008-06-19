@@ -4077,7 +4077,7 @@ static void emit_ARB1_CALL(Context *ctx)
         return;
     } // if
 
-    output_line(ctx, "CAL %s", labelstr);
+    output_line(ctx, "CAL %s;", labelstr);
 } // emit_ARB1_CALL
 
 static void emit_ARB1_CALLNZ(Context *ctx)
@@ -4085,7 +4085,7 @@ static void emit_ARB1_CALLNZ(Context *ctx)
     // !!! FIXME: if src1 is a constbool that's true, we can remove the
     // !!! FIXME:  if. If it's false, we can make this a no-op.
     const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 0);
+    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
     if (!ctx->support_nv2)  // no branching in stock ARB1.
@@ -4093,8 +4093,8 @@ static void emit_ARB1_CALLNZ(Context *ctx)
     else
     {
         // !!! FIXME: double-check this.
-        output_line(ctx, "MOVC %s, %s", scratch, src1);
-        output_line(ctx, "CAL %s (NE.x)", labelstr);
+        output_line(ctx, "MOVC %s, %s;", scratch, src1);
+        output_line(ctx, "CAL %s (NE.x);", labelstr);
     } // else
 } // emit_ARB1_CALLNZ
 
@@ -4108,7 +4108,7 @@ static void emit_ARB1_RET(Context *ctx)
     //  to ctx->ignore anyhow, so this should be "safe" ... arb1 profile will
     //  just end up throwing all this code out.
     if (ctx->support_nv2)  // no branching in stock ARB1.
-        output_line(ctx, "RET");
+        output_line(ctx, "RET;");
     ctx->output = &ctx->mainline;  // in case we were ignoring this function.
 } // emit_ARB1_RET
 
