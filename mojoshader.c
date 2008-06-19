@@ -3519,23 +3519,6 @@ static const char *make_ARB1_destarg_string(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
 
-    const char *result_shift_str = "";
-    if (arg->result_shift != 0x0)
-    {
-        fail(ctx, "dest register shifting currently unsupported in arb1");
-        return "";
-    } // if
-
-    switch (arg->result_shift)
-    {
-        case 0x1: result_shift_str = "_x2"; break;
-        case 0x2: result_shift_str = "_x4"; break;
-        case 0x3: result_shift_str = "_x8"; break;
-        case 0xD: result_shift_str = "_d8"; break;
-        case 0xE: result_shift_str = "_d4"; break;
-        case 0xF: result_shift_str = "_d2"; break;
-    } // switch
-
     const char *sat_str = "";
     // The "_SAT" modifier is only available in fragment shaders, but we'll
     //  fake it for them later in emit_ARB1_dest_modifiers() ...
@@ -3598,6 +3581,27 @@ static const char *make_ARB1_destarg_string(Context *ctx)
 static void emit_ARB1_dest_modifiers(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
+
+    if (arg->result_shift != 0x0)
+    {
+        const char *varname = get_ARB1_destarg_varname(ctx);
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *multiplier = NULL;
+
+        switch (arg->result_shift)
+        {
+            case 0x1: multiplier = "2.0"; break;
+            case 0x2: multiplier = "4.0"; break;
+            case 0x3: multiplier = "8.0"; break;
+            case 0xD: multiplier = "0.125"; break;
+            case 0xE: multiplier = "0.25"; break;
+            case 0xF: multiplier = "0.5"; break;
+        } // switch
+
+        if (multiplier != NULL)
+            output_line(ctx, "MUL%s, %s, %s;", dst, varname, multiplier);
+    } // if
+
     if ( (arg->result_mod & MOD_SATURATE) && (!shader_is_pixel(ctx)) )
     {
         const char *varname = get_ARB1_destarg_varname(ctx);
