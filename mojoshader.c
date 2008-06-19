@@ -4033,11 +4033,23 @@ static void emit_ARB1_EXP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 
 static void emit_ARB1_LOG(Context *ctx)
 {
+    // we can optimize this to use nv2's |abs| construct in some cases.
+    if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
+         (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
+        ctx->source_args[0].src_mod = SRCMOD_ABS;
+
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-    output_line(ctx, "ABS %s, %s;", scratch, src0);
-    output_line(ctx, "LG2%s, %s.x;", dst, scratch);
+
+    if (ctx->source_args[0].src_mod == SRCMOD_ABS)
+        output_line(ctx, "LG2%s, %s;", dst, src0);
+    else
+    {
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "ABS %s, %s;", scratch, src0);
+        output_line(ctx, "LG2%s, %s.x;", dst, scratch);
+    } // else
+
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_LOG
 
@@ -4427,13 +4439,25 @@ static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EXP"); }
 
 static void emit_ARB1_LOGP(Context *ctx)
 {
+    // we can optimize this to use nv2's |abs| construct in some cases.
+    if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
+         (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
+        ctx->source_args[0].src_mod = SRCMOD_ABS;
+
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-    output_line(ctx, "ABS %s, %s;", scratch, src0);
-    output_line(ctx, "LOG%s, %s.x;", dst, scratch);
+
+    if (ctx->source_args[0].src_mod == SRCMOD_ABS)
+        output_line(ctx, "LOG%s, %s;", dst, src0);
+    else
+    {
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "ABS %s, %s;", scratch, src0);
+        output_line(ctx, "LOG%s, %s.x;", dst, scratch);
+    } // else
+
     emit_ARB1_dest_modifiers(ctx);
-} // emit_ARB1_LOG
+} // emit_ARB1_LOGP
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CND)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
