@@ -4483,7 +4483,7 @@ static void emit_ARB1_IFC(Context *ctx)
     if (ctx->support_nv2)
     {
         static const char *comps[] = {
-            "", "SGT", "SEQ", "SGE", "SGT", "SNE", "SLE"
+            "", "SGTC", "SEQC", "SGEC", "SGTC", "SNEC", "SLEC"
         };
 
         if (ctx->instruction_controls >= STATICARRAYLEN(comps))
