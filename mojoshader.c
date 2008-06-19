@@ -373,6 +373,9 @@ struct Context
     int cmps;
     int scratch_registers;
     int max_scratch_registers;
+    int if_labels_stack_index;
+    int if_labels_stack[32];
+    int assigned_if_labels;
     int assigned_vertex_attributes;
     int last_address_reg_component;
     RegisterList used_registers;
@@ -853,6 +856,11 @@ static int allocate_scratch_register(Context *ctx)
         ctx->max_scratch_registers = retval + 1;
     return retval;
 } // allocate_scratch_register
+
+static int allocate_if_label(Context *ctx)
+{
+    return ctx->assigned_if_labels++;
+} // allocate_if_label
 
 
 // D3D stuff that's used in more than just the d3d profile...
@@ -3278,6 +3286,13 @@ static const char *allocate_ARB1_scratch_reg_name(Context *ctx)
     return buf;
 } // allocate_ARB1_scratch_reg_name
 
+static const char *get_ARB1_if_label_name(Context *ctx, int id)
+{
+    char *buf = get_scratch_buffer(ctx);
+    snprintf(buf, SCRATCH_BUFFER_SIZE, "if_label%d", id);
+    return buf;
+} // get_ARB1_if_label_name
+
 const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
                                      int regnum, char *regnum_str, int len)
 {
@@ -4273,9 +4288,74 @@ static void emit_ARB1_SINCOS(Context *ctx)
 // !!! FIXME: nvidia's extensions to arb1 can handle these.
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IF)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ELSE)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDIF)
+
+static void emit_ARB1_IF(Context *ctx)
+{
+    if (ctx->support_nv2)
+    {
+        // there's no IF construct, but we can use a branch to a label.
+        const int label = allocate_if_label(ctx);
+        const char *failbranch = get_ARB1_if_label_name(ctx, label);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
+
+        assert(ctx->if_labels_stack_index < STATICARRAYLEN(ctx->if_labels_stack));
+        ctx->if_labels_stack[ctx->if_labels_stack_index++] = label;
+
+        // !!! FIXME: double-check this.
+        output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
+        output_line(ctx, "BRA %s (EQ.x);", failbranch);
+    } // if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_IF
+
+static void emit_ARB1_ELSE(Context *ctx)
+{
+    if (ctx->support_nv2)
+    {
+        // there's no ELSE construct, but we can use a branch to a label.
+        assert(ctx->if_labels_stack_index > 0);
+
+        // At the end of the IF block, unconditionally jump to the ENDIF.
+        const int endlabel = allocate_if_label(ctx);
+        output_line(ctx, "BRA %s;", get_ARB1_if_label_name(ctx, endlabel));
+
+        // Now mark the ELSE section with a lable.
+        const int elselabel = ctx->if_labels_stack[ctx->if_labels_stack_index];
+        output_line(ctx, "%s:", get_ARB1_if_label_name(ctx, elselabel));
+
+        // Replace the ELSE label with the ENDIF on the label stack.
+        ctx->if_labels_stack[ctx->if_labels_stack_index] = endlabel;
+    } // if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_ELSE
+
+
+static void emit_ARB1_ENDIF(Context *ctx)
+{
+    if (ctx->support_nv2)
+    {
+        // there's no ENDIF construct, but we can use a branch to a label.
+        assert(ctx->if_labels_stack_index > 0);
+        const int endlabel = ctx->if_labels_stack[--ctx->if_labels_stack_index];
+        output_line(ctx, "%s:", get_ARB1_if_label_name(ctx, endlabel));
+    } // if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_ENDIF
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
 
 static void emit_ARB1_MOVA(Context *ctx)
