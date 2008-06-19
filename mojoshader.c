@@ -4146,12 +4146,24 @@ static void emit_ARB1_LABEL(Context *ctx)
 
 static void emit_ARB1_POW(Context *ctx)
 {
+    // we can optimize this to use nv2's |abs| construct in some cases.
+    if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
+         (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
+        ctx->source_args[0].src_mod = SRCMOD_ABS;
+
     const char *dst = make_ARB1_destarg_string(ctx);
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-    output_line(ctx, "ABS %s, %s;", scratch, src0);
-    output_line(ctx, "POW%s, %s.x, %s;", dst, scratch, src1);
+
+    if (ctx->source_args[0].src_mod == SRCMOD_ABS)
+        output_line(ctx, "POW%s, %s, %s;", dst, src0, src1);
+    else
+    {
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "ABS %s, %s;", scratch, src0);
+        output_line(ctx, "POW%s, %s.x, %s;", dst, scratch, src1);
+    } // else
+
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_POW
 
