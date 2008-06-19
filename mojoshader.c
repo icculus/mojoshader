@@ -4289,22 +4289,28 @@ static void emit_ARB1_SINCOS(Context *ctx)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
 
+static void nv2_if(Context *ctx)
+{
+    // there's no IF construct, but we can use a branch to a label.
+    const int label = allocate_if_label(ctx);
+    const char *failbranch = get_ARB1_if_label_name(ctx, label);
+
+    assert(ctx->if_labels_stack_index < STATICARRAYLEN(ctx->if_labels_stack));
+    ctx->if_labels_stack[ctx->if_labels_stack_index++] = label;
+
+    // The condition code register MUST be set up before this!
+    output_line(ctx, "BRA %s (EQ.x);", failbranch);
+} // nv2_if
+
+
 static void emit_ARB1_IF(Context *ctx)
 {
     if (ctx->support_nv2)
     {
-        // there's no IF construct, but we can use a branch to a label.
-        const int label = allocate_if_label(ctx);
-        const char *failbranch = get_ARB1_if_label_name(ctx, label);
         const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
         const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
-
-        assert(ctx->if_labels_stack_index < STATICARRAYLEN(ctx->if_labels_stack));
-        ctx->if_labels_stack[ctx->if_labels_stack_index++] = label;
-
-        // !!! FIXME: double-check this.
         output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
-        output_line(ctx, "BRA %s (EQ.x);", failbranch);
+        nv2_if(ctx);
     } // if
 
     else  // stock ARB1 has no branching.
@@ -4471,7 +4477,36 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDL)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKC)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(IFC)
+
+static void emit_ARB1_IFC(Context *ctx)
+{
+    if (ctx->support_nv2)
+    {
+        static const char *comps[] = {
+            "", "SGT", "SEQ", "SGE", "SGT", "SNE", "SLE"
+        };
+
+        if (ctx->instruction_controls >= STATICARRAYLEN(comps))
+        {
+            fail(ctx, "unknown comparison control");
+            return;
+        } // if
+
+        const char *comp = comps[ctx->instruction_controls];
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
+        const char *src1 = get_ARB1_srcarg_varname(ctx, 1);
+        output_line(ctx, "%s %s.x, %s, %s;", comp, scratch, src0, src1);
+        nv2_if(ctx);
+    } // if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_IFC
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(SETP)
 
 static void emit_ARB1_DEF(Context *ctx)
