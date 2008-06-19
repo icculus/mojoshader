@@ -4325,11 +4325,11 @@ static void emit_ARB1_ELSE(Context *ctx)
         output_line(ctx, "BRA %s;", get_ARB1_if_label_name(ctx, endlabel));
 
         // Now mark the ELSE section with a lable.
-        const int elselabel = ctx->if_labels_stack[ctx->if_labels_stack_index];
+        const int elselabel = ctx->if_labels_stack[ctx->if_labels_stack_index-1];
         output_line(ctx, "%s:", get_ARB1_if_label_name(ctx, elselabel));
 
         // Replace the ELSE label with the ENDIF on the label stack.
-        ctx->if_labels_stack[ctx->if_labels_stack_index] = endlabel;
+        ctx->if_labels_stack[ctx->if_labels_stack_index-1] = endlabel;
     } // if
 
     else  // stock ARB1 has no branching.
