@@ -4271,6 +4271,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
 
         if (need_sin)
         {
+            // !!! FIXME: use SRCMOD_ABS here?
             output_line(ctx, "ABS %s.x, %s.x;", dst, src0);
             output_line(ctx, "MUL %s.x, %s.x, -0.40528473456935108577551785283891;", dst, dst);
             output_line(ctx, "MUL %s.x, %s.x, 1.2732395447351626861510701069801;", scratch, src0);
@@ -4391,6 +4392,8 @@ static void emit_ARB1_MOVA(Context *ctx)
         const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
         char addr[32];
         snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
+
+        // !!! FIXME: we can optimize this if src_mod is ABS or ABSNEGATE.
 
         // ARL uses floor(), but D3D expects round-to-nearest.
         // There is probably a more efficient way to do this.
