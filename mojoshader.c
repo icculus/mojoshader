@@ -4325,7 +4325,7 @@ static void emit_ARB1_REP(Context *ctx)
 
     // nv2 fragment programs have a real REP.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
-        output_line(ctx, "REP %s", src0);
+        output_line(ctx, "REP %s;", src0);
 
     else if (ctx->support_nv2)
     {
@@ -4357,7 +4357,7 @@ static void emit_ARB1_ENDREP(Context *ctx)
 {
     // nv2 fragment programs have a real ENDREP.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
-        output_line(ctx, "ENDREP");
+        output_line(ctx, "ENDREP;");
 
     else if (ctx->support_nv2)
     {
@@ -4387,7 +4387,7 @@ static void nv2_if(Context *ctx)
 {
     // The condition code register MUST be set up before this!
     if (shader_is_pixel(ctx))  // nv2 fragment programs have a real IF.
-        output_line(ctx, "IF (EQ.x)");
+        output_line(ctx, "IF EQ.x;");
     else
     {
         // there's no IF construct, but we can use a branch to a label.
@@ -4418,11 +4418,12 @@ static void emit_ARB1_IF(Context *ctx)
     } // else
 } // emit_ARB1_IF
 
+
 static void emit_ARB1_ELSE(Context *ctx)
 {
     // nv2 fragment programs have a real ELSE.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
-        output_line(ctx, "ELSE");
+        output_line(ctx, "ELSE;");
 
     else if (ctx->support_nv2)
     {
@@ -4452,7 +4453,7 @@ static void emit_ARB1_ENDIF(Context *ctx)
 {
     // nv2 fragment programs have a real ENDIF.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
-        output_line(ctx, "ENDIF");
+        output_line(ctx, "ENDIF;");
 
     else if (ctx->support_nv2)
     {
