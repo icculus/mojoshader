@@ -4478,7 +4478,27 @@ static void emit_ARB1_ENDIF(Context *ctx)
 } // emit_ARB1_ENDIF
 
 
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAK)
+static void emit_ARB1_BREAK(Context *ctx)
+{
+    // nv2 fragment programs have a real BREAK.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+        output_line(ctx, "BRK;");
+
+    else if (ctx->support_nv2)
+    {
+        // no BREAK, but we can use branches.
+        assert(ctx->branch_labels_stack_index >= 2);
+        const int faillabel = ctx->branch_labels_stack[ctx->branch_labels_stack_index];
+        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+        output_line(ctx, "BRA %s;", failbranch);
+    } // else if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_BREAK
+
 
 static void emit_ARB1_MOVA(Context *ctx)
 {
