@@ -3737,9 +3737,9 @@ static void emit_ARB1_finalize(Context *ctx)
     for (i = 0; i < ctx->max_scratch_registers; i++)
         output_line(ctx, "TEMP %s;", allocate_ARB1_scratch_reg_name(ctx));
 
-    // set up temps for nv2 REP/ENDREP emulation through branching.
     if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) )
     {
+        // set up temps for nv2 REP/ENDREP emulation through branching.
         for (i = 0; i < ctx->max_reps; i++)
             output_line(ctx, "TEMP rep%d;", i);
     } // if
@@ -4321,12 +4321,11 @@ static void emit_ARB1_SINCOS(Context *ctx)
 
 static void emit_ARB1_REP(Context *ctx)
 {
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+
     // nv2 fragment programs have a real REP.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
-    {
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
         output_line(ctx, "REP %s", src0);
-    } // if
 
     else if (ctx->support_nv2)
     {
@@ -4342,7 +4341,6 @@ static void emit_ARB1_REP(Context *ctx)
 
         char scratch[32];
         snprintf(scratch, sizeof (scratch), "rep%d", ctx->reps);
-        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
         output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
         output_line(ctx, "BRA %s (LE.x);", failbranch);
         output_line(ctx, "%s:", topbranch);
