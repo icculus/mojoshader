@@ -4219,14 +4219,21 @@ EMIT_ARB1_OPCODE_DS_FUNC(ABS)
 
 static void emit_ARB1_NRM(Context *ctx)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-    output_line(ctx, "DP3 %s.w, %s, %s;", scratch, src0, src0);
-    output_line(ctx, "RSQ %s.w, %s.w;", scratch, scratch);
-    output_line(ctx, "MUL%s, %s.w, %s;", dst, scratch, src0);
-    emit_ARB1_dest_modifiers(ctx);
+    // nv2 fragment programs have a real NRM.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+        emit_ARB1_opcode_ds(ctx, "NRM");
+    else
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "DP3 %s.w, %s, %s;", scratch, src0, src0);
+        output_line(ctx, "RSQ %s.w, %s.w;", scratch, scratch);
+        output_line(ctx, "MUL%s, %s.w, %s;", dst, scratch, src0);
+        emit_ARB1_dest_modifiers(ctx);
+    } // else
 } // emit_ARB1_NRM
+
 
 static void emit_ARB1_SINCOS(Context *ctx)
 {
@@ -4318,6 +4325,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
     if (!isfail(ctx))
         emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SINCOS
+
 
 static void emit_ARB1_REP(Context *ctx)
 {
