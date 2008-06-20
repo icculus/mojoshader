@@ -4329,8 +4329,6 @@ static void nv2_if(Context *ctx)
 
         output_line(ctx, "BRA %s (EQ.x);", failbranch);
     } // else
-
-    ctx->indent++;
 } // nv2_if
 
 
@@ -4348,14 +4346,10 @@ static void emit_ARB1_IF(Context *ctx)
     {
         fail(ctx, "branching unsupported in this profile");
     } // else
-
-    ctx->indent++;
 } // emit_ARB1_IF
 
 static void emit_ARB1_ELSE(Context *ctx)
 {
-    ctx->indent--;
-
     // nv2 fragment programs have a real ELSE.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
         output_line(ctx, "ELSE");
@@ -4367,9 +4361,7 @@ static void emit_ARB1_ELSE(Context *ctx)
 
         // At the end of the IF block, unconditionally jump to the ENDIF.
         const int endlabel = allocate_if_label(ctx);
-        ctx->indent++;
         output_line(ctx, "BRA %s;", get_ARB1_if_label_name(ctx, endlabel));
-        ctx->indent--;
 
         // Now mark the ELSE section with a lable.
         const int elselabel = ctx->if_labels_stack[ctx->if_labels_stack_index-1];
@@ -4383,15 +4375,11 @@ static void emit_ARB1_ELSE(Context *ctx)
     {
         fail(ctx, "branching unsupported in this profile");
     } // else
-
-    ctx->indent++;
 } // emit_ARB1_ELSE
 
 
 static void emit_ARB1_ENDIF(Context *ctx)
 {
-    ctx->indent--;
-
     // nv2 fragment programs have a real ENDIF.
     if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
         output_line(ctx, "ENDIF");
