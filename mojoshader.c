@@ -4313,7 +4313,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
 
-static void nv2_if(Context *ctx)
+static void nv2_if_branch(Context *ctx)
 {
     // there's no IF construct, but we can use a branch to a label.
     const int label = allocate_if_label(ctx);
@@ -4324,7 +4324,7 @@ static void nv2_if(Context *ctx)
 
     // The condition code register MUST be set up before this!
     output_line(ctx, "BRA %s (EQ.x);", failbranch);
-} // nv2_if
+} // nv2_if_branch
 
 
 static void emit_ARB1_IF(Context *ctx)
@@ -4334,7 +4334,10 @@ static void emit_ARB1_IF(Context *ctx)
         const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
         const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
         output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
-        nv2_if(ctx);
+        if (shader_is_pixel(ctx))  // nv2 fragment programs have a real IF.
+            output_line(ctx, "IF (EQ.x)");
+        else
+            nv2_if_branch(ctx);
     } // if
 
     else  // stock ARB1 has no branching.
@@ -4345,7 +4348,11 @@ static void emit_ARB1_IF(Context *ctx)
 
 static void emit_ARB1_ELSE(Context *ctx)
 {
-    if (ctx->support_nv2)
+    // nv2 fragment programs have a real ELSE.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+        output_line(ctx, "ELSE");
+
+    else if (ctx->support_nv2)
     {
         // there's no ELSE construct, but we can use a branch to a label.
         assert(ctx->if_labels_stack_index > 0);
@@ -4360,7 +4367,7 @@ static void emit_ARB1_ELSE(Context *ctx)
 
         // Replace the ELSE label with the ENDIF on the label stack.
         ctx->if_labels_stack[ctx->if_labels_stack_index-1] = endlabel;
-    } // if
+    } // else if
 
     else  // stock ARB1 has no branching.
     {
@@ -4371,7 +4378,11 @@ static void emit_ARB1_ELSE(Context *ctx)
 
 static void emit_ARB1_ENDIF(Context *ctx)
 {
-    if (ctx->support_nv2)
+    // nv2 fragment programs have a real ENDIF.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+        output_line(ctx, "ENDIF");
+
+    else if (ctx->support_nv2)
     {
         // there's no ENDIF construct, but we can use a branch to a label.
         assert(ctx->if_labels_stack_index > 0);
@@ -4535,7 +4546,7 @@ static void emit_ARB1_IFC(Context *ctx)
         const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
         const char *src1 = get_ARB1_srcarg_varname(ctx, 1);
         output_line(ctx, "%s %s.x, %s, %s;", comp, scratch, src0, src1);
-        nv2_if(ctx);
+        nv2_if_branch(ctx);
     } // if
 
     else  // stock ARB1 has no branching.
