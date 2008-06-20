@@ -3481,9 +3481,9 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     assert(i < sizeof (swizzle_str));
 
     snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s", premod_str,
-             regtype_str, regnum_str, postmod_str, rel_lbracket,
+             regtype_str, regnum_str, rel_lbracket,
              rel_regtype_str, rel_swizzle, rel_offset, rel_rbracket,
-             swizzle_str);
+             swizzle_str, postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return buf;
 } // make_ARB1_srcarg_string_in_buf
