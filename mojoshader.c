@@ -360,12 +360,13 @@ struct Context
     int max_constreg;
     int loops;
     int reps;
+    int max_reps;
     int cmps;
     int scratch_registers;
     int max_scratch_registers;
-    int if_labels_stack_index;
-    int if_labels_stack[32];
-    int assigned_if_labels;
+    int branch_labels_stack_index;
+    int branch_labels_stack[32];
+    int assigned_branch_labels;
     int assigned_vertex_attributes;
     int last_address_reg_component;
     RegisterList used_registers;
@@ -847,10 +848,10 @@ static int allocate_scratch_register(Context *ctx)
     return retval;
 } // allocate_scratch_register
 
-static int allocate_if_label(Context *ctx)
+static int allocate_branch_label(Context *ctx)
 {
-    return ctx->assigned_if_labels++;
-} // allocate_if_label
+    return ctx->assigned_branch_labels++;
+} // allocate_branch_label
 
 
 // D3D stuff that's used in more than just the d3d profile...
@@ -3276,12 +3277,12 @@ static const char *allocate_ARB1_scratch_reg_name(Context *ctx)
     return buf;
 } // allocate_ARB1_scratch_reg_name
 
-static const char *get_ARB1_if_label_name(Context *ctx, int id)
+static const char *get_ARB1_branch_label_name(Context *ctx, int id)
 {
     char *buf = get_scratch_buffer(ctx);
-    snprintf(buf, SCRATCH_BUFFER_SIZE, "if_label%d", id);
+    snprintf(buf, SCRATCH_BUFFER_SIZE, "branch_label%d", id);
     return buf;
-} // get_ARB1_if_label_name
+} // get_ARB1_branch_label_name
 
 const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
                                      int regnum, char *regnum_str, int len)
@@ -3734,6 +3735,14 @@ static void emit_ARB1_finalize(Context *ctx)
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
         output_line(ctx, "TEMP %s;", allocate_ARB1_scratch_reg_name(ctx));
+
+    // set up temps for nv2 REP/ENDREP emulation through branching.
+    if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) )
+    {
+        for (i = 0; i < ctx->max_reps; i++)
+            output_line(ctx, "TEMP rep%d;", i);
+    } // if
+
     pop_output(ctx);
     assert(ctx->scratch_registers == ctx->max_scratch_registers);
 } // emit_ARB1_finalize
@@ -4309,9 +4318,71 @@ static void emit_ARB1_SINCOS(Context *ctx)
         emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SINCOS
 
-// !!! FIXME: nvidia's extensions to arb1 can handle these.
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(REP)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDREP)
+static void emit_ARB1_REP(Context *ctx)
+{
+    // nv2 fragment programs have a real REP.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    {
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        output_line(ctx, "REP %s", src0);
+    } // if
+
+    else if (ctx->support_nv2)
+    {
+        // no REP, but we can use branches.
+        const int toplabel = allocate_branch_label(ctx);
+        const int faillabel = allocate_branch_label(ctx);
+        const char *topbranch = get_ARB1_branch_label_name(ctx, toplabel);
+        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+
+        assert(ctx->branch_labels_stack_index < STATICARRAYLEN(ctx->branch_labels_stack)-1);
+        ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = toplabel;
+        ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = faillabel;
+
+        char scratch[32];
+        snprintf(scratch, sizeof (scratch), "rep%d", ctx->reps);
+        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
+        output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
+        output_line(ctx, "BRA %s (LE.x);", failbranch);
+        output_line(ctx, "%s:", topbranch);
+    } // else if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_REP
+
+
+static void emit_ARB1_ENDREP(Context *ctx)
+{
+    // nv2 fragment programs have a real ENDREP.
+    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+        output_line(ctx, "ENDREP");
+
+    else if (ctx->support_nv2)
+    {
+        // no ENDREP, but we can use branches.
+        assert(ctx->branch_labels_stack_index >= 2);
+        const int faillabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
+        const int toplabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
+
+        const char *topbranch = get_ARB1_branch_label_name(ctx, toplabel);
+        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+
+        char scratch[32];
+        snprintf(scratch, sizeof (scratch), "rep%d", ctx->reps);
+        output_line(ctx, "SUBC %s.x, %s.x, 1.0;", scratch, scratch);
+        output_line(ctx, "BRA %s (GT.x);", topbranch);
+        output_line(ctx, "%s:", failbranch);
+    } // else if
+
+    else  // stock ARB1 has no branching.
+    {
+        fail(ctx, "branching unsupported in this profile");
+    } // else
+} // emit_ARB1_ENDREP
+
 
 static void nv2_if(Context *ctx)
 {
@@ -4321,11 +4392,11 @@ static void nv2_if(Context *ctx)
     else
     {
         // there's no IF construct, but we can use a branch to a label.
-        const int label = allocate_if_label(ctx);
-        const char *failbranch = get_ARB1_if_label_name(ctx, label);
+        const int label = allocate_branch_label(ctx);
+        const char *failbranch = get_ARB1_branch_label_name(ctx, label);
 
-        assert(ctx->if_labels_stack_index < STATICARRAYLEN(ctx->if_labels_stack));
-        ctx->if_labels_stack[ctx->if_labels_stack_index++] = label;
+        assert(ctx->branch_labels_stack_index < STATICARRAYLEN(ctx->branch_labels_stack));
+        ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = label;
 
         output_line(ctx, "BRA %s (EQ.x);", failbranch);
     } // else
@@ -4357,18 +4428,18 @@ static void emit_ARB1_ELSE(Context *ctx)
     else if (ctx->support_nv2)
     {
         // there's no ELSE construct, but we can use a branch to a label.
-        assert(ctx->if_labels_stack_index > 0);
+        assert(ctx->branch_labels_stack_index > 0);
 
         // At the end of the IF block, unconditionally jump to the ENDIF.
-        const int endlabel = allocate_if_label(ctx);
-        output_line(ctx, "BRA %s;", get_ARB1_if_label_name(ctx, endlabel));
+        const int endlabel = allocate_branch_label(ctx);
+        output_line(ctx, "BRA %s;", get_ARB1_branch_label_name(ctx, endlabel));
 
         // Now mark the ELSE section with a lable.
-        const int elselabel = ctx->if_labels_stack[ctx->if_labels_stack_index-1];
-        output_line(ctx, "%s:", get_ARB1_if_label_name(ctx, elselabel));
+        const int elselabel = ctx->branch_labels_stack[ctx->branch_labels_stack_index-1];
+        output_line(ctx, "%s:", get_ARB1_branch_label_name(ctx, elselabel));
 
         // Replace the ELSE label with the ENDIF on the label stack.
-        ctx->if_labels_stack[ctx->if_labels_stack_index-1] = endlabel;
+        ctx->branch_labels_stack[ctx->branch_labels_stack_index-1] = endlabel;
     } // else if
 
     else  // stock ARB1 has no branching.
@@ -4387,9 +4458,9 @@ static void emit_ARB1_ENDIF(Context *ctx)
     else if (ctx->support_nv2)
     {
         // there's no ENDIF construct, but we can use a branch to a label.
-        assert(ctx->if_labels_stack_index > 0);
-        const int endlabel = ctx->if_labels_stack[--ctx->if_labels_stack_index];
-        output_line(ctx, "%s:", get_ARB1_if_label_name(ctx, endlabel));
+        assert(ctx->branch_labels_stack_index > 0);
+        const int endlabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
+        output_line(ctx, "%s:", get_ARB1_branch_label_name(ctx, endlabel));
     } // if
 
     else  // stock ARB1 has no branching.
@@ -5625,7 +5696,10 @@ static void state_REP(Context *ctx)
     const RegisterType regtype = ctx->source_args[0].regtype;
     if (regtype != REG_TYPE_CONSTINT)
         fail(ctx, "REP argument isn't constint register");
+
     ctx->reps++;
+    if (ctx->reps > ctx->max_reps)
+        ctx->max_reps = ctx->reps;
 } // state_REP
 
 static void state_ENDREP(Context *ctx)
