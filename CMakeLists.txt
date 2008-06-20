@@ -22,6 +22,7 @@ IF(SDL_FOUND)
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
+ADD_EXECUTABLE(testoutput testoutput.c mojoshader.c)
 ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c mojoshader_opengl.c)
 TARGET_LINK_LIBRARIES(finderrors ${SDL_LIBRARY} ${EXTRA_LIBS})
 
