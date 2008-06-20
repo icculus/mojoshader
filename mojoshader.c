@@ -2792,6 +2792,7 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 
 static void emit_GLSL_LOOP(Context *ctx)
 {
+    // !!! FIXME: swizzle?
     const char *varname = get_GLSL_srcarg_varname(ctx, 1);
     assert(ctx->source_args[0].regnum == 0);  // in case they add aL1 someday.
     output_line(ctx, "{");
