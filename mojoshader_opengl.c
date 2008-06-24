@@ -519,6 +519,28 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
     return retval;
 } // MOJOSHADER_glBestProfile
 
+static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
+{
+    if (t == MOJOSHADER_TYPE_VERTEX)
+        return GL_VERTEX_SHADER;
+    else if (t == MOJOSHADER_TYPE_PIXEL)
+        return GL_FRAGMENT_SHADER;
+
+    // !!! FIXME: geometry shaders?
+    return GL_NONE;
+} // glsl_shader_type
+
+static inline GLenum arb1_shader_type(const MOJOSHADER_shaderType t)
+{
+    if (t == MOJOSHADER_TYPE_VERTEX)
+        return GL_VERTEX_PROGRAM_ARB;
+    else if (t == MOJOSHADER_TYPE_PIXEL)
+        return GL_FRAGMENT_PROGRAM_ARB;
+
+    // !!! FIXME: geometry shaders?
+    return GL_NONE;
+} // arb1_shader_type
+
 
 MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
                                         void *(*lookup)(const char *fnname),
@@ -645,12 +667,8 @@ static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
 static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
     GLint retval = 0;
-    GLenum program_type = GL_NONE;
-    if (shader_type == MOJOSHADER_TYPE_VERTEX)
-        program_type = GL_VERTEX_PROGRAM_ARB;
-    else if (shader_type == MOJOSHADER_TYPE_PIXEL)
-        program_type = GL_FRAGMENT_PROGRAM_ARB;
-    else
+    const GLenum program_type = arb1_shader_type(shader_type);
+    if (program_type == GL_NONE)
         return -1;
 
     ctx->glGetProgramivARB(program_type, GL_MAX_PROGRAM_PARAMETERS_ARB, &retval);
@@ -668,7 +686,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 {
     GLint ok = 0;
     GLint shaderlen = (GLint) pd->output_len;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER;
+    const GLenum shader_type = glsl_shader_type(pd->shader_type);
     GLuint shader = ctx->glCreateShaderObject(shader_type);
 
     ctx->glShaderSource(shader, 1, (const GLchar **) &pd->output, &shaderlen);
@@ -692,7 +710,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 static int impl_ARB1_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 {
     GLint shaderlen = (GLint) pd->output_len;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
     GLuint shader = 0;
     ctx->glGenProgramsARB(1, &shader);
 
@@ -1323,7 +1341,7 @@ static void impl_ARB1_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
                                  GLsizei siz, GLfloat *v)
 {
     int i;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
     for (i = 0; i < siz; i++, v += 4)
         ctx->glProgramEnvParameter4fvARB(shader_type, loc + i, v);
 } // impl_ARB1_Uniform4fv
@@ -1332,7 +1350,7 @@ static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
                                  GLsizei siz, GLint *v)
 {
     int i;
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
     for (i = 0; i < siz; i++, v += 4)
     {
         GLfloat f[4] = {
@@ -1345,7 +1363,7 @@ static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
 static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
                                 GLint _v)
 {
-    const GLenum shader_type = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? GL_FRAGMENT_PROGRAM_ARB : GL_VERTEX_PROGRAM_ARB;
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
     const GLfloat v = (GLfloat) _v;
     GLfloat f[4] = { v, v, v, v };
     ctx->glProgramEnvParameter4fvARB(shader_type, loc, f);
