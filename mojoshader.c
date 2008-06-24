@@ -4259,13 +4259,13 @@ static void emit_ARB1_SINCOS(Context *ctx)
         const char *dst = get_ARB1_destarg_varname(ctx);
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
         if (writemask_x(mask))
-            output_line(ctx, "COS%s.x, %s;", dst, src0);
+            output_line(ctx, "COS %s.x, %s;", dst, src0);
         else if (writemask_y(mask))
-            output_line(ctx, "SIN%s.y, %s;", dst, src0);
+            output_line(ctx, "SIN %s.y, %s;", dst, src0);
         else if (writemask_xy(mask))
         {
-            output_line(ctx, "SIN%s.x, %s;", dst, src0);
-            output_line(ctx, "COS%s.y, %s;", dst, src0);
+            output_line(ctx, "SIN %s.x, %s;", dst, src0);
+            output_line(ctx, "COS %s.y, %s;", dst, src0);
         } // else if
     } // if
 
