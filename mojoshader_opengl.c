@@ -74,6 +74,15 @@ typedef struct
     MOJOSHADER_shaderType shader_type;
     const MOJOSHADER_uniform *uniform;
     GLuint location;
+    union {
+        GLint b;
+        GLint i[4];
+        GLfloat f[4];
+    } value;
+    int uniform_array_consts_count;
+    int *uniform_array_consts;
+    GLfloat *uniform_array_buffer;
+    GLfloat *prev_uniform_array_buffer;
 } UniformMap;
 
 typedef struct
@@ -81,6 +90,7 @@ typedef struct
     MOJOSHADER_shaderType shader_type;
     const MOJOSHADER_sampler *sampler;
     GLuint location;
+    GLint value;
 } SamplerMap;
 
 typedef struct
@@ -95,7 +105,6 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *fragment;
     GLuint handle;
     uint32 constant_count;  // !!! FIXME: misnamed.
-    GLfloat *constants;  // !!! FIXME: misnamed.
     uint32 uniform_count;
     UniformMap *uniforms;
     uint32 sampler_count;
@@ -827,6 +836,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
 {
     if (program != NULL)
     {
+        int i;
         const uint32 refcount = program->refcount;
         if (refcount > 1)
             program->refcount--;
@@ -835,7 +845,12 @@ static void program_unref(MOJOSHADER_glProgram *program)
             ctx->profileDeleteProgram(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
-            Free(program->constants);
+            for (i = 0; i < program->uniform_count; i++)
+            {
+                Free(program->uniforms[i].uniform_array_consts);
+                Free(program->uniforms[i].uniform_array_buffer);
+                Free(program->uniforms[i].prev_uniform_array_buffer);
+            } // for
             Free(program->samplers);
             Free(program->uniforms);
             Free(program->attributes);
@@ -916,6 +931,7 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
             map->shader_type = shader_type;
             map->sampler = &s[i];
             map->location = (GLuint) loc;
+            map->value = -1;  // hopefully not a valid texture unit.
             program->sampler_count++;
         } // if
     } // for
@@ -988,6 +1004,77 @@ static GLuint impl_ARB1_LinkProgram(MOJOSHADER_glShader *vshader,
 } // impl_ARB1_LinkProgram
 
 
+// !!! FIXME: misnamed
+// build a list of indexes that need to be overwritten with constant values
+//  when pushing a uniform array to the GL.
+static int build_constants_lists(MOJOSHADER_glProgram *program)
+{
+    int i;
+    const int count = program->uniform_count;
+    for (i = 0; i < count; i++)
+    {
+        UniformMap *map = &program->uniforms[i];
+        const MOJOSHADER_uniform *u = map->uniform;
+        const int size = u->array_count;
+
+        if (size == 0)
+            continue;  // nothing to see here.
+
+        // only use arrays for 'c' registers.
+        const MOJOSHADER_uniformType type = u->type;
+        assert(type == MOJOSHADER_UNIFORM_FLOAT);
+
+        const MOJOSHADER_shaderType shader_type = map->shader_type;
+        const MOJOSHADER_parseData *pd;
+        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+            pd = program->vertex->parseData;
+        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            pd = program->fragment->parseData;
+        else  // !!! FIXME: geometry shaders?
+            return 0;
+
+        const MOJOSHADER_constant *c = pd->constants;
+        const int hi = pd->constant_count;
+        const int index = u->index;
+        int *consts_buf = (int *) alloca(sizeof (int) * hi);
+
+        int j;
+        int used_consts = 0;
+        for (j = 0; j < hi; j++)
+        {
+            if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
+                continue;
+
+            const int idx = c[j].index;
+            if ( (idx >= index) && (idx < (index + size)) )
+                consts_buf[used_consts++] = j;
+        } // for
+
+        map->uniform_array_consts_count = used_consts;
+
+        size_t len;
+
+        len = used_consts * sizeof (int);
+        map->uniform_array_consts = (int *) Malloc(len);
+        if (map->uniform_array_consts == NULL)
+            return 0;
+        memcpy(map->uniform_array_consts, consts_buf, len);
+
+        len = size * sizeof (GLfloat) * 4;
+        map->uniform_array_buffer = (GLfloat *) Malloc(len);
+        if (map->uniform_array_buffer == NULL)
+            return 0;
+        memset(map->uniform_array_buffer, 0x00, len);
+        map->prev_uniform_array_buffer = (GLfloat *) Malloc(len);
+        if (map->prev_uniform_array_buffer == NULL)
+            return 0;
+        memset(map->prev_uniform_array_buffer, 0xFF, len); // don't match!
+    } // for
+
+    return 1;
+} // build_constants_lists
+
+
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader)
 {
@@ -995,7 +1082,6 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         return NULL;
 
     int numregs = 0;
-    int consts = 0;
     MOJOSHADER_glProgram *retval = NULL;
     const GLuint program = ctx->profileLinkProgram(vshader, pshader);
     if (program == 0)
@@ -1037,9 +1123,6 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (vshader != NULL)
     {
-        if (consts < vshader->parseData->constant_count)
-            consts = vshader->parseData->constant_count;
-
         if (vshader->parseData->attribute_count > 0)
         {
             const int count = vshader->parseData->attribute_count;
@@ -1059,30 +1142,26 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (pshader != NULL)
     {
-        if (consts < pshader->parseData->constant_count)
-            consts = pshader->parseData->constant_count;
-
         lookup_uniforms(retval, pshader);
         lookup_samplers(retval, pshader);
         pshader->refcount++;
     } // if
 
-    if (consts > 0)    
-    {
-        const size_t len = sizeof (GLfloat) * consts * 4;
-        retval->constants = (GLfloat *) Malloc(len);
-        if (retval->constants == NULL)
-            goto link_program_fail;
-        retval->constant_count = (uint32) consts;
-        memset(retval->constants, '\0', len);
-    } // if
+    if (!build_constants_lists(retval))
+        goto link_program_fail;
 
     return retval;
 
 link_program_fail:
     if (retval != NULL)
     {
-        Free(retval->constants);
+        int i;
+        for (i = 0; i < retval->uniform_count; i++)
+        {
+            Free(retval->uniforms[i].uniform_array_consts);
+            Free(retval->uniforms[i].uniform_array_buffer);
+            Free(retval->uniforms[i].prev_uniform_array_buffer);
+        } // for
         Free(retval->samplers);
         Free(retval->uniforms);
         Free(retval->attributes);
@@ -1384,13 +1463,11 @@ void MOJOSHADER_glProgramReady(void)
     if (ctx->bound_program == NULL)
         return;  // nothing to do.
 
-    // !!! FIXME: don't push Uniforms/Samplers if they haven't changed.
-
     // push Uniforms to the program from our register files...
     count = ctx->bound_program->uniform_count;
     for (i = 0; i < count; i++)
     {
-        const UniformMap *map = &ctx->bound_program->uniforms[i];
+        UniformMap *map = &ctx->bound_program->uniforms[i];
         const MOJOSHADER_uniform *u = map->uniform;
         const MOJOSHADER_uniformType type = u->type;
         const MOJOSHADER_shaderType shader_type = map->shader_type;
@@ -1398,78 +1475,95 @@ void MOJOSHADER_glProgramReady(void)
         const int size = u->array_count;
         const GLint location = map->location;
         const MOJOSHADER_parseData *pd;
-        const MOJOSHADER_constant *c;
-        float *regfilef;
-        GLint *regfilei;
-        GLint *regfileb;
-        int hi;
+        GLfloat *regf;
+        GLint *regi;
+        GLint *regb;
 
         if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {
             pd = ctx->bound_program->vertex->parseData;
-            regfilef = ctx->vs_reg_file_f;
-            regfilei = ctx->vs_reg_file_i;
-            regfileb = ctx->vs_reg_file_b;
+            regf = ctx->vs_reg_file_f;
+            regi = ctx->vs_reg_file_i;
+            regb = ctx->vs_reg_file_b;
         } // if
-        else
+
+        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
         {
             pd = ctx->bound_program->fragment->parseData;
-            regfilef = ctx->ps_reg_file_f;
-            regfilei = ctx->ps_reg_file_i;
-            regfileb = ctx->ps_reg_file_b;
+            regf = ctx->ps_reg_file_f;
+            regi = ctx->ps_reg_file_i;
+            regb = ctx->ps_reg_file_b;
+        } // else if
+
+        else
+        {
+            assert(0);  // !!! FIXME: geometry shaders?
         } // else
 
-        c = pd->constants;
-        hi = pd->constant_count;
 
-        // only use arrays for 'c' registers.
-        assert((size == 0) || (type == MOJOSHADER_UNIFORM_FLOAT));
-
-        if (size != 0)  // !!! FIXME: this code sucks.
+        if (size != 0)  // uniform array?
         {
-            // !!! FIXME: calculate this all at link time.
             int j;
-            GLfloat *ptr = ctx->bound_program->constants;
+            const GLfloat *f = &regf[index * 4];
+            const int total_consts = map->uniform_array_consts_count;
+            const size_t len = size * sizeof (GLfloat) * 4;
 
-            for (j = 0; j < hi; j++)
+            // copy the data from the register file, then overwrite with
+            //  consts...
+            memcpy(map->uniform_array_buffer, f, len);
+
+            for (j = 0; j < total_consts; j++)
             {
-                if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
-                    continue;
-
-                const int idx = c[j].index;
-                if ( (idx >= index) && (idx < (index + size)) )
-                {
-                    memcpy(ptr, &regfilef[idx * 4], 16);  // !!! FIXME: 16
-                    memcpy(&regfilef[idx * 4], &c->value.f, 16);  // !!! FIXME: 16
-                    ptr += 4;
-                } // if
+                const int idx = map->uniform_array_consts[j];
+                const MOJOSHADER_constant *c = &pd->constants[idx];
+                assert(c->index < size);
+                memcpy(&map->uniform_array_buffer[c->index*4], c->value.f,
+                       sizeof (GLfloat) * 4);
             } // for
 
-            ctx->profileUniform4fv(pd, location, size, &regfilef[index * 4]);
-
-            ptr = ctx->bound_program->constants;
-            for (j = 0; j < hi; j++)
+            GLfloat *current = map->uniform_array_buffer;
+            GLfloat *prev = map->prev_uniform_array_buffer;
+            if (memcmp(current, prev, len) != 0)
             {
-                if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
-                    continue;
+                // array has changed, upload it.
+                ctx->profileUniform4fv(pd, location, size, current);
 
-                const int idx = c[j].index;
-                if ( (idx >= index) && (idx < (index + size)) )
-                {
-                    memcpy(&regfilef[idx * 4], ptr, 16);  // !!! FIXME: 16
-                    ptr += 4;
-                } // if
-            } // for
+                // Now swap pointers, so next generation compares against
+                //  the data we just uploaded...
+                map->uniform_array_buffer = prev;
+                map->prev_uniform_array_buffer = current;
+            } // if
         } // if
 
         else
         {
             if (type == MOJOSHADER_UNIFORM_FLOAT)
-                ctx->profileUniform4fv(pd, location, 1, &regfilef[index * 4]);
+            {
+                GLfloat *f = &regf[index * 4];
+                if (memcmp(map->value.f, f, sizeof (map->value.f)) != 0)
+                {
+                    memcpy(map->value.f, f, sizeof (map->value.f));
+                    ctx->profileUniform4fv(pd, location, 1, f);
+                } // if
+            } // if
             else if (type == MOJOSHADER_UNIFORM_INT)
-                ctx->profileUniform4iv(pd, location, 1, &regfilei[index * 4]);
+            {
+                GLint *i = &regi[index * 4];
+                if (memcmp(map->value.i, i, sizeof (map->value.i)) != 0)
+                {
+                    memcpy(map->value.i, i, sizeof (map->value.i));
+                    ctx->profileUniform4iv(pd, location, 1, i);
+                } // if
+            } // else if
             else if (type == MOJOSHADER_UNIFORM_BOOL)
-                ctx->profileUniform1i(pd, location, regfileb[index]);
+            {
+                const GLint b = regb[index];
+                if (b != map->value.b)
+                {
+                    map->value.b = b;
+                    ctx->profileUniform1i(pd, location, b);
+                } // if
+            } // else if
         } // if
     } // for
 
@@ -1477,9 +1571,13 @@ void MOJOSHADER_glProgramReady(void)
     count = ctx->bound_program->sampler_count;
     for (i = 0; i < count; i++)
     {
-        const SamplerMap *map = &ctx->bound_program->samplers[i];
+        SamplerMap *map = &ctx->bound_program->samplers[i];
         const MOJOSHADER_sampler *s = map->sampler;
-        ctx->profileSetSampler(map->location, s->index);
+        if (s->index != map->value)
+        {
+            map->value = s->index;
+            ctx->profileSetSampler(map->location, s->index);
+        } // if
     } // for
 } // MOJOSHADER_glProgramReady
 
