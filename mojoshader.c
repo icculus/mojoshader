@@ -6939,9 +6939,14 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         // reset for every token, and consider an error if it ever overflows!
         ctx->scratchidx = 0;
 
-        ctx->tokens += rc;
-        ctx->tokencount -= rc;
-        rc = parse_token(ctx);
+        if ( ((uint32) rc) > ctx->tokencount )
+            fail(ctx, "Corrupted or truncated shader");
+        else
+        {
+            ctx->tokens += rc;
+            ctx->tokencount -= rc;
+            rc = parse_token(ctx);
+        } // else
     } // while
 
     if (!isfail(ctx))
