@@ -56,6 +56,7 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 #ifdef _MSC_VER
 #define snprintf _snprintf
 typedef unsigned __int8 uint8;
+typedef unsigned __int16 uint16;
 typedef unsigned __int32 uint32;
 typedef unsigned __int32 int32;
 // Warning Level 4 considered harmful.  :)
@@ -64,6 +65,7 @@ typedef unsigned __int32 int32;
 #else
 #include <stdint.h>
 typedef uint8_t uint8;
+typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef int32_t int32;
 #endif
@@ -99,13 +101,23 @@ const char *endline_str = "\n";
         __asm__ __volatile__("lwbrx %0,0,%1" : "=r" (x) : "r" (&x));
         return x;
     } // SWAP32
+    static inline uint16 SWAP16(uint16 x)
+    {
+        __asm__ __volatile__("lhbrx %0,0,%1" : "=r" (x) : "r" (&x));
+        return x;
+    } // SWAP16
 #elif defined(__POWERPC__)
     static inline uint32 SWAP32(uint32 x)
     {
         return ( (((x) >> 24) & 0x000000FF) | (((x) >>  8) & 0x0000FF00) |
                  (((x) <<  8) & 0x00FF0000) | (((x) << 24) & 0xFF000000) );
     } // SWAP32
+    static inline uint16 SWAP16(uint16 x)
+    {
+        return ( (((x) >> 8) & 0x00FF) | (((x) << 8) & 0xFF00) );
+    } // SWAP16
 #else
+#   define SWAP16(x) (x)
 #   define SWAP32(x) (x)
 #endif
 
@@ -354,6 +366,7 @@ struct Context
     SourceArgInfo source_args[5];
     SourceArgInfo predicate_arg;  // for predicated instructions.
     uint32 dwords[4];
+    uint32 version_token;
     int instruction_count;
     uint32 instruction_controls;
     uint32 previous_opcode;
@@ -6191,6 +6204,8 @@ static int parse_version_token(Context *ctx, const char *profilestr)
     const uint8 major = (uint8) ((token >> 8) & 0xFF);
     const uint8 minor = (uint8) (token & 0xFF);
 
+    ctx->version_token = token;
+
     // 0xFFFF == pixel shader, 0xFFFE == vertex shader
     if (shadertype == 0xFFFF)
     {
@@ -6221,6 +6236,136 @@ static int parse_version_token(Context *ctx, const char *profilestr)
 } // parse_version_token
 
 
+// Microsoft's tools add a CTAB comment to all shaders. This is the
+//  "constant table," or specifically: D3DXSHADER_CONSTANTTABLE:
+//  http://msdn.microsoft.com/en-us/library/bb205440(VS.85).aspx
+// This may tell us high-level truths about an otherwise generic low-level
+//  registers, for instance, how large an array actually is, etc.
+static void parse_constant_table(Context *ctx, const uint32 bytes)
+{
+    const uint8 *start = (uint8 *) &ctx->tokens[2];
+    const uint32 id = SWAP32(ctx->tokens[1]);
+    const uint32 size = SWAP32(ctx->tokens[2]);
+    const uint32 creator = SWAP32(ctx->tokens[3]);
+    const uint32 version = SWAP32(ctx->tokens[4]);
+    const uint32 constants = SWAP32(ctx->tokens[5]);
+    const uint32 constantinfo = SWAP32(ctx->tokens[6]);
+    const uint32 flags = SWAP32(ctx->tokens[7]);
+    const uint32 target = SWAP32(ctx->tokens[8]);
+    uint32 i = 0;
+
+    if (id != 0x42415443)  // 0x42415443 == 'CTAB'
+        return;  // not the constant table.
+
+    if (size != 28)
+        return;  // only handle this version of the struct.
+
+    if (version != ctx->version_token) goto corrupt_ctab;
+    if (creator >= bytes) goto corrupt_ctab;
+    if ((constantinfo + (constants * 20)) >= bytes) goto corrupt_ctab;
+    if (target >= bytes) goto corrupt_ctab;
+
+    fprintf(stderr, "\n");
+    fprintf(stderr, "CTAB:\n");
+    fprintf(stderr, " - Flags: 0x%X\n", (uint) flags);
+    // !!! FIXME: malicious data may not be null-terminated.
+    fprintf(stderr, " - Creator: %s\n", (const char *) (start + creator));
+    // !!! FIXME: malicious data may not be null-terminated.
+    fprintf(stderr, " - Target: %s\n", (const char *) (start + target));
+    fprintf(stderr, "\n");
+
+    for (i = 0; i < constants; i++)
+    {
+        const uint8 *ptr = start + constantinfo + (i * 20);
+        const uint32 name = SWAP32(*((uint32 *) (ptr + 0)));
+        const uint16 regset = SWAP16(*((uint16 *) (ptr + 4)));
+        const uint16 regidx = SWAP16(*((uint16 *) (ptr + 6)));
+        const uint16 regcnt = SWAP16(*((uint16 *) (ptr + 8)));
+        const uint16 reserved = SWAP16(*((uint16 *) (ptr + 10)));
+        const uint32 typeinf = SWAP32(*((uint32 *) (ptr + 12)));
+        const uint32 defval = SWAP32(*((uint32 *) (ptr + 16)));
+
+        if (name >= bytes) goto corrupt_ctab;
+        if ((typeinf + 16) >= bytes) goto corrupt_ctab;
+        if (defval >= bytes) goto corrupt_ctab;
+
+        fprintf(stderr, "ConstantInfo #%u:\n", (uint) i);
+
+        // !!! FIXME: malicious data may not be null-terminated.
+        fprintf(stderr, " - Name: %s\n", (const char *) (start + name));
+
+        switch (regset)
+        {
+            case 0: fprintf(stderr, " - Register set: BOOL\n"); break;
+            case 1: fprintf(stderr, " - Register set: INT4\n"); break;
+            case 2: fprintf(stderr, " - Register set: FLOAT4\n"); break;
+            case 3: fprintf(stderr, " - Register set: SAMPLER\n"); break;
+            default: goto corrupt_ctab;
+        } // switch
+
+        fprintf(stderr, " - Register index: %u\n", (uint) regidx);
+        fprintf(stderr, " - Register count: %u\n", (uint) regcnt);
+        fprintf(stderr, " - Reserved: %u\n", (uint) reserved);
+
+        ptr = start + typeinf;
+        const uint16 typeclass = SWAP16(*((uint16 *) (ptr + 0)));
+        const uint16 typetype = SWAP16(*((uint16 *) (ptr + 2)));
+        const uint16 rows = SWAP16(*((uint16 *) (ptr + 4)));
+        const uint16 columns = SWAP16(*((uint16 *) (ptr + 6)));
+        const uint16 elements = SWAP16(*((uint16 *) (ptr + 8)));
+        const uint16 members = SWAP16(*((uint16 *) (ptr + 10)));
+        //const uint32 memberinfo = SWAP32(*((uint32 *) (ptr + 12)));
+
+        switch (typeclass)
+        {
+            case 0: fprintf(stderr, " - Parameter class: SCALAR\n"); break;
+            case 1: fprintf(stderr, " - Parameter class: VECTOR\n"); break;
+            case 2: fprintf(stderr, " - Parameter class: MATRIX_ROWS\n"); break;
+            case 3: fprintf(stderr, " - Parameter class: MATRIX_COLUMNS\n"); break;
+            case 4: fprintf(stderr, " - Parameter class: OBJECT\n"); break;
+            case 5: fprintf(stderr, " - Parameter class: STRUCT\n"); break;
+            default: goto corrupt_ctab;
+        } // switch
+
+        switch (typetype)
+        {
+            case 0: fprintf(stderr, " - Parameter type: VOID\n"); break;
+            case 1: fprintf(stderr, " - Parameter type: BOOL\n"); break;
+            case 2: fprintf(stderr, " - Parameter type: INT\n"); break;
+            case 3: fprintf(stderr, " - Parameter type: FLOAT\n"); break;
+            case 4: fprintf(stderr, " - Parameter type: STRING\n"); break;
+            case 5: fprintf(stderr, " - Parameter type: TEXTURE\n"); break;
+            case 6: fprintf(stderr, " - Parameter type: TEXTURE1D\n"); break;
+            case 7: fprintf(stderr, " - Parameter type: TEXTURE2D\n"); break;
+            case 8: fprintf(stderr, " - Parameter type: TEXTURE3D\n"); break;
+            case 9: fprintf(stderr, " - Parameter type: TEXTURECUBE\n"); break;
+            case 10: fprintf(stderr, " - Parameter type: SAMPLER\n"); break;
+            case 11: fprintf(stderr, " - Parameter type: SAMPLER1D\n"); break;
+            case 12: fprintf(stderr, " - Parameter type: SAMPLER2D\n"); break;
+            case 13: fprintf(stderr, " - Parameter type: SAMPLER3D\n"); break;
+            case 14: fprintf(stderr, " - Parameter type: SAMPLERCUBE\n"); break;
+            case 15: fprintf(stderr, " - Parameter type: PIXELSHADER\n"); break;
+            case 16: fprintf(stderr, " - Parameter type: VERTEXSHADER\n"); break;
+            case 17: fprintf(stderr, " - Parameter type: PIXELFRAGMENT\n"); break;
+            case 18: fprintf(stderr, " - Parameter type: VERTEXFRAGMENT\n"); break;
+            case 19: fprintf(stderr, " - Parameter type: UNSUPPORTED\n"); break;
+            default: goto corrupt_ctab;
+        } // switch
+
+        fprintf(stderr, " - Rows: %u\n", (uint) rows);
+        fprintf(stderr, " - Columns: %u\n", (uint) columns);
+        fprintf(stderr, " - Elements: %u\n", (uint) elements);
+        fprintf(stderr, " - Members: %u\n", (uint) members);
+        // !!! FIXME: memberinfo is recursive: it points to a typeinfo.
+    } // for
+
+    return;
+
+corrupt_ctab:
+    fail(ctx, "Shader has corrupt CTAB data");
+} // parse_constant_table
+
+
 static int parse_comment_token(Context *ctx)
 {
     const uint32 token = SWAP32(*(ctx->tokens));
@@ -6231,6 +6376,8 @@ static int parse_comment_token(Context *ctx)
     else
     {
         const uint32 commenttoks = ((token >> 16) & 0xFFFF);
+        if ((commenttoks >= 8) && (commenttoks < ctx->tokencount))
+            parse_constant_table(ctx, commenttoks * 4);
         return commenttoks + 1;  // comment data plus the initial token.
     } // else
 
