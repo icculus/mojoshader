@@ -3782,7 +3782,7 @@ static void emit_ARB1_relative(Context *ctx, int size)
 {
     const char *varname = get_ARB1_const_array_varname(ctx);
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "PARAM %s[%d] = { program.env[0..%d] };", varname,
+    output_line(ctx, "PARAM %s[%d] = { program.local[0..%d] };", varname,
                 size, size - 1);
     pop_output(ctx);
 } // emit_ARB1_relative
@@ -3800,7 +3800,7 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
 
         // This works everywhere.
         // !!! FIXME: does this eat more resources?
-        output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
+        output_line(ctx, "PARAM %s = program.local[%d];", varname, regnum);
     } // if
     else
     {
@@ -3808,7 +3808,7 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum)
         if (regtype != REG_TYPE_CONST)
             fail(ctx, "BUG: non-float uniforms not supported in arb1 at the moment");
         else
-            output_line(ctx, "PARAM %s = program.env[%d];", varname, regnum);
+            output_line(ctx, "PARAM %s = program.local[%d];", varname, regnum);
     } // else
 
     pop_output(ctx);

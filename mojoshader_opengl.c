@@ -185,7 +185,7 @@ struct MOJOSHADER_glContext
     PFNGLVERTEXATTRIBPOINTERARBPROC glVertexAttribPointer;
     PFNGLGETPROGRAMIVARBPROC glGetProgramivARB;
     PFNGLGETPROGRAMSTRINGARBPROC glGetProgramStringARB;
-    PFNGLPROGRAMENVPARAMETER4FVARBPROC glProgramEnvParameter4fvARB;
+    PFNGLPROGRAMLOCALPARAMETER4FVARBPROC glProgramLocalParameter4fvARB;
     PFNGLDELETEPROGRAMSARBPROC glDeleteProgramsARB;
     PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
     PFNGLBINDPROGRAMARBPROC glBindProgramARB;
@@ -343,7 +343,7 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLVERTEXATTRIBPOINTERARBPROC, glVertexAttribPointer);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGETPROGRAMIVARBPROC, glGetProgramivARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGETPROGRAMSTRINGARBPROC, glGetProgramStringARB);
-    DO_LOOKUP(GL_ARB_vertex_program, PFNGLPROGRAMENVPARAMETER4FVARBPROC, glProgramEnvParameter4fvARB);
+    DO_LOOKUP(GL_ARB_vertex_program, PFNGLPROGRAMLOCALPARAMETER4FVARBPROC, glProgramLocalParameter4fvARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLDELETEPROGRAMSARBPROC, glDeleteProgramsARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGENPROGRAMSARBPROC, glGenProgramsARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLBINDPROGRAMARBPROC, glBindProgramARB);
@@ -1421,7 +1421,7 @@ static void impl_ARB1_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
     int i;
     const GLenum shader_type = arb1_shader_type(pd->shader_type);
     for (i = 0; i < siz; i++, v += 4)
-        ctx->glProgramEnvParameter4fvARB(shader_type, loc + i, v);
+        ctx->glProgramLocalParameter4fvARB(shader_type, loc + i, v);
 } // impl_ARB1_Uniform4fv
 
 static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
@@ -1434,7 +1434,7 @@ static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
         GLfloat f[4] = {
             (GLfloat) v[0], (GLfloat) v[1], (GLfloat) v[2], (GLfloat) v[3]
         };
-        ctx->glProgramEnvParameter4fvARB(shader_type, loc + i, f);
+        ctx->glProgramLocalParameter4fvARB(shader_type, loc + i, f);
     } // for
 } // impl_ARB1_Uniform4iv
 
@@ -1444,7 +1444,7 @@ static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
     const GLenum shader_type = arb1_shader_type(pd->shader_type);
     const GLfloat v = (GLfloat) _v;
     GLfloat f[4] = { v, v, v, v };
-    ctx->glProgramEnvParameter4fvARB(shader_type, loc, f);
+    ctx->glProgramLocalParameter4fvARB(shader_type, loc, f);
 } // impl_ARB1_Uniform1i
 
 static void impl_ARB1_SetSampler(GLint loc, GLuint sampler)
