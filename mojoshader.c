@@ -244,6 +244,13 @@ typedef struct OutputList
     OutputListNode *tail;
 } OutputList;
 
+typedef struct VariableList
+{
+    MOJOSHADER_uniformType type;
+    int index;
+    int count;
+    struct VariableList *next;
+} VariableList;
 
 typedef struct RegisterList
 {
@@ -392,6 +399,8 @@ struct Context
     RegisterList attributes;
     int sampler_count;
     RegisterList samplers;
+    VariableList *variables;  // variables to register mapping.
+    int have_ctab:1;
     int predicated:1;
     int uniform_array:1;
     int support_nv2:1;
@@ -6250,7 +6259,6 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
     const uint32 version = SWAP32(ctx->tokens[4]);
     const uint32 constants = SWAP32(ctx->tokens[5]);
     const uint32 constantinfo = SWAP32(ctx->tokens[6]);
-    const uint32 flags = SWAP32(ctx->tokens[7]);
     const uint32 target = SWAP32(ctx->tokens[8]);
     uint32 i = 0;
 
@@ -6265,98 +6273,47 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
     if ((constantinfo + (constants * 20)) >= bytes) goto corrupt_ctab;
     if (target >= bytes) goto corrupt_ctab;
 
-    fprintf(stderr, "\n");
-    fprintf(stderr, "CTAB:\n");
-    fprintf(stderr, " - Flags: 0x%X\n", (uint) flags);
-    // !!! FIXME: malicious data may not be null-terminated.
-    fprintf(stderr, " - Creator: %s\n", (const char *) (start + creator));
-    // !!! FIXME: malicious data may not be null-terminated.
-    fprintf(stderr, " - Target: %s\n", (const char *) (start + target));
-    fprintf(stderr, "\n");
+    ctx->have_ctab = 1;
 
     for (i = 0; i < constants; i++)
     {
+        // we only care about deciding which variables might be arrays at
+        //  the moment, but there's lots of other good info in the CTAB.
         const uint8 *ptr = start + constantinfo + (i * 20);
         const uint32 name = SWAP32(*((uint32 *) (ptr + 0)));
         const uint16 regset = SWAP16(*((uint16 *) (ptr + 4)));
         const uint16 regidx = SWAP16(*((uint16 *) (ptr + 6)));
         const uint16 regcnt = SWAP16(*((uint16 *) (ptr + 8)));
-        const uint16 reserved = SWAP16(*((uint16 *) (ptr + 10)));
         const uint32 typeinf = SWAP32(*((uint32 *) (ptr + 12)));
         const uint32 defval = SWAP32(*((uint32 *) (ptr + 16)));
+        MOJOSHADER_uniformType mojotype = MOJOSHADER_UNIFORM_UNKNOWN;
 
         if (name >= bytes) goto corrupt_ctab;
         if ((typeinf + 16) >= bytes) goto corrupt_ctab;
         if (defval >= bytes) goto corrupt_ctab;
 
-        fprintf(stderr, "ConstantInfo #%u:\n", (uint) i);
-
-        // !!! FIXME: malicious data may not be null-terminated.
-        fprintf(stderr, " - Name: %s\n", (const char *) (start + name));
-
         switch (regset)
         {
-            case 0: fprintf(stderr, " - Register set: BOOL\n"); break;
-            case 1: fprintf(stderr, " - Register set: INT4\n"); break;
-            case 2: fprintf(stderr, " - Register set: FLOAT4\n"); break;
-            case 3: fprintf(stderr, " - Register set: SAMPLER\n"); break;
+            case 0: mojotype = MOJOSHADER_UNIFORM_BOOL; break;
+            case 1: mojotype = MOJOSHADER_UNIFORM_INT; break;
+            case 2: mojotype = MOJOSHADER_UNIFORM_FLOAT; break;
+            case 3: /* SAMPLER */ break;
             default: goto corrupt_ctab;
         } // switch
 
-        fprintf(stderr, " - Register index: %u\n", (uint) regidx);
-        fprintf(stderr, " - Register count: %u\n", (uint) regcnt);
-        fprintf(stderr, " - Reserved: %u\n", (uint) reserved);
-
-        ptr = start + typeinf;
-        const uint16 typeclass = SWAP16(*((uint16 *) (ptr + 0)));
-        const uint16 typetype = SWAP16(*((uint16 *) (ptr + 2)));
-        const uint16 rows = SWAP16(*((uint16 *) (ptr + 4)));
-        const uint16 columns = SWAP16(*((uint16 *) (ptr + 6)));
-        const uint16 elements = SWAP16(*((uint16 *) (ptr + 8)));
-        const uint16 members = SWAP16(*((uint16 *) (ptr + 10)));
-        //const uint32 memberinfo = SWAP32(*((uint32 *) (ptr + 12)));
-
-        switch (typeclass)
+        if (mojotype != MOJOSHADER_UNIFORM_UNKNOWN)
         {
-            case 0: fprintf(stderr, " - Parameter class: SCALAR\n"); break;
-            case 1: fprintf(stderr, " - Parameter class: VECTOR\n"); break;
-            case 2: fprintf(stderr, " - Parameter class: MATRIX_ROWS\n"); break;
-            case 3: fprintf(stderr, " - Parameter class: MATRIX_COLUMNS\n"); break;
-            case 4: fprintf(stderr, " - Parameter class: OBJECT\n"); break;
-            case 5: fprintf(stderr, " - Parameter class: STRUCT\n"); break;
-            default: goto corrupt_ctab;
-        } // switch
-
-        switch (typetype)
-        {
-            case 0: fprintf(stderr, " - Parameter type: VOID\n"); break;
-            case 1: fprintf(stderr, " - Parameter type: BOOL\n"); break;
-            case 2: fprintf(stderr, " - Parameter type: INT\n"); break;
-            case 3: fprintf(stderr, " - Parameter type: FLOAT\n"); break;
-            case 4: fprintf(stderr, " - Parameter type: STRING\n"); break;
-            case 5: fprintf(stderr, " - Parameter type: TEXTURE\n"); break;
-            case 6: fprintf(stderr, " - Parameter type: TEXTURE1D\n"); break;
-            case 7: fprintf(stderr, " - Parameter type: TEXTURE2D\n"); break;
-            case 8: fprintf(stderr, " - Parameter type: TEXTURE3D\n"); break;
-            case 9: fprintf(stderr, " - Parameter type: TEXTURECUBE\n"); break;
-            case 10: fprintf(stderr, " - Parameter type: SAMPLER\n"); break;
-            case 11: fprintf(stderr, " - Parameter type: SAMPLER1D\n"); break;
-            case 12: fprintf(stderr, " - Parameter type: SAMPLER2D\n"); break;
-            case 13: fprintf(stderr, " - Parameter type: SAMPLER3D\n"); break;
-            case 14: fprintf(stderr, " - Parameter type: SAMPLERCUBE\n"); break;
-            case 15: fprintf(stderr, " - Parameter type: PIXELSHADER\n"); break;
-            case 16: fprintf(stderr, " - Parameter type: VERTEXSHADER\n"); break;
-            case 17: fprintf(stderr, " - Parameter type: PIXELFRAGMENT\n"); break;
-            case 18: fprintf(stderr, " - Parameter type: VERTEXFRAGMENT\n"); break;
-            case 19: fprintf(stderr, " - Parameter type: UNSUPPORTED\n"); break;
-            default: goto corrupt_ctab;
-        } // switch
-
-        fprintf(stderr, " - Rows: %u\n", (uint) rows);
-        fprintf(stderr, " - Columns: %u\n", (uint) columns);
-        fprintf(stderr, " - Elements: %u\n", (uint) elements);
-        fprintf(stderr, " - Members: %u\n", (uint) members);
-        // !!! FIXME: memberinfo is recursive: it points to a typeinfo.
+            VariableList *item;
+            item = (VariableList *) Malloc(ctx, sizeof (VariableList));
+            if (item != NULL)
+            {
+                item->type = mojotype;
+                item->index = regidx;
+                item->count = regcnt;
+                item->next = ctx->variables;
+                ctx->variables = item;
+            } // if
+        } // if
     } // for
 
     return;
@@ -6537,6 +6494,17 @@ static void free_constants_list(MOJOSHADER_free f, void *d, ConstantsList *item)
 } // free_constants_list
 
 
+static void free_variable_list(MOJOSHADER_free f, void *d, VariableList *item)
+{
+    while (item != NULL)
+    {
+        VariableList *next = item->next;
+        f(item, d);
+        item = next;
+    } // while
+} // free_variable_list
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -6557,6 +6525,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->uniforms.next);
         free_reglist(f, d, ctx->attributes.next);
         free_reglist(f, d, ctx->samplers.next);
+        free_variable_list(f, d, ctx->variables);
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr, d);
         f(ctx, d);
