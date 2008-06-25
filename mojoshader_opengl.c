@@ -104,7 +104,6 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
     GLuint handle;
-    uint32 constant_count;  // !!! FIXME: misnamed.
     uint32 uniform_count;
     UniformMap *uniforms;
     uint32 sampler_count;
