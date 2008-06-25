@@ -1517,7 +1517,7 @@ void MOJOSHADER_glProgramReady(void)
                 const MOJOSHADER_constant *c = &pd->constants[idx];
                 assert(c->index < size);
                 memcpy(&map->uniform_array_buffer[c->index*4], c->value.f,
-                       sizeof (GLfloat) * 4);
+                       sizeof (c->value.f));
             } // for
 
             GLfloat *current = map->uniform_array_buffer;
