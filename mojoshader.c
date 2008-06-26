@@ -167,6 +167,9 @@ typedef void (*emit_start)(Context *ctx, const char *profilestr);
 // one emit function for ending output in each profile.
 typedef void (*emit_end)(Context *ctx);
 
+// one emit function for phase opcode output in each profile.
+typedef void (*emit_phase)(Context *ctx);
+
 // one emit function for finalizing output in each profile.
 typedef void (*emit_finalize)(Context *ctx);
 
@@ -203,6 +206,7 @@ typedef struct
     const char *name;
     emit_start start_emitter;
     emit_end end_emitter;
+    emit_phase phase_emitter;
     emit_global global_emitter;
     emit_relative relative_emitter;
     emit_uniform uniform_emitter;
@@ -477,6 +481,12 @@ static inline int shader_version_atleast(const Context *ctx, const uint8 maj,
 {
     return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
 } // shader_version_atleast
+
+static inline int shader_version_exactly(const Context *ctx, const uint8 maj,
+                                         const uint8 min)
+{
+    return ((ctx->major_ver == maj) && (ctx->minor_ver == min));
+} // shader_version_exactly
 
 static inline int shader_is_pixel(const Context *ctx)
 {
@@ -1248,6 +1258,12 @@ static void emit_D3D_end(Context *ctx)
 } // emit_D3D_end
 
 
+static void emit_D3D_phase(Context *ctx)
+{
+    output_line(ctx, "phase");
+} // emit_D3D_phase
+
+
 static void emit_D3D_finalize(Context *ctx)
 {
     // no-op.
@@ -1658,6 +1674,7 @@ static void emit_PASSTHROUGH_end(Context *ctx)
     ctx->uniform_array = 0;  // in case anything changed this during parse.
 } // emit_PASSTHROUGH_end
 
+static void emit_PASSTHROUGH_phase(Context *ctx) {}
 static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_relative(Context *ctx, int size) {}
@@ -2200,6 +2217,11 @@ static void emit_GLSL_end(Context *ctx)
     if (ctx->previous_opcode != OPCODE_RET)
         emit_GLSL_RET(ctx);
 } // emit_GLSL_end
+
+static void emit_GLSL_phase(Context *ctx)
+{
+    // no-op in GLSL.
+} // emit_GLSL_phase
 
 static void emit_GLSL_finalize(Context *ctx)
 {
@@ -3752,6 +3774,11 @@ static void emit_ARB1_end(Context *ctx)
     output_line(ctx, "END");
 } // emit_ARB1_end
 
+static void emit_ARB1_phase(Context *ctx)
+{
+    // no-op in arb1.
+} // emit_ARB1_phase
+
 static void emit_ARB1_finalize(Context *ctx)
 {
     int i;
@@ -4782,6 +4809,7 @@ static void emit_ARB1_TEXLD(Context *ctx)
     MOJOSHADER_PROFILE_##prof, \
     emit_##prof##_start, \
     emit_##prof##_end, \
+    emit_##prof##_phase, \
     emit_##prof##_global, \
     emit_##prof##_relative, \
     emit_##prof##_uniform, \
@@ -6363,7 +6391,10 @@ static int parse_phase_token(Context *ctx)
     // !!! FIXME:  (it's ps_1_4 only.)
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
-    return fail(ctx, "not sure what this thing is yet.");
+    else if ( (!shader_is_pixel(ctx)) || (!shader_version_exactly(ctx, 1, 4)) )
+        return fail(ctx, "phase token only available in 1.4 pixel shaders");
+    ctx->profile->phase_emitter(ctx);
+    return 1;
 } // parse_phase_token
 
 
