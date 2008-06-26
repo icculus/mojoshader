@@ -6387,8 +6387,6 @@ static int parse_end_token(Context *ctx)
 
 static int parse_phase_token(Context *ctx)
 {
-    // !!! FIXME: explanation is here: http://msdn.microsoft.com/en-us/library/bb147266(VS.85).aspx
-    // !!! FIXME:  (it's ps_1_4 only.)
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
     else if ( (!shader_is_pixel(ctx)) || (!shader_version_exactly(ctx, 1, 4)) )
