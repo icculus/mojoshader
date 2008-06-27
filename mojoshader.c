@@ -3735,7 +3735,7 @@ static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
     }
 #define EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(op) \
     static void emit_ARB1_##op(Context *ctx) { \
-        fail(ctx, #op " unimplemented in arb1 profile"); \
+        failf(ctx, #op " unimplemented in %s profile", ctx->profile->name); \
     }
 
 
