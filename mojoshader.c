@@ -4157,7 +4157,7 @@ static void emit_ARB1_CALL(Context *ctx)
 
     if (!ctx->support_nv2)  // no branching in stock ARB1.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
         return;
     } // if
 
@@ -4173,7 +4173,7 @@ static void emit_ARB1_CALLNZ(Context *ctx)
     const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
     if (!ctx->support_nv2)  // no branching in stock ARB1.
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     else
     {
         // !!! FIXME: double-check this.
@@ -4470,7 +4470,7 @@ static void emit_ARB1_IF(Context *ctx)
 
     else  // stock ARB1 has no branching.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     } // else
 } // emit_ARB1_IF
 
@@ -4500,7 +4500,7 @@ static void emit_ARB1_ELSE(Context *ctx)
 
     else  // stock ARB1 has no branching.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     } // else
 } // emit_ARB1_ELSE
 
@@ -4521,7 +4521,7 @@ static void emit_ARB1_ENDIF(Context *ctx)
 
     else  // stock ARB1 has no branching.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     } // else
 } // emit_ARB1_ENDIF
 
@@ -4543,7 +4543,7 @@ static void emit_ARB1_BREAK(Context *ctx)
 
     else  // stock ARB1 has no branching.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     } // else
 } // emit_ARB1_BREAK
 
@@ -4700,7 +4700,7 @@ static void emit_ARB1_IFC(Context *ctx)
 
     else  // stock ARB1 has no branching.
     {
-        fail(ctx, "branching unsupported in this profile");
+        failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     } // else
 } // emit_ARB1_IFC
 
