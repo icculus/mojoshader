@@ -70,10 +70,7 @@ typedef struct
         GLint i[4];
         GLfloat f[4];
     } value;
-    int uniform_array_consts_count;
-    int *uniform_array_consts;
     GLfloat *uniform_array_buffer;
-    GLfloat *prev_uniform_array_buffer;
 } UniformMap;
 
 typedef struct
@@ -1021,11 +1018,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
             shader_unref(program->vertex);
             shader_unref(program->fragment);
             for (i = 0; i < program->uniform_count; i++)
-            {
-                Free(program->uniforms[i].uniform_array_consts);
                 Free(program->uniforms[i].uniform_array_buffer);
-                Free(program->uniforms[i].prev_uniform_array_buffer);
-            } // for
             Free(program->samplers);
             Free(program->uniforms);
             Free(program->attributes);
@@ -1122,51 +1115,11 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
         const MOJOSHADER_uniformType type = u->type;
         assert(type == MOJOSHADER_UNIFORM_FLOAT);
 
-        const MOJOSHADER_shaderType shader_type = map->shader_type;
-        const MOJOSHADER_parseData *pd;
-        if (shader_type == MOJOSHADER_TYPE_VERTEX)
-            pd = program->vertex->parseData;
-        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
-            pd = program->fragment->parseData;
-        else  // !!! FIXME: geometry shaders?
-            return 0;
-
-        const MOJOSHADER_constant *c = pd->constants;
-        const int hi = pd->constant_count;
-        const int index = u->index;
-        int *consts_buf = (int *) alloca(sizeof (int) * hi);
-
-        int j;
-        int used_consts = 0;
-        for (j = 0; j < hi; j++)
-        {
-            if (c[j].type != MOJOSHADER_UNIFORM_FLOAT)
-                continue;
-
-            const int idx = c[j].index;
-            if ( (idx >= index) && (idx < (index + size)) )
-                consts_buf[used_consts++] = j;
-        } // for
-
-        map->uniform_array_consts_count = used_consts;
-
-        size_t len;
-
-        len = used_consts * sizeof (int);
-        map->uniform_array_consts = (int *) Malloc(len);
-        if (map->uniform_array_consts == NULL)
-            return 0;
-        memcpy(map->uniform_array_consts, consts_buf, len);
-
-        len = size * sizeof (GLfloat) * 4;
+        const size_t len = size * sizeof (GLfloat) * 4;
         map->uniform_array_buffer = (GLfloat *) Malloc(len);
         if (map->uniform_array_buffer == NULL)
             return 0;
-        memset(map->uniform_array_buffer, 0x00, len);
-        map->prev_uniform_array_buffer = (GLfloat *) Malloc(len);
-        if (map->prev_uniform_array_buffer == NULL)
-            return 0;
-        memset(map->prev_uniform_array_buffer, 0xFF, len); // don't match!
+        memset(map->uniform_array_buffer, 0xFF, len);
     } // for
 
     return 1;
@@ -1255,11 +1208,7 @@ link_program_fail:
     {
         int i;
         for (i = 0; i < retval->uniform_count; i++)
-        {
-            Free(retval->uniforms[i].uniform_array_consts);
             Free(retval->uniforms[i].uniform_array_buffer);
-            Free(retval->uniforms[i].prev_uniform_array_buffer);
-        } // for
         Free(retval->samplers);
         Free(retval->uniforms);
         Free(retval->attributes);
@@ -1512,35 +1461,15 @@ void MOJOSHADER_glProgramReady(void)
 
         if (size != 0)  // uniform array?
         {
-            int j;
-            const GLfloat *f = &regf[index * 4];
-            const int total_consts = map->uniform_array_consts_count;
+            GLfloat *f = &regf[index * 4];
             const size_t len = size * sizeof (GLfloat) * 4;
 
-            // copy the data from the register file, then overwrite with
-            //  consts...
-            memcpy(map->uniform_array_buffer, f, len);
-
-            for (j = 0; j < total_consts; j++)
-            {
-                const int idx = map->uniform_array_consts[j];
-                const MOJOSHADER_constant *c = &pd->constants[idx];
-                assert(c->index < size);
-                memcpy(&map->uniform_array_buffer[c->index*4], c->value.f,
-                       sizeof (c->value.f));
-            } // for
-
             GLfloat *current = map->uniform_array_buffer;
-            GLfloat *prev = map->prev_uniform_array_buffer;
-            if (memcmp(current, prev, len) != 0)
+            if (memcmp(current, f, len) != 0)
             {
                 // array has changed, upload it.
-                ctx->profileUniform4fv(pd, location, size, current);
-
-                // Now swap pointers, so next generation compares against
-                //  the data we just uploaded...
-                map->uniform_array_buffer = prev;
-                map->prev_uniform_array_buffer = current;
+                ctx->profileUniform4fv(pd, location, size, f);
+                memcpy(current, f, len);
             } // if
         } // if
 
