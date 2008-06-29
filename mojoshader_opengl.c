@@ -769,7 +769,7 @@ static int valid_profile(const char *profile)
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_fragment_shader);
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shading_language_100);
         // if you got here, you have all the extensions.
-        if (!glsl_version_atleast(1, 2))
+        if (!glsl_version_atleast(1, 20))
             return 0;
     } // else if
 
