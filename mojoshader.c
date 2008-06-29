@@ -421,6 +421,7 @@ struct Context
     int determined_constants_arrays:1;
     int predicated:1;
     int support_nv2:1;
+    int support_glsl120:1;
     int glsl_generated_lit_opcode:1;
 };
 
@@ -2224,6 +2225,23 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
               (uint) ctx->shader_type);
         return;
     } // if
+
+    ctx->output = &ctx->globals;
+
+    if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
+        /* no-op. */ ;
+
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL120) == 0)
+    {
+        ctx->support_glsl120 = 1;
+        output_line(ctx, "#version 120");
+    } // else if
+
+    else
+    {
+        failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
+        return;
+    } // else
 
     ctx->output = &ctx->mainline_intro;
     output_line(ctx, "void main()");
@@ -4928,6 +4946,7 @@ static const Profile profiles[] =
 // This is for profiles that extend other profiles...
 static const struct { const char *from; const char *to; } profileMap[] =
 {
+    { MOJOSHADER_PROFILE_GLSL120, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
 };
 

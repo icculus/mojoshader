@@ -383,13 +383,33 @@ static int verify_extension(const char *ext, int have, const char *extlist,
 } // verify_extension
 
 
-static void parse_opengl_version(const char *verstr)
+static void parse_opengl_version_str(const char *verstr, int *maj, int *min)
 {
     if (verstr == NULL)
-        ctx->opengl_major = ctx->opengl_minor = 0;
+        *maj = *min = 0;
     else
-        sscanf(verstr, "%d.%d", &ctx->opengl_major, &ctx->opengl_minor);
+        sscanf(verstr, "%d.%d", maj, min);
+} // parse_opengl_version_str
+
+
+static inline void parse_opengl_version(const char *verstr)
+{
+    parse_opengl_version_str(verstr, &ctx->opengl_major, &ctx->opengl_minor);
 } // parse_opengl_version
+
+
+static int glsl_version_atleast(int maj, int min)
+{
+    int glslmin = 0;
+    int glslmaj = 0;
+    ctx->glGetError();  // flush any existing error state.
+    const GLenum enumval = GL_SHADING_LANGUAGE_VERSION_ARB;
+    const char *str = (const char *) ctx->glGetString(enumval);
+    if (ctx->glGetError() == GL_INVALID_ENUM)
+        return 0;  // this is a basic, 1.0-compliant implementation.
+    parse_opengl_version_str(str, &glslmaj, &glslmin);
+    return ( (glslmaj > maj) || ((glslmaj == maj) && (glslmin >= min)) );
+} // glsl_version_atleast
 
 
 static void load_extensions(void *(*lookup)(const char *fnname))
@@ -468,6 +488,17 @@ static int valid_profile(const char *profile)
     #endif
 
     #if SUPPORT_PROFILE_GLSL
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0)
+    {
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_fragment_shader);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shading_language_100);
+        // if you got here, you have all the extensions.
+        if (!glsl_version_atleast(1, 2))
+            return 0;
+    } // else if
+
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
     {
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
@@ -502,6 +533,7 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
     if (ctx->have_base_opengl)
     {
         static const char *priority[] = {
+            MOJOSHADER_PROFILE_GLSL120,
             MOJOSHADER_PROFILE_GLSL,
             MOJOSHADER_PROFILE_NV2,
             MOJOSHADER_PROFILE_ARB1,
@@ -585,7 +617,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     if (profile == NULL) {}
 
 #if SUPPORT_PROFILE_GLSL
-    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
+    else if ( (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0) ||
+              (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0) )
     {
         ctx->profileMaxUniforms = impl_GLSL_MaxUniforms;
         ctx->profileCompileShader = impl_GLSL_CompileShader;
