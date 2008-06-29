@@ -3977,7 +3977,7 @@ static void emit_ARB1_const_array(Context *ctx, const ConstantsList *clist,
         floatstr(ctx, val3, sizeof (val3), clist->constant.value.f[3], 1);
 
         output_line(ctx, "{ %s, %s, %s, %s }%s", val0, val1, val2, val3,
-                    (i < size-1) ? "," : "");
+                    (i < (size-1)) ? "," : "");
 
         ctx->scratchidx = origscratch;
         clist = clist->next;
