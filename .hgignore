@@ -9,5 +9,7 @@ bestprofile
 finderrors
 glcaps
 *.exe
+*.lib
+*.a
 ps_?_?
 vs_?_?

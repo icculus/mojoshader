@@ -13,20 +13,24 @@ IF(MSVC)
     ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
 ENDIF(MSVC)
 
+ADD_LIBRARY(mojoshader STATIC mojoshader.c mojoshader_opengl.c)
+
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
     ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
     ADD_EXECUTABLE(glcaps glcaps.c)
     TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY})
-    ADD_EXECUTABLE(bestprofile bestprofile.c mojoshader.c mojoshader_opengl.c)
-    TARGET_LINK_LIBRARIES(bestprofile ${SDL_LIBRARY})
+    ADD_EXECUTABLE(bestprofile bestprofile.c)
+    TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL_LIBRARY})
 ENDIF(SDL_FOUND)
 
-ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
-ADD_EXECUTABLE(testoutput testoutput.c mojoshader.c)
-ADD_EXECUTABLE(finderrors finderrors.c mojoshader.c mojoshader_opengl.c)
-TARGET_LINK_LIBRARIES(finderrors ${SDL_LIBRARY} ${EXTRA_LIBS})
+ADD_EXECUTABLE(testparse testparse.c)
+TARGET_LINK_LIBRARIES(testparse mojoshader)
+ADD_EXECUTABLE(testoutput testoutput.c)
+TARGET_LINK_LIBRARIES(testoutput mojoshader)
+ADD_EXECUTABLE(finderrors finderrors.c)
+TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
 
 # End of CMakeLists.txt ...
 
