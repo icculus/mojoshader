@@ -5,6 +5,7 @@ Makefile
 cmake_install.cmake
 testparse
 testoutput
+bestprofile
 finderrors
 glcaps
 *.exe

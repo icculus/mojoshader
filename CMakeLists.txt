@@ -19,6 +19,8 @@ IF(SDL_FOUND)
     ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
     ADD_EXECUTABLE(glcaps glcaps.c)
     TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY})
+    ADD_EXECUTABLE(bestprofile bestprofile.c mojoshader.c mojoshader_opengl.c)
+    TARGET_LINK_LIBRARIES(bestprofile ${SDL_LIBRARY})
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c mojoshader.c)
