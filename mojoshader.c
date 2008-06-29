@@ -159,6 +159,7 @@ typedef enum
 
 // predeclare.
 typedef struct Context Context;
+struct ConstantsList;
 
 // one emit function for each opcode in each profile.
 typedef void (*emit_function)(Context *ctx);
@@ -180,6 +181,11 @@ typedef void (*emit_global)(Context *ctx, RegisterType regtype, int regnum);
 
 // one emit function for relative uniform arrays in each profile.
 typedef void (*emit_array)(Context *ctx, int base, int size);
+
+// one emit function for relative constants arrays in each profile.
+typedef void (*emit_const_array)(Context *ctx,
+                                 const struct ConstantsList *constslist,
+                                 int base, int size);
 
 // one emit function for uniforms in each profile.
 typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum,
@@ -212,6 +218,7 @@ typedef struct
     emit_phase phase_emitter;
     emit_global global_emitter;
     emit_array array_emitter;
+    emit_const_array const_array_emitter;
     emit_uniform uniform_emitter;
     emit_sampler sampler_emitter;
     emit_attribute attribute_emitter;
@@ -251,11 +258,18 @@ typedef struct OutputList
     OutputListNode *tail;
 } OutputList;
 
+typedef struct ConstantsList
+{
+    MOJOSHADER_constant constant;
+    struct ConstantsList *next;
+} ConstantsList;
+
 typedef struct VariableList
 {
     MOJOSHADER_uniformType type;
     int index;
     int count;
+    ConstantsList *constant;
     int used;
     struct VariableList *next;
 } VariableList;
@@ -271,12 +285,6 @@ typedef struct RegisterList
     const VariableList *array;
     struct RegisterList *next;
 } RegisterList;
-
-typedef struct ConstantsList
-{
-    MOJOSHADER_constant constant;
-    struct ConstantsList *next;
-} ConstantsList;
 
 // result modifiers.
 #define MOD_SATURATE 0x01
@@ -410,6 +418,7 @@ struct Context
     RegisterList samplers;
     VariableList *variables;  // variables to register mapping.
     int have_ctab:1;
+    int determined_constants_arrays:1;
     int predicated:1;
     int support_nv2:1;
     int glsl_generated_lit_opcode:1;
@@ -1284,6 +1293,13 @@ static void emit_D3D_array(Context *ctx, int base, int size)
 } // emit_D3D_array
 
 
+static void emit_D3D_const_array(Context *ctx, const ConstantsList *clist,
+                                 int base, int size)
+{
+    // no-op.
+} // emit_D3D_const_array
+
+
 static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum,
                              int arraybase, int arraysize)
 {
@@ -1682,6 +1698,8 @@ static void emit_PASSTHROUGH_finalize(Context *ctx) {}
 static void emit_PASSTHROUGH_global(Context *ctx, RegisterType t, int n) {}
 static void emit_PASSTHROUGH_array(Context *ctx, int base, int size) {}
 static void emit_PASSTHROUGH_sampler(Context *ctx, int s, TextureType ttype) {}
+static void emit_PASSTHROUGH_const_array(Context *ctx, const ConstantsList *c,
+                                         int base, int size) {}
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n,
                                      int arraybase, int arraysize) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
@@ -2288,6 +2306,37 @@ static void emit_GLSL_array(Context *ctx, int base, int size)
     output_line(ctx, "uniform vec4 %s[%d];", varname, size);
     pop_output(ctx);
 } // emit_GLSL_array
+
+static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
+                                  int base, int size)
+{
+    // !!! FIXME: if we do a "glsl120" profile, we can do these as real const
+    // !!! FIXME:  arrays without assignments in the mainline.
+
+    const char *varname = get_GLSL_const_array_varname(ctx, base, size);
+    const char *cstr = NULL;
+    const int origscratch = ctx->scratchidx;
+    int i;
+
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "vec4 %s[%d];", varname, size);
+    pop_output(ctx);
+
+    push_output(ctx, &ctx->mainline_intro);
+    ctx->indent++;
+    for (i = 0; i < size; i++)
+    {
+        while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
+            clist = clist->next;
+        assert(clist->constant.index == (base + i));
+        cstr = get_GLSL_varname(ctx, REG_TYPE_CONST, clist->constant.index);
+        output_line(ctx, "%s[%d] = %s;", varname, i, cstr);
+        clist = clist->next;
+        ctx->scratchidx = origscratch;
+    } // for
+    ctx->indent--;
+    pop_output(ctx);
+} // emit_GLSL_const_array
 
 static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
                               int arraybase, int arraysize)
@@ -3847,6 +3896,44 @@ static void emit_ARB1_array(Context *ctx, int base, int size)
     pop_output(ctx);
 } // emit_ARB1_array
 
+static void emit_ARB1_const_array(Context *ctx, const ConstantsList *clist,
+                                  int base, int size)
+{
+    const char *varname = get_ARB1_const_array_varname(ctx, base, size);
+    const int origscratch = ctx->scratchidx;
+    int i;
+
+    push_output(ctx, &ctx->globals);
+    output_line(ctx, "PARAM %s[%d] = {", varname, size);
+    ctx->indent++;
+
+    for (i = 0; i < size; i++)
+    {
+        while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
+            clist = clist->next;
+        assert(clist->constant.index == (base + i));
+
+        char val0[32];
+        char val1[32];
+        char val2[32];
+        char val3[32];
+        floatstr(ctx, val0, sizeof (val0), clist->constant.value.f[0], 1);
+        floatstr(ctx, val1, sizeof (val1), clist->constant.value.f[1], 1);
+        floatstr(ctx, val2, sizeof (val2), clist->constant.value.f[2], 1);
+        floatstr(ctx, val3, sizeof (val3), clist->constant.value.f[3], 1);
+
+        output_line(ctx, "{ %s, %s, %s, %s }%s", val0, val1, val2, val3,
+                    (i < size-1) ? "," : "");
+
+        ctx->scratchidx = origscratch;
+        clist = clist->next;
+    } // for
+
+    ctx->indent--;
+    output_line(ctx, "};");
+    pop_output(ctx);
+} // emit_ARB1_const_array
+
 static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum,
                               int arraybase, int arraysize)
 {
@@ -4811,6 +4898,7 @@ static void emit_ARB1_TEXLD(Context *ctx)
     emit_##prof##_phase, \
     emit_##prof##_global, \
     emit_##prof##_array, \
+    emit_##prof##_const_array, \
     emit_##prof##_uniform, \
     emit_##prof##_sampler, \
     emit_##prof##_attribute, \
@@ -4961,6 +5049,105 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 } // parse_destination_token
 
 
+static void determine_constants_arrays(Context *ctx)
+{
+    // Only process this stuff once. This is called after all DEF* opcodes
+    //  could have been parsed.
+    if (ctx->determined_constants_arrays)
+        return;
+
+    ctx->determined_constants_arrays = 1;
+
+    if (ctx->constant_count <= 1)
+        return;  // nothing to sort or group.
+
+    // Sort the linked list into an array for easier tapdancing...
+    ConstantsList **array = (ConstantsList **) alloca(sizeof (ConstantsList *) * (ctx->constant_count + 1));
+    ConstantsList *item = ctx->constants;
+    int i;
+
+    for (i = 0; i < ctx->constant_count; i++)
+    {
+        if (item == NULL)
+        {
+            fail(ctx, "BUG: mismatched constant list and count");
+            return;
+        } // if
+
+        array[i] = item;
+        item = item->next;
+    } // for
+
+    array[ctx->constant_count] = NULL;
+
+    // bubble sort ftw.
+    int sorted;
+    do
+    {
+        sorted = 1;
+        for (i = 0; i < ctx->constant_count-1; i++)
+        {
+            if (array[i]->constant.index > array[i+1]->constant.index)
+            {
+                ConstantsList *tmp = array[i];
+                array[i] = array[i+1];
+                array[i+1] = tmp;
+                sorted = 0;
+            } // if
+        } // for
+    } while (!sorted);
+
+    // okay, sorted. While we're here, let's redo the linked list in order...
+    for (i = 0; i < ctx->constant_count; i++)
+        array[i]->next = array[i+1];
+    ctx->constants = array[0];
+
+    // now figure out the groupings of constants and add to ctx->variables...
+    int start = -1;
+    int prev = -1;
+    int count = 0;
+    const int hi = ctx->constant_count;
+    for (i = 0; i <= hi; i++)
+    {
+        if (array[i] && (array[i]->constant.type != MOJOSHADER_UNIFORM_FLOAT))
+            continue;  // we only care about REG_TYPE_CONST for array groups.
+
+        if (start == -1)
+        {
+            prev = start = i;  // first REG_TYPE_CONST we've seen. Mark it!
+            continue;
+        } // if
+
+        // not a match (or last item in the array)...see if we had a
+        //  contiguous set before this point...
+        if ( (array[i]) && (array[i]->constant.index == (array[prev]->constant.index + 1)) )
+            count++;
+        else
+        {
+            if (count > 0)  // multiple constants in the set?
+            {
+                VariableList *var;
+                var = (VariableList *) Malloc(ctx, sizeof (VariableList));
+                if (var == NULL)
+                    break;
+
+                var->type = MOJOSHADER_UNIFORM_FLOAT;
+                var->index = array[start]->constant.index;
+                var->count = (array[prev]->constant.index - var->index) + 1;
+                var->constant = array[start];
+                var->used = 0;
+                var->next = ctx->variables;
+                ctx->variables = var;
+            } // else
+
+            start = i;   // set this as new start of sequence.
+        } // if
+
+        prev = i;
+    } // for
+} // determine_constants_arrays
+
+
 static int parse_source_token(Context *ctx, SourceArgInfo *info)
 {
     int retval = 1;
@@ -5060,6 +5247,8 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         // figure out what array we're in...
         if (!ctx->have_ctab)  // it's hard to do this efficiently without!
             return fail(ctx, "relative addressing unsupported without a CTAB");
+
+        determine_constants_arrays(ctx);
 
         VariableList *var;
         const int reltarget = info->regnum;
@@ -6351,6 +6540,7 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
                 item->type = mojotype;
                 item->index = regidx;
                 item->count = regcnt;
+                item->constant = NULL;
                 item->used = 0;
                 item->next = ctx->variables;
                 ctx->variables = item;
@@ -6647,7 +6837,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
         int written = 0;
         for (var = ctx->variables; var != NULL; var = var->next)
         {
-            if (var->used)
+            if ((!var->constant) && (var->used))
             {
                 const char *name = ctx->profile->get_const_array_varname(ctx,
                                                       var->index, var->count);
@@ -6967,6 +7157,8 @@ static void process_definitions(Context *ctx)
     RegisterList *prev = &ctx->used_registers;
     RegisterList *item = prev->next;
 
+    determine_constants_arrays(ctx);  // in case this hasn't been called yet.
+
     while (item != NULL)
     {
         RegisterList *next = item->next;
@@ -7025,14 +7217,22 @@ static void process_definitions(Context *ctx)
         item = next;
     } // while
 
-    // okay, now deal with arrays...
+    // okay, now deal with uniform/constant arrays...
     VariableList *var;
     for (var = ctx->variables; var != NULL; var = var->next)
     {
         if (var->used)
         {
-            ctx->profile->array_emitter(ctx, var->index, var->count);
-            ctx->uniform_count++;
+            if (var->constant)
+            {
+                ctx->profile->const_array_emitter(ctx, var->constant,
+                                                  var->index, var->count);
+            } // if
+            else
+            {
+                ctx->profile->array_emitter(ctx, var->index, var->count);
+                ctx->uniform_count++;
+            } // else
         } // if
     } // for
 
@@ -7054,6 +7254,7 @@ static void process_definitions(Context *ctx)
                 const int lo = var->index;
                 if ( (regnum >= lo) && (regnum < (lo + var->count)) )
                 {
+                    assert(!var->constant);
                     item->array = var;  // used when building parseData.
                     arraybase = lo;
                     arraysize = var->count;
