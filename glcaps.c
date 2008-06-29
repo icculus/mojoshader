@@ -33,6 +33,7 @@ typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 int main(int argc, char **argv)
 {
     GLint val = 0;
+    const char *str = NULL;
 
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_LoadLibrary(NULL);
@@ -100,6 +101,8 @@ int main(int argc, char **argv)
         pglGetIntegerv(x, &val); \
         printf(#x ": %d\n", (int) val);
 
+    str = (const char *) pglGetString(GL_SHADING_LANGUAGE_VERSION_ARB);
+    printf("GL_SHADING_LANGUAGE_VERSION_ARB: %s\n", str);
     getval(GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB);
     getval(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB);
     getval(GL_MAX_VARYING_FLOATS_ARB);
