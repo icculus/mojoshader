@@ -2333,6 +2333,9 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
     const int origscratch = ctx->scratchidx;
     int i;
 
+#if 0
+    // !!! FIXME: fails on Nvidia's and Apple's GL, even with #version 120.
+    // !!! FIXME:  (the 1.20 spec says it should work, though, I think...)
     if (ctx->support_glsl120)
     {
         // GLSL 1.20 can do constant arrays.
@@ -2368,6 +2371,7 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
     } // if
 
     else
+#endif
     {
         // stock GLSL 1.0 can't do constant arrays, so make a global array
         //  and assign all entries at the start of the mainline...
