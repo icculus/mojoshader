@@ -2328,32 +2328,68 @@ static void emit_GLSL_array(Context *ctx, int base, int size)
 static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
                                   int base, int size)
 {
-    // !!! FIXME: if we do a "glsl120" profile, we can do these as real const
-    // !!! FIXME:  arrays without assignments in the mainline.
-
     const char *varname = get_GLSL_const_array_varname(ctx, base, size);
     const char *cstr = NULL;
     const int origscratch = ctx->scratchidx;
     int i;
 
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "vec4 %s[%d];", varname, size);
-    pop_output(ctx);
-
-    push_output(ctx, &ctx->mainline_intro);
-    ctx->indent++;
-    for (i = 0; i < size; i++)
+    if (ctx->support_glsl120)
     {
-        while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
+        // GLSL 1.20 can do constant arrays.
+        push_output(ctx, &ctx->globals);
+        output_line(ctx, "const vec4 %s[%d] = vec4[%d](", varname, size, size);
+        ctx->indent++;
+
+        for (i = 0; i < size; i++)
+        {
+            while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
+                clist = clist->next;
+            assert(clist->constant.index == (base + i));
+
+            char val0[32];
+            char val1[32];
+            char val2[32];
+            char val3[32];
+            floatstr(ctx, val0, sizeof (val0), clist->constant.value.f[0], 1);
+            floatstr(ctx, val1, sizeof (val1), clist->constant.value.f[1], 1);
+            floatstr(ctx, val2, sizeof (val2), clist->constant.value.f[2], 1);
+            floatstr(ctx, val3, sizeof (val3), clist->constant.value.f[3], 1);
+
+            output_line(ctx, "vec4(%s, %s, %s, %s)%s", val0, val1, val2, val3,
+                        (i < (size-1)) ? "," : "");
+
+            ctx->scratchidx = origscratch;
             clist = clist->next;
-        assert(clist->constant.index == (base + i));
-        cstr = get_GLSL_varname(ctx, REG_TYPE_CONST, clist->constant.index);
-        output_line(ctx, "%s[%d] = %s;", varname, i, cstr);
-        clist = clist->next;
-        ctx->scratchidx = origscratch;
-    } // for
-    ctx->indent--;
-    pop_output(ctx);
+        } // for
+
+        ctx->indent--;
+        output_line(ctx, ");");
+        pop_output(ctx);
+    } // if
+
+    else
+    {
+        // stock GLSL 1.0 can't do constant arrays, so make a global array
+        //  and assign all entries at the start of the mainline...
+        push_output(ctx, &ctx->globals);
+        output_line(ctx, "vec4 %s[%d];", varname, size);
+        pop_output(ctx);
+
+        push_output(ctx, &ctx->mainline_intro);
+        ctx->indent++;
+        for (i = 0; i < size; i++)
+        {
+            while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
+                clist = clist->next;
+            assert(clist->constant.index == (base + i));
+            cstr = get_GLSL_varname(ctx, REG_TYPE_CONST, clist->constant.index);
+            output_line(ctx, "%s[%d] = %s;", varname, i, cstr);
+            clist = clist->next;
+            ctx->scratchidx = origscratch;
+        } // for
+        ctx->indent--;
+        pop_output(ctx);
+    } // else
 } // emit_GLSL_const_array
 
 static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
