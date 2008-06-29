@@ -52,15 +52,6 @@ typedef int32_t int32;
 #define SUPPORT_PROFILE_ARB1 1
 #endif
 
-#ifndef SUPPORT_PROFILE_NV2
-#define SUPPORT_PROFILE_NV2 1
-#endif
-
-
-#if SUPPORT_PROFILE_NV2 && !SUPPORT_PROFILE_ARB1
-#error nv2 profile requires arb1 profile.
-#endif
-
 
 struct MOJOSHADER_glShader
 {
@@ -475,9 +466,7 @@ static int valid_profile(const char *profile)
         MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_vertex_program);
         MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_fragment_program);
     } // else if
-    #endif
 
-    #if SUPPORT_PROFILE_NV2
     else if (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0)
     {
         MUST_HAVE(MOJOSHADER_PROFILE_NV2, GL_ARB_vertex_program);
