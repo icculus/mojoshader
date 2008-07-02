@@ -7335,10 +7335,11 @@ static void process_definitions(Context *ctx)
                                       (TextureType) item->index);
     } // for
 
-    // ...and attributes... (find POSITION0 here, so it's always first).
+    // ...and attributes... (find input POSITION0 here, so it's always first).
     for (item = ctx->attributes.next; item != NULL; item = item->next)
     {
-        if ((item->usage == MOJOSHADER_USAGE_POSITION) && (item->index == 0))
+        if ( (item->regtype == REG_TYPE_INPUT) &&
+             (item->usage == MOJOSHADER_USAGE_POSITION) && (item->index == 0) )
         {
             ctx->attribute_count++;
             ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
@@ -7348,10 +7349,11 @@ static void process_definitions(Context *ctx)
         } // if
     } // for
 
-    // ...and attributes... (everything but POSITION0).
+    // ...and attributes... (everything but input POSITION0).
     for (item = ctx->attributes.next; item != NULL; item = item->next)
     {
-        if ((item->usage != MOJOSHADER_USAGE_POSITION) || (item->index != 0))
+        if ( (item->regtype != REG_TYPE_INPUT) ||
+             (item->usage != MOJOSHADER_USAGE_POSITION) || (item->index != 0) )
         {
             ctx->attribute_count++;
             ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
