@@ -1,5 +1,3 @@
-/// !!! FIXME: all-DEF array in vs_3_0/14704.disasm ...
-
 /**
  * MojoShader; generate shader programs from bytecode of compiled
  *  Direct3D shaders.
