@@ -7210,11 +7210,11 @@ static void process_definitions(Context *ctx)
     // !!! FIXME:  DCL'd before use (default to 2d?). We aren't checking
     // !!! FIXME:  this at the moment, though.
 
+    determine_constants_arrays(ctx);  // in case this hasn't been called yet.
+
     RegisterList *uitem = &ctx->uniforms;
     RegisterList *prev = &ctx->used_registers;
     RegisterList *item = prev->next;
-
-    determine_constants_arrays(ctx);  // in case this hasn't been called yet.
 
     while (item != NULL)
     {
