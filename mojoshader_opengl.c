@@ -722,6 +722,8 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     VERIFY_EXT(GL_ARB_vertex_shader, 2, 0);
     VERIFY_EXT(GL_ARB_fragment_shader, 2, 0);
     VERIFY_EXT(GL_ARB_shading_language_100, 2, 0);
+    VERIFY_EXT(GL_NV_vertex_program2_option, -1, -1);
+    VERIFY_EXT(GL_NV_fragment_program2, -1, -1);
     VERIFY_EXT(GL_NV_half_float, -1, -1);
 
     #undef VERIFY_EXT
