@@ -23,6 +23,8 @@ IF(SDL_FOUND)
     TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY})
     ADD_EXECUTABLE(bestprofile bestprofile.c)
     TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL_LIBRARY})
+    ADD_EXECUTABLE(availableprofiles availableprofiles.c)
+    TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL_LIBRARY})
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse testparse.c)
