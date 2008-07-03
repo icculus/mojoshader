@@ -804,9 +804,22 @@ static int valid_profile(const char *profile)
 } // valid_profile
 
 
-const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
+static const char *profile_priorities[] = {
+#if SUPPORT_PROFILE_GLSL
+    MOJOSHADER_PROFILE_GLSL120,
+    MOJOSHADER_PROFILE_GLSL,
+#endif
+#if SUPPORT_PROFILE_ARB1
+    MOJOSHADER_PROFILE_NV3,
+    MOJOSHADER_PROFILE_NV2,
+    MOJOSHADER_PROFILE_ARB1,
+#endif
+};
+
+int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
+                                   const char **profs, const int size)
 {
-    const char *retval = NULL;
+    int retval = 0;
     MOJOSHADER_glContext _ctx;
     MOJOSHADER_glContext *current_ctx = ctx;
 
@@ -816,32 +829,36 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
 
     if (ctx->have_base_opengl)
     {
-        static const char *priority[] = {
-            MOJOSHADER_PROFILE_GLSL120,
-            MOJOSHADER_PROFILE_GLSL,
-            MOJOSHADER_PROFILE_NV3,
-            MOJOSHADER_PROFILE_NV2,
-            MOJOSHADER_PROFILE_ARB1,
-        };
-
         int i;
-        for (i = 0; i < STATICARRAYLEN(priority); i++)
+        for (i = 0; i < STATICARRAYLEN(profile_priorities); i++)
         {
             // !!! FIXME: if Mac OS X <= 10.4, don't ever pick GLSL, even if
             // !!! FIXME:  the system claims it is available.
-            if (valid_profile(priority[i]))
+            const char *profile = profile_priorities[i];
+            if (valid_profile(profile))
             {
-                retval = priority[i];
-                break;
+                if (retval < size)
+                    profs[retval] = profile;
+                retval++;
             } // if
         } // for
-
-        if (retval == NULL)
-            set_error("no profiles available");
     } // if
 
     ctx = current_ctx;
     return retval;
+} // MOJOSHADER_glAvailableProfiles
+
+
+const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
+{
+    const char *prof[STATICARRAYLEN(profile_priorities)];
+    if (MOJOSHADER_glAvailableProfiles(lookup, prof, STATICARRAYLEN(prof)) <= 0)
+    {
+        set_error("no profiles available");
+        return NULL;
+    } // if
+
+    return prof[0];  // profiles are sorted "best" to "worst."
 } // MOJOSHADER_glBestProfile
 
 

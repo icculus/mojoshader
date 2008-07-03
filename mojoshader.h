@@ -434,9 +434,36 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
 
 
 /*
- * Determine the best profile to use for the current system.
+ * Get a list of available profiles. This will fill in the array (profs)
+ *  with up to (size) pointers of profiles that the current system can handle;
+ *  that is, the profiles are built into MojoShader and the OpenGL extensions
+ *  required for them exist at runtime. This function returns the number of
+ *  available profiles, which may be more, less, or equal to (size).
  *
- * You do not need to call this if all you want is MOJOSHADER_parse().
+ * If there are more than (size) profiles, the (profs) buffer will not
+ *  overflow. You can check the return value for the total number of
+ *  available profiles, allocate more space, and try again if necessary.
+ *  Calling this function with (size) == 0 is legal.
+ *
+ * You can only call this AFTER you have successfully built your GL context
+ *  and made it current. This function will lookup the GL functions it needs
+ *  through the callback you supply. The lookup function is neither stored nor
+ *  used by MojoShader after this function returns, nor are the functions it
+ *  might look up.
+ *
+ * You should not free any strings returned from this function; they are
+ *  pointers to internal, probably static, memory.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ */
+int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
+                                   const char **profs, const int size);
+
+
+/*
+ * Determine the best profile to use for the current system.
  *
  * You can only call this AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
