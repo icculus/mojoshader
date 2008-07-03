@@ -141,6 +141,7 @@ struct MOJOSHADER_glContext
     int have_GL_ARB_fragment_program:1;
     int have_GL_NV_vertex_program2_option:1;
     int have_GL_NV_fragment_program2:1;
+    int have_GL_NV_vertex_program3:1;
     int have_GL_ARB_shader_objects:1;
     int have_GL_ARB_vertex_shader:1;
     int have_GL_ARB_fragment_shader:1;
@@ -694,6 +695,7 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     ctx->have_GL_ARB_fragment_program = 1;
     ctx->have_GL_NV_vertex_program2_option = 1;
     ctx->have_GL_NV_fragment_program2 = 1;
+    ctx->have_GL_NV_vertex_program3 = 1;
     ctx->have_GL_ARB_shader_objects = 1;
     ctx->have_GL_ARB_vertex_shader = 1;
     ctx->have_GL_ARB_fragment_shader = 1;
@@ -724,6 +726,7 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     VERIFY_EXT(GL_ARB_shading_language_100, 2, 0);
     VERIFY_EXT(GL_NV_vertex_program2_option, -1, -1);
     VERIFY_EXT(GL_NV_fragment_program2, -1, -1);
+    VERIFY_EXT(GL_NV_vertex_program3, -1, -1);
     VERIFY_EXT(GL_NV_half_float, -1, -1);
 
     #undef VERIFY_EXT
@@ -757,6 +760,14 @@ static int valid_profile(const char *profile)
         MUST_HAVE(MOJOSHADER_PROFILE_NV2, GL_ARB_fragment_program);
         MUST_HAVE(MOJOSHADER_PROFILE_NV2, GL_NV_vertex_program2_option);
         MUST_HAVE(MOJOSHADER_PROFILE_NV2, GL_NV_fragment_program2);
+    } // else if
+
+    else if (strcmp(profile, MOJOSHADER_PROFILE_NV3) == 0)
+    {
+        MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_ARB_vertex_program);
+        MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_ARB_fragment_program);
+        MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_NV_vertex_program3);
+        MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_NV_fragment_program2);
     } // else if
     #endif
 
@@ -808,6 +819,7 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
         static const char *priority[] = {
             MOJOSHADER_PROFILE_GLSL120,
             MOJOSHADER_PROFILE_GLSL,
+            MOJOSHADER_PROFILE_NV3,
             MOJOSHADER_PROFILE_NV2,
             MOJOSHADER_PROFILE_ARB1,
         };
@@ -889,7 +901,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 
 #if SUPPORT_PROFILE_ARB1
     else if ( (strcmp(profile, MOJOSHADER_PROFILE_ARB1) == 0) ||
-              (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0) )
+              (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0) ||
+              (strcmp(profile, MOJOSHADER_PROFILE_NV3) == 0) )
     {
         ctx->profileMaxUniforms = impl_ARB1_MaxUniforms;
         ctx->profileCompileShader = impl_ARB1_CompileShader;

@@ -357,7 +357,7 @@ typedef struct
  * Profile string for OpenGL ARB 1.0 shaders with Nvidia 3.0 extensions:
  *  GL_NV_vertex_program3 and GL_NV_fragment_program2
  */
-// Not yet. #define MOJOSHADER_PROFILE_NV3 "nv3"
+#define MOJOSHADER_PROFILE_NV3 "nv3"
 
 /*
  * Profile string for OpenGL ARB 1.0 shaders with Nvidia 4.0 extensions:

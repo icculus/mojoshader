@@ -419,6 +419,7 @@ struct Context
     int determined_constants_arrays:1;
     int predicated:1;
     int support_nv2:1;
+    int support_nv3:1;
     int support_glsl120:1;
     int glsl_generated_lit_opcode:1;
 };
@@ -3877,6 +3878,16 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
         output_line(ctx, "OPTION NV_%s_program2;", shader_full_str);
     } // else if
 
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV3) == 0)
+    {
+        // there's no NV_fragment_program3, so just use 2.
+        const int ver = shader_is_pixel(ctx) ? 2 : 3;
+        ctx->support_nv2 = 1;
+        ctx->support_nv3 = 1;
+        output_line(ctx, "!!ARB%s1.0", shader_str);
+        output_line(ctx, "OPTION NV_%s_program%d;", shader_full_str, ver);
+    } // else if
+
     else
     {
         failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
@@ -4815,7 +4826,66 @@ static void emit_ARB1_DP2ADD(Context *ctx)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSY)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDL)
+
+
+static void arb1_texld(Context *ctx, const char *opcode)
+{
+    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const SourceArgInfo *samp_arg = &ctx->source_args[1];
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      samp_arg->regnum);
+    const char *ttype = NULL;
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    //const char *src1 = get_ARB1_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
+
+    // !!! FIXME: this should be in state_TEXLD, not in the arb1/glsl emitters.
+    if (sreg == NULL)
+    {
+        fail(ctx, "TEXLD using undeclared sampler");
+        return;
+    } // if
+
+    if (!no_swizzle(samp_arg->swizzle))
+    {
+        // !!! FIXME: does this ever actually happen?
+        fail(ctx, "BUG: can't handle TEXLD with sampler swizzle at the moment");
+    } // if
+
+    switch ((const TextureType) sreg->index)
+    {
+        case TEXTURE_TYPE_2D: ttype = "2D"; break; // !!! FIXME: "RECT"?
+        case TEXTURE_TYPE_CUBE: ttype = "CUBE"; break;
+        case TEXTURE_TYPE_VOLUME: ttype = "3D"; break;
+        default: fail(ctx, "unknown texture type"); return;
+    } // switch
+
+    output_line(ctx, "%s%s, %s, texture[%d], %s;", opcode, dst, src0,
+                samp_arg->regnum, ttype);
+} // arb1_texld
+
+
+static void emit_ARB1_TEXLDL(Context *ctx)
+{
+    if ((shader_is_vertex(ctx)) && (!ctx->support_nv3))
+    {
+        failf(ctx, "Vertex shader TEXLDL unsupported in %s profile",
+              ctx->profile->name);
+        return;
+    } // if
+
+    else if ((shader_is_pixel(ctx)) && (!ctx->support_nv2))
+    {
+        failf(ctx, "Pixel shader TEXLDL unsupported in %s profile",
+              ctx->profile->name);
+        return;
+    } // if
+
+    // !!! FIXME: this doesn't map exactly to TEXLDL. Review this.
+    arb1_texld(ctx, "TXL");
+} // emit_ARB1_TEXLDL
+
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKP)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKC)
 
@@ -4896,48 +4966,14 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_ARB1_TEXLD(Context *ctx)
 {
-    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
-
     if (!shader_version_atleast(ctx, 2, 0))
     {
         // ps_1_0 and ps_1_4 are both different, too!
         fail(ctx, "TEXLD <= Shader Model 2.0 unimplemented.");  // !!! FIXME
         return;
     } // if
-    else
-    {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const SourceArgInfo *samp_arg = &ctx->source_args[1];
-        RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
-                                          samp_arg->regnum);
-        const char *ttype = NULL;
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        //const char *src1 = get_ARB1_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
 
-        // !!! FIXME: this should be in state_TEXLD, not in the arb1/glsl emitters.
-        if (sreg == NULL)
-        {
-            fail(ctx, "TEXLD using undeclared sampler");
-            return;
-        } // if
-
-        if (!no_swizzle(samp_arg->swizzle))
-        {
-            // !!! FIXME: does this ever actually happen?
-            fail(ctx, "BUG: can't handle TEXLD with sampler swizzle at the moment");
-        } // if
-
-        switch ((const TextureType) sreg->index)
-        {
-            case TEXTURE_TYPE_2D: ttype = "2D"; break; // !!! FIXME: "RECT"?
-            case TEXTURE_TYPE_CUBE: ttype = "CUBE"; break;
-            case TEXTURE_TYPE_VOLUME: ttype = "3D"; break;
-            default: fail(ctx, "unknown texture type"); return;
-        } // switch
-
-        output_line(ctx, "TEX%s, %s, texture[%d], %s;", dst, src0,
-                    samp_arg->regnum, ttype);
-    } // else
+    arb1_texld(ctx, "TEX");
 } // emit_ARB1_TEXLD
 
 #endif  // SUPPORT_PROFILE_ARB1
