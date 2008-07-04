@@ -1040,7 +1040,7 @@ static void program_unref(MOJOSHADER_glProgram *program)
 {
     if (program != NULL)
     {
-        int i;
+        uint32 i;
         const uint32 refcount = program->refcount;
         if (refcount > 1)
             program->refcount--;
@@ -1238,7 +1238,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 link_program_fail:
     if (retval != NULL)
     {
-        int i;
+        uint32 i;
         for (i = 0; i < retval->uniform_count; i++)
             Free(retval->uniforms[i].uniform_array_buffer);
         Free(retval->samplers);

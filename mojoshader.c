@@ -54,6 +54,7 @@
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 
 #ifdef _MSC_VER
+#include <malloc.h>
 #define snprintf _snprintf
 typedef unsigned __int8 uint8;
 typedef unsigned __int16 uint16;
