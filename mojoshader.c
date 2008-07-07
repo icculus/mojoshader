@@ -195,7 +195,8 @@ typedef void (*emit_sampler)(Context *ctx, int stage, TextureType ttype);
 
 // one emit function for attributes in each profile.
 typedef void (*emit_attribute)(Context *ctx, RegisterType regtype, int regnum,
-                               MOJOSHADER_usage usage, int index, int wmask);
+                               MOJOSHADER_usage usage, int index, int wmask,
+                               int flags);
 
 // one args function for each possible sequence of opcode arguments.
 typedef int (*args_function)(Context *ctx);
@@ -417,11 +418,13 @@ struct Context
     int sampler_count;
     RegisterList samplers;
     VariableList *variables;  // variables to register mapping.
+    int centroid_allowed:1;
     int have_ctab:1;
     int determined_constants_arrays:1;
     int predicated:1;
     int support_nv2:1;
     int support_nv3:1;
+    int support_nv4:1;
     int support_glsl120:1;
     int glsl_generated_lit_opcode:1;
 };
@@ -797,12 +800,13 @@ static const RegisterList *declared_attribute(Context *ctx,
 
 static void add_attribute_register(Context *ctx, const RegisterType rtype,
                                 const int regnum, const MOJOSHADER_usage usage,
-                                const int index, const int writemask)
+                                const int index, const int writemask, int flags)
 {
     RegisterList *item = reglist_insert(ctx, &ctx->attributes, rtype, regnum);
     item->usage = usage;
     item->index = index;
     item->writemask = writemask;
+    item->misc = flags;
 } // add_attribute_register
 
 static inline void add_sampler(Context *ctx, const RegisterType rtype,
@@ -1316,7 +1320,8 @@ static void emit_D3D_sampler(Context *ctx, int stage, TextureType ttype)
 
 
 static void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
-                               MOJOSHADER_usage usage, int index, int wmask)
+                               MOJOSHADER_usage usage, int index, int wmask,
+                               int flags)
 {
     // no-op.
 } // emit_D3D_attribute
@@ -1705,7 +1710,8 @@ static void emit_PASSTHROUGH_const_array(Context *ctx, const ConstantsList *c,
 static void emit_PASSTHROUGH_uniform(Context *ctx, RegisterType t, int n,
                                      int arraybase, int arraysize) {}
 static void emit_PASSTHROUGH_attribute(Context *ctx, RegisterType t, int n,
-                                       MOJOSHADER_usage u, int i, int w) {}
+                                       MOJOSHADER_usage u, int i, int w,
+                                       int f) {}
 
 static const char *get_PASSTHROUGH_varname(Context *ctx, RegisterType rt, int regnum)
 {
@@ -1912,11 +1918,8 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
 
     // MSDN says MOD_PP is a hint and many implementations ignore it. So do we.
 
-    if (arg->result_mod & MOD_CENTROID)
-    {
-        fail(ctx, "MOD_CENTROID unsupported");  // !!! FIXME
-        return "";
-    } // if
+    // CENTROID only allowed in DCL opcodes, which shouldn't come through here.
+    assert((arg->result_mod & MOD_CENTROID) == 0);
 
     if (ctx->predicated)
     {
@@ -2442,7 +2445,8 @@ static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
 } // emit_GLSL_sampler
 
 static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
-                                MOJOSHADER_usage usage, int index, int wmask)
+                                MOJOSHADER_usage usage, int index, int wmask,
+                                int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *varname = get_GLSL_varname(ctx, regtype, regnum);
@@ -2450,6 +2454,8 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
+
+    //assert((flags & MOD_PP) == 0);  // !!! FIXME: is PP allowed?
 
     if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
         snprintf(index_str, sizeof (index_str), "%u", (uint) index);
@@ -2564,6 +2570,12 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     else if (shader_is_pixel(ctx))
     {
         // samplers DCLs get handled in emit_GLSL_sampler().
+
+        if (flags & MOD_CENTROID)  // !!! FIXME
+        {
+            failf(ctx, "centroid unsupported in %s profile", ctx->profile->name);
+            return;
+        } // if
 
         if (regtype == REG_TYPE_COLOROUT)
             usage_str = "gl_FragColor";
@@ -3675,18 +3687,30 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     const DestArgInfo *arg = &ctx->dest_arg;
 
     const char *sat_str = "";
-    // The "_SAT" modifier is only available in fragment shaders, but we'll
-    //  fake it for them later in emit_ARB1_dest_modifiers() ...
-    if ( (arg->result_mod & MOD_SATURATE) && (shader_is_pixel(ctx)) )
-        sat_str = "_SAT";
-
-    // no partial precision (MOD_PP), but that's okay.
-
-    if (arg->result_mod & MOD_CENTROID)
+    if (arg->result_mod & MOD_SATURATE)
     {
-        fail(ctx, "dest register MOD_CENTROID currently unsupported in arb1");
-        return "";
+        // nv4 can use ".SAT" in all program types.
+        // For less than nv4, the "_SAT" modifier is only available in
+        //  fragment shaders. Every thing else will fake it later in
+        //  emit_ARB1_dest_modifiers() ...
+        if (ctx->support_nv4)
+            sat_str = ".SAT";
+        else if (shader_is_pixel(ctx))
+            sat_str = "_SAT";
     } // if
+
+    const char *pp_str = "";
+    if (arg->result_mod & MOD_PP)
+    {
+        // Most ARB1 profiles can't do partial precision (MOD_PP), but that's
+        //  okay. The spec says lots of Direct3D implementations ignore the
+        //  flag anyhow.
+        if (ctx->support_nv4)
+            pp_str = "H";
+    } // if
+
+    // CENTROID only allowed in DCL opcodes, which shouldn't come through here.
+    assert((arg->result_mod & MOD_CENTROID) == 0);
 
     char regnum_str[16];
     const char *regtype_str = get_ARB1_register_string(ctx, arg->regtype,
@@ -3726,7 +3750,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     } // if
 
     char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s %s%s%s", sat_str,
+    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s %s%s%s", pp_str, sat_str,
              regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
     return retval;
@@ -3757,13 +3781,16 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
             output_line(ctx, "MUL%s, %s, %s;", dst, varname, multiplier);
     } // if
 
-    if ( (arg->result_mod & MOD_SATURATE) && (!shader_is_pixel(ctx)) )
+    if (arg->result_mod & MOD_SATURATE)
     {
-        const char *varname = get_ARB1_destarg_varname(ctx);
-        const char *dst = make_ARB1_destarg_string(ctx);
-        // pixel shaders just use the "_SAT" modifier here, instead.
-        output_line(ctx, "MIN%s, %s, 1.0;", dst, varname);
-        output_line(ctx, "MAX%s, %s, 0.0;", dst, varname);
+        // nv4 and/or pixel shaders just used the "SAT" modifier, instead.
+        if ( (!ctx->support_nv4) && (!shader_is_pixel(ctx)) )
+        {
+            const char *varname = get_ARB1_destarg_varname(ctx);
+            const char *dst = make_ARB1_destarg_string(ctx);
+            output_line(ctx, "MIN%s, %s, 1.0;", dst, varname);
+            output_line(ctx, "MAX%s, %s, 0.0;", dst, varname);
+        } // if
     } // if
 } // emit_ARB1_dest_modifiers
 
@@ -3890,6 +3917,14 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
         output_line(ctx, "OPTION NV_%s_program%d;", shader_full_str, ver);
     } // else if
 
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV4) == 0)
+    {
+        ctx->support_nv2 = 1;
+        ctx->support_nv3 = 1;
+        ctx->support_nv4 = 1;
+        output_line(ctx, "!!NV%s4.0", shader_str);
+    } // else if
+
     else
     {
         failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
@@ -3917,7 +3952,8 @@ static void emit_ARB1_finalize(Context *ctx)
     for (i = 0; i < ctx->max_scratch_registers; i++)
         output_line(ctx, "TEMP %s;", allocate_ARB1_scratch_reg_name(ctx));
 
-    if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and anything nv4) have a real REP/ENDREP.
+    if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) && (!ctx->support_nv4) )
     {
         // set up temps for nv2 REP/ENDREP emulation through branching.
         for (i = 0; i < ctx->max_reps; i++)
@@ -4027,7 +4063,8 @@ static void emit_ARB1_sampler(Context *ctx, int stage, TextureType ttype)
 
 // !!! FIXME: a lot of cut-and-paste here from emit_GLSL_attribute().
 static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
-                                MOJOSHADER_usage usage, int index, int wmask)
+                                MOJOSHADER_usage usage, int index, int wmask,
+                                int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *varname = get_ARB1_varname(ctx, regtype, regnum);
@@ -4035,6 +4072,8 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
+
+    //assert((flags & MOD_PP) == 0);  // !!! FIXME: is PP allowed?
 
     if (index != 0)  // !!! FIXME: a lot of these MUST be zero.
         snprintf(index_str, sizeof (index_str), "%u", (uint) index);
@@ -4152,7 +4191,21 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
     else if (shader_is_pixel(ctx))
     {
         const char *paramtype_str = "ATTRIB";
+
         // samplers DCLs get handled in emit_ARB1_sampler().
+
+        if (flags & MOD_CENTROID)
+        {
+            if (!ctx->support_nv4)  // GL_NV_fragment_program4 adds centroid.
+            {
+                // !!! FIXME: should we just wing it without centroid here?
+                failf(ctx, "centroid unsupported in %s profile",
+                      ctx->profile->name);
+                return;
+            } // if
+
+            paramtype_str = "CENTROID ATTRIB";
+        } // if
 
         if (regtype == REG_TYPE_COLOROUT)
         {
@@ -4194,11 +4247,16 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
             const MiscTypeType mt = (MiscTypeType) regnum;
             if (mt == MISCTYPE_TYPE_FACE)
             {
-                fail(ctx, "Can't handle vFace in arb1 profile"); // !!! FIXME
-                //push_output(ctx, &ctx->globals);
-                //output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;",
-                //            varname);
-                //pop_output(ctx);
+                if (ctx->support_nv4)  // FINALLY, a vFace equivalent in nv4!
+                {
+                    index_str[0] = '\0';  // no explicit number.
+                    usage_str = "fragment.facing.x";
+                } // if
+                else
+                {
+                    failf(ctx, "vFace unsupported in %s profile",
+                          ctx->profile->name);
+                } // else
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
@@ -4425,8 +4483,8 @@ EMIT_ARB1_OPCODE_DS_FUNC(ABS)
 
 static void emit_ARB1_NRM(Context *ctx)
 {
-    // nv2 fragment programs have a real NRM.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and anything nv4) have a real NRM.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         emit_ARB1_opcode_ds(ctx, "NRM");
     else
     {
@@ -4446,8 +4504,8 @@ static void emit_ARB1_SINCOS(Context *ctx)
     // we don't care about the temp registers that <= sm2 demands; ignore them.
     const int mask = ctx->dest_arg.writemask;
 
-    // arb1 fragment shaders have sin/cos/sincos opcodes.
-    if (shader_is_pixel(ctx))
+    // arb1 fragment programs and everything nv4 have sin/cos/sincos opcodes.
+    if ((shader_is_pixel(ctx)) || (ctx->support_nv4))
     {
         const char *dst = make_ARB1_destarg_string(ctx);
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
@@ -4459,7 +4517,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
             output_line(ctx, "SCS%s, %s;", dst, src0);
     } // if
 
-    // nv2+ shaders have sin and cos opcodes.
+    // nv2+ profiles have sin and cos opcodes.
     else if (ctx->support_nv2)
     {
         const char *dst = get_ARB1_destarg_varname(ctx);
@@ -4537,8 +4595,8 @@ static void emit_ARB1_REP(Context *ctx)
 {
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
-    // nv2 fragment programs have a real REP.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and everything nv4) have a real REP.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         output_line(ctx, "REP %s;", src0);
 
     else if (ctx->support_nv2)
@@ -4569,8 +4627,8 @@ static void emit_ARB1_REP(Context *ctx)
 
 static void emit_ARB1_ENDREP(Context *ctx)
 {
-    // nv2 fragment programs have a real ENDREP.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and everything nv4) have a real ENDREP.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ENDREP;");
 
     else if (ctx->support_nv2)
@@ -4600,7 +4658,8 @@ static void emit_ARB1_ENDREP(Context *ctx)
 static void nv2_if(Context *ctx)
 {
     // The condition code register MUST be set up before this!
-    if (shader_is_pixel(ctx))  // nv2 fragment programs have a real IF.
+    // nv2 fragment programs (and everything nv4) have a real IF.
+    if ( (ctx->support_nv4) || (shader_is_pixel(ctx)) )
         output_line(ctx, "IF EQ.x;");
     else
     {
@@ -4635,8 +4694,8 @@ static void emit_ARB1_IF(Context *ctx)
 
 static void emit_ARB1_ELSE(Context *ctx)
 {
-    // nv2 fragment programs have a real ELSE.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and everything nv4) have a real ELSE.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ELSE;");
 
     else if (ctx->support_nv2)
@@ -4665,8 +4724,8 @@ static void emit_ARB1_ELSE(Context *ctx)
 
 static void emit_ARB1_ENDIF(Context *ctx)
 {
-    // nv2 fragment programs have a real ENDIF.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and everything nv4) have a real ENDIF.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ENDIF;");
 
     else if (ctx->support_nv2)
@@ -4686,8 +4745,8 @@ static void emit_ARB1_ENDIF(Context *ctx)
 
 static void emit_ARB1_BREAK(Context *ctx)
 {
-    // nv2 fragment programs have a real BREAK.
-    if ( (ctx->support_nv2) && (shader_is_pixel(ctx)) )
+    // nv2 fragment programs (and everything nv4) have a real BREAK.
+    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
         output_line(ctx, "BRK;");
 
     else if (ctx->support_nv2)
@@ -4812,18 +4871,23 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
 
 static void emit_ARB1_DP2ADD(Context *ctx)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+    if (ctx->support_nv4)  // nv4 has a built-in equivalent to DP2ADD.
+        emit_ARB1_opcode_dsss(ctx, "DP2A");
+    else
+    {
+        const char *dst = make_ARB1_destarg_string(ctx);
+        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+        const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
-    // DP2ADD is:
-    //  dest = src0.r * src1.r + src0.g * src1.g + src2.replicate_swizzle
-    output_line(ctx, "MUL %s, %s, %s;", scratch, src0, src1);
-    output_line(ctx, "ADD %s, %s.x, %s.y;", scratch, scratch, scratch);
-    output_line(ctx, "ADD%s, %s.x, %s;", dst, scratch, src2);
-    emit_ARB1_dest_modifiers(ctx);
+        // DP2ADD is:
+        //  dst = (src0.r * src1.r) + (src0.g * src1.g) + src2.replicate_swiz
+        output_line(ctx, "MUL %s, %s, %s;", scratch, src0, src1);
+        output_line(ctx, "ADD %s, %s.x, %s.y;", scratch, scratch, scratch);
+        output_line(ctx, "ADD%s, %s.x, %s;", dst, scratch, src2);
+        emit_ARB1_dest_modifiers(ctx);
+    } // else
 } // emit_ARB1_DP2ADD
 
 
@@ -5042,6 +5106,7 @@ static const struct { const char *from; const char *to; } profileMap[] =
     { MOJOSHADER_PROFILE_GLSL120, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
     { MOJOSHADER_PROFILE_NV3, MOJOSHADER_PROFILE_ARB1 },
+    { MOJOSHADER_PROFILE_NV4, MOJOSHADER_PROFILE_ARB1 },
 };
 
 
@@ -5147,6 +5212,8 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     {
         if (!shader_is_pixel(ctx))
             return fail(ctx, "Centroid result mod in non-pixel shader");
+        else if (!ctx->centroid_allowed)  // only on DCL opcodes!
+            return fail(ctx, "Centroid modifier not allowed here");
     } // if
 
     if ((info->regtype < 0) || (info->regtype > REG_TYPE_MAX))
@@ -5502,9 +5569,12 @@ static int parse_args_DCL(Context *ctx)
     if (reserved1 != 0x1)
         return fail(ctx, "Bit #31 in DCL token must be one");
 
+    ctx->centroid_allowed = 1;
     ctx->tokens++;
     ctx->tokencount--;
-    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
+    const int parse_dest_rc = parse_destination_token(ctx, &ctx->dest_arg);
+    ctx->centroid_allowed = 0;
+    if (parse_dest_rc == FAIL)
         return FAIL;
 
     if (ctx->dest_arg.result_shift != 0)  // I'm pretty sure this is illegal...?
@@ -5847,6 +5917,7 @@ static void state_DCL(Context *ctx)
     const RegisterType regtype = arg->regtype;
     const int regnum = arg->regnum;
     const int wmask = arg->writemask;
+    const int mods = arg->result_mod;
 
     // parse_args_DCL() does a lot of state checking before we get here.
 
@@ -5865,7 +5936,7 @@ static void state_DCL(Context *ctx)
             fail(ctx, "unknown DCL usage");
             return;
         } // if
-        add_attribute_register(ctx, regtype, regnum, usage, index, wmask);
+        add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
     } // if
 
     else if (shader_is_pixel(ctx))
@@ -5876,7 +5947,7 @@ static void state_DCL(Context *ctx)
         {
             const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
             const int index = ctx->dwords[1];
-            add_attribute_register(ctx, regtype, regnum, usage, index, wmask);
+            add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
         } // else
     } // else if
 
@@ -7334,7 +7405,7 @@ static void process_definitions(Context *ctx)
                     // Apparently this is an attribute that wasn't DCL'd.
                     //  Add it to the attribute list; deal with it later.
                     add_attribute_register(ctx, item->regtype, item->regnum,
-                                           MOJOSHADER_USAGE_UNKNOWN, 0, 0xF);
+                                           MOJOSHADER_USAGE_UNKNOWN, 0, 0xF, 0);
                     break;
 
                 case REG_TYPE_ADDRESS:
@@ -7435,7 +7506,7 @@ static void process_definitions(Context *ctx)
             ctx->attribute_count++;
             ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
                                             MOJOSHADER_USAGE_POSITION, 0,
-                                            item->writemask);
+                                            item->writemask, item->misc);
             break;
         } // if
     } // for
@@ -7449,7 +7520,7 @@ static void process_definitions(Context *ctx)
             ctx->attribute_count++;
             ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
                                             item->usage, item->index,
-                                            item->writemask);
+                                            item->writemask, item->misc);
         } // if
     } // for
 } // process_definitions

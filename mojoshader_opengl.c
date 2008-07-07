@@ -142,6 +142,7 @@ struct MOJOSHADER_glContext
     int have_GL_NV_vertex_program2_option:1;
     int have_GL_NV_fragment_program2:1;
     int have_GL_NV_vertex_program3:1;
+    int have_GL_NV_gpu_program4:1;
     int have_GL_ARB_shader_objects:1;
     int have_GL_ARB_vertex_shader:1;
     int have_GL_ARB_fragment_shader:1;
@@ -175,6 +176,7 @@ struct MOJOSHADER_glContext
     PFNGLGETPROGRAMIVARBPROC glGetProgramivARB;
     PFNGLGETPROGRAMSTRINGARBPROC glGetProgramStringARB;
     PFNGLPROGRAMLOCALPARAMETER4FVARBPROC glProgramLocalParameter4fvARB;
+    PFNGLPROGRAMLOCALPARAMETERI4IVNVPROC glProgramLocalParameterI4ivNV;
     PFNGLDELETEPROGRAMSARBPROC glDeleteProgramsARB;
     PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
     PFNGLBINDPROGRAMARBPROC glBindProgramARB;
@@ -547,6 +549,25 @@ static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
 } // impl_ARB1_Uniform1i
 
 
+static void impl_NV4_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
+                                 GLsizei siz, GLint *v)
+{
+    int i;
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
+    for (i = 0; i < siz; i++, v += 4)
+        ctx->glProgramLocalParameterI4ivNV(shader_type, loc + i, v);
+} // impl_NV4_Uniform4iv
+
+
+static void impl_NV4_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
+                                GLint _v)
+{
+    const GLenum shader_type = arb1_shader_type(pd->shader_type);
+    GLint v[4] = { _v, _v, _v, _v };
+    ctx->glProgramLocalParameterI4ivNV(shader_type, loc, v);
+} // impl_NV4_Uniform1i
+
+
 static void impl_ARB1_SetSampler(GLint loc, GLuint sampler)
 {
     // no-op in this profile...arb1 uses the texture units as-is.
@@ -622,6 +643,7 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGENPROGRAMSARBPROC, glGenProgramsARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLBINDPROGRAMARBPROC, glBindProgramARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLPROGRAMSTRINGARBPROC, glProgramStringARB);
+    DO_LOOKUP(GL_NV_gpu_program4, PFNGLPROGRAMLOCALPARAMETERI4IVNVPROC, glProgramLocalParameterI4ivNV);
 
     #undef DO_LOOKUP
 } // lookup_entry_points
@@ -769,6 +791,11 @@ static int valid_profile(const char *profile)
         MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_NV_vertex_program3);
         MUST_HAVE(MOJOSHADER_PROFILE_NV3, GL_NV_fragment_program2);
     } // else if
+
+    else if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
+    {
+        MUST_HAVE(MOJOSHADER_PROFILE_NV4, GL_NV_gpu_program4);
+    } // else if
     #endif
 
     #if SUPPORT_PROFILE_GLSL
@@ -810,6 +837,7 @@ static const char *profile_priorities[] = {
     MOJOSHADER_PROFILE_GLSL,
 #endif
 #if SUPPORT_PROFILE_ARB1
+    MOJOSHADER_PROFILE_NV4,
     MOJOSHADER_PROFILE_NV3,
     MOJOSHADER_PROFILE_NV2,
     MOJOSHADER_PROFILE_ARB1,
@@ -919,7 +947,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 #if SUPPORT_PROFILE_ARB1
     else if ( (strcmp(profile, MOJOSHADER_PROFILE_ARB1) == 0) ||
               (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0) ||
-              (strcmp(profile, MOJOSHADER_PROFILE_NV3) == 0) )
+              (strcmp(profile, MOJOSHADER_PROFILE_NV3) == 0) ||
+              (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0) )
     {
         ctx->profileMaxUniforms = impl_ARB1_MaxUniforms;
         ctx->profileCompileShader = impl_ARB1_CompileShader;
@@ -934,6 +963,13 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform4iv = impl_ARB1_Uniform4iv;
         ctx->profileUniform1i = impl_ARB1_Uniform1i;
         ctx->profileSetSampler = impl_ARB1_SetSampler;
+
+        // GL_NV_gpu_program4 has integer uniform loading support.
+        if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
+        {
+            ctx->profileUniform4iv = impl_NV4_Uniform4iv;
+            ctx->profileUniform1i = impl_NV4_Uniform1i;
+        } // if
     } // if
 #endif
 
