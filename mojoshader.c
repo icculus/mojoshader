@@ -6341,7 +6341,7 @@ static void state_TEXLDL(Context *ctx)
 static void state_DP2ADD(Context *ctx)
 {
     if (!replicate_swizzle(ctx->source_args[2].swizzle))
-        fail(ctx, "IFC src2 must have replicate swizzle");
+        fail(ctx, "DP2ADD src2 must have replicate swizzle");
 } // state_DP2ADD
 
 
