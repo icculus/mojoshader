@@ -286,6 +286,7 @@ typedef struct RegisterList
 } RegisterList;
 
 // result modifiers.
+// !!! FIXME: why isn't this an enum?
 #define MOD_SATURATE 0x01
 #define MOD_PP 0x02
 #define MOD_CENTROID 0x04
