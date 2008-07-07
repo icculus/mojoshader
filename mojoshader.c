@@ -5041,6 +5041,7 @@ static const struct { const char *from; const char *to; } profileMap[] =
 {
     { MOJOSHADER_PROFILE_GLSL120, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
+    { MOJOSHADER_PROFILE_NV3, MOJOSHADER_PROFILE_ARB1 },
 };
 
 
