@@ -5380,8 +5380,41 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         retval++;
     } // if
 
-    if ( info->src_mod >= SRCMOD_TOTAL )
-        return fail(ctx, "Unknown source modifier");
+    switch (info->src_mod)
+    {
+        case SRCMOD_NONE:
+        case SRCMOD_ABSNEGATE:
+        case SRCMOD_ABS:
+        case SRCMOD_NEGATE:
+            break; // okay in any shader model.
+
+        // apparently these are only legal in Shader Model 1.x ...
+        case SRCMOD_BIASNEGATE:
+        case SRCMOD_BIAS:
+        case SRCMOD_SIGNNEGATE:
+        case SRCMOD_SIGN:
+        case SRCMOD_COMPLEMENT:
+        case SRCMOD_X2NEGATE:
+        case SRCMOD_X2:
+        case SRCMOD_DZ:
+        case SRCMOD_DW:
+        case SRCMOD_NOT:
+            if (shader_version_atleast(ctx, 2, 0))
+                return fail(ctx, "illegal source mod for this Shader Model.");
+            break;
+
+        default:
+            return fail(ctx, "Unknown source modifier");
+    } // switch
+
+    // !!! FIXME: docs say this for sm3 ... check these!
+    //  "The negate modifier cannot be used on second source register of these
+    //   instructions: m3x2 - ps, m3x3 - ps, m3x4 - ps, m4x3 - ps, and
+    //   m4x4 - ps."
+    //  "If any version 3 shader reads from one or more constant float
+    //   registers (c#), one of the following must be true.
+    //    All of the constant floating-point registers must use the abs modifier.
+    //    None of the constant floating-point registers can use the abs modifier.
 
     set_used_register(ctx, info->regtype, info->regnum);
     return retval;
@@ -5473,7 +5506,9 @@ static int parse_args_DCL(Context *ctx)
     if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
-    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
+    if (ctx->dest_arg.result_shift != 0)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "shift scale in DCL");
+    else if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in DCL");
 
     const RegisterType regtype = ctx->dest_arg.regtype;
