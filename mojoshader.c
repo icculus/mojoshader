@@ -4827,8 +4827,23 @@ static void emit_ARB1_DP2ADD(Context *ctx)
 } // emit_ARB1_DP2ADD
 
 
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSX)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(DSY)
+static void emit_ARB1_DSX(Context *ctx)
+{
+    if (ctx->support_nv2)  // nv2 has a built-in equivalent to DSX.
+        emit_ARB1_opcode_ds(ctx, "DDX");
+    else
+        failf(ctx, "DSX unsupported in %s profile", ctx->profile->name);
+} // emit_ARB1_DSX
+
+
+static void emit_ARB1_DSY(Context *ctx)
+{
+    if (ctx->support_nv2)  // nv2 has a built-in equivalent to DSY.
+        emit_ARB1_opcode_ds(ctx, "DDY");
+    else
+        failf(ctx, "DSY unsupported in %s profile", ctx->profile->name);
+} // emit_ARB1_DSY
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
 
 
