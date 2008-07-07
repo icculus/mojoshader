@@ -3910,6 +3910,8 @@ static void emit_ARB1_phase(Context *ctx)
 
 static void emit_ARB1_finalize(Context *ctx)
 {
+    // !!! FIXME: if we never wrote the position register, add the
+    // !!! FIXME:  position_invariant program option here.
     int i;
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
