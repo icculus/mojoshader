@@ -718,6 +718,7 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     ctx->have_GL_NV_vertex_program2_option = 1;
     ctx->have_GL_NV_fragment_program2 = 1;
     ctx->have_GL_NV_vertex_program3 = 1;
+    ctx->have_GL_NV_gpu_program4 = 1;
     ctx->have_GL_ARB_shader_objects = 1;
     ctx->have_GL_ARB_vertex_shader = 1;
     ctx->have_GL_ARB_fragment_shader = 1;
