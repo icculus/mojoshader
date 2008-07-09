@@ -3636,6 +3636,19 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 
     char swizzle_str[6];
     int i = 0;
+
+    if (ctx->support_nv4)  // vFace must be output as "vFace.x" in nv4.
+    {
+        if (arg->regtype == REG_TYPE_MISCTYPE)
+        {
+            if ( ((const MiscTypeType) arg->regnum) == MISCTYPE_TYPE_FACE )
+            {
+                swizzle_str[i++] = '.';
+                swizzle_str[i++] = 'x';
+            } // if
+        } // if
+    } // if
+
     const int scalar = scalar_register(arg->regtype, arg->regnum);
     if (!scalar && !no_swizzle(arg->swizzle))
     {
@@ -3943,14 +3956,21 @@ static void emit_ARB1_phase(Context *ctx)
     // no-op in arb1.
 } // emit_ARB1_phase
 
+static inline const char *arb1_float_temp(const Context *ctx)
+{
+    // nv4 lets you specify data type.
+    return (ctx->support_nv4) ? "FLOAT TEMP" : "TEMP";
+} // arb1_float_temp
+
 static void emit_ARB1_finalize(Context *ctx)
 {
     // !!! FIXME: if we never wrote the position register, add the
     // !!! FIXME:  position_invariant program option here.
+    const char *tmpstr = arb1_float_temp(ctx);
     int i;
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "TEMP %s;", allocate_ARB1_scratch_reg_name(ctx));
+        output_line(ctx, "%s %s;", tmpstr, allocate_ARB1_scratch_reg_name(ctx));
 
     // nv2 fragment programs (and anything nv4) have a real REP/ENDREP.
     if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) && (!ctx->support_nv4) )
@@ -3973,15 +3993,25 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     switch (regtype)
     {
         case REG_TYPE_ADDRESS:
-            output_line(ctx, "ADDRESS %s;", varname);
-            if (!ctx->support_nv2)  // nv2 has four-component address already.
-                output_line(ctx, "TEMP addr%d;", regnum);
+            // nv4 replaced address registers with generic int registers.
+            if (ctx->support_nv4)
+                output_line(ctx, "INT TEMP %s;", varname);
+            else
+            {
+                // nv2 has four-component address already, but stock arb1 has
+                //  to emulate it in a temporary, and move components to the
+                //  scalar ADDRESS register on demand.
+                output_line(ctx, "ADDRESS %s;", varname);
+                if (!ctx->support_nv2)
+                    output_line(ctx, "TEMP addr%d;", regnum);
+            } // else
             break;
+
         //case REG_TYPE_PREDICATE:
         //    output_line(ctx, "bvec4 %s;", varname);
         //    break;
         case REG_TYPE_TEMP:
-            output_line(ctx, "TEMP %s;", varname);
+            output_line(ctx, "%s %s;", arb1_float_temp(ctx), varname);
             break;
         //case REG_TYPE_LOOP:
         //    break; // no-op. We declare these in for loops at the moment.
@@ -4173,7 +4203,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->globals);
             // no mapping to built-in var? Just make it a regular global, pray.
             if (usage_str == NULL)
-                output_line(ctx, "TEMP %s;", varname);
+                output_line(ctx, "%s %s;", arb1_float_temp(ctx), varname);
             else
             {
                 output_line(ctx, "OUTPUT %s = %s%s%s%s;", varname, usage_str,
@@ -4250,7 +4280,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (ctx->support_nv4)  // FINALLY, a vFace equivalent in nv4!
                 {
                     index_str[0] = '\0';  // no explicit number.
-                    usage_str = "fragment.facing.x";
+                    usage_str = "fragment.facing";
                 } // if
                 else
                 {
@@ -4302,7 +4332,38 @@ EMIT_ARB1_OPCODE_DSS_FUNC(SUB)
 EMIT_ARB1_OPCODE_DSSS_FUNC(MAD)
 EMIT_ARB1_OPCODE_DSS_FUNC(MUL)
 EMIT_ARB1_OPCODE_DS_FUNC(RCP)
-EMIT_ARB1_OPCODE_DS_FUNC(RSQ)
+
+static void emit_ARB1_RSQ(Context *ctx)
+{
+    // nv4 doesn't force abs() on this, so negative values will generate NaN.
+    // The spec says you should force the abs() yourself.
+    if (!ctx->support_nv4)
+    {
+        emit_ARB1_opcode_ds(ctx, "RSQ");  // pre-nv4 implies ABS.
+        return;
+    } // if
+
+    // we can optimize this to use nv2's |abs| construct in some cases.
+    if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
+         (ctx->source_args[0].src_mod == SRCMOD_NEGATE) ||
+         (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
+        ctx->source_args[0].src_mod = SRCMOD_ABS;
+
+    const char *dst = make_ARB1_destarg_string(ctx);
+    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+
+    if (ctx->source_args[0].src_mod == SRCMOD_ABS)
+        output_line(ctx, "RSQ%s, %s;", dst, src0);
+    else
+    {
+        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        output_line(ctx, "ABS %s, %s;", scratch, src0);
+        output_line(ctx, "RSQ%s, %s.x;", dst, scratch);
+    } // else
+
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_RSQ
+
 EMIT_ARB1_OPCODE_DSS_FUNC(DP3)
 EMIT_ARB1_OPCODE_DSS_FUNC(DP4)
 EMIT_ARB1_OPCODE_DSS_FUNC(MIN)
@@ -4312,8 +4373,9 @@ EMIT_ARB1_OPCODE_DSS_FUNC(SGE)
 
 static void emit_ARB1_EXP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 
-static void emit_ARB1_LOG(Context *ctx)
+static void arb1_log(Context *ctx, const char *opcode)
 {
+    // !!! FIXME: SRCMOD_NEGATE can be made into SRCMOD_ABS here, too
     // we can optimize this to use nv2's |abs| construct in some cases.
     if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
          (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
@@ -4323,16 +4385,23 @@ static void emit_ARB1_LOG(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
     if (ctx->source_args[0].src_mod == SRCMOD_ABS)
-        output_line(ctx, "LG2%s, %s;", dst, src0);
+        output_line(ctx, "%s%s, %s;", opcode, dst, src0);
     else
     {
         const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
         output_line(ctx, "ABS %s, %s;", scratch, src0);
-        output_line(ctx, "LG2%s, %s.x;", dst, scratch);
+        output_line(ctx, "%s%s, %s.x;", opcode, dst, scratch);
     } // else
 
     emit_ARB1_dest_modifiers(ctx);
+} // arb1_log
+
+
+static void emit_ARB1_LOG(Context *ctx)
+{
+    arb1_log(ctx, "LG2");
 } // emit_ARB1_LOG
+
 
 EMIT_ARB1_OPCODE_DS_FUNC(LIT)
 EMIT_ARB1_OPCODE_DSS_FUNC(DST)
@@ -4398,7 +4467,7 @@ static void emit_ARB1_CALLNZ(Context *ctx)
     } // else
 } // emit_ARB1_CALLNZ
 
-
+// !!! FIXME: needs BRA in nv2, LOOP in nv2 fragment progs, and REP in nv4.
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(LOOP)
 
 static void emit_ARB1_RET(Context *ctx)
@@ -4767,8 +4836,11 @@ static void emit_ARB1_BREAK(Context *ctx)
 
 static void emit_ARB1_MOVA(Context *ctx)
 {
-    // NV_vertex_program2_option and later can use the ARR opcode.
-    if (ctx->support_nv2)
+    // nv2 and nv3 can use the ARR opcode.
+    // But nv4 removed ARR (and ADDRESS registers!). Just ROUND to an INT.
+    if (ctx->support_nv4)
+        emit_ARB1_opcode_ds(ctx, "ROUND.S");  // !!! FIXME: don't use a modifier here.
+    else if ((ctx->support_nv2) || (ctx->support_nv3))
         emit_ARB1_opcode_ds(ctx, "ARR");
     else
     {
@@ -4804,6 +4876,7 @@ static void emit_ARB1_MOVA(Context *ctx)
     } // else
 } // emit_ARB1_MOVA
 
+
 static void emit_ARB1_TEXKILL(Context *ctx)
 {
     // !!! FIXME: d3d kills on xyz, arb1 kills on xyzw. Fix the swizzle!
@@ -4822,28 +4895,19 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
 
-static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EXP"); }
+static void emit_ARB1_EXPP(Context *ctx)
+{
+    // EXP was removed in nv4: no benefit over full-precision EX2.
+    if (ctx->support_nv4)
+        emit_ARB1_opcode_ds(ctx, "EX2");
+    else
+        emit_ARB1_opcode_ds(ctx, "EXP");
+} // emit_ARB1_EXPP
 
 static void emit_ARB1_LOGP(Context *ctx)
 {
-    // we can optimize this to use nv2's |abs| construct in some cases.
-    if ( (ctx->source_args[0].src_mod == SRCMOD_NONE) ||
-         (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
-        ctx->source_args[0].src_mod = SRCMOD_ABS;
-
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-
-    if (ctx->source_args[0].src_mod == SRCMOD_ABS)
-        output_line(ctx, "LOG%s, %s;", dst, src0);
-    else
-    {
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        output_line(ctx, "ABS %s, %s;", scratch, src0);
-        output_line(ctx, "LOG%s, %s.x;", dst, scratch);
-    } // else
-
-    emit_ARB1_dest_modifiers(ctx);
+    // LOG was removed in nv4: no benefit over full-precision LG2.
+    arb1_log(ctx, (ctx->support_nv4) ? "LG2" : "LOG");
 } // emit_ARB1_LOGP
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CND)
@@ -4913,6 +4977,10 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
 
 static void arb1_texld(Context *ctx, const char *opcode)
 {
+    // !!! FIXME: Hack: "TEXH" is invalid in nv4. Fix this more cleanly.
+    if ((ctx->dest_arg.result_mod & MOD_PP) && (ctx->support_nv4))
+        ctx->dest_arg.result_mod &= ~MOD_PP;
+
     // !!! FIXME: do non-RGBA textures map to same default values as D3D?
     const char *dst = make_ARB1_destarg_string(ctx);
     const SourceArgInfo *samp_arg = &ctx->source_args[1];
