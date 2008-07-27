@@ -4895,20 +4895,8 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
 
-static void emit_ARB1_EXPP(Context *ctx)
-{
-    // EXP was removed in nv4: no benefit over full-precision EX2.
-    if (ctx->support_nv4)
-        emit_ARB1_opcode_ds(ctx, "EX2");
-    else
-        emit_ARB1_opcode_ds(ctx, "EXP");
-} // emit_ARB1_EXPP
-
-static void emit_ARB1_LOGP(Context *ctx)
-{
-    // LOG was removed in nv4: no benefit over full-precision LG2.
-    arb1_log(ctx, (ctx->support_nv4) ? "LG2" : "LOG");
-} // emit_ARB1_LOGP
+static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
+static void emit_ARB1_LOGP(Context *ctx) { arb1_log(ctx, "LG2"); }
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CND)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
