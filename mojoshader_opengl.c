@@ -31,7 +31,7 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 #define snprintf _snprintf
 typedef unsigned __int8 uint8;
 typedef unsigned __int32 uint32;
-typedef unsigned __int32 int32;
+typedef __int32 int32;
 // Warning Level 4 considered harmful.  :)
 #pragma warning(disable: 4100)  // "unreferenced formal parameter"
 #pragma warning(disable: 4389)  // "signed/unsigned mismatch"
