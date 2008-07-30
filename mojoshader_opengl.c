@@ -1534,7 +1534,7 @@ void MOJOSHADER_glProgramReady(void)
             const size_t len = size * sizeof (GLfloat) * 4;
 
             GLfloat *current = map->uniform_array_buffer;
-            if (memcmp(current, f, len) != 0)
+            //if (memcmp(current, f, len) != 0)
             {
                 // array has changed, upload it.
                 ctx->profileUniform4fv(pd, location, size, f);
@@ -1547,7 +1547,7 @@ void MOJOSHADER_glProgramReady(void)
             if (type == MOJOSHADER_UNIFORM_FLOAT)
             {
                 GLfloat *f = &regf[index * 4];
-                if (memcmp(map->value.f, f, sizeof (map->value.f)) != 0)
+                //if (memcmp(map->value.f, f, sizeof (map->value.f)) != 0)
                 {
                     memcpy(map->value.f, f, sizeof (map->value.f));
                     ctx->profileUniform4fv(pd, location, 1, f);
@@ -1556,7 +1556,7 @@ void MOJOSHADER_glProgramReady(void)
             else if (type == MOJOSHADER_UNIFORM_INT)
             {
                 GLint *i = &regi[index * 4];
-                if (memcmp(map->value.i, i, sizeof (map->value.i)) != 0)
+                //if (memcmp(map->value.i, i, sizeof (map->value.i)) != 0)
                 {
                     memcpy(map->value.i, i, sizeof (map->value.i));
                     ctx->profileUniform4iv(pd, location, 1, i);
@@ -1565,7 +1565,7 @@ void MOJOSHADER_glProgramReady(void)
             else if (type == MOJOSHADER_UNIFORM_BOOL)
             {
                 const GLint b = regb[index];
-                if (b != map->value.b)
+                //if (b != map->value.b)
                 {
                     map->value.b = b;
                     ctx->profileUniform1i(pd, location, b);
