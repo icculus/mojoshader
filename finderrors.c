@@ -79,8 +79,20 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     if (shader == NULL)
         report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
     else
-        report("PASS: %s\n", fname);
-    MOJOSHADER_glDeleteShader(shader);
+    {
+        const MOJOSHADER_parseData *pd = MOJOSHADER_glGetShaderParseData(shader);
+        MOJOSHADER_glShader *v = (pd->shader_type == MOJOSHADER_TYPE_VERTEX) ? shader : NULL;
+        MOJOSHADER_glShader *p = (pd->shader_type == MOJOSHADER_TYPE_PIXEL) ? shader : NULL;
+        MOJOSHADER_glProgram *program = MOJOSHADER_glLinkProgram(v, p);
+        if (program == NULL)
+            report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
+        else
+        {
+            report("PASS: %s\n", fname);
+            MOJOSHADER_glDeleteProgram(program);
+        } // else
+        MOJOSHADER_glDeleteShader(shader);
+    }
     #else
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, 0, 0, 0);
     if (pd->error != NULL)
