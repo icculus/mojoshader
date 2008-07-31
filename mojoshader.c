@@ -2333,9 +2333,6 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
                                   int base, int size)
 {
     const char *varname = get_GLSL_const_array_varname(ctx, base, size);
-    const char *cstr = NULL;
-    const int origscratch = ctx->scratchidx;
-    int i;
 
 #if 0
     // !!! FIXME: fails on Nvidia's and Apple's GL, even with #version 120.
@@ -2343,10 +2340,13 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
     if (ctx->support_glsl120)
     {
         // GLSL 1.20 can do constant arrays.
+        const char *cstr = NULL;
+        const int origscratch = ctx->scratchidx;
         push_output(ctx, &ctx->globals);
         output_line(ctx, "const vec4 %s[%d] = vec4[%d](", varname, size, size);
         ctx->indent++;
 
+        int i;
         for (i = 0; i < size; i++)
         {
             while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
