@@ -2377,25 +2377,10 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
     else
 #endif
     {
-        // stock GLSL 1.0 can't do constant arrays, so make a global array
-        //  and assign all entries at the start of the mainline...
+        // stock GLSL 1.0 can't do constant arrays, so make a uniform array
+        //  and have the OpenGL glue assign it at link time. Lame!
         push_output(ctx, &ctx->globals);
-        output_line(ctx, "vec4 %s[%d];", varname, size);
-        pop_output(ctx);
-
-        push_output(ctx, &ctx->mainline_intro);
-        ctx->indent++;
-        for (i = 0; i < size; i++)
-        {
-            while (clist->constant.type != MOJOSHADER_UNIFORM_FLOAT)
-                clist = clist->next;
-            assert(clist->constant.index == (base + i));
-            cstr = get_GLSL_varname(ctx, REG_TYPE_CONST, clist->constant.index);
-            output_line(ctx, "%s[%d] = %s;", varname, i, cstr);
-            clist = clist->next;
-            ctx->scratchidx = origscratch;
-        } // for
-        ctx->indent--;
+        output_line(ctx, "uniform vec4 %s[%d];", varname, size);
         pop_output(ctx);
     } // else
 } // emit_GLSL_const_array
@@ -7112,7 +7097,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
         int written = 0;
         for (var = ctx->variables; var != NULL; var = var->next)
         {
-            if ((!var->constant) && (var->used))
+            if (var->used)
             {
                 const char *name = ctx->profile->get_const_array_varname(ctx,
                                                       var->index, var->count);
@@ -7123,6 +7108,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
                     wptr->type = MOJOSHADER_UNIFORM_FLOAT;
                     wptr->index = var->index;
                     wptr->array_count = var->count;
+                    wptr->constant = (var->constant != NULL) ? 1 : 0;
                     wptr->name = namecpy;
                     wptr++;
                     written++;

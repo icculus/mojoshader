@@ -196,6 +196,7 @@ struct MOJOSHADER_glContext
     void (*profileUniform4iv)(const MOJOSHADER_parseData *, GLint, GLsizei, GLint *);
     void (*profileUniform1i)(const MOJOSHADER_parseData *, GLint, GLint);
     void (*profileSetSampler)(GLint loc, GLuint sampler);
+    int (*profileMustLoadConstantArrays)(void);
 };
 
 
@@ -258,6 +259,8 @@ static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
     return GL_NONE;
 } // glsl_shader_type
 
+
+static int impl_GLSL_MustLoadConstantArrays(void) { return 1; }
 
 static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -407,6 +410,7 @@ static inline GLenum arb1_shader_type(const MOJOSHADER_shaderType t)
     return GL_NONE;
 } // arb1_shader_type
 
+static int impl_ARB1_MustLoadConstantArrays(void) { return 0; }
 
 static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -942,6 +946,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform4iv = impl_GLSL_Uniform4iv;
         ctx->profileUniform1i = impl_GLSL_Uniform1i;
         ctx->profileSetSampler = impl_GLSL_SetSampler;
+        ctx->profileMustLoadConstantArrays = impl_GLSL_MustLoadConstantArrays;
     } // if
 #endif
 
@@ -964,6 +969,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform4iv = impl_ARB1_Uniform4iv;
         ctx->profileUniform1i = impl_ARB1_Uniform1i;
         ctx->profileSetSampler = impl_ARB1_SetSampler;
+        ctx->profileMustLoadConstantArrays = impl_ARB1_MustLoadConstantArrays;
 
         // GL_NV_gpu_program4 has integer uniform loading support.
         if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
@@ -988,6 +994,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileUniform4iv != NULL);
     assert(ctx->profileUniform1i != NULL);
     assert(ctx->profileSetSampler != NULL);
+    assert(ctx->profileMustLoadConstantArrays != NULL);
 
     retval = ctx;
     ctx = current_ctx;
@@ -1097,24 +1104,59 @@ static void program_unref(MOJOSHADER_glProgram *program)
 } // program_unref
 
 
+static void fill_constant_array(GLfloat *f, const int base, const int size,
+                                const MOJOSHADER_parseData *pd)
+{
+    int i;
+    int filled = 0;
+    for (i = 0; i < pd->constant_count; i++)
+    {
+        const MOJOSHADER_constant *c = &pd->constants[i];
+        if (c->type != MOJOSHADER_UNIFORM_FLOAT)
+            continue;
+        else if (c->index < base)
+            continue;
+        else if (c->index >= (base+size))
+            continue;
+        memcpy(&f[(c->index-base) * 4], &c->value.f, sizeof (c->value.f));
+        filled++;
+    } // for
+
+    assert(filled == size);
+} // fill_constant_array
+
+
 static void lookup_uniforms(MOJOSHADER_glProgram *program,
                             MOJOSHADER_glShader *shader)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
-    const MOJOSHADER_uniform *u = pd->uniforms;
     const MOJOSHADER_shaderType shader_type = pd->shader_type;
     int i;
 
     for (i = 0; i < pd->uniform_count; i++)
     {
+        const MOJOSHADER_uniform *u = &pd->uniforms[i];
         const GLint loc = ctx->profileGetUniformLocation(program, shader, i);
         if (loc != -1)  // maybe the Uniform was optimized out?
         {
-            UniformMap *map = &program->uniforms[program->uniform_count];
-            map->shader_type = shader_type;
-            map->uniform = &u[i];
-            map->location = (GLuint) loc;
-            program->uniform_count++;
+            // only do constants once, at link time. These aren't changed ever.
+            if ( (u->constant) && (ctx->profileMustLoadConstantArrays()) )
+            {
+                const int base = u->index;
+                const int size = u->array_count;
+                GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat) * size * 4);
+                fill_constant_array(f, base, size, pd);
+                ctx->profileUseProgramObject(program);
+                ctx->profileUniform4fv(pd, loc, size, f);
+            } // if
+            else
+            {
+                UniformMap *map = &program->uniforms[program->uniform_count];
+                map->shader_type = shader_type;
+                map->uniform = u;
+                map->location = (GLuint) loc;
+                program->uniform_count++;
+            } // else
         } // if
     } // for
 } // lookup_uniforms
@@ -1176,6 +1218,8 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
         UniformMap *map = &program->uniforms[i];
         const MOJOSHADER_uniform *u = map->uniform;
         const int size = u->array_count;
+
+        assert(!u->constant);
 
         if (size == 0)
             continue;  // nothing to see here.
@@ -1505,6 +1549,8 @@ void MOJOSHADER_glProgramReady(void)
         GLfloat *regf;
         GLint *regi;
         GLint *regb;
+
+        assert(!u->constant);
 
         if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {

@@ -141,6 +141,7 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
                 static const char *typenames[] = { "float", "int", "bool" };
                 const MOJOSHADER_uniform *u = &pd->uniforms[i];
                 const char *arrayof = "";
+                const char *constant = u->constant ? "const " : "";
                 char arrayrange[64] = { '\0' };
                 if (u->array_count > 0)
                 {
@@ -149,8 +150,8 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
                              u->array_count);
                 } // if
 
-                printf("    * %d: %s%s%s", u->index, arrayof, arrayrange,
-                        typenames[(int) u->type]);
+                printf("    * %d: %s%s%s%s", u->index, constant, arrayof,
+                        arrayrange, typenames[(int) u->type]);
                 if (u->name != NULL)
                     printf(" (\"%s\")", u->name);
                 printf("\n");

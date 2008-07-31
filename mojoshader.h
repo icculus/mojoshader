@@ -92,6 +92,10 @@ typedef enum
  *  just a single uniform. To be extra difficult, you'll need to fill in the
  *  correct values from the MOJOSHADER_constant data into the appropriate
  *  parts of the array, overriding the constant register file. Fun!
+ * (constant) says whether this is a constant array; these need to be loaded
+ *  once at creation time, from the constant list and not ever updated from
+ *  the constant register file. This is a workaround for limitations in some
+ *  profiles.
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
  */
@@ -100,6 +104,7 @@ typedef struct
     MOJOSHADER_uniformType type;
     int index;
     int array_count;
+    int constant;
     const char *name;
 } MOJOSHADER_uniform;
 
