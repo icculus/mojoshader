@@ -1148,6 +1148,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
                 fill_constant_array(f, base, size, pd);
                 ctx->profileUseProgramObject(program);
                 ctx->profileUniform4fv(pd, loc, size, f);
+                ctx->profileUseProgramObject(ctx->bound_program);
             } // if
             else
             {
