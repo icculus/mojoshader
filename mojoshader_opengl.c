@@ -1232,7 +1232,7 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
         map->uniform_array_buffer = (GLfloat *) Malloc(len);
         if (map->uniform_array_buffer == NULL)
             return 0;
-        memset(map->uniform_array_buffer, 0xFF, len);
+        memset(map->uniform_array_buffer, 0, len);
     } // for
 
     return 1;
