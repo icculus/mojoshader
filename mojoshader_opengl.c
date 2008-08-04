@@ -1140,16 +1140,20 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
         if (loc != -1)  // maybe the Uniform was optimized out?
         {
             // only do constants once, at link time. These aren't changed ever.
-            if ( (u->constant) && (ctx->profileMustLoadConstantArrays()) )
+            if (u->constant)
             {
-                const int base = u->index;
-                const int size = u->array_count;
-                GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat) * size * 4);
-                fill_constant_array(f, base, size, pd);
-                ctx->profileUseProgramObject(program);
-                ctx->profileUniform4fv(pd, loc, size, f);
-                ctx->profileUseProgramObject(ctx->bound_program);
+                if (ctx->profileMustLoadConstantArrays())
+                {
+                    const int base = u->index;
+                    const int size = u->array_count;
+                    GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat)*(size*4));
+                    fill_constant_array(f, base, size, pd);
+                    ctx->profileUseProgramObject(program);
+                    ctx->profileUniform4fv(pd, loc, size, f);
+                    ctx->profileUseProgramObject(ctx->bound_program);
+                } // if
             } // if
+
             else
             {
                 UniformMap *map = &program->uniforms[program->uniform_count];
