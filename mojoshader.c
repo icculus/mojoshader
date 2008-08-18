@@ -4110,9 +4110,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         if (regtype == REG_TYPE_INPUT)
         {
-            int attr = 0;  // POSITION0 _must_ be vertex.attrib[0]!
-            if ((usage != MOJOSHADER_USAGE_POSITION) || (index != 0))
-                attr = ++ctx->assigned_vertex_attributes;
+            const int attr = ctx->assigned_vertex_attributes++;
             push_output(ctx, &ctx->globals);
             output_line(ctx, "ATTRIB %s = vertex.attrib[%d];", varname, attr);
             pop_output(ctx);
@@ -7505,31 +7503,13 @@ static void process_definitions(Context *ctx)
                                       (TextureType) item->index);
     } // for
 
-    // ...and attributes... (find input POSITION0 here, so it's always first).
+    // ...and attributes...
     for (item = ctx->attributes.next; item != NULL; item = item->next)
     {
-        if ( (item->regtype == REG_TYPE_INPUT) &&
-             (item->usage == MOJOSHADER_USAGE_POSITION) && (item->index == 0) )
-        {
-            ctx->attribute_count++;
-            ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
-                                            MOJOSHADER_USAGE_POSITION, 0,
-                                            item->writemask, item->misc);
-            break;
-        } // if
-    } // for
-
-    // ...and attributes... (everything but input POSITION0).
-    for (item = ctx->attributes.next; item != NULL; item = item->next)
-    {
-        if ( (item->regtype != REG_TYPE_INPUT) ||
-             (item->usage != MOJOSHADER_USAGE_POSITION) || (item->index != 0) )
-        {
-            ctx->attribute_count++;
-            ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
-                                            item->usage, item->index,
-                                            item->writemask, item->misc);
-        } // if
+        ctx->attribute_count++;
+        ctx->profile->attribute_emitter(ctx, item->regtype, item->regnum,
+                                        item->usage, item->index,
+                                        item->writemask, item->misc);
     } // for
 } // process_definitions
 

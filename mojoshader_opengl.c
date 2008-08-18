@@ -1496,34 +1496,27 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 
     const GLenum gl_type = opengl_attr_type(type);
     const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
+    const int count = ctx->bound_program->attribute_count;
     GLuint gl_index = 0;
+    int i;
 
-    // We have to map POSITION0 to generic vertex attribute 0; the
-    //  GL_ARB_vertex_shader spec says this is equivalent to using
-    //  glVertexPointer(), but without the limitations of that entry point.
-
-    if ((usage != MOJOSHADER_USAGE_POSITION) || (index != 0))
+    for (i = 0; i < count; i++)
     {
-        int i;
-        const int count = ctx->bound_program->attribute_count;
-        for (i = 0; i < count; i++)
+        const AttributeMap *map = &ctx->bound_program->attributes[i];
+        const MOJOSHADER_attribute *a = map->attribute;
+
+        // !!! FIXME: is this array guaranteed to be sorted by usage?
+        // !!! FIXME:  if so, we can break if a->usage > usage.
+
+        if ((a->usage == usage) && (a->index == index))
         {
-            const AttributeMap *map = &ctx->bound_program->attributes[i];
-            const MOJOSHADER_attribute *a = map->attribute;
+            gl_index = map->location;
+            break;
+        } // if
+    } // for
 
-            // !!! FIXME: is this array guaranteed to be sorted by usage?
-            // !!! FIXME:  if so, we can break if a->usage > usage.
-
-            if ((a->usage == usage) && (a->index == index))
-            {
-                gl_index = map->location;
-                break;
-            } // if
-        } // for
-
-        if (gl_index == 0)
-            return;  // nothing to do, this shader doesn't use this stream.
-    } // if
+    if (i == count)
+        return;  // nothing to do, this shader doesn't use this stream.
 
     // these happen to work in both ARB1 and GLSL, but if something alien
     //  shows up, we'll have to split these into profile*() functions.
