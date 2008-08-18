@@ -783,21 +783,6 @@ static inline int get_defined_register(Context *ctx, const RegisterType rtype,
     return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
 } // get_defined_register
 
-static const RegisterList *declared_attribute(Context *ctx,
-                                              const MOJOSHADER_usage usage,
-                                              const int index)
-{
-    const RegisterList *item = ctx->attributes.next;
-    while (item != NULL)
-    {
-        if ((item->usage == usage) && (item->index == index))
-            return item;
-        item = item->next;
-    } // while
-
-    return NULL;
-} // declared_attribute
-
 static void add_attribute_register(Context *ctx, const RegisterType rtype,
                                 const int regnum, const MOJOSHADER_usage usage,
                                 const int index, const int writemask, int flags)
