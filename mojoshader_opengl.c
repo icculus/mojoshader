@@ -1620,6 +1620,9 @@ void MOJOSHADER_glProgramReady(void)
     } // for
 
     // push Samplers to the program from our register files...
+    // !!! FIXME: just push these once at link time...they never change, since
+    // !!! FIXME:  they are meant to be constant texture unit ids and not
+    // !!! FIXME:  textures.
     count = ctx->bound_program->sampler_count;
     for (i = 0; i < count; i++)
     {
