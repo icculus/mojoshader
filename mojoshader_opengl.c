@@ -24,6 +24,15 @@
 #include "GL/gl.h"
 #include "GL/glext.h"
 
+#ifndef GL_HALF_FLOAT
+#define GL_HALF_FLOAT 0x140B
+#endif
+
+#ifndef GL_HALF_FLOAT_OES
+#define GL_HALF_FLOAT_OES 0x8D61
+#endif
+
+
 // Get basic wankery out of the way here...
 
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
@@ -149,6 +158,8 @@ struct MOJOSHADER_glContext
     int have_GL_ARB_fragment_shader:1;
     int have_GL_ARB_shading_language_100:1;
     int have_GL_NV_half_float:1;
+    int have_GL_ARB_half_float_vertex:1;
+    int have_GL_OES_vertex_half_float:1;
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;
@@ -729,6 +740,8 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     ctx->have_GL_ARB_fragment_shader = 1;
     ctx->have_GL_ARB_shading_language_100 = 1;
     ctx->have_GL_NV_half_float = 1;
+    ctx->have_GL_ARB_half_float_vertex = 1;
+    ctx->have_GL_OES_vertex_half_float = 1;
 
     lookup_entry_points(lookup);
 
@@ -756,6 +769,8 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     VERIFY_EXT(GL_NV_fragment_program2, -1, -1);
     VERIFY_EXT(GL_NV_vertex_program3, -1, -1);
     VERIFY_EXT(GL_NV_half_float, -1, -1);
+    VERIFY_EXT(GL_ARB_half_float_vertex, 3, 0);
+    VERIFY_EXT(GL_OES_vertex_half_float, -1, -1);
 
     #undef VERIFY_EXT
 } // load_extensions
@@ -1477,6 +1492,10 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
         case MOJOSHADER_ATTRIBUTE_HALF_FLOAT:
             if (ctx->have_GL_NV_half_float)
                 return GL_HALF_FLOAT_NV;
+            else if (ctx->have_GL_ARB_half_float_vertex)
+                return GL_HALF_FLOAT;
+            else if (ctx->have_GL_OES_vertex_half_float)
+                return GL_HALF_FLOAT;
             break;
     } // switch
 
