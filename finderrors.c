@@ -75,7 +75,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     } // if
 
     #if FINDERRORS_COMPILE_SHADERS
-    MOJOSHADER_glShader *shader = MOJOSHADER_glCompileShader(buf, rc);
+    MOJOSHADER_glShader *shader = MOJOSHADER_glCompileShader(buf, rc, NULL, 0);
     if (shader == NULL)
         report("FAIL: %s %s\n", fname, MOJOSHADER_glGetError());
     else

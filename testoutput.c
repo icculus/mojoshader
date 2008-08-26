@@ -16,7 +16,7 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
     const MOJOSHADER_parseData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_parse(prof, buf, len, NULL, NULL, NULL);
+    pd = MOJOSHADER_parse(prof, buf, len, NULL, 0, NULL, NULL, NULL);
     if (pd->error != NULL)
         printf("ERROR: %s\n", pd->error);
     else

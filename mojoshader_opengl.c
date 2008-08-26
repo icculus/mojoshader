@@ -1037,12 +1037,15 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
 
 
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
-                                                const unsigned int bufsize)
+                                                const unsigned int bufsize,
+                                                const MOJOSHADER_swizzle *swiz,
+                                                const unsigned int swizcount)
 {
     MOJOSHADER_glShader *retval = NULL;
     GLuint shader = 0;
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(ctx->profile, tokenbuf,
-                                                      bufsize, ctx->malloc_fn,
+                                                      bufsize, swiz, swizcount,
+                                                      ctx->malloc_fn,
                                                       ctx->free_fn,
                                                       ctx->malloc_data);
     if (pd->error != NULL)
