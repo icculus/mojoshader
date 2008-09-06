@@ -3134,7 +3134,6 @@ EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
-    // !!! FIXME: can texkill swizzle?
     const char *dst = get_GLSL_destarg_varname(ctx);
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
