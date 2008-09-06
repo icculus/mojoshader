@@ -4833,11 +4833,7 @@ static void emit_ARB1_TEXKILL(Context *ctx)
     //  We just map the x component to w. If it's negative, the fragment
     //  would discard anyhow, otherwise, it'll pass through okay. This saves
     //  us a temp register.
-    const int origswiz = ctx->source_args[0].swizzle;
-    ctx->source_args[0].swizzle = (origswiz & 0x3F) | ((origswiz & 0x3) << 6);
-    ctx->source_args[0].swizzle_w = ctx->source_args[0].swizzle_x;
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    output_line(ctx, "KIL %s;", src0);
+    output_line(ctx, "KIL %s.xyzx;", get_ARB1_destarg_varname(ctx));
 } // emit_ARB1_TEXKILL
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)
