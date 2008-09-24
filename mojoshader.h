@@ -393,7 +393,7 @@ typedef struct
 
 /*
  * Profile string for OpenGL ARB 1.0 shaders with Nvidia 4.0 extensions:
- *  NV_gpu_program4
+ *  GL_NV_gpu_program4
  */
 #define MOJOSHADER_PROFILE_NV4 "nv4"
 
