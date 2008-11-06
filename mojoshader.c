@@ -7702,5 +7702,11 @@ int MOJOSHADER_version(void)
     return MOJOSHADER_VERSION;
 } // MOJOSHADER_version
 
+
+const char *MOJOSHADER_changeset(void)
+{
+    return MOJOSHADER_CHANGESET;
+} // MOJOSHADER_changeset
+
 // end of mojoshader.c ...
 

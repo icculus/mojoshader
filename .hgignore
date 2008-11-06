@@ -1,4 +1,5 @@
 syntax:glob
+mojoshader_version.h
 CMakeCache.txt
 CMakeFiles
 Makefile

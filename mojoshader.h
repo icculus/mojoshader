@@ -14,6 +14,14 @@
 extern "C" {
 #endif
 
+/* You can define this if you aren't generating mojoshader_version.h */
+#ifndef MOJOSHADER_NO_VERSION_INCLUDE
+#include "mojoshader_version.h"
+#else
+#define MOJOSHADER_VERSION -1
+#define MOJOSHADER_CHANGESET "???"
+#endif
+
 /*
  * For determining the version of MojoShader you are using:
  *    const int compiled_against = MOJOSHADER_VERSION;
@@ -21,8 +29,20 @@ extern "C" {
  *
  * The version is a single integer that increments, not a major/minor value.
  */
-#define MOJOSHADER_VERSION 1
 int MOJOSHADER_version(void);
+
+/*
+ * For determining the revision control changeste of MojoShader you are using:
+ *    const const *compiled_against = MOJOSHADER_CHANGESET;
+ *    const char *linked_against = MOJOSHADER_changeset();
+ *
+ * The version is an arbitrary, null-terminated ASCII string. It is probably
+ *  a hash that represents a revision control changeset, and can't be
+ *  compared to any other string to determine chronology.
+ *
+ * Do not attempt to free this string; it's statically allocated.
+ */
+const char *MOJOSHADER_changeset(void);
 
 /*
  * These allocators work just like the C runtime's malloc() and free()
