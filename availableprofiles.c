@@ -27,7 +27,10 @@ static int check_available(void)
     {
         int i;
         for (i = 0; i < total; i++)
-            printf("%s\n", avail[i]);
+        {
+            printf("%s (Shader Model %d)\n", avail[i],
+                   MOJOSHADER_maxShaderModel(avail[i]));
+        } // for
     } // else
 
     return 0;

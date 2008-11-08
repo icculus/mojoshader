@@ -417,6 +417,11 @@ typedef struct
  */
 #define MOJOSHADER_PROFILE_NV4 "nv4"
 
+/*
+ * Determine the highest supported Shader Model for a profile.
+ */
+int MOJOSHADER_maxShaderModel(const char *profile);
+
 
 /*
  * Parse a compiled Direct3D shader's bytecode.
