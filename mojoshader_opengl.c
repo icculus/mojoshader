@@ -19,6 +19,14 @@
 #include <malloc.h>  // for alloca().
 #endif
 
+#if (defined(__APPLE__) && defined(__MACH__))
+#define PLATFORM_MACOSX 1
+#endif
+
+#if PLATFORM_MACOSX
+#include <Carbon/Carbon.h>
+#endif
+
 #include "mojoshader.h"
 #define GL_GLEXT_LEGACY 1
 #include "GL/gl.h"
@@ -221,6 +229,50 @@ static void set_error(const char *str)
 {
     snprintf(error_buffer, sizeof (error_buffer), "%s", str);
 } // set_error
+
+#if PLATFORM_MACOSX
+static inline int macosx_version_atleast(int x, int y, int z)
+{
+    static int checked = 0;
+    static int combined = 0;
+
+    if (!checked)
+    {
+        long ver, major, minor, patch;
+        int convert = 0;
+
+        if (Gestalt(gestaltSystemVersion, &ver) != noErr)
+            ver = 0x1000;  // oh well.
+        else if (ver < 0x1030)
+            convert = 1;  // split (ver) into (major),(minor),(patch).
+        else
+        {
+            // presumably this won't fail. But if it does, we'll just use the
+            //  original version value. This might cut the value--10.12.11 will
+            //  come out to 10.9.9, for example--but it's better than nothing.
+            if (Gestalt(gestaltSystemVersionMajor, &major) != noErr)
+                convert = 1;
+            else if (Gestalt(gestaltSystemVersionMinor, &minor) != noErr)
+                convert = 1;
+            else if (Gestalt(gestaltSystemVersionBugFix, &patch) != noErr)
+                convert = 1;
+        } // else
+
+        if (convert)
+        {
+            major = ((ver & 0xFF00) >> 8);
+            major = (((major / 16) * 10) + (major % 16));
+            minor = ((ver & 0xF0) >> 4);
+            patch = (ver & 0xF);
+        } /* if */
+
+        combined = (major << 16) | (minor << 8) | patch;
+        checked = 1;
+    } // if
+
+    return (combined >= ((x << 16) | (y << 16) | z));
+} // macosx_version_atleast
+#endif
 
 
 // #define this to force app to supply an allocator, so there's no reference
@@ -778,6 +830,14 @@ static void load_extensions(void *(*lookup)(const char *fnname))
 
 static int valid_profile(const char *profile)
 {
+    // If running on Mac OS X <= 10.4, don't ever pick GLSL, even if
+    //  the system claims it is available.
+    #if PLATFORM_MACOSX
+    const int allow_glsl = macosx_version_atleast(10, 5, 0);
+    #else
+    const int allow_glsl = 0;
+    #endif
+
     if (!ctx->have_base_opengl)
         return 0;
 
@@ -820,7 +880,7 @@ static int valid_profile(const char *profile)
     #endif
 
     #if SUPPORT_PROFILE_GLSL
-    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0)
+    else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0))
     {
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
@@ -831,7 +891,7 @@ static int valid_profile(const char *profile)
             return 0;
     } // else if
 
-    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
+    else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0))
     {
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
@@ -881,8 +941,6 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
         int i;
         for (i = 0; i < STATICARRAYLEN(profile_priorities); i++)
         {
-            // !!! FIXME: if Mac OS X <= 10.4, don't ever pick GLSL, even if
-            // !!! FIXME:  the system claims it is available.
             const char *profile = profile_priorities[i];
             if (valid_profile(profile))
             {
