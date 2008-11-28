@@ -702,7 +702,6 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
     DO_LOOKUP(GL_ARB_vertex_shader, PFNGLENABLEVERTEXATTRIBARRAYARBPROC, glEnableVertexAttribArray);
     DO_LOOKUP(GL_ARB_vertex_shader, PFNGLGETATTRIBLOCATIONARBPROC, glGetAttribLocation);
     DO_LOOKUP(GL_ARB_vertex_shader, PFNGLVERTEXATTRIBPOINTERARBPROC, glVertexAttribPointer);
-    DO_LOOKUP(GL_ARB_vertex_program, PFNGLUSEPROGRAMOBJECTARBPROC, glUseProgramObject);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLVERTEXATTRIBPOINTERARBPROC, glVertexAttribPointer);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGETPROGRAMIVARBPROC, glGetProgramivARB);
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLGETPROGRAMSTRINGARBPROC, glGetProgramStringARB);
