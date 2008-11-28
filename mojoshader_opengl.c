@@ -270,7 +270,7 @@ static inline int macosx_version_atleast(int x, int y, int z)
         checked = 1;
     } // if
 
-    return (combined >= ((x << 16) | (y << 16) | z));
+    return (combined >= ((x << 16) | (y << 8) | z));
 } // macosx_version_atleast
 #endif
 
