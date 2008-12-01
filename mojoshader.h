@@ -17,8 +17,13 @@ extern "C" {
 /* You can define this if you aren't generating mojoshader_version.h */
 #ifndef MOJOSHADER_NO_VERSION_INCLUDE
 #include "mojoshader_version.h"
-#else
+#endif
+
+#ifndef MOJOSHADER_VERSION
 #define MOJOSHADER_VERSION -1
+#endif
+
+#ifndef MOJOSHADER_CHANGESET
 #define MOJOSHADER_CHANGESET "???"
 #endif
 
