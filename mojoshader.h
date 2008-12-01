@@ -124,7 +124,7 @@ typedef enum
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
  */
-typedef struct
+typedef struct MOJOSHADER_uniform
 {
     MOJOSHADER_uniformType type;
     int index;
@@ -144,7 +144,7 @@ typedef struct
  *  before drawing with the shader.
  * (value) is the value of the constant, unioned by type.
  */
-typedef struct
+typedef struct MOJOSHADER_constant
 {
     MOJOSHADER_uniformType type;
     int index;
@@ -177,7 +177,7 @@ typedef enum
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
  */
-typedef struct
+typedef struct MOJOSHADER_sampler
 {
     MOJOSHADER_samplerType type;
     int index;
@@ -218,7 +218,7 @@ typedef enum
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
  */
-typedef struct
+typedef struct MOJOSHADER_attribute
 {
     MOJOSHADER_usage usage;
     int index;
@@ -231,7 +231,7 @@ typedef struct
  *  will be processing data on COLOR0 that should be RGBA, but you'll
  *  be passing it a vertex array full of ARGB instead.
  */
-typedef struct
+typedef struct MOJOSHADER_swizzle
 {
     MOJOSHADER_usage usage;
     unsigned int index;
@@ -242,7 +242,7 @@ typedef struct
 /*
  * Structure used to return data from parsing of a shader...
  */
-typedef struct
+typedef struct MOJOSHADER_parseData
 {
     /*
      * Human-readable error, if there is one. Will be NULL if there was no
