@@ -420,15 +420,15 @@ struct Context
     int sampler_count;
     RegisterList samplers;
     VariableList *variables;  // variables to register mapping.
-    int centroid_allowed:1;
-    int have_ctab:1;
-    int determined_constants_arrays:1;
-    int predicated:1;
-    int support_nv2:1;
-    int support_nv3:1;
-    int support_nv4:1;
-    int support_glsl120:1;
-    int glsl_generated_lit_opcode:1;
+    int centroid_allowed;
+    int have_ctab;
+    int determined_constants_arrays;
+    int predicated;
+    int support_nv2;
+    int support_nv3;
+    int support_nv4;
+    int support_glsl120;
+    int glsl_generated_lit_opcode;
 };
 
 
