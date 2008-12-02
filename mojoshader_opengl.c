@@ -27,7 +27,9 @@
 #include <Carbon/Carbon.h>
 #endif
 
-#include "mojoshader.h"
+#define __MOJOSHADER_INTERNAL__ 1
+#include "mojoshader_internal.h"
+
 #define GL_GLEXT_LEGACY 1
 #include "GL/gl.h"
 #include "GL/glext.h"
@@ -38,36 +40,6 @@
 
 #ifndef GL_HALF_FLOAT_OES
 #define GL_HALF_FLOAT_OES 0x8D61
-#endif
-
-
-// Get basic wankery out of the way here...
-
-typedef unsigned int uint;  // this is a printf() helper. don't use for code.
-
-#ifdef _MSC_VER
-#define snprintf _snprintf
-typedef unsigned __int8 uint8;
-typedef unsigned __int32 uint32;
-typedef __int32 int32;
-// Warning Level 4 considered harmful.  :)
-#pragma warning(disable: 4100)  // "unreferenced formal parameter"
-#pragma warning(disable: 4389)  // "signed/unsigned mismatch"
-#else
-#include <stdint.h>
-typedef uint8_t uint8;
-typedef uint32_t uint32;
-typedef int32_t int32;
-#endif
-
-#define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
-
-#ifndef SUPPORT_PROFILE_GLSL
-#define SUPPORT_PROFILE_GLSL 1
-#endif
-
-#ifndef SUPPORT_PROFILE_ARB1
-#define SUPPORT_PROFILE_ARB1 1
 #endif
 
 
