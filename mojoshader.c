@@ -14,42 +14,6 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-// we need to reference this by explicit value occasionally.
-#define OPCODE_RET 28
-
-typedef enum
-{
-    REG_TYPE_TEMP = 0,
-    REG_TYPE_INPUT = 1,
-    REG_TYPE_CONST = 2,
-    REG_TYPE_ADDRESS = 3,
-    REG_TYPE_TEXTURE = 3,  // ALSO 3!
-    REG_TYPE_RASTOUT = 4,
-    REG_TYPE_ATTROUT = 5,
-    REG_TYPE_TEXCRDOUT = 6,
-    REG_TYPE_OUTPUT = 6,  // ALSO 6!
-    REG_TYPE_CONSTINT = 7,
-    REG_TYPE_COLOROUT = 8,
-    REG_TYPE_DEPTHOUT = 9,
-    REG_TYPE_SAMPLER = 10,
-    REG_TYPE_CONST2 = 11,
-    REG_TYPE_CONST3 = 12,
-    REG_TYPE_CONST4 = 13,
-    REG_TYPE_CONSTBOOL = 14,
-    REG_TYPE_LOOP = 15,
-    REG_TYPE_TEMPFLOAT16 = 16,
-    REG_TYPE_MISCTYPE = 17,
-    REG_TYPE_LABEL = 18,
-    REG_TYPE_PREDICATE = 19,
-    REG_TYPE_MAX = 19
-} RegisterType;
-
-typedef enum
-{
-    TEXTURE_TYPE_2D = 2,
-    TEXTURE_TYPE_CUBE = 3,
-    TEXTURE_TYPE_VOLUME = 4,
-} TextureType;
 
 // predeclare.
 typedef struct Context Context;
@@ -122,21 +86,6 @@ typedef struct
     const_array_varname_function get_const_array_varname;
 } Profile;
 
-typedef enum
-{
-    RASTOUT_TYPE_POSITION = 0,
-    RASTOUT_TYPE_FOG = 1,
-    RASTOUT_TYPE_POINT_SIZE = 2,
-    RASTOUT_TYPE_MAX = 2
-} RastOutType;
-
-typedef enum
-{
-    MISCTYPE_TYPE_POSITION = 0,
-    MISCTYPE_TYPE_FACE = 1,
-    MISCTYPE_TYPE_MAX = 1
-} MiscTypeType;
-
 
 // A simple linked list of strings, so we can build the final output without
 //  realloc()ing for each new line, and easily insert lines into the middle
@@ -180,68 +129,6 @@ typedef struct RegisterList
     const VariableList *array;
     struct RegisterList *next;
 } RegisterList;
-
-// result modifiers.
-// !!! FIXME: why isn't this an enum?
-#define MOD_SATURATE 0x01
-#define MOD_PP 0x02
-#define MOD_CENTROID 0x04
-
-// source modifiers.
-typedef enum
-{
-    SRCMOD_NONE,
-    SRCMOD_NEGATE,
-    SRCMOD_BIAS,
-    SRCMOD_BIASNEGATE,
-    SRCMOD_SIGN,
-    SRCMOD_SIGNNEGATE,
-    SRCMOD_COMPLEMENT,
-    SRCMOD_X2,
-    SRCMOD_X2NEGATE,
-    SRCMOD_DZ,
-    SRCMOD_DW,
-    SRCMOD_ABS,
-    SRCMOD_ABSNEGATE,
-    SRCMOD_NOT,
-    SRCMOD_TOTAL
-} SourceMod;
-
-
-typedef struct
-{
-    const uint32 *token;   // this is the unmolested token in the stream.
-    int regnum;
-    int relative;
-    int writemask;   // xyzw or rgba (all four, not split out).
-    int writemask0;  // x or red
-    int writemask1;  // y or green
-    int writemask2;  // z or blue
-    int writemask3;  // w or alpha
-    int orig_writemask;   // writemask before mojoshader tweaks it.
-    int result_mod;
-    int result_shift;
-    RegisterType regtype;
-} DestArgInfo;
-
-typedef struct
-{
-    const uint32 *token;   // this is the unmolested token in the stream.
-    int regnum;
-    int swizzle;  // xyzw (all four, not split out).
-    int swizzle_x;
-    int swizzle_y;
-    int swizzle_z;
-    int swizzle_w;
-    SourceMod src_mod;
-    RegisterType regtype;
-    int relative;
-    RegisterType relative_regtype;
-    int relative_regnum;
-    int relative_component;
-    const VariableList *relative_array;
-} SourceArgInfo;
-
 
 
 #define SCRATCH_BUFFER_SIZE 128
@@ -736,28 +623,6 @@ static inline int replicate_swizzle(const int swizzle)
              (((swizzle >> 2) & 0x3) == ((swizzle >> 4) & 0x3)) &&
              (((swizzle >> 4) & 0x3) == ((swizzle >> 6) & 0x3)) );
 } // replicate_swizzle
-
-
-static inline int scalar_register(const RegisterType regtype, const int regnum)
-{
-    switch (regtype)
-    {
-        case REG_TYPE_DEPTHOUT:
-        case REG_TYPE_CONSTBOOL:
-        case REG_TYPE_PREDICATE:
-        case REG_TYPE_LOOP:
-            return 1;
-
-        case REG_TYPE_MISCTYPE:
-            if ( ((const MiscTypeType) regnum) == MISCTYPE_TYPE_FACE )
-                return 1;
-            return 0;
-
-        default: break;
-    } // switch
-
-    return 0;
-} // scalar_register
 
 
 static inline int no_swizzle(const int swizzle)
@@ -6365,123 +6230,21 @@ typedef struct
 //  of the instruction token.
 static const Instruction instructions[] =
 {
-    // INSTRUCTION_STATE means this opcode has to update the state machine
-    //  (we're entering an ELSE block, etc). INSTRUCTION means there's no
-    //  state, just go straight to the emitters.
-    #define INSTRUCTION_STATE(op, slots, argsseq, t) { \
-        #op, slots, t, parse_args_##argsseq, state_##op, PROFILE_EMITTERS(op) \
-    }
-    #define INSTRUCTION(op, slots, argsseq, t) { \
-        #op, slots, t, parse_args_##argsseq, 0, PROFILE_EMITTERS(op) \
-    }
+    #define INSTRUCTION_STATE(op, opstr, slots, a, t) { \
+        opstr, slots, t, parse_args_##a, state_##op, PROFILE_EMITTERS(op) \
+    },
 
-    // !!! FIXME: Some of these MOJOSHADER_TYPE_ANYs need to have their scope
-    // !!! FIXME:  reduced to just PIXEL or VERTEX.
+    #define INSTRUCTION(op, opstr, slots, a, t) { \
+        opstr, slots, t, parse_args_##a, 0, PROFILE_EMITTERS(op) \
+    },
 
-    INSTRUCTION(NOP, 1, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MOV, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ADD, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SUB, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MAD, 1, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MUL, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RCP, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RSQ, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DP3, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(DP4, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MIN, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(MAX, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SLT, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SGE, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(EXP, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LOG, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(LIT, 3, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(DST, 1, DSS, MOJOSHADER_TYPE_VERTEX),
-    INSTRUCTION(LRP, 2, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(FRC, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M4X4, 4, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M4X3, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X4, 4, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X3, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(M3X2, 2, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CALL, 2, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CALLNZ, 3, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LOOP, 3, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(RET, 1, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(ENDLOOP, 2, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LABEL, 0, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(DCL, 0, DCL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(POW, 3, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(CRS, 2, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(SGN, 3, DSSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ABS, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(NRM, 3, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(SINCOS, 8, SINCOS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(REP, 3, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(ENDREP, 2, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(IF, 3, S, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(IFC, 3, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(ELSE, 1, NULL, MOJOSHADER_TYPE_ANY),  // !!! FIXME: state!
-    INSTRUCTION(ENDIF, 1, NULL, MOJOSHADER_TYPE_ANY), // !!! FIXME: state!
-    INSTRUCTION_STATE(BREAK, 1, NULL, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(BREAKC, 3, SS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(MOVA, 1, DS, MOJOSHADER_TYPE_VERTEX),
-    INSTRUCTION_STATE(DEFB, 0, DEFB, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(DEFI, 0, DEF, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION_STATE(TEXCRD, 1, TEXCRD, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(TEXKILL, 2, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(TEXLD, 1, TEXLD, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXBEM, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXBEML, 2, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXREG2AR, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXREG2GB, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2PAD, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3PAD, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(RESERVED, 0, NULL, MOJOSHADER_TYPE_UNKNOWN),
-    INSTRUCTION(TEXM3X3SPEC, 1, DSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3VSPEC, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(EXPP, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(LOGP, 1, DS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(CND, 1, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(DEF, 0, DEF, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION(TEXREG2RGB, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDP3TEX, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X2DEPTH, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDP3, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXM3X3, 1, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXDEPTH, 1, D, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(CMP, 1, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(BEM, 2, DSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(DP2ADD, 2, DSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(DSX, 2, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(DSY, 2, DS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION(TEXLDD, 3, DSSSS, MOJOSHADER_TYPE_PIXEL),
-    INSTRUCTION_STATE(SETP, 1, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(TEXLDL, 2, DSS, MOJOSHADER_TYPE_ANY),
-    INSTRUCTION_STATE(BREAKP, 3, S, MOJOSHADER_TYPE_ANY),
-
-    // !!! FIXME: TEXLDB?
+    #define MOJOSHADER_DO_INSTRUCTION_TABLE 1
+    #include "mojoshader_internal.h"
+    #undef MOJOSHADER_DO_INSTRUCTION_TABLE
 
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
 };
-
 
 
 // parse various token types...
@@ -6506,6 +6269,8 @@ static int parse_instruction_token(Context *ctx)
 
     if ((token & 0x80000000) != 0)
         return fail(ctx, "instruction token high bit must be zero.");  // so says msdn.
+    else if (instruction->opcode_string == NULL)
+        return fail(ctx, "Unknown opcode.");
 
     if (coissue)
     {
@@ -6743,6 +6508,7 @@ static int parse_end_token(Context *ctx)
 
 static int parse_phase_token(Context *ctx)
 {
+    // !!! FIXME: needs state; allow only one phase token per shader, I think?
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFD) // phase token always 0x0000FFFD.
         return 0;  // not us, eat no tokens.
     else if ( (!shader_is_pixel(ctx)) || (!shader_version_exactly(ctx, 1, 4)) )
@@ -6780,16 +6546,6 @@ static int parse_token(Context *ctx)
     return failf(ctx, "unknown token (%u)", (uint) *ctx->tokens);
 } // parse_token
 
-
-// #define this to force app to supply an allocator, so there's no reference
-//  to the C runtime's malloc() and free()...
-#if MOJOSHADER_FORCE_ALLOCATOR
-#define internal_malloc NULL
-#define internal_free NULL
-#else
-static void *internal_malloc(int bytes, void *d) { return malloc(bytes); }
-static void internal_free(void *ptr, void *d) { free(ptr); }
-#endif
 
 static int find_profile_id(const char *profile)
 {

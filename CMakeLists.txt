@@ -40,7 +40,11 @@ IF(MSVC)
     ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
 ENDIF(MSVC)
 
-ADD_LIBRARY(mojoshader STATIC mojoshader.c mojoshader_opengl.c)
+ADD_LIBRARY(mojoshader STATIC
+    mojoshader.c
+    mojoshader_assembler.c
+    mojoshader_opengl.c
+)
 
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
