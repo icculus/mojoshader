@@ -5315,9 +5315,10 @@ static int parse_args_DEF(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
-
-    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
-        return fail(ctx, "relative addressing in DEFB");
+    else if (ctx->dest_arg.regtype != REG_TYPE_CONST)
+        return fail(ctx, "DEF using non-CONST register");
+    else if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in DEF");
 
     ctx->dwords[0] = SWAP32(ctx->tokens[0]);
     ctx->dwords[1] = SWAP32(ctx->tokens[1]);
@@ -5328,12 +5329,31 @@ static int parse_args_DEF(Context *ctx)
 } // parse_args_DEF
 
 
+static int parse_args_DEFI(Context *ctx)
+{
+    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
+        return FAIL;
+    else if (ctx->dest_arg.regtype != REG_TYPE_CONSTINT)
+        return fail(ctx, "DEFI using non-CONSTING register");
+    else if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
+        return fail(ctx, "relative addressing in DEFI");
+
+    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
+    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
+    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
+    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
+
+    return 6;
+} // parse_args_DEFI
+
+
 static int parse_args_DEFB(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
-
-    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
+    else if (ctx->dest_arg.regtype != REG_TYPE_CONSTBOOL)
+        return fail(ctx, "DEFB using non-CONSTBOOL register");
+    else if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
         return fail(ctx, "relative addressing in DEFB");
 
     ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
