@@ -387,7 +387,7 @@ typedef struct MOJOSHADER_parseData
 /*
  * Profile string for passthrough of the original bytecode, unchanged.
  */
-#define MOJOSHADER_PROFILE_PASSTHROUGH "passthrough"
+#define MOJOSHADER_PROFILE_BYTECODE "bytecode"
 
 /*
  * Profile string for GLSL: OpenGL high-level shader language output.
