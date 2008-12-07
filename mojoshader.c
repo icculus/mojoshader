@@ -130,6 +130,23 @@ typedef struct RegisterList
     struct RegisterList *next;
 } RegisterList;
 
+typedef struct
+{
+    const uint32 *token;   // this is the unmolested token in the stream.
+    int regnum;
+    int swizzle;  // xyzw (all four, not split out).
+    int swizzle_x;
+    int swizzle_y;
+    int swizzle_z;
+    int swizzle_w;
+    SourceMod src_mod;
+    RegisterType regtype;
+    int relative;
+    RegisterType relative_regtype;
+    int relative_regnum;
+    int relative_component;
+    const VariableList *relative_array;
+} SourceArgInfo;
 
 #define SCRATCH_BUFFER_SIZE 128
 #define SCRATCH_BUFFERS 32
