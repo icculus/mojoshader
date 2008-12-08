@@ -26,7 +26,7 @@ struct Context
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
-    unsigned int instruction_count;
+    int on_endline;
     unsigned int linenum;
     char prevchar;
     char token[64];
@@ -34,19 +34,15 @@ struct Context
     char pushback_token[64];
     uint32 tokenbuf[16];
     int tokenbufpos;
-    int centroid_allowed;
     DestArgInfo dest_arg;
+    uint32 *output;
+    size_t output_len;
+    size_t output_allocation;
 };
 
 
 // Convenience functions for allocators...
 
-static MOJOSHADER_assembleData out_of_mem_data = {
-    "Out of memory", 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0, 0
-};
-
-
-static const char *out_of_mem_str = "Out of memory";
 static inline int out_of_memory(Context *ctx)
 {
     if (ctx->failstr == NULL)
@@ -110,22 +106,11 @@ static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
     return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
 } // version_ui32
 
-static inline int shader_version_supported(const uint8 maj, const uint8 min)
-{
-    return (ver_ui32(maj,min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR));
-} // shader_version_supported
-
 static inline int shader_version_atleast(const Context *ctx, const uint8 maj,
                                          const uint8 min)
 {
     return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
 } // shader_version_atleast
-
-static inline int shader_version_exactly(const Context *ctx, const uint8 maj,
-                                         const uint8 min)
-{
-    return ((ctx->major_ver == maj) && (ctx->minor_ver == min));
-} // shader_version_exactly
 
 static inline int shader_is_pixel(const Context *ctx)
 {
@@ -138,14 +123,27 @@ static inline int shader_is_vertex(const Context *ctx)
 } // shader_is_vertex
 
 
-extern void writeme(void);
 
 static void output_token_noswap(Context *ctx, const uint32 token)
 {
     if (isfail(ctx))
         return;
 
-    writeme();
+    if (ctx->output_len >= ctx->output_allocation)
+    {
+        const size_t output_alloc_bump = 1024;  // that's tokens, not bytes.
+        const size_t newsize = ctx->output_allocation + output_alloc_bump;
+        void *ptr = Malloc(ctx, newsize * sizeof (uint32));
+        if (ptr == NULL)
+            return;
+        if (ctx->output_len > 0)
+            memcpy(ptr, ctx->output, ctx->output_len * sizeof (uint32));
+        Free(ctx, ctx->output);
+        ctx->output_allocation = newsize;
+        ctx->output = (uint32 *) ptr;
+    } // if
+
+    ctx->output[ctx->output_len++] = token;
 } // output_token_noswap
 
 
@@ -198,6 +196,12 @@ static int _tokenize(Context *ctx)
     {
         ctx->pushedback = 0;
         return NOFAIL;
+    } // if
+
+    if (ctx->on_endline)
+    {
+        ctx->on_endline = 0;
+        ctx->linenum++;  // passed a newline, update.
     } // if
 
     while (1)
@@ -254,7 +258,7 @@ static int _tokenize(Context *ctx)
                 return NOFAIL;
 
             case ' ':
-                if (ctx->prevch == ' ')
+                if (ctx->prevchar == ' ')
                     break;   // multiple whitespace collapses into one.
                 // intentional fall-through...
 
@@ -274,7 +278,7 @@ static int _tokenize(Context *ctx)
                 else  // this is a token in itself.
                 {
                     if (ch == '\n')
-                        ctx->linenum++;
+                        ctx->on_endline = 1;
                     ctx->source++;
                     ctx->token[idx++] = ch;
                     ctx->token[idx++] = '\0';
@@ -390,17 +394,15 @@ static int require_endline(Context *ctx)
 } // require_endline
 
 
-
-// !!! FIXME: merge parse_* into mojoshader.c to reduce cut-and-paste.
-// !!! FIXME:  we need to merge Context, which is the nastiest part.
-
-static int set_result_shift(Context *ctx, DestArgInfo *info, const int val)
+static int require_comma(Context *ctx)
 {
-    if (info->result_shift != 0)
-        return fail(ctx, "Multiple result shift modifiers");
-    info->result_shift = val;
+    const int rc = nexttoken(ctx, 0, 1, 0, 0);
+    if (rc == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, ",") != 0)
+        return fail(ctx, "Comma expected");
     return NOFAIL;
-} // set_result_shift
+} // require_comma
 
 
 static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
@@ -551,12 +553,18 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 } // parse_register_name
 
 
+static int set_result_shift(Context *ctx, DestArgInfo *info, const int val)
+{
+    if (info->result_shift != 0)
+        return fail(ctx, "Multiple result shift modifiers");
+    info->result_shift = val;
+    return NOFAIL;
+} // set_result_shift
+
+
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
-    // !!! FIXME: recheck against the spec for ranges (like RASTOUT values, etc).
-
     memset(info, '\0', sizeof (info));
-    info->token = token;
 
     // See if there are destination modifiers on the instruction itself...
     while (1)
@@ -591,7 +599,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             return fail(ctx, "Expected modifier");
     } // while
 
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
 
     // !!! FIXME: predicates.
@@ -602,7 +610,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     if (parse_register_name(ctx, &info->regtype, &info->regnum) == FAIL)
         return FAIL;
 
-    if (nexttoken(ctx, 0, 0, 1, 1) == FAIL)
+    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
         return FAIL;
 
     // !!! FIXME: can dest registers do relative addressing?
@@ -615,7 +623,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     } // if
     else if (scalar_register(info->regtype, info->regnum))
         return fail(ctx, "Writemask specified for scalar register");
-    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
     else if (ctx->token[0] == '\0')
         return fail(ctx, "Invalid writemask");
@@ -623,16 +631,16 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     {
         char *ptr = ctx->token;
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 0;
-        if (*ptr = 'x') { info->writemask0 = 1; ptr++; }
-        if (*ptr = 'y') { info->writemask1 = 1; ptr++; }
-        if (*ptr = 'z') { info->writemask2 = 1; ptr++; }
-        if (*ptr = 'w') { info->writemask3 = 1; ptr++; }
-        if ((ptr == ctx->token) && (is_pixel_shader(ctx))
+        if (*ptr == 'x') { info->writemask0 = 1; ptr++; }
+        if (*ptr == 'y') { info->writemask1 = 1; ptr++; }
+        if (*ptr == 'z') { info->writemask2 = 1; ptr++; }
+        if (*ptr == 'w') { info->writemask3 = 1; ptr++; }
+        if ((ptr == ctx->token) && (shader_is_pixel(ctx)))
         {
-            if (*ptr = 'r') { info->writemask0 = 1; ptr++; }
-            if (*ptr = 'g') { info->writemask1 = 1; ptr++; }
-            if (*ptr = 'b') { info->writemask2 = 1; ptr++; }
-            if (*ptr = 'a') { info->writemask3 = 1; ptr++; }
+            if (*ptr == 'r') { info->writemask0 = 1; ptr++; }
+            if (*ptr == 'g') { info->writemask1 = 1; ptr++; }
+            if (*ptr == 'b') { info->writemask2 = 1; ptr++; }
+            if (*ptr == 'a') { info->writemask3 = 1; ptr++; }
         } // if
 
         if (*ptr != '\0')
@@ -646,54 +654,11 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 
     info->orig_writemask = info->writemask;
 
-    // !!! FIXME: cut and paste from mojoshader.c ...
-    if (info->relative)
-    {
-        if (!shader_is_vertex(ctx))
-            return fail(ctx, "Relative addressing in non-vertex shader");
-        else if (!shader_version_atleast(ctx, 3, 0))
-            return fail(ctx, "Relative addressing in vertex shader version < 3.0");
-        else if (!ctx->have_ctab)  // it's hard to do this efficiently without!
-            return fail(ctx, "relative addressing unsupported without a CTAB");
-        // !!! FIXME: I don't have a shader that has a relative dest currently.
-        return fail(ctx, "Relative addressing of dest tokens is unsupported");
-    } // if
-
-    const int s = info->result_shift;
-    if (s != 0)
-    {
-        if (!shader_is_pixel(ctx))
-            return fail(ctx, "Result shift scale in non-pixel shader");
-        else if (shader_version_atleast(ctx, 2, 0))
-            return fail(ctx, "Result shift scale in pixel shader version >= 2.0");
-        else if ( ! (((s >= 1) && (s <= 3)) || ((s >= 0xD) && (s <= 0xF))) )
-            return fail(ctx, "Result shift scale isn't 1 to 3, or 13 to 15.");
-    } // if
-
-    if (info->result_mod & MOD_PP)  // Partial precision (pixel shaders only)
-    {
-        if (!shader_is_pixel(ctx))
-            return fail(ctx, "Partial precision result mod in non-pixel shader");
-    } // if
-
-    if (info->result_mod & MOD_CENTROID)  // Centroid (pixel shaders only)
-    {
-        if (!shader_is_pixel(ctx))
-            return fail(ctx, "Centroid result mod in non-pixel shader");
-        else if (!ctx->centroid_allowed)  // only on DCL opcodes!
-            return fail(ctx, "Centroid modifier not allowed here");
-    } // if
-
-    // !!! FIXME: from msdn:
-    //  "_sat cannot be used with instructions writing to output o# registers."
-    // !!! FIXME: actually, just go over this page:
-    //  http://msdn.microsoft.com/archive/default.asp?url=/archive/en-us/directx9_c/directx/graphics/reference/shaders/ps_instructionmodifiers.asp
-
     if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
         return fail(ctx, "Too many tokens");
 
     ctx->tokenbuf[ctx->tokenbufpos++] =
-            ( ((((uint32) 0x80000000)) << 0) |
+            ( ((((uint32) 1)) << 31) |
               ((((uint32) info->regnum) & 0x7ff) << 0) |
               ((((uint32) info->relative) & 0x1) << 13) |
               ((((uint32) info->result_mod) & 0xF) << 20) |
@@ -705,255 +670,361 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 } // parse_destination_token
 
 
+static void set_source_mod(const int negate, const SourceMod norm,
+                          const SourceMod negated, SourceMod *srcmod)
+{
+    if ( (*srcmod != SRCMOD_NONE) || (negate && (negated == SRCMOD_NONE)) )
+        fail(ctx, "Incompatible source modifiers");
+    else
+        *srcmod = ((negate) ? negated : norm);
+} // set_source_mod
+
+
+static int parse_source_token_maybe_relative(Context *ctx, const int relok)
+{
+    int retval = 1;
+
+    if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
+        return fail(ctx, "Too many tokens");
+
+    // mark this now, so optional relative addressing token is placed second.
+    uint32 *token = &ctx->tokenbuf[ctx->tokenbufpos++];
+
+    SourceMod srcmod = SRCMOD_NONE;
+    int negate = 0;
+    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "1") == 0)
+    {
+        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+            return FAIL;
+        else if (strcmp(ctx->token, "-") != 0)
+            return fail(ctx, "Unexpected value");
+        else
+            srcmod = SRCMOD_COMPLEMENT;
+    } // else
+    else if (strcmp(ctx->token, "!") == 0)
+        srcmod = SRCMOD_NOT;
+    else if (strcmp(ctx->token, "-") == 0)
+        negate = 1;
+    else
+        pushback(ctx);
+
+    RegisterType regtype;
+    int regnum;
+    if (parse_register_name(ctx, &regtype, &regnum) == FAIL)
+        return FAIL;
+    else if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "_") != 0)
+        pushback(ctx);
+    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcasecmp(ctx->token, "bias") == 0)
+        set_source_mod(negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
+    else if (strcasecmp(ctx->token, "bx2") == 0)
+        set_source_mod(negate, SRCMOD_SIGN, SRCMOD_SIGNNEGATE, &srcmod);
+    else if (strcasecmp(ctx->token, "x2") == 0)
+        set_source_mod(negate, SRCMOD_X2, SRCMOD_X2NEGATE, &srcmod);
+    else if (strcasecmp(ctx->token, "dz") == 0)
+        set_source_mod(negate, SRCMOD_DZ, SRCMOD_NONE, &srcmod);
+    else if (strcasecmp(ctx->token, "dw") == 0)
+        set_source_mod(negate, SRCMOD_DW, SRCMOD_NONE, &srcmod);
+    else if (strcasecmp(ctx->token, "abs") == 0)
+        set_source_mod(negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
+    else
+        return fail(ctx, "Invalid source modifier");
+
+
+    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
+        return FAIL;
+
+    uint32 relative = 0;
+    if (strcmp(ctx->token, "[") != 0)
+        pushback(ctx);  // not relative addressing?
+    else if (!relok)
+        return fail(ctx, "Relative addressing not permitted here.");
+    else
+    {
+        const int rc = parse_source_token_maybe_relative(ctx, 0);
+        if (rc == FAIL)
+            return FAIL;
+        retval += rc;
+        relative = 1;
+        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+            return FAIL;
+        else if (strcmp(ctx->token, "]") != 0)
+            return fail(ctx, "Expected ']'");
+    } // else
+
+    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
+        return FAIL;
+
+    uint32 swizzle = 0;
+    if (strcmp(ctx->token, ".") != 0)
+    {
+        swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
+        pushback(ctx);  // no explicit writemask; do full mask.
+    } // if
+    else if (scalar_register(info->regtype, info->regnum))
+        return fail(ctx, "Swizzle specified for scalar register");
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (ctx->token[0] == '\0')
+        return fail(ctx, "Invalid swizzle");
+    else
+    {
+        // deal with shortened form (.x = .xxxx, etc).
+        if (ctx->token[1] == '\0')
+            ctx->token[1] = ctx->token[2] = ctx->token[3] = ctx->token[0];
+        else if (ctx->token[2] == '\0')
+            ctx->token[2] = ctx->token[3] = ctx->token[1];
+        else if (ctx->token[3] == '\0')
+            ctx->token[3] = ctx->token[2];
+        else if (ctx->token[4] != '\0')
+            return fail(ctx, "Invalid swizzle");
+        ctx->token[4] = '\0';
+
+        uint32 val;
+        int saw_xyzw = 0;
+        int saw_rgba = 0;
+        for (i = 0; i < 4; i++)
+        {
+            const int component = (int) ctx->token[i];
+            switch (component)
+            {
+                case 'x': val = 0; saw_xyzw = 1; break;
+                case 'y': val = 1; saw_xyzw = 1; break;
+                case 'z': val = 2; saw_xyzw = 1; break;
+                case 'w': val = 3; saw_xyzw = 1; break;
+                case 'r': val = 0; saw_rgba = 1; break;
+                case 'g': val = 1; saw_rgba = 1; break;
+                case 'b': val = 2; saw_rgba = 1; break;
+                case 'a': val = 3; saw_rgba = 1; break;
+                default: return fail(ctx, "Invalid swizzle");
+            } // switch
+            swizzle |= (val << (i * 2));
+        } // for
+
+        if (saw_xyzw && saw_rgba)
+            return fail(ctx, "Invalid swizzle");
+    } // else
+
+    *token = ( ((((uint32) 1)) << 31) |
+               ((((uint32) regnum) & 0x7ff) << 0) |
+               ((((uint32) relative) & 0x1) << 13) |
+               ((((uint32) swizzle) & 0xFF) << 16) |
+               ((((uint32) srcmod) & 0xF) << 24) |
+               ((((uint32) regtype) & 0x7) << 28) |
+               ((((uint32) regtype) & 0x18) << 8) );
+
+    return retval;
+} // parse_source_token_maybe_relative
+
+
+static inline int parse_source_token(Context *ctx)
+{
+    return parse_source_token_maybe_relative(ctx, 1);
+} // parse_source_token
+
+
 static int parse_args_NULL(Context *ctx)
 {
     return (isfail(ctx) ? FAIL : 1);
 } // parse_args_NULL
 
 
-static int parse_args_DEF(Context *ctx)
+static int ui32fromstr(const char *str, uint32 *ui32)
+{
+    //*ui32 = (uint32) atoi(minstr);
+    char *endptr = NULL;
+    const long val = strtol(str, &endptr, 10);
+    *ui32 = (uint32) val;
+    return ((val >= 0) && (*str != '\0') && (*endptr == '\0'));
+} // ui32fromstr
+
+
+static int parse_num(Context *ctx, const int floatok, uint32 *token)
+{
+    int32 negative = 1;
+    union { float f; int32 si32; uint32 ui32; } cvt;
+    cvt.si32 = 0;
+
+    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, ",") != 0)
+        return fail(ctx, "Expected ','");
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "-") == 0)
+        negative = -1;
+    else
+        pushback(ctx);
+
+    uint32 val = 0;
+    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (!ui32fromstr(ctx->token, &val))
+        return fail(ctx, "Expected number");
+
+    uint32 fraction = 0;
+    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, ".") != 0)
+        pushback(ctx);  // whole number
+    else if (!floatok)
+        return fail(ctx, "Expected whole number");
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (!ui32fromstr(ctx->token, &fraction))
+        return fail(ctx, "Expected number");
+
+    if (!floatok)
+        cvt.si32 = ((int32) val) * negative;
+    else
+    {
+        // !!! FIXME: this is lame.
+        char buf[128];
+        snprintf(buf, sizeof (buf), "%s%u.%u", (negative == -1) ? "-" : "",
+                 (uint) val, (uint) fraction);
+        sscanf(buf, "%f", &cvt.f);
+    } // else
+
+    *token = cvt.ui32;
+    return NOFAIL;
+} // parse_num
+
+
+static int parse_args_DEFx(Context *ctx, const int isflt)
 {
     if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
-
-    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
-        return fail(ctx, "relative addressing in DEFB");
-
-sdfsdf
-// !!! FIXME: parse out def.
-    ctx->dwords[0] = SWAP32(ctx->tokens[0]);
-    ctx->dwords[1] = SWAP32(ctx->tokens[1]);
-    ctx->dwords[2] = SWAP32(ctx->tokens[2]);
-    ctx->dwords[3] = SWAP32(ctx->tokens[3]);
-
+    else if (require_comma(ctx) == FAIL)
+        return FAIL;
+    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
+        return FAIL;
+    else if (require_comma(ctx) == FAIL)
+        return FAIL;
+    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
+        return FAIL;
+    else if (require_comma(ctx) == FAIL)
+        return FAIL;
+    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
+        return FAIL;
+    else if (require_comma(ctx) == FAIL)
+        return FAIL;
+    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
+        return FAIL;
     return 6;
+} // parse_args_DEFx
+
+
+static int parse_args_DEF(Context *ctx)
+{
+    return parse_args_DEFx(ctx, 1);
 } // parse_args_DEF
+
+
+static int parse_args_DEFI(Context *ctx)
+{
+    return parse_args_DEFx(ctx, 0);
+} // parse_args_DEFI
 
 
 static int parse_args_DEFB(Context *ctx)
 {
     if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
-
-    if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
-        return fail(ctx, "relative addressing in DEFB");
-
-    ctx->dwords[0] = *(ctx->tokens) ? 1 : 0;
-
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, ",") != 0)
+        return fail(ctx, "Expected ','");
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcasecmp(ctx->token, "true") == 0)
+        ctx->tokenbuf[ctx->tokenbufpos++] = 1;
+    else if (strcasecmp(ctx->token, "false") == 0)
+        ctx->tokenbuf[ctx->tokenbufpos++] = 0;
+    else
+        return fail(ctx, "Expected 'true' or 'false'");
     return 3;
 } // parse_args_DEFB
 
 
-static int valid_texture_type(const uint32 ttype)
+static int parse_dcl_usage(const char *token, uint32 *val, int *issampler)
 {
-    switch ((const TextureType) ttype)
-    {
-        case TEXTURE_TYPE_2D:
-        case TEXTURE_TYPE_CUBE:
-        case TEXTURE_TYPE_VOLUME:
-            return 1;  // it's okay.
-    } // switch
-
-    return 0;
-} // valid_texture_type
-
-
-// !!! FIXME: this function is kind of a mess.
-// !!! FIXME: cut-and-paste from mojoshader.c ...
-static int parse_args_DCL(Context *ctx)
-{
-    int unsupported = 0;
-    char usage[sizeof (ctx->token)];
-
-static int nexttoken(Context *ctx, const int ignoreeol,
-                     const int ignorewhitespace, const int eolok,
-                     const int eosok)
-
-    char usagestr[sizeof (ctx->token)];
+    int i;
+    static const char *samplerusagestrs[] = { "2d", "cube", "volume" };
     static const char *usagestrs[] = {
         "position", "blendweight", "blendindices", "normal", "psize",
         "texcoord", "tangent", "binormal", "tessfactor", "positiont",
         "color", "fog", "depth", "sample"
     };
 
+    for (i = 0; i < STATICARRAYLEN(usagestrs); i++)
+    {
+        if (strcasecmp(usagestrs[i], token) == 0)
+        {
+            *issampler = 0;
+            *val = i;
+            return NOFAIL;
+        } // if
+    } // for
+
+    for (i = 0; i < STATICARRAYLEN(samplerusagestrs); i++)
+    {
+        if (strcasecmp(samplerusagestrs[i], token) == 0)
+        {
+            *issampler = 1;
+            *val = i + 2;
+            return NOFAIL;
+        } // if
+    } // for
+
+    return FAIL;
+} // parse_dcl_usage
+
+
+static int parse_args_DCL(Context *ctx)
+{
+    int issampler = 0;
+    uint32 usage = 0;
+    uint32 index = 0;
+
+    ctx->tokenbufpos++;  // save a spot for the usage/index token.
+
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
     else if (strcmp(ctx->token, " ") == 0)
-    {
         pushback(ctx);
-        usagestr[0] = '\0';
-    } // else if
     else if (strcmp(ctx->token, "_") != 0)
         return fail(ctx, "Expected register or usage");
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else
-        strcpy(usagestr, ctx->token);
+    else if (parse_dcl_usage(ctx->token, &usage, &issampler) == FAIL)
+        return FAIL;
 
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
     else if (strcmp(ctx->token, " ") == 0)
-        return fail(ctx, "Expected whitespace");
-    
-    ctx->centroid_allowed = 1;
-    ctx->tokenbufpos++;
-    const int parse_dest_rc = parse_destination_token(ctx, &ctx->dest_arg);
-    ctx->centroid_allowed = 0;
-    if (parse_dest_rc == FAIL)
+        pushback(ctx);
+    else if (!ui32fromstr(ctx->token, &index))
+        return fail(ctx, "Expected usage index or register");
+
+    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, " ") != 0)
+        return fail(ctx, "Expected register");
+    else if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
-    if (ctx->dest_arg.result_shift != 0)  // I'm pretty sure this is illegal...?
-        return fail(ctx, "shift scale in DCL");
-    else if (ctx->dest_arg.relative)  // I'm pretty sure this is illegal...?
-        return fail(ctx, "relative addressing in DCL");
-
-    const RegisterType regtype = ctx->dest_arg.regtype;
-    const int regnum = ctx->dest_arg.regnum;
-    if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
-    {
-        if (regtype == REG_TYPE_INPUT)
-        {
-            token |=
-            const uint32 usage = (token & 0xF);
-            const uint32 index = ((token >> 16) & 0xF);
-            reserved_mask = 0x7FF0FFE0;
-            ctx->dwords[0] = usage;
-            ctx->dwords[1] = index;
-        } // if
-
-        else if (regtype == REG_TYPE_MISCTYPE)
-        {
-            const MiscTypeType mt = (MiscTypeType) regnum;
-            if (mt == MISCTYPE_TYPE_POSITION)
-                reserved_mask = 0x7FFFFFFF;
-            else if (mt == MISCTYPE_TYPE_FACE)
-            {
-                reserved_mask = 0x7FFFFFFF;
-                if (!writemask_xyzw(ctx->dest_arg.orig_writemask))
-                    return fail(ctx, "DCL face writemask must be full");
-                else if (ctx->dest_arg.result_mod != 0)
-                    return fail(ctx, "DCL face result modifier must be zero");
-                else if (ctx->dest_arg.result_shift != 0)
-                    return fail(ctx, "DCL face shift scale must be zero");
-            } // else if
-            else
-            {
-                unsupported = 1;
-            } // else
-
-            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_UNKNOWN;
-            ctx->dwords[1] = 0;
-        } // else if
-
-        else if (regtype == REG_TYPE_TEXTURE)
-        {
-            const uint32 usage = (token & 0xF);
-            const uint32 index = ((token >> 16) & 0xF);
-            if (usage == MOJOSHADER_USAGE_TEXCOORD)
-            {
-                if (index > 7)
-                    return fail(ctx, "DCL texcoord usage must have 0-7 index");
-            } // if
-            else if (usage == MOJOSHADER_USAGE_COLOR)
-            {
-                if (index != 0)
-                    return fail(ctx, "DCL color usage must have 0 index");
-            } // else if
-            else
-            {
-                return fail(ctx, "Invalid DCL texture usage");
-            } // else
-
-            reserved_mask = 0x7FF0FFE0;
-            ctx->dwords[0] = usage;
-            ctx->dwords[1] = index;
-        } // else if
-
-        else if (regtype == REG_TYPE_SAMPLER)
-        {
-            const uint32 ttype = ((token >> 27) & 0xF);
-            if (!valid_texture_type(ttype))
-                return fail(ctx, "unknown sampler texture type");
-            reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ttype;
-        } // else if
-
-        else
-        {
-            unsupported = 1;
-        } // else
-    } // if
-
-    else if ( (shader_is_pixel(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
-    {
-        if (regtype == REG_TYPE_INPUT)
-        {
-            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_COLOR;
-            ctx->dwords[1] = regnum;
-            reserved_mask = 0x7FFFFFFF;
-        } // if
-        else if (regtype == REG_TYPE_TEXTURE)
-        {
-            ctx->dwords[0] = (uint32) MOJOSHADER_USAGE_TEXCOORD;
-            ctx->dwords[1] = regnum;
-            reserved_mask = 0x7FFFFFFF;
-        } // else if
-        else if (regtype == REG_TYPE_SAMPLER)
-        {
-            const uint32 ttype = ((token >> 27) & 0xF);
-            if (!valid_texture_type(ttype))
-                return fail(ctx, "unknown sampler texture type");
-            reserved_mask = 0x7FFFFFF;
-            ctx->dwords[0] = ttype;
-        } // else if
-        else
-        {
-            unsupported = 1;
-        } // else
-    } // if
-
-    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 3, 0)) )
-    {
-        if ((regtype == REG_TYPE_INPUT) || (regtype == REG_TYPE_OUTPUT))
-        {
-            const uint32 usage = (token & 0xF);
-            const uint32 index = ((token >> 16) & 0xF);
-            reserved_mask = 0x7FF0FFE0;
-            ctx->dwords[0] = usage;
-            ctx->dwords[1] = index;
-        } // if
-        else
-        {
-            unsupported = 1;
-        } // else
-    } // else if
-
-    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
-    {
-        if (regtype == REG_TYPE_INPUT)
-        {
-            const uint32 usage = (token & 0xF);
-            const uint32 index = ((token >> 16) & 0xF);
-            reserved_mask = 0x7FF0FFE0;
-            ctx->dwords[0] = usage;
-            ctx->dwords[1] = index;
-        } // if
-        else
-        {
-            unsupported = 1;
-        } // else
-    } // else if
-
+    const int samplerreg = (ctx->dest_arg.regtype == REG_TYPE_SAMPLER);
+    if (issampler != samplerreg)
+        return fail(ctx, "Invalid usage");
+    else if (samplerreg)
+        ctx->tokenbuf[0] = (usage << 27) | 0x80000000;
     else
-    {
-        unsupported = 1;
-    } // else
-
-    if (unsupported)
-        return fail(ctx, "invalid DCL register type for this shader model");
-
-    if ((token & reserved_mask) != 0)
-        return fail(ctx, "reserved bits in DCL dword aren't zero");
+        ctx->tokenbuf[0] = usage | (index << 16) | 0x80000000;
 
     return 3;
 } // parse_args_DCL
@@ -963,14 +1034,14 @@ static int parse_args_D(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    return isfail(ctx) ? FAIL : retval;
+    return isfail(ctx) ? FAIL : NOFAIL;
 } // parse_args_D
 
 
 static int parse_args_S(Context *ctx)
 {
     int retval = 1;
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_S
 
@@ -978,8 +1049,9 @@ static int parse_args_S(Context *ctx)
 static int parse_args_SS(Context *ctx)
 {
     int retval = 1;
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
-    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_SS
 
@@ -988,7 +1060,8 @@ static int parse_args_DS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_DS
 
@@ -997,8 +1070,10 @@ static int parse_args_DSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
-    retval += parse_source_token(ctx, &ctx->source_args[1]);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSS
 
@@ -1007,9 +1082,12 @@ static int parse_args_DSSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
-    retval += parse_source_token(ctx, &ctx->source_args[1]);
-    retval += parse_source_token(ctx, &ctx->source_args[2]);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSSS
 
@@ -1018,10 +1096,14 @@ static int parse_args_DSSSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    retval += parse_source_token(ctx, &ctx->source_args[0]);
-    retval += parse_source_token(ctx, &ctx->source_args[1]);
-    retval += parse_source_token(ctx, &ctx->source_args[2]);
-    retval += parse_source_token(ctx, &ctx->source_args[3]);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
+    if (require_comma(ctx) == FAIL) return FAIL;
+    retval += parse_source_token(ctx);
     return isfail(ctx) ? FAIL : retval;
 } // parse_args_DSSSS
 
@@ -1056,46 +1138,24 @@ static int parse_args_TEXLD(Context *ctx)
 
 
 
-
-
-
-
 // one args function for each possible sequence of opcode arguments.
 typedef int (*args_function)(Context *ctx);
-
-// one state function for each opcode where we have state machine updates.
-typedef void (*state_function)(Context *ctx);
 
 // Lookup table for instruction opcodes...
 typedef struct
 {
     const char *opcode_string;
-    int slots;  // number of instruction slots this opcode eats.
-    MOJOSHADER_shaderType shader_types;  // mask of types that can use opcode.
     args_function parse_args;
-    state_function state;
 } Instruction;
 
 
 static const Instruction instructions[] =
 {
-/*  !!! FIXME: push this through mojoshader.c's state machine.
-    #define INSTRUCTION_STATE(op, opstr, slots, a, t) { \
-        opstr, slots, t, parse_args_##a, state_##op \
-    },
-*/
-    #define INSTRUCTION_STATE(op, opstr, slots, a, t) { \
-        opstr, slots, t, parse_args_##a, 0 \
-    },
-
-    #define INSTRUCTION(op, opstr, slots, a, t) { \
-        opstr, slots, t, parse_args_##a, 0 \
-    },
-
+    #define INSTRUCTION_STATE(op, opstr, s, a, t) { opstr, parse_args_##a },
+    #define INSTRUCTION(op, opstr, slots, a, t) { opstr, parse_args_##a },
     #define MOJOSHADER_DO_INSTRUCTION_TABLE 1
     #include "mojoshader_internal.h"
     #undef MOJOSHADER_DO_INSTRUCTION_TABLE
-
     #undef INSTRUCTION
     #undef INSTRUCTION_STATE
 };
@@ -1145,14 +1205,6 @@ static int parse_instruction_token(Context *ctx)
         coissue = 1;
     } // if
 
-    if (coissue)
-    {
-        if (!shader_is_pixel(ctx))
-            return fail(ctx, "coissue instruction on non-pixel shader");
-        else if (shader_version_atleast(ctx, 2, 0))
-            return fail(ctx, "coissue instruction in Shader Model >= 2.0");
-    } // if
-
     int i;
     int valid_opcode = 0;
     const Instruction *instruction = NULL;
@@ -1196,12 +1248,6 @@ static int parse_instruction_token(Context *ctx)
 
     instruction = &instructions[opcode];  // ...in case this changed.
 
-    if ((ctx->shader_type & instruction->shader_types) == 0)
-    {
-        return failf(ctx, "opcode '%s' not available in this shader type.",
-                     instruction->opcode_string);
-    } // if
-
     // !!! FIXME: predicated instructions
 
     ctx->tokenbufpos = 0;
@@ -1209,14 +1255,10 @@ static int parse_instruction_token(Context *ctx)
     const int tokcount = instruction->parse_args(ctx);
     if (isfail(ctx))
         return FAIL;
-
-    if (instruction->state != NULL)
-        instruction->state(ctx);
-
-    if (isfail(ctx))
+    else if (require_endline(ctx) == FAIL)
         return FAIL;
 
-    ctx->instruction_count += instruction->slots;
+    // insttoks bits are reserved and should be zero if < SM2.
     const uint32 insttoks = shader_version_atleast(ctx, 2, 0) ? tokcount : 0;
 
     // write out the instruction token.
@@ -1240,54 +1282,53 @@ static int parse_version_token(Context *ctx)
         return FAIL;
 
     uint32 shader_type = 0;
-
-    const char *t = ctx->token;
-    switch (t[0])
+    if (strcasecmp(ctx->token, "vs") == 0)
     {
-        case 'v':
-            shader_type = 0xFFFE;
-            ctx->shader_type = MOJOSHADER_TYPE_VERTEX;
-            break;
-        case 'p':
-            shader_type = 0xFFFF;
-            ctx->shader_type = MOJOSHADER_TYPE_PIXEL;
-            break;
-        // !!! FIXME: geometry shaders?
-        default: return fail(ctx, "Expected version string");
-    } // switch
-
-    if ((t[1] != 's') || (t[2] != '_') || (t[4] != '_'))
-        return fail(ctx, "Expected version string");
-
-    ctx->major_ver = t[3] - '0';
-
-    const char *minstr = &t[5];
-    if (strcasecmp(minstr, "x") == 0)
-        ctx->minor_ver = 1;
-    else if (strcasecmp(minstr, "sw") == 0)
-        ctx->minor_ver = 255;
-    else if (strcmp(minstr, "0") == 0)
-        ctx->minor_ver = 0;
+        ctx->shader_type = MOJOSHADER_TYPE_VERTEX;
+        shader_type = 0xFFFE;
+    } // if
+    else if (strcasecmp(ctx->token, "ps") == 0)
+    {
+        ctx->shader_type = MOJOSHADER_TYPE_PIXEL;
+        shader_type = 0xFFFF;
+    } // if
     else
     {
-        //minor = atoi(minstr);
-        char *endptr = NULL;
-        const long val = strtol(minstr, &endptr, 10);
-        ctx->minor_ver = (uint8) val;
-        if ((*minstr == '\0') || (*endptr != '\0') || (val < 0) || (val > 255))
-            return fail(ctx, "Invalid version string");
+        // !!! FIXME: geometry shaders?
+        return fail(ctx, "Expected version string");
     } // else
 
-    // !!! FIXME: 1.x and 4.x?
-    if ((ctx->major_ver < 2) || (ctx->major_ver > MAX_SHADER_MAJOR))
-        return fail(ctx, "Unsupported shader model");
+    uint32 major = 0;
+    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "_") != 0)
+        return fail(ctx, "Expected version string");
+    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (!ui32fromstr(ctx->token, &major))
+        return fail(ctx, "Expected version string");
+
+    uint32 minor = 0;
+    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "_") != 0)
+        return fail(ctx, "Expected version string");
+    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+        return FAIL;
+    else if (strcasecmp(ctx->token, "x") != 0)
+        minor = 1;
+    else if (strcasecmp(ctx->token, "sw") != 0)
+        minor = 255;
+    else if (!ui32fromstr(ctx->token, &minor))
+        return fail(ctx, "Expected version string");
+
+    ctx->major_ver = major;
+    ctx->minor_ver = major;
 
     if (require_endline(ctx) == FAIL)
         return FAIL;
 
-    output_token(ctx, (((uint32) shader_type) << 16) |
-                      (((uint32) ctx->major_ver) << 8) |
-                      (((uint32) ctx->minor_ver) << 0) );
+    output_token(ctx, (shader_type << 16) | (major << 8) | (minor << 0) );
     return NOFAIL;
 } // parse_version_token
 
@@ -1296,10 +1337,6 @@ static int parse_phase_token(Context *ctx)
 {
     if (require_endline(ctx) == FAIL)
         return FAIL;
-
-    // !!! FIXME: needs state; allow only one phase token per shader, I think?
-    if ( (!shader_is_pixel(ctx)) || (!shader_version_exactly(ctx, 1, 4)) )
-        return fail(ctx, "phase token only available in 1.4 pixel shaders");
     output_token(ctx, 0x0000FFFD); // phase token always 0x0000FFFD.
     return NOFAIL;
 } // parse_phase_token
@@ -1309,12 +1346,11 @@ static int parse_end_token(Context *ctx)
 {
     if (require_endline(ctx) == FAIL)
         return FAIL;
-
     // We don't emit the end token bits here, since it's valid for a shader
     //  to not specify an "end" string at all; it's implicit, in that case.
     // Instead, we make sure if we see "end" that it's the last thing we see.
     if (nexttoken(ctx, 1, 1, 0, 1) != END_OF_STREAM)
-        return fail(ctx, "Content after END token");
+        return fail(ctx, "Content after END");
     return NOFAIL;
 } // parse_end_token
 
@@ -1359,6 +1395,8 @@ static void destroy_context(Context *ctx)
         void *d = ctx->malloc_data;
         if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
             f((void *) ctx->failstr, d);
+        if (ctx->output != NULL)
+            f(ctx->output, d);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -1367,10 +1405,10 @@ static void destroy_context(Context *ctx)
 
 // API entry point...
 
-const MOJOSHADER_assembleData *MOJOSHADER_assemble(const char *source,
+const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
-    MOJOSHADER_assembleData *retval = NULL;
+    const MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
@@ -1396,29 +1434,26 @@ const MOJOSHADER_assembleData *MOJOSHADER_assemble(const char *source,
 
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
-    retval = build_assembledata(ctx);
+    if (isfail(ctx))
+        ksldjflksjdf output a parseData with error details.
+    else
+    {
+        // This validates the shader; there are lots of things that are
+        //  invalid, but will successfully parse in the assembler, generating
+        //  bad bytecode; this will catch them without us having to
+        //  duplicate most of the validation here.
+        // It also saves us the trouble of duplicating all the other work,
+        //  like setting up the uniforms list, etc.
+        retval = MOJOSHADER_parse(MOJOSHADER_PROFILE_BYTECODE,
+                                  (const unsigned char *) ctx->output,
+                                  ctx->output_len * sizeof (uint32),
+                                  NULL, 0, m, f, d);
+    } // if
+
     destroy_context(ctx);
     return retval;
 } // MOJOSHADER_assemble
 
-
-void MOJOSHADER_freeAssembleData(const MOJOSHADER_assembleData *_data)
-{
-    MOJOSHADER_assembleData *data = (MOJOSHADER_assembleData *) _data;
-    if ((data == NULL) || (data == &out_of_mem_data))
-        return;  // no-op.
-
-    MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
-    void *d = data->malloc_data;
-
-    if (data->output != NULL)  // check for NULL in case of dumb free() impl.
-        f((void *) data->output, d);
-
-    if ((data->error != NULL) && (data->error != out_of_mem_str))
-        f((void *) data->error, d);
-
-    f(data, d);
-} // MOJOSHADER_freeParseData
 
 // end of mojoshader_assembler.c ...
 

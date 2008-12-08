@@ -233,11 +233,11 @@ struct Context
 
 // Convenience functions for allocators...
 
-static MOJOSHADER_parseData out_of_mem_data = {
+MOJOSHADER_parseData out_of_mem_data = {
     "Out of memory", 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
-static const char *out_of_mem_str = "Out of memory";
+const char *out_of_mem_str = "Out of memory";
 static inline int out_of_memory(Context *ctx)
 {
     if (ctx->failstr == NULL)

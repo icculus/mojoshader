@@ -248,6 +248,9 @@ static inline int scalar_register(const RegisterType regtype, const int regnum)
     return 0;
 } // scalar_register
 
+extern MOJOSHADER_parseData out_of_mem_data;
+extern const char *out_of_mem_str;
+
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 
 

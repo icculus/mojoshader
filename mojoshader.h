@@ -488,79 +488,21 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 /* Assembler interface... */
 
 /*
- * Structure used to return data from assembling of a shader...
- */
-typedef struct MOJOSHADER_assembleData
-{
-    /*
-     * Human-readable error, if there is one. Will be NULL if there was no
-     *  error. The string will be UTF-8 encoded, and English only. Most of
-     *  these shouldn't be shown to the end-user anyhow.
-     */
-    const char *error;
-
-    /*
-     * Line number of error, if there is one. Will be zero if there isn't.
-     */
-    unsigned int error_line;
-
-    /*
-     * Bytes of output from assembling. Binary data. Will be NULL on error.
-     */
-    const char *output;
-
-    /*
-     * Byte count for output. Will be 0 on error.
-     */
-    int output_len;
-
-    /*
-     * Count of Direct3D instruction slots used. As with Microsoft's own
-     *  assembler, this value is just a rough estimate, as unpredicable
-     *  real-world factors make the actual value vary at least a little from
-     *  this count. Still, it can give you a rough idea of the size of your
-     *  shader. Will be zero on error.
-     */
-    int instruction_count;
-
-    /*
-     * The type of shader we parsed. Will be MOJOSHADER_TYPE_UNKNOWN on error.
-     */
-    MOJOSHADER_shaderType shader_type;
-
-    /*
-     * The shader's major version. If this was a "vs_3_0", this would be 3.
-     */
-    int major_ver;
-
-    /*
-     * The shader's minor version. If this was a "ps_1_4", this would be 4.
-     *  Two notes: for "vs_2_x", this is 1, and for "vs_3_sw", this is 255.
-     */
-    int minor_ver;
-
-    /*
-     * This is the malloc implementation you passed to MOJOSHADER_parse().
-     */
-    MOJOSHADER_malloc malloc;
-
-    /*
-     * This is the free implementation you passed to MOJOSHADER_parse().
-     */
-    MOJOSHADER_free free;
-
-    /*
-     * This is the pointer you passed as opaque data for your allocator.
-     */
-    void *malloc_data;
-} MOJOSHADER_assembleData;
-
-/*
  * This function is optional. Use this to convert Direct3D shader assembly
  *  language into bytecode, which can be handled by MOJOSHADER_parse().
  *
  * (source) is an ASCII, NULL-terminated string of valid Direct3D shader
  *  assembly source code.
+ *
+ * This will return a MOJOSHADER_parseData(), like MOJOSHADER_parse() would,
+ *  except the profile will be MOJOSHADER_PROFILE_BYTECODE and the output
+ *  will be the assembled bytecode instead of some other language. This output
+ *  can be pushed back through MOJOSHADER_parseData() with a different profile.
+ *
+ * This function will never return NULL, even if the system is completely
+ *  out of memory upon entry (in which case, this function returns a static
+ *  MOJOSHADER_parseData object, which is still safe to pass to
+ *  MOJOSHADER_freeParseData()).
  *
  * As assembling requires some memory to be allocated, you may provide a
  *  custom allocator to this function, which will be used to allocate/free
@@ -573,19 +515,8 @@ typedef struct MOJOSHADER_assembleData
  *  (source) remains intact for the duration of the call. This allows you
  *  to assemble several shaders on separate CPU cores at the same time.
  */
-const MOJOSHADER_assembleData *MOJOSHADER_assemble(const char *source,
-                            MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
-
-/*
- * Call this to dispose of assembling results when you are done with them.
- *  This will call the MOJOSHADER_free function you provided to
- *  MOJOSHADER_assemble() multiple times, if you provided one.
- *  Passing a NULL here is a safe no-op.
- *
- * This function is thread safe, so long as any allocator you passed into
- *  MOJOSHADER_assemble() is, too.
- */
-void MOJOSHADER_freeAssembleData(const MOJOSHADER_assembleData *data);
+const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
+                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 
 
