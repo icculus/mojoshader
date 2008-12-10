@@ -930,15 +930,54 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
     else if (!ui32fromstr(ctx->token, &fraction))
         return fail(ctx, "Expected number");
 
+    uint32 exponent = 0;
+    int negexp = 0;
+    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
+        return FAIL;
+    else if (strcmp(ctx->token, "e") != 0)
+        pushback(ctx);
+    else if (!floatok)
+        return fail(ctx, "Exponent on whole number");  // !!! FIXME: illegal?
+    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+        return FAIL;
+    else
+    {
+        if (strcmp(ctx->token, "-") != 0)
+            pushback(ctx);
+        else
+            negexp = 1;
+
+        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+            return FAIL;
+        else if (!ui32fromstr(ctx->token, &exponent))
+            return fail(ctx, "Expected exponent");
+    } // else
+
     if (!floatok)
         cvt.si32 = ((int32) val) * negative;
     else
     {
         // !!! FIXME: this is lame.
         char buf[128];
-        snprintf(buf, sizeof (buf), "%s%u.%u", (negative == -1) ? "-" : "",
+        snprintf(buf, sizeof (buf), "%s%u.%u", (negative < 0) ? "-" : "",
                  (uint) val, (uint) fraction);
         sscanf(buf, "%f", &cvt.f);
+        cvt.f *= (float) negative;
+
+        if (exponent)
+        {
+            int i;
+            if (negexp)
+            {
+                for (i = 0; i > exponent; i--)
+                    cvt.f /= 10.0f;
+            } // if
+            else
+            {
+                for (i = 0; i < exponent; i++)
+                    cvt.f *= 10.0f;
+            } // else
+        } // if
     } // else
 
     *token = cvt.ui32;
