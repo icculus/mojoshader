@@ -1328,9 +1328,7 @@ static int parse_instruction_token(Context *ctx)
     ctx->tokenbufpos = 0;
 
     const int tokcount = instruction->parse_args(ctx);
-    if (isfail(ctx))
-        return FAIL;
-    else if (require_endline(ctx) == FAIL)
+    if (require_endline(ctx) == FAIL)
         return FAIL;
 
     // insttoks bits are reserved and should be zero if < SM2.
