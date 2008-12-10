@@ -337,7 +337,7 @@ static inline int tokenize(Context *ctx)
            (rc == END_OF_STREAM) ? "END_OF_STREAM" :
            (rc == FAIL) ? "FAIL" :
            (rc == NOFAIL) ? "NOFAIL" : "???",
-           ctx->token);
+           (ctx->token[0] == '\n') ? "\\n" : ctx->token);
     #endif
     return rc;
 } // tokenize
@@ -402,7 +402,7 @@ static int nexttoken(Context *ctx, const int ignoreeol,
            (rc == END_OF_STREAM) ? "END_OF_STREAM" :
            (rc == FAIL) ? "FAIL" :
            (rc == NOFAIL) ? "NOFAIL" : "???",
-           ctx->token);
+           (ctx->token[0] == '\n') ? "\\n" : ctx->token);
     #endif
 
     if ((rc == END_OF_STREAM) && (!eosok))
