@@ -905,10 +905,6 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
 
     if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
-    else if (strcmp(ctx->token, ",") != 0)
-        return fail(ctx, "Expected ','");
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
     else if (strcmp(ctx->token, "-") == 0)
         negative = -1;
     else
