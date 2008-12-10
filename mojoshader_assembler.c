@@ -206,6 +206,7 @@ static int _tokenize(Context *ctx)
 
     while (1)
     {
+        // !!! FIXME: carefully crafted (but legal) comments can trigger this.
         if (idx >= sizeof (ctx->token))
             return fail(ctx, "buffer overflow");
 
