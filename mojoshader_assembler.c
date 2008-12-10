@@ -1332,7 +1332,7 @@ static int parse_instruction_token(Context *ctx)
         return FAIL;
 
     // insttoks bits are reserved and should be zero if < SM2.
-    const uint32 insttoks = shader_version_atleast(ctx, 2, 0) ? tokcount : 0;
+    const uint32 insttoks = shader_version_atleast(ctx, 2, 0) ? tokcount-1 : 0;
 
     // write out the instruction token.
     output_token(ctx, ((opcode & 0xFFFF) << 0) |
