@@ -360,8 +360,12 @@ static int nexttoken(Context *ctx, const int ignoreeol,
             while ((rc = tokenize(ctx)) == NOFAIL)
             {
                 if (strcmp(ctx->token, "\n") == 0)
+                {
+                    pushback(ctx);
                     break;
+                } // if
             } // while
+            continue;  // pick up from newline, go again.
         } // if
 
         break;
