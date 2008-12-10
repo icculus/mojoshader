@@ -5284,9 +5284,16 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         case SRCMOD_X2:
         case SRCMOD_DZ:
         case SRCMOD_DW:
-        case SRCMOD_NOT:
             if (shader_version_atleast(ctx, 2, 0))
                 return fail(ctx, "illegal source mod for this Shader Model.");
+            break;
+
+        case SRCMOD_NOT:  // !!! FIXME: I _think_ this is right...
+            if (shader_version_atleast(ctx, 2, 0))
+            {
+                if (info->regtype != REG_TYPE_PREDICATE)
+                    return fail(ctx, "NOT only allowed on predicate register.");
+            } // if
             break;
 
         default:
