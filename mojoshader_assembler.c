@@ -670,8 +670,9 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
 } // parse_destination_token
 
 
-static void set_source_mod(const int negate, const SourceMod norm,
-                          const SourceMod negated, SourceMod *srcmod)
+static void set_source_mod(Context *ctx, const int negate,
+                           const SourceMod norm, const SourceMod negated,
+                           SourceMod *srcmod)
 {
     if ( (*srcmod != SRCMOD_NONE) || (negate && (negated == SRCMOD_NONE)) )
         fail(ctx, "Incompatible source modifiers");
@@ -721,20 +722,19 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
     else if (strcasecmp(ctx->token, "bias") == 0)
-        set_source_mod(negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
     else if (strcasecmp(ctx->token, "bx2") == 0)
-        set_source_mod(negate, SRCMOD_SIGN, SRCMOD_SIGNNEGATE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_SIGN, SRCMOD_SIGNNEGATE, &srcmod);
     else if (strcasecmp(ctx->token, "x2") == 0)
-        set_source_mod(negate, SRCMOD_X2, SRCMOD_X2NEGATE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_X2, SRCMOD_X2NEGATE, &srcmod);
     else if (strcasecmp(ctx->token, "dz") == 0)
-        set_source_mod(negate, SRCMOD_DZ, SRCMOD_NONE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_DZ, SRCMOD_NONE, &srcmod);
     else if (strcasecmp(ctx->token, "dw") == 0)
-        set_source_mod(negate, SRCMOD_DW, SRCMOD_NONE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_DW, SRCMOD_NONE, &srcmod);
     else if (strcasecmp(ctx->token, "abs") == 0)
-        set_source_mod(negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
+        set_source_mod(ctx, negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
     else
         return fail(ctx, "Invalid source modifier");
-
 
     if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
         return FAIL;
@@ -766,7 +766,7 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
-    else if (scalar_register(info->regtype, info->regnum))
+    else if (scalar_register(regtype, regnum))
         return fail(ctx, "Swizzle specified for scalar register");
     else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
@@ -788,6 +788,7 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         uint32 val;
         int saw_xyzw = 0;
         int saw_rgba = 0;
+        int i;
         for (i = 0; i < 4; i++)
         {
             const int component = (int) ctx->token[i];
@@ -1402,6 +1403,27 @@ static void destroy_context(Context *ctx)
 } // destroy_context
 
 
+static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
+{
+    MOJOSHADER_parseData *retval = NULL;
+    if (!isfail(ctx))
+        return NULL;
+
+    retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
+    if (retval == NULL)
+        return &out_of_mem_data;
+
+    memset(retval, '\0', sizeof (MOJOSHADER_parseData));
+    retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
+    retval->malloc_data = ctx->malloc_data;
+    retval->error = ctx->failstr;  // we recycle.  :)
+    ctx->failstr = NULL;  // don't let this get free()'d too soon.
+
+    return retval;
+} // build_failed_assembly
+
+
 
 // API entry point...
 
@@ -1435,7 +1457,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
     if (isfail(ctx))
-        ksldjflksjdf output a parseData with error details.
+        retval = build_failed_assembly(ctx);
     else
     {
         // This validates the shader; there are lots of things that are
