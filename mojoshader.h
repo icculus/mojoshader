@@ -256,7 +256,7 @@ typedef struct MOJOSHADER_parseData
      *  error, and -1 if there was an error before processing started. If >= 0,
      *  MOJOSHADER_parse() sets this to the byte offset (starting at zero) into
      *  the bytecode you supplied, and MOJOSHADER_assemble() sets this to a
-     *  a line number in the source code you supplied (starting at zero).
+     *  a line number in the source code you supplied (starting at one).
      */
     int error_position;
 

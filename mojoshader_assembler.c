@@ -1465,6 +1465,7 @@ static Context *build_context(const char *source, MOJOSHADER_malloc m,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->source = source;
+    ctx->linenum = 1;
 
     return ctx;
 } // build_context
