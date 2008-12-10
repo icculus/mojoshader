@@ -343,16 +343,18 @@ static inline int tokenize(Context *ctx)
 } // tokenize
 
 
-static inline void pushback(Context *ctx)
+static inline int pushback(Context *ctx)
 {
     #if DEBUG_TOKENIZER
     printf("PUSHBACK\n");
     #endif
 
     if (ctx->pushedback)
-        fail(ctx, "BUG: Double pushback in parser");
+        return fail(ctx, "BUG: Double pushback in parser");
     else
         ctx->pushedback = 1;
+
+    return NOFAIL;
 } // pushback
 
 
@@ -1064,6 +1066,8 @@ static int parse_args_DCL(Context *ctx)
         return FAIL;
     else if (strcmp(ctx->token, " ") != 0)
         return fail(ctx, "Expected register");
+    else if (pushback(ctx) == FAIL)  // parse_destination_token() wants the ' '
+        return FAIL;
     else if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
