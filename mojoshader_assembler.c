@@ -12,6 +12,7 @@
 
 #define DEBUG_TOKENIZER 0
 
+// !!! FIXME: no #define support yet.
 
 typedef struct Context Context;
 
