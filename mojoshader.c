@@ -911,6 +911,7 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
     swizzle_str[i] = '\0';
     assert(i < sizeof (swizzle_str));
 
+    // !!! FIXME: c12[a0.x] actually needs to be c[a0.x + 12]
     snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s",
              premod_str, regtype_str, regnum_str, postmod_str,
              rel_lbracket, rel_regtype_str, rel_regnum_str, rel_swizzle,
