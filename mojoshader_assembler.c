@@ -123,6 +123,15 @@ static inline int shader_is_vertex(const Context *ctx)
 } // shader_is_vertex
 
 
+static int ui32fromstr(const char *str, uint32 *ui32)
+{
+    //*ui32 = (uint32) atoi(minstr);
+    char *endptr = NULL;
+    const long val = strtol(str, &endptr, 10);
+    *ui32 = (uint32) val;
+    return ((val >= 0) && (*str != '\0') && (*endptr == '\0'));
+} // ui32fromstr
+
 
 static void output_token_noswap(Context *ctx, const uint32 token)
 {
@@ -511,15 +520,32 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 
     if (neednum)
     {
+        // cheat the pushback.
+        const char *origsrc = ctx->source;
+        const int origonendline = ctx->on_endline;
+        const int origlinenum = ctx->linenum;
+        const int origprevchar = ctx->prevchar;
+
+        if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
+            return FAIL;
+        else if (strcmp(ctx->token, "[") == 0)
+            neednum = 0;
+
+        ctx->source = origsrc;
+        ctx->on_endline = origonendline;
+        ctx->linenum = origlinenum;
+        ctx->prevchar = origprevchar;
+    } // if
+
+    if (neednum)
+    {
         if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
             return FAIL;
 
-        //minor = atoi(ctx->token);
-        char *endptr = NULL;
-        const long val = strtol(ctx->token, &endptr, 10);
-        regnum = (int) val;
-        if ((*ctx->token == '\0') || (*endptr != '\0'))
-            return fail(ctx, "Invalid version string");
+        uint32 ui32 = 0;
+        if (!ui32fromstr(ctx->token, &ui32))
+            return fail(ctx, "Invalid register index");
+        regnum = (int) ui32;
     } // if
 
     // split up REG_TYPE_CONST
@@ -758,6 +784,22 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         relative = 1;
         if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
             return FAIL;
+        else if (strcmp(ctx->token, "+") != 0)
+            pushback(ctx);
+        else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+            return FAIL;
+        else
+        {
+            if (regnum != 0)  // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
+                fail(ctx, "Relative addressing with explicit register number.");
+            uint32 ui32 = 0;
+            if (!ui32fromstr(ctx->token, &ui32))
+                return fail(ctx, "Invalid relative addressing offset");
+            regnum += (int) ui32;
+        } // else
+
+        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+            return FAIL;
         else if (strcmp(ctx->token, "]") != 0)
             return fail(ctx, "Expected ']'");
     } // else
@@ -838,16 +880,6 @@ static int parse_args_NULL(Context *ctx)
 {
     return (isfail(ctx) ? FAIL : 1);
 } // parse_args_NULL
-
-
-static int ui32fromstr(const char *str, uint32 *ui32)
-{
-    //*ui32 = (uint32) atoi(minstr);
-    char *endptr = NULL;
-    const long val = strtol(str, &endptr, 10);
-    *ui32 = (uint32) val;
-    return ((val >= 0) && (*str != '\0') && (*endptr == '\0'));
-} // ui32fromstr
 
 
 static int parse_num(Context *ctx, const int floatok, uint32 *token)
