@@ -1429,7 +1429,7 @@ static int parse_version_token(Context *ctx)
     uint32 major = 0;
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else if (strcmp(ctx->token, "_") != 0)
+    else if ((strcmp(ctx->token, "_") != 0) && (strcmp(ctx->token, ".") != 0))
         return fail(ctx, "Expected version string");
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
@@ -1439,7 +1439,7 @@ static int parse_version_token(Context *ctx)
     uint32 minor = 0;
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else if (strcmp(ctx->token, "_") != 0)
+    else if ((strcmp(ctx->token, "_") != 0) && (strcmp(ctx->token, ".") != 0))
         return fail(ctx, "Expected version string");
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
