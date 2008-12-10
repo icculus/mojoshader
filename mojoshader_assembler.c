@@ -917,7 +917,7 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
         return fail(ctx, "Expected number");
 
     uint32 fraction = 0;
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
+    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
         return FAIL;
     else if (strcmp(ctx->token, ".") != 0)
         pushback(ctx);  // whole number
