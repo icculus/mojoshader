@@ -69,6 +69,8 @@ int main(int argc, char **argv)
                 buf[rc] = '\0';
                 if (assemble(buf, outfile))
                     retval = 0;
+                else
+                    remove(outfile);
                 free(buf);
             } // else
         } // for
