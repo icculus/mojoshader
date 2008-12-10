@@ -1040,7 +1040,7 @@ static int parse_args_D(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx, &ctx->dest_arg);
-    return isfail(ctx) ? FAIL : NOFAIL;
+    return isfail(ctx) ? FAIL : retval;
 } // parse_args_D
 
 
