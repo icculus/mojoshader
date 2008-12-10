@@ -161,8 +161,10 @@ struct Context
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
+    const uint32 *orig_tokens;
     const uint32 *tokens;
     uint32 tokencount;
+    int started_parsing;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
     OutputList *output;
@@ -234,7 +236,7 @@ struct Context
 // Convenience functions for allocators...
 
 MOJOSHADER_parseData out_of_mem_data = {
-    "Out of memory", 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+    "Out of memory", -1, 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
 const char *out_of_mem_str = "Out of memory";
@@ -6627,6 +6629,7 @@ static Context *build_context(const char *profile,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->tokens = (const uint32 *) tokenbuf;
+    ctx->orig_tokens = (const uint32 *) tokenbuf;
     ctx->tokencount = bufsize / sizeof (uint32);
     ctx->swizzles = swiz;
     ctx->swizzles_count = swizcount;
@@ -7083,11 +7086,16 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
             Free(ctx, samplers);
         } // if
 
+        if (ctx->started_parsing)
+            retval->error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
+        else
+            retval->error_position = -1;
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
     else
     {
+        retval->error_position = -2;
         retval->profile = ctx->profile->name;
         retval->output = output;
         retval->output_len = ctx->output_len;
@@ -7297,7 +7305,10 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 
     // Version token always comes first.
     if (!isfail(ctx))
+    {
+        ctx->started_parsing = 1;
         rc = parse_version_token(ctx, profile);
+    } // if
 
     // parse out the rest of the tokens after the version token...
     while ( (rc > 0) && (!isfail(ctx)) )

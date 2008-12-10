@@ -96,7 +96,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     #else
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, NULL, 0, NULL, NULL, NULL);
     if (pd->error != NULL)
-        report("FAIL: %s %s\n", fname, pd->error);
+        report("FAIL: %s (position %d) %s\n", fname, pd->error_position, pd->error);
     else
         report("PASS: %s\n", fname);
     MOJOSHADER_freeParseData(pd);
