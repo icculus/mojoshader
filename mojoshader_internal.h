@@ -227,13 +227,13 @@ typedef struct
 } DestArgInfo;
 
 
-static inline int scalar_register(const RegisterType regtype, const int regnum)
+static inline int scalar_register(const MOJOSHADER_shaderType shader_type,
+                                  const RegisterType regtype, const int regnum)
 {
     switch (regtype)
     {
         case REG_TYPE_DEPTHOUT:
         case REG_TYPE_CONSTBOOL:
-        case REG_TYPE_PREDICATE:
         case REG_TYPE_LOOP:
             return 1;
 
@@ -241,6 +241,9 @@ static inline int scalar_register(const RegisterType regtype, const int regnum)
             if ( ((const MiscTypeType) regnum) == MISCTYPE_TYPE_FACE )
                 return 1;
             return 0;
+
+        case REG_TYPE_PREDICATE:
+            return (shader_type == MOJOSHADER_TYPE_PIXEL) ? 1 : 0;
 
         default: break;
     } // switch

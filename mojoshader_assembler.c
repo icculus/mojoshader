@@ -669,7 +669,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
-    else if (scalar_register(info->regtype, info->regnum))
+    else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
         return fail(ctx, "Writemask specified for scalar register");
     else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
@@ -830,7 +830,7 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
-    else if (scalar_register(regtype, regnum))
+    else if (scalar_register(ctx->shader_type, regtype, regnum))
         return fail(ctx, "Swizzle specified for scalar register");
     else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;

@@ -895,7 +895,7 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 
     char swizzle_str[6];
     int i = 0;
-    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !no_swizzle(arg->swizzle))
     {
         swizzle_str[i++] = '.';
@@ -952,7 +952,7 @@ static const char *make_D3D_destarg_string(Context *ctx)
 
     char writemask_str[6];
     int i = 0;
-    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
@@ -1723,7 +1723,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
                                                        sizeof (regnum_str));
     char writemask_str[6];
     int i = 0;
-    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
@@ -1890,7 +1890,7 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     } // if
 
     char swiz_str[6] = { '\0' };
-    if (!scalar_register(arg->regtype, arg->regnum))
+    if (!scalar_register(ctx->shader_type, arg->regtype, arg->regnum))
     {
         make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
                                  arg->swizzle, writemask);
@@ -2962,7 +2962,7 @@ static void emit_GLSL_TEXLD(Context *ctx)
                 return;
         } // switch
 
-        assert(!scalar_register(samp_arg->regtype, samp_arg->regnum));
+        assert(!scalar_register(ctx->shader_type, samp_arg->regtype, samp_arg->regnum));
         char swiz_str[6] = { '\0' };
         make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
@@ -3381,7 +3381,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         } // if
     } // if
 
-    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !no_swizzle(arg->swizzle))
     {
         swizzle_str[i++] = '.';
@@ -3469,7 +3469,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
 
     char writemask_str[6];
     int i = 0;
-    const int scalar = scalar_register(arg->regtype, arg->regnum);
+    const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
         writemask_str[i++] = '.';
@@ -4929,7 +4929,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     info->regtype = (RegisterType) (((token >> 28) & 0x7) | ((token >> 8) & 0x18));  // bits 28-30, 11-12
 
     int writemask;
-    if (scalar_register(info->regtype, info->regnum))
+    if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
         writemask = 0x1;  // just x.
     else
         writemask = info->orig_writemask;
