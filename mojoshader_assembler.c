@@ -220,7 +220,7 @@ static int _tokenize(Context *ctx)
             ch = '\n';
         } // else if
 
-        if ((ch > '0') && (ch < '9'))
+        if ((ch >= '0') && (ch <= '9'))
         {
             // starting a number, but rest of current token was not number.
             if ((idx > 0) && ((ctx->prevchar < '0') || (ctx->prevchar > '9')))
@@ -232,7 +232,7 @@ static int _tokenize(Context *ctx)
         else
         {
             // starting a non-number, but rest of current token was numbers.
-            if ((idx > 0) && ((ctx->prevchar >= '0') || (ctx->prevchar <= '9')))
+            if ((idx > 0) && ((ctx->prevchar >= '0') && (ctx->prevchar <= '9')))
             {
                 ctx->token[idx++] = '\0';
                 return NOFAIL;
@@ -249,7 +249,7 @@ static int _tokenize(Context *ctx)
                 {
                     ctx->token[idx++] = ch;
                     ctx->source++;
-                    if ((ch == '/') && (ctx->source[1] == '/'))
+                    if ((ch == '/') && (*ctx->source == '/'))
                     {
                         ctx->token[idx++] = '/';
                         ctx->source++;
