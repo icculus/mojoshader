@@ -10,7 +10,7 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-#define DEBUG_TOKENIZER 1
+#define DEBUG_TOKENIZER 0
 
 
 typedef struct Context Context;
