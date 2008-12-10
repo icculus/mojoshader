@@ -1199,10 +1199,19 @@ static int parse_condition(Context *ctx, uint32 *controls)
 } // parse_condition
 
 
+static inline int valid_instruction_char(const char ch)
+{
+    return ( ((ch >= 'A') && (ch <= 'Z')) ||
+             ((ch >= 'a') && (ch <= 'z')) ||
+             ((ch >= '0') && (ch <= '9')) );
+} // valid_instruction_char
+
+
 static int parse_instruction_token(Context *ctx)
 {
     int coissue = 0;
     int predicated = 0;
+    char opstr[32];
 
     if (strcmp(ctx->token, "+") == 0)
     {
@@ -1210,6 +1219,34 @@ static int parse_instruction_token(Context *ctx)
             return FAIL;
         coissue = 1;
     } // if
+
+    // All this tapdance is because some instructions mix letters and numbers,
+    //  like "dp4" or "texm3x2depth" and the tokenizer splits words and digits
+    //  into separate tokens, which makes parsing registers ("c31") easier.
+    opstr[0] = '\0';
+    while (1)
+    {
+        if ( (strlen(opstr) + strlen(ctx->token)) >= (sizeof (opstr)-1) )
+            return fail(ctx, "Expected instruction");
+
+        char *ptr;
+        for (ptr = ctx->token; *ptr != '\0'; ptr++)
+        {
+            if (!valid_instruction_char(*ptr))
+                break;
+        } // for
+
+        if ((ptr == ctx->token) || (*ptr != '\0'))
+        {
+            pushback(ctx);  // an invalid char or EOS in this token.
+            break;
+        } // if
+
+        strcat(opstr, ctx->token);
+
+        if (nexttoken(ctx, 0, 0, 1, 1) == FAIL)
+            return FAIL;
+    } // while
 
     int i;
     int valid_opcode = 0;
@@ -1219,7 +1256,7 @@ static int parse_instruction_token(Context *ctx)
         instruction = &instructions[i];
         if (instruction->opcode_string == NULL)
             continue;  // skip this.
-        else if (strcasecmp(ctx->token, instruction->opcode_string) != 0)
+        else if (strcasecmp(opstr, instruction->opcode_string) != 0)
             continue;  // not us.
         valid_opcode = 1;
         break;
@@ -1229,7 +1266,7 @@ static int parse_instruction_token(Context *ctx)
     uint32 controls = 0;
 
     if (!valid_opcode)
-        return failf(ctx, "Unknown instruction '%s'", ctx->token);
+        return failf(ctx, "Unknown instruction '%s'", opstr);
 
     // This might need to be IFC instead of IF.
     if (strcmp(instruction->opcode_string, "IF") == 0)
