@@ -289,7 +289,7 @@ static inline void pop_output(Context *ctx)
 
 static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
 {
-    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 0 : (minor)) );
+    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 1 : (minor)) );
 } // version_ui32
 
 static inline int shader_version_supported(const uint8 maj, const uint8 min)

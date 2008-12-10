@@ -23,7 +23,7 @@
 // This is the highest shader version we currently support.
 
 #define MAX_SHADER_MAJOR 3
-#define MAX_SHADER_MINOR 0
+#define MAX_SHADER_MINOR 255  // vs_3_sw
 
 
 // If SUPPORT_PROFILE_* isn't defined, we assume an implicit desire to support.
