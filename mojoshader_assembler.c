@@ -712,6 +712,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
               ((((uint32) info->relative) & 0x1) << 13) |
               ((((uint32) info->result_mod) & 0xF) << 20) |
               ((((uint32) info->result_shift) & 0xF) << 24) |
+              ((((uint32) info->writemask) & 0xF) << 16) |
               ((((uint32) info->regtype) & 0x7) << 28) |
               ((((uint32) info->regtype) & 0x18) << 8) );
 
