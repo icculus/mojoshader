@@ -796,7 +796,7 @@ static int valid_profile(const char *profile)
     #if PLATFORM_MACOSX
     const int allow_glsl = macosx_version_atleast(10, 5, 0);
     #else
-    const int allow_glsl = 0;
+    const int allow_glsl = 1;
     #endif
 
     if (!ctx->have_base_opengl)
