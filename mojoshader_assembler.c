@@ -33,7 +33,6 @@ struct Context
     char prevchar;
     char token[64];
     char pushedback;
-    char pushback_token[64];
     uint32 tokenbuf[16];
     int tokenbufpos;
     DestArgInfo dest_arg;
