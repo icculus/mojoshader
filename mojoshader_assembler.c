@@ -482,7 +482,7 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
     } // else if
     else if (strcasecmp(t, "oT") == 0)
     {
-        if (shader_is_vertex(ctx) || shader_version_atleast(ctx, 3, 0))
+        if (shader_is_vertex(ctx) && shader_version_atleast(ctx, 3, 0))
             return fail(ctx, "Output register not valid in this shader type");
         regtype = REG_TYPE_OUTPUT;
     } // else if
