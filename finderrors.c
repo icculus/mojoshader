@@ -51,7 +51,12 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         return 0;
     } // if
 
-    if (strstr(fn, ".bytecode") == NULL)
+    int assembly = 0;
+    if (strstr(fn, ".bytecode") != NULL)
+        assembly = 0;
+    else if (strstr(fn, ".disasm") != NULL)
+        assembly = 1;
+    else
         return 1;
 
     (*total)++;
@@ -72,6 +77,28 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     {
         report("FAIL: %s %s\n", fname, strerror(errno));
         return 1;
+    } // if
+
+    if (assembly)
+    {
+        const MOJOSHADER_parseData *a;
+
+        a = MOJOSHADER_assemble((char *) buf, 0, 0, 0);
+        if (a->error)
+        {
+            report("FAIL: %s %s\n", fname, a->error);
+            return 1;
+        } // if
+
+        else if (a->output_len > sizeof (buf))
+        {
+            report("FAIL: %s buffer overflow in finderrors.c\n", fname);
+            return 1;
+        } // if
+
+        rc = a->output_len;
+        memcpy(buf, a->output, rc);
+        MOJOSHADER_freeParseData(a);
     } // if
 
     #if FINDERRORS_COMPILE_SHADERS
@@ -175,7 +202,7 @@ int main(int argc, char **argv)
         for (i = 2; i < argc; i++)
             total += do_dir(argv[i], profile);
 
-        printf("Saw %d bytecode files.\n", total);
+        printf("Saw %d files.\n", total);
 
         #if FINDERRORS_COMPILE_SHADERS
         MOJOSHADER_glDestroyContext(ctx);
