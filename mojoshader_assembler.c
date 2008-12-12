@@ -1127,17 +1127,11 @@ static int parse_args_DCL(Context *ctx)
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
     else if (strcmp(ctx->token, " ") == 0)
-        pushback(ctx);
+        pushback(ctx);  // parse_destination_token() wants this.
     else if (!ui32fromstr(ctx->token, &index))
         return fail(ctx, "Expected usage index or register");
 
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
-    else if (strcmp(ctx->token, " ") != 0)
-        return fail(ctx, "Expected register");
-    else if (pushback(ctx) == FAIL)  // parse_destination_token() wants the ' '
-        return FAIL;
-    else if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
+    if (parse_destination_token(ctx, &ctx->dest_arg) == FAIL)
         return FAIL;
 
     const int samplerreg = (ctx->dest_arg.regtype == REG_TYPE_SAMPLER);
