@@ -1043,7 +1043,7 @@ static int parse_args_DEFB(Context *ctx)
 } // parse_args_DEFB
 
 
-static int parse_dcl_usage(const char *token, uint32 *val, int *issampler)
+static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
 {
     int i;
     static const char *samplerusagestrs[] = { "2d", "cube", "volume" };
@@ -1052,6 +1052,19 @@ static int parse_dcl_usage(const char *token, uint32 *val, int *issampler)
         "texcoord", "tangent", "binormal", "tessfactor", "positiont",
         "color", "fog", "depth", "sample"
     };
+
+    // !!! FIXME: we need to clean this out in the tokenizer.
+    char token[sizeof (ctx->token)];
+    strcpy(token, ctx->token);
+    if (strcmp(token, "2") == 0)  // "2d" is two tokens.
+    {
+        if (nexttoken(ctx, 0, 0, 1, 1) == FAIL)
+            return FAIL;
+        else if (strcasecmp(ctx->token, "d") != 0)
+            pushback(ctx);
+        else
+            strcpy(token, "2d");
+    } // if
 
     for (i = 0; i < STATICARRAYLEN(usagestrs); i++)
     {
@@ -1093,7 +1106,7 @@ static int parse_args_DCL(Context *ctx)
         return fail(ctx, "Expected register or usage");
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else if (parse_dcl_usage(ctx->token, &usage, &issampler) == FAIL)
+    else if (parse_dcl_usage(ctx, &usage, &issampler) == FAIL)
         return FAIL;
 
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
