@@ -625,18 +625,34 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             return fail(ctx, "Expected modifier or whitespace");
         else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
             return FAIL;
-        else if (strcasecmp(ctx->token, "x2") == 0)
-            set_result_shift(ctx, info, 0x1);
-        else if (strcasecmp(ctx->token, "x4") == 0)
-            set_result_shift(ctx, info, 0x2);
-        else if (strcasecmp(ctx->token, "x8") == 0)
-            set_result_shift(ctx, info, 0x3);
-        else if (strcasecmp(ctx->token, "d8") == 0)
-            set_result_shift(ctx, info, 0xD);
-        else if (strcasecmp(ctx->token, "d4") == 0)
-            set_result_shift(ctx, info, 0xE);
-        else if (strcasecmp(ctx->token, "d2") == 0)
-            set_result_shift(ctx, info, 0xF);
+        // !!! FIXME: this can be cleaned up when tokenizer is fixed.
+        else if (strcasecmp(ctx->token, "x") == 0)
+        {
+            if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+                return FAIL;
+            else if (strcmp(ctx->token, "2") == 0)
+                set_result_shift(ctx, info, 0x1);
+            else if (strcmp(ctx->token, "4") == 0)
+                set_result_shift(ctx, info, 0x2);
+            else if (strcmp(ctx->token, "8") == 0)
+                set_result_shift(ctx, info, 0x3);
+            else
+                return fail(ctx, "Expected modifier");
+        } // else if
+        // !!! FIXME: this can be cleaned up when tokenizer is fixed.
+        else if (strcasecmp(ctx->token, "d") == 0)
+        {
+            if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+                return FAIL;
+            else if (strcmp(ctx->token, "8") == 0)
+                set_result_shift(ctx, info, 0xD);
+            else if (strcmp(ctx->token, "4") == 0)
+                set_result_shift(ctx, info, 0xE);
+            else if (strcmp(ctx->token, "2") == 0)
+                set_result_shift(ctx, info, 0xF);
+            else
+                return fail(ctx, "Expected modifier");
+        } // else if
         else if (strcasecmp(ctx->token, "sat") == 0)
             info->result_mod |= MOD_SATURATE;
         else if (strcasecmp(ctx->token, "pp") == 0)
