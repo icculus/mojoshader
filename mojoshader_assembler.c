@@ -612,7 +612,7 @@ static int set_result_shift(Context *ctx, DestArgInfo *info, const int val)
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {
-    memset(info, '\0', sizeof (info));
+    memset(info, '\0', sizeof (DestArgInfo));
 
     // See if there are destination modifiers on the instruction itself...
     while (1)
