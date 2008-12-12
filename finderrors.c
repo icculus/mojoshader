@@ -86,7 +86,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         a = MOJOSHADER_assemble((char *) buf, 0, 0, 0);
         if (a->error)
         {
-            report("FAIL: %s %s\n", fname, a->error);
+            report("FAIL: %s (line %d) %s\n", fname, a->error_position, a->error);
             return 1;
         } // if
 
