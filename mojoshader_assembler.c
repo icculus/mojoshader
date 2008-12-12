@@ -1457,9 +1457,9 @@ static int parse_version_token(Context *ctx)
         return fail(ctx, "Expected version string");
     else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else if (strcasecmp(ctx->token, "x") != 0)
+    else if (strcasecmp(ctx->token, "x") == 0)
         minor = 1;
-    else if (strcasecmp(ctx->token, "sw") != 0)
+    else if (strcasecmp(ctx->token, "sw") == 0)
         minor = 255;
     else if (!ui32fromstr(ctx->token, &minor))
         return fail(ctx, "Expected version string");
