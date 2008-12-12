@@ -71,7 +71,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     } // if
 
     static unsigned char buf[1024 * 256];
-    int rc = fread(buf, 1, sizeof (buf), io);
+    int rc = fread(buf, 1, sizeof (buf)-1, io);
     fclose(io);
     if (rc == -1)
     {
@@ -83,6 +83,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     {
         const MOJOSHADER_parseData *a;
 
+        buf[rc] = '\0';  // make sure the source is null-terminated.
         a = MOJOSHADER_assemble((char *) buf, 0, 0, 0);
         if (a->error)
         {
