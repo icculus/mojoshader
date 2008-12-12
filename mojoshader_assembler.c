@@ -1465,7 +1465,7 @@ static int parse_version_token(Context *ctx)
         return fail(ctx, "Expected version string");
 
     ctx->major_ver = major;
-    ctx->minor_ver = major;
+    ctx->minor_ver = minor;
 
     if (require_endline(ctx) == FAIL)
         return FAIL;
