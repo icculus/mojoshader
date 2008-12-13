@@ -1416,6 +1416,22 @@ static int parse_instruction_token(Context *ctx)
             return FAIL;
     } // while
 
+    uint32 controls = 0;
+
+    // This might need to be TEXLD instead of TEXLDP.
+    if (strcasecmp(opstr, "TEXLDP") == 0)
+    {
+        controls = CONTROL_TEXLDP;
+        strcpy(opstr, "TEXLD");
+    } // if
+
+    // This might need to be TEXLD instead of TEXLDB.
+    if (strcasecmp(opstr, "TEXLDB") == 0)
+    {
+        controls = CONTROL_TEXLDB;
+        strcpy(opstr, "TEXLD");
+    } // else if
+
     int i;
     int valid_opcode = 0;
     const Instruction *instruction = NULL;
@@ -1431,7 +1447,6 @@ static int parse_instruction_token(Context *ctx)
     } // for
 
     uint32 opcode = (uint32) i;
-    uint32 controls = 0;
 
     if (!valid_opcode)
         return failf(ctx, "Unknown instruction '%s'", opstr);
@@ -1445,6 +1460,7 @@ static int parse_instruction_token(Context *ctx)
     } // if
 
     // This might need to be BREAKC instead of BREAK.
+    // !!! FIXME: compare opcode, not string
     else if (strcmp(instruction->opcode_string, "BREAK") == 0)
     {
         if (parse_condition(ctx, &controls))
@@ -1452,6 +1468,7 @@ static int parse_instruction_token(Context *ctx)
     } // else if
 
     // SETP has a conditional code, always.
+    // !!! FIXME: compare opcode, not string
     else if (strcmp(instruction->opcode_string, "SETP") == 0)
     {
         if (!parse_condition(ctx, &controls))

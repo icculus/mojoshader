@@ -1418,11 +1418,11 @@ static void emit_D3D_TEXLD(Context *ctx)
     // this opcode looks and acts differently depending on the shader model.
     if (shader_version_atleast(ctx, 2, 0))
     {
-        if (ctx->instruction_controls == 0)  // texld
+        if (ctx->instruction_controls == CONTROL_TEXLD)
            emit_D3D_opcode_dss(ctx, "texld");
-        else if (ctx->instruction_controls == 1)  // texldp
+        else if (ctx->instruction_controls == CONTROL_TEXLDP)
            emit_D3D_opcode_dss(ctx, "texldp");
-        else if (ctx->instruction_controls == 2)  // texldb
+        else if (ctx->instruction_controls == CONTROL_TEXLDB)
            emit_D3D_opcode_dss(ctx, "texldb");
     } // if
 
@@ -2959,7 +2959,7 @@ static void emit_GLSL_TEXLD(Context *ctx)
         // !!! FIXME: does the d3d bias value map directly to GLSL?
         const char *biassep = "";
         const char *bias = "";
-        if (ctx->instruction_controls == 2)  // texldb
+        if (ctx->instruction_controls == CONTROL_TEXLDB)
         {
             biassep = ", ";
             bias = make_GLSL_srcarg_string_w(ctx, 0);
@@ -2968,7 +2968,7 @@ static void emit_GLSL_TEXLD(Context *ctx)
         switch ((const TextureType) sreg->index)
         {
             case TEXTURE_TYPE_2D:
-                if (ctx->instruction_controls == 1)  // texldp
+                if (ctx->instruction_controls == CONTROL_TEXLDP)
                 {
                     funcname = "texture2DProj";
                     src0 = make_GLSL_srcarg_string_full(ctx, 0);
@@ -2980,13 +2980,13 @@ static void emit_GLSL_TEXLD(Context *ctx)
                 } // else
                 break;
             case TEXTURE_TYPE_CUBE:
-                if (ctx->instruction_controls == 1)  // texldp
+                if (ctx->instruction_controls == CONTROL_TEXLDP)
                     fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
                 funcname = "textureCube";
                 src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
                 break;
             case TEXTURE_TYPE_VOLUME:
-                if (ctx->instruction_controls == 1)  // texldp
+                if (ctx->instruction_controls == CONTROL_TEXLDP)
                 {
                     funcname = "texture3DProj";
                     src0 = make_GLSL_srcarg_string_full(ctx, 0);
@@ -4886,11 +4886,11 @@ static void emit_ARB1_TEXLD(Context *ctx)
     } // if
 
     // !!! FIXME: do texldb and texldp map between OpenGL and D3D correctly?
-    if (ctx->instruction_controls == 0)
+    if (ctx->instruction_controls == CONTROL_TEXLD)
         arb1_texld(ctx, "TEX");
-    else if (ctx->instruction_controls == 1)
+    else if (ctx->instruction_controls == CONTROL_TEXLDP)
         arb1_texld(ctx, "TXP");
-    else if (ctx->instruction_controls == 2)
+    else if (ctx->instruction_controls == CONTROL_TEXLDB)
         arb1_texld(ctx, "TXB");
 } // emit_ARB1_TEXLD
 
@@ -6274,15 +6274,18 @@ static void state_TEXLD(Context *ctx)
         //    fail(ctx, "TEXLD src0 must be texture or temp register");
         //else
 
-        // 0 == texld, 1 == texldp, 2 == texldb
-        if (ctx->instruction_controls > 2)
-            fail(ctx, "TEXLD has unknown control bits");
-        else if (src0->src_mod != SRCMOD_NONE)
+        if (src0->src_mod != SRCMOD_NONE)
             fail(ctx, "TEXLD src0 must have no modifiers");
         else if (src1->regtype != REG_TYPE_SAMPLER)
             fail(ctx, "TEXLD src1 must be sampler register");
         else if (src1->src_mod != SRCMOD_NONE)
             fail(ctx, "TEXLD src0 must have no modifiers");
+        else if ( (ctx->instruction_controls != CONTROL_TEXLD) &&
+                  (ctx->instruction_controls != CONTROL_TEXLDP) &&
+                  (ctx->instruction_controls != CONTROL_TEXLDB) )
+        {
+            fail(ctx, "TEXLD has unknown control bits");
+        } // else if
 
         // Shader Model 3 added swizzle support to this opcode.
         if (!shader_version_atleast(ctx, 3, 0))

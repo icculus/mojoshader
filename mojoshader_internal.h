@@ -123,6 +123,11 @@ typedef int32_t int32;
 #define OPCODE_IFC 41
 #define OPCODE_BREAKC 45
 
+// TEXLD becomes a different instruction with these instruction controls.
+#define CONTROL_TEXLD  0
+#define CONTROL_TEXLDP 1
+#define CONTROL_TEXLDB 2
+
 // #define this to force app to supply an allocator, so there's no reference
 //  to the C runtime's malloc() and free()...
 #if MOJOSHADER_FORCE_ALLOCATOR
