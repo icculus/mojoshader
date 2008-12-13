@@ -53,7 +53,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
 
     int assembly = 0;
     if (strstr(fn, ".bytecode") != NULL)
-        return 1; //assembly = 0;
+        assembly = 0;
     else if (strstr(fn, ".disasm") != NULL)
         assembly = 1;
     else
