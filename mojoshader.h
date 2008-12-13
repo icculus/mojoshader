@@ -251,7 +251,7 @@ typedef struct MOJOSHADER_parseData
      */
     const char *error;
 
-    /*
+    /* !!! FIXME: needs a -3 for post-processing.
      * Position of error, if there is one. Will be -2 if there was no
      *  error, and -1 if there was an error before processing started. If >= 0,
      *  MOJOSHADER_parse() sets this to the byte offset (starting at zero) into
