@@ -1417,11 +1417,24 @@ static void emit_D3D_TEXLD(Context *ctx)
 {
     // this opcode looks and acts differently depending on the shader model.
     if (shader_version_atleast(ctx, 2, 0))
-        emit_D3D_opcode_dss(ctx, "texld");
+    {
+        if (ctx->instruction_controls == 0)  // texld
+           emit_D3D_opcode_dss(ctx, "texld");
+        else if (ctx->instruction_controls == 1)  // texldp
+           emit_D3D_opcode_dss(ctx, "texldp");
+        else if (ctx->instruction_controls == 2)  // texldb
+           emit_D3D_opcode_dss(ctx, "texldb");
+    } // if
+
     else if (shader_version_atleast(ctx, 1, 4))
+    {
         emit_D3D_opcode_ds(ctx, "texld");
+    } // else if
+
     else
+    {
         emit_D3D_opcode_d(ctx, "tex");
+    } // else
 } // emit_D3D_TEXLD
 
 static void emit_D3D_SINCOS(Context *ctx)
@@ -1939,12 +1952,12 @@ static inline char *make_GLSL_srcarg_string_scalar(Context *ctx, const int idx)
 static inline char *make_GLSL_srcarg_string_full(Context *ctx, const int idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, 0xF);
-} // make_GLSL_srcarg_string_scalar
+} // make_GLSL_srcarg_string_full
 
 static inline char *make_GLSL_srcarg_string_masked(Context *ctx, const int idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, ctx->dest_arg.writemask);
-} // make_GLSL_srcarg_string_scalar
+} // make_GLSL_srcarg_string_masked
 
 static inline char *make_GLSL_srcarg_string_vec3(Context *ctx, const int idx)
 {
@@ -2943,19 +2956,46 @@ static void emit_GLSL_TEXLD(Context *ctx)
             return;
         } // if
 
+        // !!! FIXME: does the d3d bias value map directly to GLSL?
+        const char *biassep = "";
+        const char *bias = "";
+        if (ctx->instruction_controls == 2)  // texldb
+        {
+            biassep = ", ";
+            bias = make_GLSL_srcarg_string_w(ctx, 0);
+        } // if
+
         switch ((const TextureType) sreg->index)
         {
             case TEXTURE_TYPE_2D:
-                funcname = "texture2D";
-                src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
+                if (ctx->instruction_controls == 1)  // texldp
+                {
+                    funcname = "texture2DProj";
+                    src0 = make_GLSL_srcarg_string_full(ctx, 0);
+                } // if
+                else  // texld/texldb
+                {
+                    funcname = "texture2D";
+                    src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
+                } // else
                 break;
             case TEXTURE_TYPE_CUBE:
+                if (ctx->instruction_controls == 1)  // texldp
+                    fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
                 funcname = "textureCube";
                 src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
                 break;
             case TEXTURE_TYPE_VOLUME:
-                funcname = "texture3D";
-                src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                if (ctx->instruction_controls == 1)  // texldp
+                {
+                    funcname = "texture3DProj";
+                    src0 = make_GLSL_srcarg_string_full(ctx, 0);
+                } // if
+                else  // texld/texldb
+                {
+                    funcname = "texture3D";
+                    src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                } // else
                 break;
             default:
                 fail(ctx, "unknown texture type");
@@ -2967,8 +3007,9 @@ static void emit_GLSL_TEXLD(Context *ctx)
         make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
 
-        const char *code = make_GLSL_destarg_assign(ctx,
-                            "%s(%s, %s)%s", funcname, src1, src0, swiz_str);
+        const char *code = make_GLSL_destarg_assign(ctx, "%s(%s, %s%s%s)%s",
+                                                    funcname, src1, src0,
+                                                    biassep, bias, swiz_str);
         output_line(ctx, "%s", code);
     } // else
 } // emit_GLSL_TEXLD
@@ -4844,7 +4885,13 @@ static void emit_ARB1_TEXLD(Context *ctx)
         return;
     } // if
 
-    arb1_texld(ctx, "TEX");
+    // !!! FIXME: do texldb and texldp map between OpenGL and D3D correctly?
+    if (ctx->instruction_controls == 0)
+        arb1_texld(ctx, "TEX");
+    else if (ctx->instruction_controls == 1)
+        arb1_texld(ctx, "TXP");
+    else if (ctx->instruction_controls == 2)
+        arb1_texld(ctx, "TXB");
 } // emit_ARB1_TEXLD
 
 #endif  // SUPPORT_PROFILE_ARB1
@@ -6210,6 +6257,11 @@ static void state_TEXLD(Context *ctx)
         const SourceArgInfo *src0 = &ctx->source_args[0];
         const SourceArgInfo *src1 = &ctx->source_args[1];
 
+        // !!! FIXME: verify texldp restrictions:
+        //http://msdn.microsoft.com/en-us/library/bb206221(VS.85).aspx
+        // !!! FIXME: ...and texldb, too.
+        //http://msdn.microsoft.com/en-us/library/bb206217(VS.85).aspx
+
         //const RegisterType rt0 = src0->regtype;
 
         // !!! FIXME: msdn says it has to be temp, but Microsoft's HLSL
@@ -6222,7 +6274,10 @@ static void state_TEXLD(Context *ctx)
         //    fail(ctx, "TEXLD src0 must be texture or temp register");
         //else
 
-        if (src0->src_mod != SRCMOD_NONE)
+        // 0 == texld, 1 == texldp, 2 == texldb
+        if (ctx->instruction_controls > 2)
+            fail(ctx, "TEXLD has unknown control bits");
+        else if (src0->src_mod != SRCMOD_NONE)
             fail(ctx, "TEXLD src0 must have no modifiers");
         else if (src1->regtype != REG_TYPE_SAMPLER)
             fail(ctx, "TEXLD src1 must be sampler register");
