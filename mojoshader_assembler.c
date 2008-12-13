@@ -479,7 +479,6 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
     if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
 
-    // !!! FIXME: some of these registers are only valid for some shader types.
     int neednum = 1;
     int regnum = 0;
     RegisterType regtype = REG_TYPE_TEMP;
