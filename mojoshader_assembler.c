@@ -14,6 +14,36 @@
 
 // !!! FIXME: no #define support yet.
 
+/*
+
+Ideally, we want this, I guess:
+struct TokenizerContext
+{
+    const char *source;
+    int on_endline;
+    unsigned int linenum;
+    char prevchar;
+    char token[64];
+    char pushedback;
+    uint32 tokenbuf[16];
+    int keywords;
+};
+
+...and replace all that in Context with one TokenizerContext.
+
+tokenize() will then work with these directly (and nexttoken() will call it
+ with &ctx->tokenizerctx).
+
+Then let these be stack-allocated as needed.
+
+(keywords) will tell the tokenizer to give full keywords, so "dp3" is one
+ token instead of two ("dp" and "3"). This will be the new behaviour, but you
+ could then take a whole keyword that needs to be split (like "vs_2_0"), and
+ make it the source on a stack-allocated tokenizer, with keywords set to zero.
+
+*/
+
+
 typedef struct Context Context;
 
 // Context...this is state that changes as we assemble a shader...
@@ -1070,6 +1100,7 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
         "texcoord", "tangent", "binormal", "tessfactor", "positiont",
         "color", "fog", "depth", "sample"
     };
+    static const char *ignorestrs[] = { "pp", "centroid", "saturate" };
 
     // !!! FIXME: we need to clean this out in the tokenizer.
     char token[sizeof (ctx->token)];
@@ -1104,6 +1135,20 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
         } // if
     } // for
 
+    // !!! FIXME: this probably isn't the smartest way to handle this.
+    *issampler = 0;
+    *val = 0;
+    for (i = 0; i < STATICARRAYLEN(ignorestrs); i++)
+    {
+        if (strcasecmp(ignorestrs[i], token) == 0)
+        {
+            ctx->source -= strlen(token);  // !!! FIXME: hack to move back
+            strcpy(ctx->token, "_");  // !!! FIXME: hack to move back
+            pushback(ctx);  // !!! FIXME: hack to move back
+            return NOFAIL;  // if you have "dcl_pp", then "_pp" isn't a usage.
+        } // if
+    } // for
+
     return FAIL;
 } // parse_dcl_usage
 
@@ -1129,8 +1174,8 @@ static int parse_args_DCL(Context *ctx)
 
     if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
         return FAIL;
-    else if (strcmp(ctx->token, " ") == 0)
-        pushback(ctx);  // parse_destination_token() wants this.
+    else if ((strcmp(ctx->token, " ") == 0) || (strcmp(ctx->token, "_") == 0))
+        pushback(ctx);  // parse_destination_token() wants these.
     else if (!ui32fromstr(ctx->token, &index))
         return fail(ctx, "Expected usage index or register");
 
