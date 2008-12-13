@@ -458,8 +458,6 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         regtype = REG_TYPE_CONSTBOOL;
     else if (strcasecmp(t, "oC") == 0)
         regtype = REG_TYPE_COLOROUT;
-    else if (strcasecmp(t, "oDepth") == 0)
-        regtype = REG_TYPE_DEPTHOUT;
     else if (strcasecmp(t, "s") == 0)
         regtype = REG_TYPE_SAMPLER;
     else if (strcasecmp(t, "oD") == 0)
@@ -468,6 +466,11 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         regtype = REG_TYPE_LABEL;
     else if (strcasecmp(t, "p") == 0)
         regtype = REG_TYPE_PREDICATE;
+    else if (strcasecmp(t, "oDepth") == 0)
+    {
+        regtype = REG_TYPE_DEPTHOUT;
+        neednum = 0;
+    } // else if
     else if (strcasecmp(t, "aL") == 0)
     {
         regtype = REG_TYPE_LOOP;
