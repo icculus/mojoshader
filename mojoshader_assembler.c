@@ -583,7 +583,7 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         memcpy(&tmptctx, tctx, sizeof (TokenizerContext));
         if (nexttoken_ctx(ctx, &tmptctx, 0, 1, 1, 1) == FAIL)
             return FAIL;
-        else if (tokeq(&ctx->tctx, "["))
+        else if (tokeq(&tmptctx, "["))
             neednum = 0;
     } // if
 
