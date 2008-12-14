@@ -715,13 +715,17 @@ static int parse_destination_token(Context *ctx)
 
     // !!! FIXME: can dest registers do relative addressing?
 
+    int implicit_writemask = 0;
     if (!tokeq(tctx, "."))
     {
+        implicit_writemask = 1;
         info->writemask = 0xF;
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
-    else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
+    // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
+    //else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
+    else if ( (scalar_register(ctx->shader_type, info->regtype, info->regnum)) && (info->regtype != REG_TYPE_DEPTHOUT) )
         return fail(ctx, "Writemask specified for scalar register");
     else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
         return FAIL;
@@ -751,6 +755,14 @@ static int parse_destination_token(Context *ctx)
                             ((info->writemask2 & 0x1) << 2) |
                             ((info->writemask3 & 0x1) << 3) );
     } // else
+
+    // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
+    if (info->regtype == REG_TYPE_DEPTHOUT)
+    {
+        if ( (!implicit_writemask) && ((info->writemask0 + info->writemask1 +
+               info->writemask2 + info->writemask3) > 1) )
+            return fail(ctx, "Writemask specified for scalar register");
+    } // if
 
     info->orig_writemask = info->writemask;
 
