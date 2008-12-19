@@ -256,6 +256,13 @@ static inline int scalar_register(const MOJOSHADER_shaderType shader_type,
     return 0;
 } // scalar_register
 
+typedef enum
+{
+    MOJOSHADER_PARSEPHASE_NOTSTARTED,
+    MOJOSHADER_PARSEPHASE_WORKING,
+    MOJOSHADER_PARSEPHASE_DONE,
+} MOJOSHADER_parsePhase;
+
 extern MOJOSHADER_parseData out_of_mem_data;
 extern const char *out_of_mem_str;
 

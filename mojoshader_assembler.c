@@ -35,7 +35,7 @@ struct Context
     void *malloc_data;
     const char *failstr;
     TokenizerContext tctx;
-    int started_parsing;
+    MOJOSHADER_parsePhase parse_phase;
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
@@ -1620,6 +1620,7 @@ static Context *build_context(const char *source, MOJOSHADER_malloc m,
     ctx->malloc = m;
     ctx->free = f;
     ctx->malloc_data = d;
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
     ctx->tctx.source = source;
     ctx->tctx.linenum = 1;
 
@@ -1661,14 +1662,137 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->error = ctx->failstr;  // we recycle.  :)
     ctx->failstr = NULL;  // don't let this get free()'d too soon.
 
-    if (ctx->started_parsing)
-        retval->error_position = ctx->tctx.linenum;
-    else
-        retval->error_position = -1;
+    switch (ctx->parse_phase)
+    {
+        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
+            retval->error_position = -2;
+            break;
+        case MOJOSHADER_PARSEPHASE_WORKING:
+            retval->error_position = ctx->tctx.linenum;
+            break;
+        case MOJOSHADER_PARSEPHASE_DONE:
+            retval->error_position = -1;
+            break;
+    } // switch
 
     return retval;
 } // build_failed_assembly
 
+
+typedef struct CTabTypeInfo
+{
+    uint16 parameter_class;
+    uint16 parameter_type;
+    uint16 rows;
+    uint16 columns;
+    uint16 elements;
+    uint16 structMembers;
+    uint32 structMemberInfo;
+} CTabTypeInfo;
+
+
+FUCK THIS CODE.
+static void output_ctab(Context *ctx, const MOJOSHADER_symbol *symbols,
+                        unsigned int symbol_count)
+{
+    if (symbol_count == 0)
+        return;
+
+    unsigned int i;
+    uint8 *bytes = NULL;
+    const char *creator = "MojoShader revision " MOJOSHADER_CHANGESET;
+    const size_t creatorlen = strlen(creator) + 1;
+    add_ctab_bytes(ctx, &bytes, &offset, creator, creatorlen);
+    add_ctab_bytes(ctx, &bytes, &offset, "", 1);  // !!! FIXME: target
+
+    // build all the unique D3DXSHADER_TYPEINFO structs into the bytes.
+    CTabTypeInfo *tinfo;
+    tinfo = (CTabTypeInfo *) Malloc(sizeof (CTabTypeInfo) * symbol_count);
+    if (tinfo == NULL)
+    {
+        Free(ctx, bytes);
+        return;
+    } // if
+
+    for (i = 0; i < symbol_count; i++)
+    {
+        // !!! FIXME: struct packing!
+        tinfo[i].parameter_class = SWAP16(symbols[i].parameter_class);
+        tinfo[i].parameter_type = SWAP16(symbols[i].parameter_type);
+        tinfo[i].rows = SWAP16(symbols[i].rows);
+        tinfo[i].columns = SWAP16(symbols[i].columns);
+        tinfo[i].elements = SWAP16(symbols[i].elements);
+        tinfo[i].structMembers = SWAP16(symbols[i].structMembers);
+        tinfo[i].structMembersInfo = SWAP32(0);  // !!! FIXME: points to DWORD name, DWORD typeinfo
+        add_ctab_bytes(ctx, &bytes, &offset, &tinfo[i], sizeof (tinfo[i]));
+    } // for
+
+
+    uint8 ctab = sdfkjsldkfjsdlkf;
+    uint32 *table = (uint32 *) ctab;
+    uint32 offset = CTAB_SIZE + (CINFO_SIZE * symbol_count);
+    uint8 *data = ctab + offset + sizeof (uint32);
+    union { uint8 *ui8; uint16 *ui16; uint32 *ui32; } info;
+    info.ui8 = ctab + CTAB_SIZE + sizeof (uint32);
+
+    *(table++) = SWAP32(CTAB_ID);
+    *(table++) = SWAP32(28);
+    *(table++) = SWAP32(find_ctab_bytes(ctx, bytes, creator, creatorlen));
+    *(table++) = SWAP32(ctx->version_token);
+    *(table++) = SWAP32(((uint32) symbol_count));
+    *(table++) = SWAP32(CTAB_SIZE);  // info array right after table.
+    *(table++) = SWAP32(0);
+    *(table++) = SWAP32(find_ctab_bytes(ctx, bytes, "", 1));  // !!! FIXME: target?
+
+    assert( ((uint8 *) table) == info.ui8 );
+    for (i = 0; i < symbol_count; i++)
+    {
+        const char *name = symbols[i].name;
+        const size_t namelen = strlen(symbols[i].name) + 1;
+        add_ctab_bytes(bytes, &offset, name, namelen);
+        *(info.ui32++) = SWAP32(add_ctab_string(ctx, &data, &offset, symbols[i].name));
+        *(info.ui16++) = SWAP16((uint16) symbols[i].register_set);
+        *(info.ui16++) = SWAP16((uint16) symbols[i].register_index);
+        *(info.ui16++) = SWAP16((uint16) symbols[i].register_count);
+        *(info.ui16++) = SWAP16(0);  // reserved
+
+    MOJOSHADER_symbolClass parameter_class;
+    MOJOSHADER_symbolType parameter_type;
+    unsigned int rows;
+    unsigned int columns;
+    unsigned int elements;
+    unsigned int structMembers;
+    unsigned int bytes;
+    void *default_value;
+
+    } // for
+
+    assert( info.ui8 == origdata);
+
+    output_comment_bytes(ctx, ctab, (size_t) (ptr - ctab));
+} // output_ctab
+
+
+static void output_comments(Context *ctx, const char **comments,
+                            unsigned int comment_count,
+                            const MOJOSHADER_symbol *symbols,
+                            unsigned int symbol_count)
+{
+    if (isfail(ctx))
+        return;
+
+    // make error messages sane if CTAB fails, etc.
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+
+    output_ctab(ctx, symbols, symbol_count);
+
+    int i;
+    for (i = 0; i < comment_count; i++)
+        output_comment_string(ctx, comments[i]);
+
+    if (!isfail(ctx))
+        ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
+} // output_comments
 
 
 // API entry point...
@@ -1687,7 +1811,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
         return &out_of_mem_data;
 
     // Version token always comes first.
-    ctx->started_parsing = 1;
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
     parse_version_token(ctx);
 
     ctx->started_parsing = 0;  // make error messages sane if CTAB fails, etc.
@@ -1697,8 +1821,6 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     output_comment_string(ctx, credit);
 
     // !!! FIXME: insert CTAB here.
-
-    ctx->started_parsing = 1;
 
     // parse out the rest of the tokens after the version token...
     while (nexttoken(ctx, 1, 1, 0, 1) == NOFAIL)

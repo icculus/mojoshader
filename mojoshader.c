@@ -164,7 +164,7 @@ struct Context
     const uint32 *orig_tokens;
     const uint32 *tokens;
     uint32 tokencount;
-    int started_parsing;
+    MOJOSHADER_parsePhase parse_phase;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
     OutputList *output;
@@ -6712,6 +6712,7 @@ static Context *build_context(const char *profile,
     ctx->ignore.tail = &ctx->ignore.head;
     ctx->output = &ctx->mainline;
     ctx->last_address_reg_component = -1;
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
 
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
@@ -7155,16 +7156,25 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
             Free(ctx, samplers);
         } // if
 
-        if (ctx->started_parsing)
-            retval->error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
-        else
-            retval->error_position = -1;
+        switch (ctx->parse_phase)
+        {
+            case MOJOSHADER_PARSEPHASE_NOTSTARTED:
+                retval->error_position = -2;
+                break;
+            case MOJOSHADER_PARSEPHASE_WORKING:
+                retval->error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
+                break;
+            case MOJOSHADER_PARSEPHASE_DONE:
+                retval->error_position = -1;
+                break;
+        } // switch
+
         retval->error = ctx->failstr;  // we recycle.  :)
         ctx->failstr = NULL;  // don't let this get free()'d too soon.
     } // if
     else
     {
-        retval->error_position = -2;
+        retval->error_position = -3;
         retval->profile = ctx->profile->name;
         retval->output = output;
         retval->output_len = ctx->output_len;
@@ -7375,7 +7385,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     // Version token always comes first.
     if (!isfail(ctx))
     {
-        ctx->started_parsing = 1;
+        ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
         rc = parse_version_token(ctx, profile);
     } // if
 
@@ -7396,7 +7406,10 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     } // while
 
     if (!isfail(ctx))
+    {
+        ctx->parse_phase = MOJOSHADER_PARSEPHASE_DONE;
         process_definitions(ctx);
+    } // if
 
     if (!isfail(ctx))
         ctx->profile->finalize_emitter(ctx);
