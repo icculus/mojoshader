@@ -5737,6 +5737,7 @@ static ConstantsList *alloc_constant_listitem(Context *ctx)
     return item;
 } // alloc_constant_listitem
 
+
 static void state_DEF(Context *ctx)
 {
     const RegisterType regtype = ctx->dest_arg.regtype;
@@ -6517,24 +6518,22 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
     const uint32 target = SWAP32(ctx->tokens[8]);
     uint32 i = 0;
 
-    if (id != 0x42415443)  // 0x42415443 == 'CTAB'
+    if (id != CTAB_ID)
         return;  // not the constant table.
 
-    if (size != 28)
+    if (size != CTAB_SIZE)
         return;  // only handle this version of the struct.
 
     if (version != ctx->version_token) goto corrupt_ctab;
     if (creator >= bytes) goto corrupt_ctab;
-    if ((constantinfo + (constants * 20)) >= bytes) goto corrupt_ctab;
+    if ((constantinfo + (constants * CINFO_SIZE)) >= bytes) goto corrupt_ctab;
     if (target >= bytes) goto corrupt_ctab;
 
     ctx->have_ctab = 1;
 
     for (i = 0; i < constants; i++)
     {
-        // we only care about deciding which variables might be arrays at
-        //  the moment, but there's lots of other good info in the CTAB.
-        const uint8 *ptr = start + constantinfo + (i * 20);
+        const uint8 *ptr = start + constantinfo + (i * CINFO_SIZE);
         const uint32 name = SWAP32(*((uint32 *) (ptr + 0)));
         const uint16 regset = SWAP16(*((uint16 *) (ptr + 4)));
         const uint16 regidx = SWAP16(*((uint16 *) (ptr + 6)));
@@ -7469,6 +7468,18 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
                 f((void *) data->samplers[i].name, d);
         } // for
         f((void *) data->samplers, d);
+    } // if
+
+    if (data->symbols != NULL)
+    {
+        for (i = 0; i < data->symbol_count; i++)
+        {
+            if (data->symbols[i].name != NULL)
+                f((void *) data->symbols[i].name, d);
+            if (data->symbols[i].default_value != NULL)
+                f((void *) data->symbols[i].default_value, d);
+        } // for
+        f((void *) data->symbols, d);
     } // if
 
     if ((data->error != NULL) && (data->error != out_of_mem_str))

@@ -23,7 +23,7 @@ static int assemble(const char *buf, const char *outfile)
     const MOJOSHADER_parseData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_assemble(buf, NULL, NULL, NULL);
+    pd = MOJOSHADER_assemble(buf, NULL, 0, NULL, 0, NULL, NULL, NULL);
     if (pd->error != NULL)
         printf("ERROR: (line %d) %s\n", pd->error_position, pd->error);
     else

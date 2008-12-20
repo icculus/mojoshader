@@ -39,11 +39,15 @@ struct Context
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
+    uint32 version_token;
     uint32 tokenbuf[16];
     int tokenbufpos;
     DestArgInfo dest_arg;
     uint32 *output;
     uint32 *token_to_line;
+    uint8 *ctab;
+    uint32 ctab_len;
+    uint32 ctab_allocation;
     size_t output_len;
     size_t output_allocation;
 };
@@ -1568,7 +1572,8 @@ static int parse_version_token(Context *ctx)
     if (require_endline(ctx) == FAIL)
         return FAIL;
 
-    output_token(ctx, (shader_type << 16) | (major << 8) | (minor << 0) );
+    ctx->version_token = (shader_type << 16) | (major << 8) | (minor << 0);
+    output_token(ctx, ctx->version_token);
     return NOFAIL;
 } // parse_version_token
 
@@ -1640,6 +1645,8 @@ static void destroy_context(Context *ctx)
             f(ctx->output, d);
         if (ctx->token_to_line != NULL)
             f(ctx->token_to_line, d);
+        if (ctx->ctab != NULL)
+            f(ctx->ctab, d);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -1679,97 +1686,144 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
 } // build_failed_assembly
 
 
-typedef struct CTabTypeInfo
+static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
 {
-    uint16 parameter_class;
-    uint16 parameter_type;
-    uint16 rows;
-    uint16 columns;
-    uint16 elements;
-    uint16 structMembers;
-    uint32 structMemberInfo;
-} CTabTypeInfo;
-
-
-FUCK THIS CODE.
-static void output_ctab(Context *ctx, const MOJOSHADER_symbol *symbols,
-                        unsigned int symbol_count)
-{
-    if (symbol_count == 0)
-        return;
-
-    unsigned int i;
-    uint8 *bytes = NULL;
-    const char *creator = "MojoShader revision " MOJOSHADER_CHANGESET;
-    const size_t creatorlen = strlen(creator) + 1;
-    add_ctab_bytes(ctx, &bytes, &offset, creator, creatorlen);
-    add_ctab_bytes(ctx, &bytes, &offset, "", 1);  // !!! FIXME: target
-
-    // build all the unique D3DXSHADER_TYPEINFO structs into the bytes.
-    CTabTypeInfo *tinfo;
-    tinfo = (CTabTypeInfo *) Malloc(sizeof (CTabTypeInfo) * symbol_count);
-    if (tinfo == NULL)
+    const size_t extra = CTAB_SIZE + sizeof (uint32);
+    if (len <= (ctx->ctab_len - extra))
     {
-        Free(ctx, bytes);
-        return;
+        void *ptr = ctx->ctab + extra;
+        while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
+        {
+            if (memcmp(ptr, bytes, len) == 0)  // already have it?
+                return ( (uint32) (ctx->ctab - ((uint8 *) ptr)) );
+            ptr++;
+        } // while
     } // if
 
-    for (i = 0; i < symbol_count; i++)
+    // add it to the byte pile...
+
+    // verify allocation.
+    const size_t newsize = (ctx->ctab_len + len);
+    if (ctx->ctab_allocation < newsize)
     {
-        // !!! FIXME: struct packing!
-        tinfo[i].parameter_class = SWAP16(symbols[i].parameter_class);
-        tinfo[i].parameter_type = SWAP16(symbols[i].parameter_type);
-        tinfo[i].rows = SWAP16(symbols[i].rows);
-        tinfo[i].columns = SWAP16(symbols[i].columns);
-        tinfo[i].elements = SWAP16(symbols[i].elements);
-        tinfo[i].structMembers = SWAP16(symbols[i].structMembers);
-        tinfo[i].structMembersInfo = SWAP32(0);  // !!! FIXME: points to DWORD name, DWORD typeinfo
-        add_ctab_bytes(ctx, &bytes, &offset, &tinfo[i], sizeof (tinfo[i]));
+        const size_t additional = 4 * 1024;
+        while (ctx->ctab_allocation < newsize)
+            ctx->ctab_allocation += additional;
+        void *ptr = Malloc(ctx, ctx->ctab_allocation);
+        if (ptr == NULL)
+            return 0;
+        memcpy(ptr, ctx->ctab, ctx->ctab_len);
+        Free(ctx, ctx->ctab);
+        ctx->ctab = (uint8 *) ptr;
+    } // if
+
+    const uint32 retval = ctx->ctab_len;
+    memcpy(ctx->ctab + ctx->ctab_len, bytes, len);
+    ctx->ctab_len += len;
+    return retval;
+} // add_ctab_bytes
+
+
+static inline uint32 add_ctab_string(Context *ctx, const char *str)
+{
+    return add_ctab_bytes(ctx, (const uint8 *) str, strlen(str) + 1);
+} // add_ctab_string
+
+
+static uint32 add_ctab_typeinfo(Context *ctx, const MOJOSHADER_symbolTypeInfo *info);
+
+static uint32 add_ctab_members(Context *ctx, const MOJOSHADER_symbolTypeInfo *info)
+{
+    unsigned int i;
+    const size_t len = info->member_count * CMEMBERINFO_SIZE;
+    uint8 *bytes = (uint8 *) Malloc(ctx, len);
+    if (bytes == NULL)
+        return 0;
+
+    union { uint8 *ui8; uint16 *ui16; uint32 *ui32; } ptr;
+    ptr.ui8 = bytes;
+    for (i = 0; i < info->member_count; i++)
+    {
+        const MOJOSHADER_symbolStructMember *member = &info->members[i];
+        *(ptr.ui32++) = SWAP32(add_ctab_string(ctx, member->name));
+        *(ptr.ui32++) = SWAP32(add_ctab_typeinfo(ctx, &member->info));
     } // for
 
+    const uint32 retval = add_ctab_bytes(ctx, bytes, len);
+    Free(ctx, bytes);
+    return retval;
+} // add_ctab_members
 
-    uint8 ctab = sdfkjsldkfjsdlkf;
-    uint32 *table = (uint32 *) ctab;
-    uint32 offset = CTAB_SIZE + (CINFO_SIZE * symbol_count);
-    uint8 *data = ctab + offset + sizeof (uint32);
-    union { uint8 *ui8; uint16 *ui16; uint32 *ui32; } info;
-    info.ui8 = ctab + CTAB_SIZE + sizeof (uint32);
 
+static uint32 add_ctab_typeinfo(Context *ctx, const MOJOSHADER_symbolTypeInfo *info)
+{
+    uint8 bytes[CTYPEINFO_SIZE];
+    union { uint8 *ui8; uint16 *ui16; uint32 *ui32; } ptr;
+    ptr.ui8 = bytes;
+
+    *(ptr.ui16++) = SWAP16((uint16) info->parameter_class);
+    *(ptr.ui16++) = SWAP16((uint16) info->parameter_type);
+    *(ptr.ui16++) = SWAP16((uint16) info->rows);
+    *(ptr.ui16++) = SWAP16((uint16) info->columns);
+    *(ptr.ui16++) = SWAP16((uint16) info->elements);
+    *(ptr.ui16++) = SWAP16((uint16) info->member_count);
+    *(ptr.ui32++) = SWAP32(add_ctab_members(ctx, info));
+
+    return add_ctab_bytes(ctx, bytes, sizeof (bytes));
+} // add_ctab_typeinfo
+
+
+static uint32 add_ctab_info(Context *ctx, const MOJOSHADER_symbol *symbols,
+                            const unsigned int symbol_count)
+{
+    unsigned int i;
+    const size_t len = symbol_count * CINFO_SIZE;
+    uint8 *bytes = (uint8 *) Malloc(ctx, len);
+    if (bytes == NULL)
+        return 0;
+
+    union { uint8 *ui8; uint16 *ui16; uint32 *ui32; } ptr;
+    ptr.ui8 = bytes;
+    for (i = 0; i < symbol_count; i++)
+    {
+        const MOJOSHADER_symbol *sym = &symbols[i];
+        *(ptr.ui32++) = SWAP32(add_ctab_string(ctx, sym->name));
+        *(ptr.ui16++) = SWAP16((uint16) sym->register_set);
+        *(ptr.ui16++) = SWAP16((uint16) sym->register_index);
+        *(ptr.ui16++) = SWAP16((uint16) sym->register_count);
+        *(ptr.ui16++) = SWAP16(0);  // reserved
+        *(ptr.ui32++) = SWAP32(add_ctab_typeinfo(ctx, &sym->info));
+        *(ptr.ui32++) = SWAP32(0);  // !!! FIXME: default value.
+    } // for
+
+    const uint32 retval = add_ctab_bytes(ctx, bytes, len);
+    Free(ctx, bytes);
+    return retval;
+} // add_ctab_info
+
+
+static void output_ctab(Context *ctx, const MOJOSHADER_symbol *symbols,
+                        unsigned int symbol_count, const char *creator)
+{
+    ctx->ctab_len = CTAB_SIZE + sizeof (uint32);
+
+    uint8 bytes[CTAB_SIZE + sizeof (uint32)];
+    uint32 *table = (uint32 *) bytes;
     *(table++) = SWAP32(CTAB_ID);
-    *(table++) = SWAP32(28);
-    *(table++) = SWAP32(find_ctab_bytes(ctx, bytes, creator, creatorlen));
+    *(table++) = SWAP32(CTAB_SIZE);
+    *(table++) = SWAP32(add_ctab_string(ctx, creator));
     *(table++) = SWAP32(ctx->version_token);
     *(table++) = SWAP32(((uint32) symbol_count));
-    *(table++) = SWAP32(CTAB_SIZE);  // info array right after table.
-    *(table++) = SWAP32(0);
-    *(table++) = SWAP32(find_ctab_bytes(ctx, bytes, "", 1));  // !!! FIXME: target?
+    *(table++) = SWAP32(add_ctab_info(ctx, symbols, symbol_count));
+    *(table++) = SWAP32(0);  // build flags.
+    *(table++) = SWAP32(add_ctab_string(ctx, ""));  // !!! FIXME: target?
+    memcpy(ctx->ctab, bytes, sizeof (bytes));
+    output_comment_bytes(ctx, ctx->ctab, ctx->ctab_len);
 
-    assert( ((uint8 *) table) == info.ui8 );
-    for (i = 0; i < symbol_count; i++)
-    {
-        const char *name = symbols[i].name;
-        const size_t namelen = strlen(symbols[i].name) + 1;
-        add_ctab_bytes(bytes, &offset, name, namelen);
-        *(info.ui32++) = SWAP32(add_ctab_string(ctx, &data, &offset, symbols[i].name));
-        *(info.ui16++) = SWAP16((uint16) symbols[i].register_set);
-        *(info.ui16++) = SWAP16((uint16) symbols[i].register_index);
-        *(info.ui16++) = SWAP16((uint16) symbols[i].register_count);
-        *(info.ui16++) = SWAP16(0);  // reserved
-
-    MOJOSHADER_symbolClass parameter_class;
-    MOJOSHADER_symbolType parameter_type;
-    unsigned int rows;
-    unsigned int columns;
-    unsigned int elements;
-    unsigned int structMembers;
-    unsigned int bytes;
-    void *default_value;
-
-    } // for
-
-    assert( info.ui8 == origdata);
-
-    output_comment_bytes(ctx, ctab, (size_t) (ptr - ctab));
+    Free(ctx, ctx->ctab);
+    ctx->ctab = NULL;
+    ctx->ctab_len = 0;
+    ctx->ctab_allocation = 0;
 } // output_ctab
 
 
@@ -1784,7 +1838,11 @@ static void output_comments(Context *ctx, const char **comments,
     // make error messages sane if CTAB fails, etc.
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
 
-    output_ctab(ctx, symbols, symbol_count);
+    const char *creator = "MojoShader revision " MOJOSHADER_CHANGESET;
+    if (symbol_count > 0)
+        output_ctab(ctx, symbols, symbol_count, creator);
+    else
+        output_comment_string(ctx, creator);
 
     int i;
     for (i = 0; i < comment_count; i++)
@@ -1798,6 +1856,9 @@ static void output_comments(Context *ctx, const char **comments,
 // API entry point...
 
 const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
+                            const char **comments, unsigned int comment_count,
+                            const MOJOSHADER_symbol *symbols,
+                            unsigned int symbol_count,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     MOJOSHADER_parseData *retval = NULL;
@@ -1813,14 +1874,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     // Version token always comes first.
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
     parse_version_token(ctx);
-
-    ctx->started_parsing = 0;  // make error messages sane if CTAB fails, etc.
-    const char *credit = "Generated by MojoShader assembler revision "
-                         MOJOSHADER_CHANGESET
-                         ", http://icculus.org/mojoshader/";
-    output_comment_string(ctx, credit);
-
-    // !!! FIXME: insert CTAB here.
+    output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
     // parse out the rest of the tokens after the version token...
     while (nexttoken(ctx, 1, 1, 0, 1) == NOFAIL)

@@ -240,8 +240,89 @@ typedef struct MOJOSHADER_swizzle
 
 
 /*
+ * MOJOSHADER_symbol data.
+ *
+ * These are used to expose high-level information in shader bytecode.
+ *  They associate HLSL variables with registers. This data is used for both
+ *  debugging and optimization.
+ */
+
+typedef enum
+{
+    MOJOSHADER_SYMREGSET_BOOL,
+    MOJOSHADER_SYMREGSET_INT4,
+    MOJOSHADER_SYMREGSET_FLOAT4,
+    MOJOSHADER_SYMREGSET_SAMPLER,
+} MOJOSHADER_symbolRegisterSet;
+
+typedef enum
+{
+    MOJOSHADER_SYMCLASS_SCALAR,
+    MOJOSHADER_SYMCLASS_VECTOR,
+    MOJOSHADER_SYMCLASS_MATRIX_ROWS,
+    MOJOSHADER_SYMCLASS_MATRIX_COLUMNS,
+    MOJOSHADER_SYMCLASS_OBJECT,
+    MOJOSHADER_SYMCLASS_STRUCT,
+} MOJOSHADER_symbolClass;
+
+typedef enum
+{
+    MOJOSHADER_SYMTYPE_VOID,
+    MOJOSHADER_SYMTYPE_BOOL,
+    MOJOSHADER_SYMTYPE_INT,
+    MOJOSHADER_SYMTYPE_FLOAT,
+    MOJOSHADER_SYMTYPE_STRING,
+    MOJOSHADER_SYMTYPE_TEXTURE,
+    MOJOSHADER_SYMTYPE_TEXTURE1D,
+    MOJOSHADER_SYMTYPE_TEXTURE2D,
+    MOJOSHADER_SYMTYPE_TEXTURE3D,
+    MOJOSHADER_SYMTYPE_TEXTURECUBE,
+    MOJOSHADER_SYMTYPE_SAMPLER,
+    MOJOSHADER_SYMTYPE_SAMPLER1D,
+    MOJOSHADER_SYMTYPE_SAMPLER2D,
+    MOJOSHADER_SYMTYPE_SAMPLER3D,
+    MOJOSHADER_SYMTYPE_SAMPLERCUBE,
+    MOJOSHADER_SYMTYPE_PIXELSHADER,
+    MOJOSHADER_SYMTYPE_VERTEXSHADER,
+    MOJOSHADER_SYMTYPE_PIXELFRAGMENT,
+    MOJOSHADER_SYMTYPE_VERTEXFRAGMENT,
+    MOJOSHADER_SYMTYPE_UNSUPPORTED,
+} MOJOSHADER_symbolType;
+
+typedef struct MOJOSHADER_symbolStructMember MOJOSHADER_symbolStructMember;
+
+typedef struct MOJOSHADER_symbolTypeInfo
+{
+    MOJOSHADER_symbolClass parameter_class;
+    MOJOSHADER_symbolType parameter_type;
+    unsigned int rows;
+    unsigned int columns;
+    unsigned int elements;
+    unsigned int member_count;
+    MOJOSHADER_symbolStructMember *members;
+} MOJOSHADER_symbolTypeInfo;
+
+struct MOJOSHADER_symbolStructMember
+{
+    const char *name;
+    MOJOSHADER_symbolTypeInfo info;
+};
+
+typedef struct MOJOSHADER_symbol
+{
+    const char *name;
+    MOJOSHADER_symbolRegisterSet register_set;
+    unsigned int register_index;
+    unsigned int register_count;
+    MOJOSHADER_symbolTypeInfo info;
+    void *default_value;
+} MOJOSHADER_symbol;
+
+
+/*
  * Structure used to return data from parsing of a shader...
  */
+/* !!! FIXME: most of these ints should be unsigned. */
 typedef struct MOJOSHADER_parseData
 {
     /*
@@ -371,6 +452,20 @@ typedef struct MOJOSHADER_parseData
      * This can be NULL on error or if (swizzle_count) is zero.
      */
     MOJOSHADER_swizzle *swizzles;
+
+    /*
+     * The number of elements pointed to by (symbols).
+     */
+    int symbol_count;
+
+    /*
+     * (symbol_count) elements of data that specify high-level symbol data
+     *  for the shader. This will be parsed from the CTAB section
+     *  in bytecode, and will be a copy of what you provide to
+     *  MOJOSHADER_assemble(). This data is optional.
+     * This can be NULL on error or if (symbol_count) is zero.
+     */
+    MOJOSHADER_symbol *symbols;
 
     /*
      * This is the malloc implementation you passed to MOJOSHADER_parse().
@@ -504,6 +599,17 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
  * (source) is an ASCII, NULL-terminated string of valid Direct3D shader
  *  assembly source code.
  *
+ * (comments) points to (comment_count) NULL-terminated ASCII strings, and
+ *  can be NULL. These strings are inserted as comments in the bytecode.
+ *
+ * (symbols) points to (symbol_count) symbol structs, and can be NULL. These
+ *  become a CTAB field in the bytecode. This is optional, but
+ *  MOJOSHADER_parse() needs CTAB data for all arrays used in a program, or
+ *  relative addressing will not be permitted, so you'll want to at least
+ *  provide symbol information for those. The symbol data is 100% trusted
+ *  at this time; it will not be checked to see if it matches what was
+ *  assembled in any way whatsoever.
+ *
  * This will return a MOJOSHADER_parseData(), like MOJOSHADER_parse() would,
  *  except the profile will be MOJOSHADER_PROFILE_BYTECODE and the output
  *  will be the assembled bytecode instead of some other language. This output
@@ -526,7 +632,10 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
  *  to assemble several shaders on separate CPU cores at the same time.
  */
 const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
-                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+                             const char **comments, unsigned int comment_count,
+                             const MOJOSHADER_symbol *symbols,
+                             unsigned int symbol_count,
+                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 
 

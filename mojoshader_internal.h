@@ -117,6 +117,12 @@ typedef int32_t int32;
 #   define SWAP32(x) (x)
 #endif
 
+// This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.
+#define CTAB_ID 0x42415443  // 0x42415443 == 'CTAB'
+#define CTAB_SIZE 28  // sizeof (D3DXSHADER_CONSTANTTABLE).
+#define CINFO_SIZE 20  // sizeof (D3DXSHADER_CONSTANTINFO).
+#define CTYPEINFO_SIZE 16  // sizeof (D3DXSHADER_TYPEINFO).
+#define CMEMBERINFO_SIZE 8  // sizeof (D3DXSHADER_STRUCTMEMBERINFO)
 
 // we need to reference these by explicit value occasionally...
 #define OPCODE_RET 28
@@ -137,7 +143,6 @@ typedef int32_t int32;
 static void *internal_malloc(int bytes, void *d) { return malloc(bytes); }
 static void internal_free(void *ptr, void *d) { free(ptr); }
 #endif
-
 
 // result modifiers.
 // !!! FIXME: why isn't this an enum?
