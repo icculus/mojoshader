@@ -1693,15 +1693,15 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
     {
         void *ptr = ctx->ctab + extra;
         if (len == 0)
-            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
         else if ((len == 1) && ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
-            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
         else  // search for the string of bytes...
         {
             while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
             {
                 if (memcmp(ptr, bytes, len) == 0)  // this is it?
-                    return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+                    return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
                 ptr++;
             } // while
         } // else
@@ -1727,7 +1727,7 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
         ctx->ctab = (uint8 *) ptr;
     } // if
 
-    const uint32 retval = ctx->ctab_len;
+    const uint32 retval = ctx->ctab_len - sizeof (uint32);
     memcpy(ctx->ctab + ctx->ctab_len, bytes, len);
     ctx->ctab_len += len;
     return retval;
