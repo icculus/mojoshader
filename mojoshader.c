@@ -6506,6 +6506,7 @@ static int parse_version_token(Context *ctx, const char *profilestr)
 //  http://msdn.microsoft.com/en-us/library/bb205440(VS.85).aspx
 // This may tell us high-level truths about an otherwise generic low-level
 //  registers, for instance, how large an array actually is, etc.
+// !!! FIXME: parse symbols.
 static void parse_constant_table(Context *ctx, const uint32 bytes)
 {
     const uint8 *start = (uint8 *) &ctx->tokens[2];
