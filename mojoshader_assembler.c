@@ -1712,8 +1712,11 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
         void *ptr = Malloc(ctx, ctx->ctab_allocation);
         if (ptr == NULL)
             return 0;
-        memcpy(ptr, ctx->ctab, ctx->ctab_len);
-        Free(ctx, ctx->ctab);
+        if (ctx->ctab != NULL)
+        {
+            memcpy(ptr, ctx->ctab, ctx->ctab_len);
+            Free(ctx, ctx->ctab);
+        } // if
         ctx->ctab = (uint8 *) ptr;
     } // if
 
