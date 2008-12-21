@@ -1692,12 +1692,18 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
     if (len <= (ctx->ctab_len - extra))
     {
         void *ptr = ctx->ctab + extra;
-        while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
-        {
-            if (memcmp(ptr, bytes, len) == 0)  // already have it?
-                return ( (uint32) (ctx->ctab - ((uint8 *) ptr)) );
-            ptr++;
-        } // while
+        if (len == 0)
+            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+        else if ((len == 1) && ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
+            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+        else  // search for the string of bytes...
+            while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
+            {
+                if (memcmp(ptr, bytes, len) == 0)  // this is it?
+                    return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
+                ptr++;
+            } // while
+        } // else
     } // if
 
     // add it to the byte pile...
