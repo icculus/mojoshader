@@ -1697,6 +1697,7 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
         else if ((len == 1) && ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
             return ( (uint32) (((uint8 *) ptr) - ctx->ctab) );
         else  // search for the string of bytes...
+        {
             while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
             {
                 if (memcmp(ptr, bytes, len) == 0)  // this is it?
