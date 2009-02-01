@@ -223,6 +223,7 @@ struct Context
     VariableList *variables;  // variables to register mapping.
     int centroid_allowed;
     int have_ctab;
+    int have_relative_input_registers;
     int determined_constants_arrays;
     int predicated;
     int support_nv2;
@@ -1651,6 +1652,12 @@ static const char *get_GLSL_const_array_varname(Context *ctx, int base, int size
 } // get_GLSL_const_array_varname
 
 
+static const char *get_GLSL_input_array_varname(Context *ctx)
+{
+    return "vertex_input_array";
+} // get_GLSL_input_array_varname
+
+
 static const char *get_GLSL_destarg_varname(Context *ctx)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
@@ -1884,15 +1891,21 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
-        const int arrayidx = arg->relative_array->index;
-        const int arraysize = arg->relative_array->count;
-        const int offset = arg->regnum - arrayidx;
-        assert(offset >= 0);
+        if (arg->regtype == REG_TYPE_INPUT)
+            regtype_str = get_GLSL_input_array_varname(ctx);
+        else
+        {
+            assert(arg->regtype == REG_TYPE_CONST);
+            const int arrayidx = arg->relative_array->index;
+            const int arraysize = arg->relative_array->count;
+            const int offset = arg->regnum - arrayidx;
+            assert(offset >= 0);
+            regtype_str = get_GLSL_const_array_varname(ctx, arrayidx, arraysize);
+            if (offset != 0)
+                snprintf(rel_offset, sizeof (rel_offset), "%d + ", offset);
+        } // else
 
-        regtype_str = get_GLSL_const_array_varname(ctx, arrayidx, arraysize);
         rel_lbracket = "[";
-        if (offset != 0)
-            snprintf(rel_offset, sizeof (rel_offset), "%d + ", offset);
 
         rel_regtype_str = get_GLSL_varname(ctx, arg->relative_regtype,
                                            arg->relative_regnum);
@@ -2053,6 +2066,13 @@ static void emit_GLSL_finalize(Context *ctx)
     push_output(ctx, &ctx->globals);
     output_blank_line(ctx);
     pop_output(ctx);
+
+    // If we had a relative addressing of REG_TYPE_INPUT, we need to build
+    //  an array for it at the start of main(). GLSL doesn't let you specify
+    //  arrays of attributes.
+    //vec4 blah_array[BIGGEST_ARRAY];
+    if (ctx->have_relative_input_registers) // !!! FIXME
+        fail(ctx, "Relative addressing of input registers not supported.");
 } // emit_GLSL_finalize
 
 static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
@@ -3307,14 +3327,19 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             rel_swizzle[1] = 'x';
         } // if
 
-        const int arrayidx = arg->relative_array->index;
-        const int arraysize = arg->relative_array->count;
-        const int offset = arg->regnum - arrayidx;
-        assert(offset >= 0);
-
-        regtype_str = get_ARB1_const_array_varname(ctx, arrayidx, arraysize);
-        if (offset != 0)
-            snprintf(rel_offset, sizeof (rel_offset), " + %d", offset);
+        if (arg->regtype == REG_TYPE_INPUT)
+            regtype_str = "vertex.attrib";
+        else
+        {
+            assert(arg->regtype == REG_TYPE_CONST);
+            const int arrayidx = arg->relative_array->index;
+            const int arraysize = arg->relative_array->count;
+            const int offset = arg->regnum - arrayidx;
+            assert(offset >= 0);
+            regtype_str = get_ARB1_const_array_varname(ctx, arrayidx, arraysize);
+            if (offset != 0)
+                snprintf(rel_offset, sizeof (rel_offset), " + %d", offset);
+        } // else
 
         rel_lbracket = "[";
         rel_rbracket = "]";
@@ -5283,33 +5308,43 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         if (info->relative_regnum != 0)  // true for now.
             return fail(ctx, "invalid register for relative address");
 
-        if (info->regtype != REG_TYPE_CONST)
-            return fail(ctx, "relative addressing of non-const register");
-
         if (!replicate_swizzle(relswiz))
             return fail(ctx, "relative address needs replicate swizzle");
 
-        // figure out what array we're in...
-        if (!ctx->have_ctab)  // it's hard to do this efficiently without!
-            return fail(ctx, "relative addressing unsupported without a CTAB");
-
-        determine_constants_arrays(ctx);
-
-        VariableList *var;
-        const int reltarget = info->regnum;
-        for (var = ctx->variables; var != NULL; var = var->next)
+        if (info->regtype == REG_TYPE_INPUT)
         {
-            const int lo = var->index;
-            if ( (reltarget >= lo) && (reltarget < (lo + var->count)) )
-                break;  // match!
-        } // for
+            if ( (shader_is_pixel(ctx)) || (!shader_version_atleast(ctx, 3, 0)) )
+                return fail(ctx, "relative addressing of input registers not supported in this shader model");
+            ctx->have_relative_input_registers = 1;
+        } // if
+        else if (info->regtype == REG_TYPE_CONST)
+        {
+            // figure out what array we're in...
+            if (!ctx->have_ctab)  // it's hard to do this efficiently without!
+                return fail(ctx, "relative addressing unsupported without a CTAB");
+            determine_constants_arrays(ctx);
 
-        if (var == NULL)
-            return fail(ctx, "relative addressing of indeterminate array");
+            VariableList *var;
+            const int reltarget = info->regnum;
+            for (var = ctx->variables; var != NULL; var = var->next)
+            {
+                const int lo = var->index;
+                if ( (reltarget >= lo) && (reltarget < (lo + var->count)) )
+                    break;  // match!
+            } // for
 
-        var->used = 1;
-        info->relative_array = var;
-        set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+            if (var == NULL)
+                return fail(ctx, "relative addressing of indeterminate array");
+
+            var->used = 1;
+            info->relative_array = var;
+            set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+        } // else if
+        else
+        {
+            return fail(ctx, "relative addressing of invalid register");
+        } // else
+
         retval++;
     } // if
 
