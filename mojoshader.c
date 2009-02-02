@@ -8,8 +8,8 @@
  */
 
 // !!! FIXME: this file really needs to be split up.
-
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
+// !!! FIXME: this should report all errors, not quit on the first fail().
 
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"

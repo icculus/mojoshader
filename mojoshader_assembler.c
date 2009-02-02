@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: this should report all errors, not quit on the first fail().
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
