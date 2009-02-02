@@ -236,7 +236,7 @@ static inline int macosx_version_atleast(int x, int y, int z)
             major = (((major / 16) * 10) + (major % 16));
             minor = ((ver & 0xF0) >> 4);
             patch = (ver & 0xF);
-        } /* if */
+        } // if
 
         combined = (major << 16) | (minor << 8) | patch;
         checked = 1;
