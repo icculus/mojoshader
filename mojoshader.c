@@ -265,6 +265,15 @@ static inline void *Malloc(Context *ctx, const size_t len)
     return retval;
 } // Malloc
 
+static inline char *StrDup(Context *ctx, const char *str)
+{
+    char *retval = (char *) Malloc(ctx, strlen(str) + 1);
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
+        strcpy(retval, str);
+    return retval;
+} // StrDup
 
 static inline void Free(Context *ctx, void *ptr)
 {
@@ -428,8 +437,8 @@ static int output_line(Context *ctx, const char *fmt, ...)
 {
     OutputListNode *item = NULL;
 
-    if (isfail(ctx))
-        return FAIL;  // we failed previously, don't go on...
+    if (isfail(ctx) || ctx->out_of_memory)
+        return;  // we failed previously, don't go on...
 
     char *scratch = get_scratch_buffer(ctx);
 
@@ -6944,10 +6953,9 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
             {
                 const char *name = ctx->profile->get_const_array_varname(ctx,
                                                       var->index, var->count);
-                char *namecpy = (char *) Malloc(ctx, strlen(name) + 1);
+                char *namecpy = StrDup(ctx, name);
                 if (namecpy != NULL)
                 {
-                    strcpy(namecpy, name);
                     wptr->type = MOJOSHADER_UNIFORM_FLOAT;
                     wptr->index = var->index;
                     wptr->array_count = var->count;
