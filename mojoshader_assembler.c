@@ -2002,7 +2002,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
     // parse out the rest of the tokens after the version token...
-    while (nexttoken(ctx, 1, 1, 0, 1))
+    while ((nexttoken(ctx, 1, 1, 0, 1)) && (!ctx->eof))
     {
         if (isfail(ctx))
         {
