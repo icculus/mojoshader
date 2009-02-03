@@ -1032,6 +1032,8 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 
         if (saw_xyzw && saw_rgba)
             invalid_swizzle = 1;
+        else if (saw_rgba && !shader_is_pixel(ctx))
+            invalid_swizzle = 1;
     } // else
 
     if (invalid_swizzle)
