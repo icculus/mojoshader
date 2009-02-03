@@ -6708,7 +6708,7 @@ static int parse_token(Context *ctx)
     else if ((rc = parse_instruction_token(ctx)) != 0)
         return rc;
 
-    failf(ctx, "unknown token (%u)", (uint) *ctx->tokens);
+    failf(ctx, "unknown token (0x%x)", (uint) *ctx->tokens);
     return 1;  // good luck!
 } // parse_token
 
