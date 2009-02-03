@@ -7092,8 +7092,8 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
 static MOJOSHADER_error *build_errors(Context *ctx)
 {
     int total = 0;
-    MOJOSHADER_error *retval;
-    retval = (MOJOSHADER_error *) Malloc(ctx, sizeof (MOJOSHADER_error));
+    MOJOSHADER_error *retval = (MOJOSHADER_error *)
+            Malloc(ctx, sizeof (MOJOSHADER_error) * ctx->error_count);
     if (retval == NULL)
         return NULL;
 
