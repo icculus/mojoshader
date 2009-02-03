@@ -319,11 +319,7 @@ typedef struct MOJOSHADER_symbol
 } MOJOSHADER_symbol;
 
 
-/*
- * Structure used to return data from parsing of a shader...
- */
-/* !!! FIXME: most of these ints should be unsigned. */
-typedef struct MOJOSHADER_parseData
+typedef struct MOJOSHADER_error
 {
     /*
      * Human-readable error, if there is one. Will be NULL if there was no
@@ -331,6 +327,11 @@ typedef struct MOJOSHADER_parseData
      *  these shouldn't be shown to the end-user anyhow.
      */
     const char *error;
+
+    /*
+     * Filename where error happened.
+     */
+    const char *filename;
 
     /*
      * Position of error, if there is one. Will be -3 if there was no
@@ -341,6 +342,25 @@ typedef struct MOJOSHADER_parseData
      *  a line number in the source code you supplied (starting at one).
      */
     int error_position;
+} MOJOSHADER_error;
+
+/*
+ * Structure used to return data from parsing of a shader...
+ */
+/* !!! FIXME: most of these ints should be unsigned. */
+typedef struct MOJOSHADER_parseData
+{
+    /*
+     * The number of elements pointed to by (errors).
+     */
+    int error_count;
+
+    /*
+     * (error_count) elements of data that specify errors that were generated
+     *  by parsing this shader.
+     * This can be NULL if there were no errors or if (error_count) is zero.
+     */
+    MOJOSHADER_error *errors;
 
     /*
      * The name of the profile used to parse the shader. Will be NULL on error.

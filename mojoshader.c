@@ -108,6 +108,12 @@ typedef struct ConstantsList
     struct ConstantsList *next;
 } ConstantsList;
 
+typedef struct ErrorList
+{
+    MOJOSHADER_error error;
+    struct ErrorList *next;
+} ErrorList;
+
 typedef struct VariableList
 {
     MOJOSHADER_uniformType type;
@@ -158,6 +164,8 @@ typedef struct
 // Context...this is state that changes as we parse through a shader...
 struct Context
 {
+    int isfail;
+    int out_of_memory;
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
@@ -183,7 +191,6 @@ struct Context
     const char *shader_type_str;
     const char *endline;
     int endline_len;
-    const char *failstr;
     char scratch[SCRATCH_BUFFERS][SCRATCH_BUFFER_SIZE];
     int scratchidx;  // current scratch buffer.
     int profileid;
@@ -212,6 +219,8 @@ struct Context
     int last_address_reg_component;
     RegisterList used_registers;
     RegisterList defined_registers;
+    int error_count;
+    ErrorList *errors;
     int constant_count;
     ConstantsList *constants;
     int uniform_count;
@@ -236,15 +245,15 @@ struct Context
 
 // Convenience functions for allocators...
 
+static MOJOSHADER_error out_of_mem_error = { "Out of memory", NULL, -1 };
 MOJOSHADER_parseData out_of_mem_data = {
-    "Out of memory", -1, 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+    1, &out_of_mem_error, 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
 const char *out_of_mem_str = "Out of memory";
 static inline int out_of_memory(Context *ctx)
 {
-    if (ctx->failstr == NULL)
-        ctx->failstr = out_of_mem_str;  // fail() would call malloc().
+    ctx->isfail = ctx->out_of_memory = 1;
     return FAIL;
 } // out_of_memory
 
@@ -323,24 +332,13 @@ static inline int shader_is_vertex(const Context *ctx)
 
 static inline int isfail(const Context *ctx)
 {
-    return (ctx->failstr != NULL);
+    return ctx->isfail;
 } // isfail
 
 
 static inline char *get_scratch_buffer(Context *ctx)
 {
-    if ((ctx->scratchidx >= SCRATCH_BUFFERS) && !isfail(ctx))
-    {
-        // can't call fail() here, since it calls back into here.
-        const char *errstr = "BUG: overflowed scratch buffers";
-        char *failstr = (char *) Malloc(ctx, strlen(errstr) + 1);
-        if (failstr != NULL)
-        {
-            strcpy(failstr, errstr);
-            ctx->failstr = failstr;
-        } // if
-    } // if
-
+    assert(ctx->scratchidx < SCRATCH_BUFFERS);
     ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
     return ctx->scratch[ctx->scratchidx];
 } // get_scratch_buffer
@@ -349,29 +347,71 @@ static inline char *get_scratch_buffer(Context *ctx)
 static int failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static int failf(Context *ctx, const char *fmt, ...)
 {
-    if (ctx->failstr == NULL)  // don't change existing error.
-    {
-        char *scratch = get_scratch_buffer(ctx);
-        va_list ap;
-        va_start(ap, fmt);
-        const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
-        va_end(ap);
+    ctx->isfail = 1;
+    if (ctx->out_of_memory)
+        return FAIL;
 
-        char *failstr = (char *) Malloc(ctx, len + 1);
-        if (failstr != NULL)
+    int error_position = 0;
+    switch (ctx->parse_phase)
+    {
+        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
+            error_position = -2;
+            break;
+        case MOJOSHADER_PARSEPHASE_WORKING:
+            error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
+            break;
+        case MOJOSHADER_PARSEPHASE_DONE:
+            error_position = -1;
+            break;
+        default:
+            assert(0 && "Unexpected value");
+            return FAIL;
+    } // switch
+
+    ErrorList *error = (ErrorList *) Malloc(ctx, sizeof (ErrorList));
+    if (error == NULL)
+        return FAIL;
+
+    char *scratch = get_scratch_buffer(ctx);
+    va_list ap;
+    va_start(ap, fmt);
+    const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
+    va_end(ap);
+
+    char *failstr = (char *) Malloc(ctx, len + 1);
+    if (failstr == NULL)
+        Free(ctx, error);
+    else
+    {
+        // see comments about scratch buffer overflow in output_line().
+        if (len < SCRATCH_BUFFER_SIZE)
+            strcpy(failstr, scratch);  // copy it over.
+        else
         {
-            // see comments about scratch buffer overflow in output_line().
-            if (len < SCRATCH_BUFFER_SIZE)
-                strcpy(failstr, scratch);  // copy it over.
-            else
-            {
-                va_start(ap, fmt);
-                vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
-                va_end(ap);
-            } // else
-            ctx->failstr = failstr;
-        } // if
-    } // if
+            va_start(ap, fmt);
+            vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
+            va_end(ap);
+        } // else
+
+        error->error.error = failstr;
+        error->error.filename = NULL;  // no filename at this level.
+        error->error.error_position = error_position;
+
+        ErrorList *prev = NULL;
+        error->next = ctx->errors;
+        while (error->next != NULL)
+        {
+            prev = error->next;
+            error->next = error->next->next;
+        } // while
+
+        if (prev != NULL)
+            prev->next = error;
+        else
+            ctx->errors = error;
+
+        ctx->error_count++;
+    } // else
 
     return FAIL;
 } // failf
@@ -6795,6 +6835,19 @@ static void free_variable_list(MOJOSHADER_free f, void *d, VariableList *item)
 } // free_variable_list
 
 
+static void free_error_list(MOJOSHADER_free f, void *d, ErrorList *item)
+{
+    while (item != NULL)
+    {
+        ErrorList *next = item->next;
+        f((void *) item->error.error, d);
+        f((void *) item->error.filename, d);
+        f(item, d);
+        item = next;
+    } // while
+} // free_error_list
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -6816,8 +6869,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->attributes.next);
         free_reglist(f, d, ctx->samplers.next);
         free_variable_list(f, d, ctx->variables);
-        if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
-            f((void *) ctx->failstr, d);
+        free_error_list(f, d, ctx->errors);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -7043,6 +7095,31 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
 } // build_samplers
 
 
+static MOJOSHADER_error *build_errors(Context *ctx)
+{
+    int total = 0;
+    MOJOSHADER_error *retval;
+    retval = (MOJOSHADER_error *) Malloc(ctx, sizeof (MOJOSHADER_error));
+    if (retval == NULL)
+        return NULL;
+
+    ErrorList *item = ctx->errors;
+    while (item != NULL)
+    {
+        ErrorList *next = item->next;
+        // reuse the string allocations
+        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
+        Free(ctx, item);
+        item = next;
+        total++;
+    } // while
+    ctx->errors = NULL;
+
+    assert(total == ctx->error_count);
+    return retval;
+} // build_errors
+
+
 static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 {
     int count = 0;
@@ -7123,8 +7200,12 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     MOJOSHADER_attribute *attributes = NULL;
     MOJOSHADER_sampler *samplers = NULL;
     MOJOSHADER_swizzle *swizzles = NULL;
+    MOJOSHADER_error *errors = NULL;
     MOJOSHADER_parseData *retval = NULL;
     int attribute_count = 0;
+
+    if (ctx->out_of_memory)
+        return &out_of_mem_data;
 
     retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
     if (retval == NULL)
@@ -7146,6 +7227,9 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
     if (!isfail(ctx))
         samplers = build_samplers(ctx);
+
+    if (!isfail(ctx))
+        errors = build_errors(ctx);
 
     if (!isfail(ctx))
     {
@@ -7188,25 +7272,20 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
             Free(ctx, samplers);
         } // if
 
-        switch (ctx->parse_phase)
+        if (ctx->out_of_memory)
         {
-            case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-                retval->error_position = -2;
-                break;
-            case MOJOSHADER_PARSEPHASE_WORKING:
-                retval->error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
-                break;
-            case MOJOSHADER_PARSEPHASE_DONE:
-                retval->error_position = -1;
-                break;
-        } // switch
-
-        retval->error = ctx->failstr;  // we recycle.  :)
-        ctx->failstr = NULL;  // don't let this get free()'d too soon.
+            for (i = 0; i < ctx->sampler_count; i++)
+            {
+                Free(ctx, (void *) errors[i].filename);
+                Free(ctx, (void *) errors[i].error);
+            } // for
+            Free(ctx, ctx->errors);
+            Free(ctx, retval);
+            return &out_of_mem_data;
+        } // if
     } // if
     else
     {
-        retval->error_position = -3;
         retval->profile = ctx->profile->name;
         retval->output = output;
         retval->output_len = ctx->output_len;
@@ -7226,6 +7305,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->swizzles = swizzles;
     } // else
 
+    retval->error_count = ctx->error_count;
+    retval->errors = errors;
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
@@ -7473,6 +7554,18 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
     if (data->swizzles != NULL)
         f((void *) data->swizzles, d);
 
+    if (data->errors != NULL)
+    {
+        for (i = 0; i < data->error_count; i++)
+        {
+            if (data->errors[i].error != NULL)
+                f((void *) data->errors[i].error, d);
+            if (data->errors[i].filename != NULL)
+                f((void *) data->errors[i].filename, d);
+        } // for
+        f((void *) data->errors, d);
+    } // if
+
     if (data->uniforms != NULL)
     {
         for (i = 0; i < data->uniform_count; i++)
@@ -7514,9 +7607,6 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
         } // for
         f((void *) data->symbols, d);
     } // if
-
-    if ((data->error != NULL) && (data->error != out_of_mem_str))
-        f((void *) data->error, d);
 
     f(data, d);
 } // MOJOSHADER_freeParseData

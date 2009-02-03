@@ -27,10 +27,15 @@ typedef struct TokenizerContext
 } TokenizerContext;
 
 
-typedef struct Context Context;
+typedef struct SourcePos
+{
+    const char *filename;
+    uint32 line;
+} SourcePos;
+
 
 // Context...this is state that changes as we assemble a shader...
-struct Context
+typedef struct Context
 {
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
@@ -46,13 +51,13 @@ struct Context
     int tokenbufpos;
     DestArgInfo dest_arg;
     uint32 *output;
-    uint32 *token_to_line;
+    SourcePos *token_to_source;
     uint8 *ctab;
     uint32 ctab_len;
     uint32 ctab_allocation;
     size_t output_len;
     size_t output_allocation;
-};
+} Context;
 
 
 // Convenience functions for allocators...
@@ -153,6 +158,13 @@ static int ui32fromstr(const char *str, uint32 *ui32)
 } // ui32fromstr
 
 
+static inline void add_token_sourcepos(Context *ctx, const size_t idx)
+{
+    ctx->token_to_source[idx].line = ctx->tctx.linenum;
+    ctx->token_to_source[idx].filename = NULL;
+} // add_token_sourcepos
+
+
 static void output_token_noswap(Context *ctx, const uint32 token)
 {
     if (isfail(ctx))
@@ -172,19 +184,19 @@ static void output_token_noswap(Context *ctx, const uint32 token)
         Free(ctx, ctx->output);
         ctx->output = (uint32 *) ptr;
 
-        ptr = Malloc(ctx, newsize * sizeof (uint32));
+        ptr = Malloc(ctx, newsize * sizeof (SourcePos));
         if (ptr == NULL)
             return;
         if (ctx->output_len > 0)
-            memcpy(ptr, ctx->token_to_line, ctx->output_len * sizeof (uint32));
-        Free(ctx, ctx->token_to_line);
-        ctx->token_to_line = (uint32 *) ptr;
+            memcpy(ptr, ctx->token_to_source, ctx->output_len * sizeof (SourcePos));
+        Free(ctx, ctx->token_to_source);
+        ctx->token_to_source = (SourcePos *) ptr;
 
         ctx->output_allocation = newsize;
     } // if
 
     ctx->output[ctx->output_len] = token;
-    ctx->token_to_line[ctx->output_len] = ctx->tctx.linenum;
+    add_token_sourcepos(ctx, ctx->output_len);
     ctx->output_len++;
 } // output_token_noswap
 
@@ -1645,8 +1657,8 @@ static void destroy_context(Context *ctx)
             f((void *) ctx->failstr, d);
         if (ctx->output != NULL)
             f(ctx->output, d);
-        if (ctx->token_to_line != NULL)
-            f(ctx->token_to_line, d);
+        if (ctx->token_to_source != NULL)
+            f(ctx->token_to_source, d);
         if (ctx->ctab != NULL)
             f(ctx->ctab, d);
         f(ctx, d);
@@ -1668,19 +1680,30 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
-    retval->error = ctx->failstr;  // we recycle.  :)
+
+    // !!! FIXME: handle multiple errors.
+    retval->errors = (MOJOSHADER_error *)
+                     Malloc(ctx, sizeof (MOJOSHADER_error));
+    if (retval->errors == NULL)
+    {
+        Free(ctx, retval);
+        return &out_of_mem_data;
+    } // if
+    retval->errors->error = ctx->failstr;
+    retval->errors->filename = NULL;
+
     ctx->failstr = NULL;  // don't let this get free()'d too soon.
 
     switch (ctx->parse_phase)
     {
         case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            retval->error_position = -2;
+            retval->errors->error_position = -2;
             break;
         case MOJOSHADER_PARSEPHASE_WORKING:
-            retval->error_position = ctx->tctx.linenum;
+            retval->errors->error_position = ctx->tctx.linenum;
             break;
         case MOJOSHADER_PARSEPHASE_DONE:
-            retval->error_position = -1;
+            retval->errors->error_position = -1;
             break;
     } // switch
 
@@ -1910,6 +1933,8 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                                       ctx->output_len * sizeof (uint32),
                                       NULL, 0, m, f, d);
 
+// !!! FIXME: multiple errors.
+#if 0
         // on error, map the bytecode back to a line number.
         if (retval->error_position >= 0)
         {
@@ -1920,6 +1945,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
             else
                 retval->error_position = -1;  // oh well.
         } // if
+#endif
     } // if
 
     destroy_context(ctx);

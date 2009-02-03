@@ -17,8 +17,16 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
     int retval = 0;
 
     pd = MOJOSHADER_parse(prof, buf, len, NULL, 0, NULL, NULL, NULL);
-    if (pd->error != NULL)
-        printf("ERROR: (position %d) %s\n", pd->error_position, pd->error);
+    if (pd->error_count > 0)
+    {
+        int i;
+        for (i = 0; i < pd->error_count; i++)
+        {
+            printf("ERROR: (line %d) %s\n",
+                    pd->errors[i].error_position,
+                    pd->errors[i].error);
+        } // for
+    } // if
     else
     {
         retval = 1;

@@ -85,9 +85,9 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
 
         buf[rc] = '\0';  // make sure the source is null-terminated.
         a = MOJOSHADER_assemble((char *) buf, 0, 0, 0, 0, 0, 0, 0);
-        if (a->error)
+        if (a->error_count > 0)
         {
-            report("FAIL: %s (line %d) %s\n", fname, a->error_position, a->error);
+            report("FAIL: %s (line %d) %s\n", fname, a->errors[0].error_position, a->errors[0].error);
             return 1;
         } // if
 
