@@ -396,19 +396,20 @@ static void failf(Context *ctx, const char *fmt, ...)
         error->error.error = failstr;
         error->error.filename = NULL;  // no filename at this level.
         error->error.error_position = error_position;
+        error->next = NULL;
 
         ErrorList *prev = NULL;
-        error->next = ctx->errors;
-        while (error->next != NULL)
+        ErrorList *item = ctx->errors;
+        while (item != NULL)
         {
-            prev = error->next;
-            error->next = error->next->next;
+            prev = item;
+            item = error->next;
         } // while
 
-        if (prev != NULL)
-            prev->next = error;
-        else
+        if (prev == NULL)
             ctx->errors = error;
+        else
+            prev->next = error;
 
         ctx->error_count++;
     } // else
