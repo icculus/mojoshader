@@ -1779,10 +1779,12 @@ static MOJOSHADER_error *build_errors(Context *ctx)
 
 static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
 {
-    MOJOSHADER_parseData *retval = NULL;
-    if (!isfail(ctx))
-        return NULL;
+    assert(isfail(ctx));
 
+    if (ctx->out_of_memory)
+        return &out_of_mem_data;
+        
+    MOJOSHADER_parseData *retval = NULL;
     retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
     if (retval == NULL)
         return &out_of_mem_data;
