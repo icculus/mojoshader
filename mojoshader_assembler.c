@@ -100,6 +100,8 @@ static void failf(Context *ctx, const char *fmt, ...)
     unsigned int linenum = 0;
     int error_position = 0;
 
+    ctx->isfail = 1;
+
     switch (ctx->parse_phase)
     {
         case MOJOSHADER_PARSEPHASE_NOTSTARTED:
@@ -2006,16 +2008,23 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     parse_version_token(ctx);
     output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
+    if (isfail(ctx))
+    {
+        failed = 1;
+        ctx->isfail = 0;
+        skip_line(ctx);  // start fresh on next line.
+    } // if
+
     // parse out the rest of the tokens after the version token...
     while ((nexttoken(ctx, 1, 1, 0, 1)) && (!ctx->eof))
     {
+        parse_token(ctx);
         if (isfail(ctx))
         {
             failed = 1;
             ctx->isfail = 0;
             skip_line(ctx);  // start fresh on next line.
         } // if
-        parse_token(ctx);
     } // while
 
     ctx->isfail = failed;
