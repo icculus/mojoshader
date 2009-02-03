@@ -7,8 +7,6 @@
  *  This file written by Ryan C. Gordon.
  */
 
-// !!! FIXME: this should report all errors, not quit on the first fail().
-
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
@@ -37,10 +35,14 @@ typedef struct SourcePos
 // Context...this is state that changes as we assemble a shader...
 typedef struct Context
 {
+    int isfail;
+    int out_of_memory;
+    int eof;
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
-    const char *failstr;
+    int error_count;
+    ErrorList *errors;
     TokenizerContext tctx;
     MOJOSHADER_parsePhase parse_phase;
     MOJOSHADER_shaderType shader_type;
@@ -62,11 +64,9 @@ typedef struct Context
 
 // Convenience functions for allocators...
 
-static inline int out_of_memory(Context *ctx)
+static inline void out_of_memory(Context *ctx)
 {
-    if (ctx->failstr == NULL)
-        ctx->failstr = out_of_mem_str;  // fail() would call malloc().
-    return FAIL;
+    ctx->isfail = ctx->out_of_memory = 1;
 } // out_of_memory
 
 static inline void *Malloc(Context *ctx, const size_t len)
@@ -77,44 +77,100 @@ static inline void *Malloc(Context *ctx, const size_t len)
     return retval;
 } // Malloc
 
+static inline char *StrDup(Context *ctx, const char *str)
+{
+    char *retval = (char *) Malloc(ctx, strlen(str) + 1);
+    if (retval == NULL)
+        out_of_memory(ctx);
+    else
+        strcpy(retval, str);
+    return retval;
+} // StrDup
+
 static inline void Free(Context *ctx, void *ptr)
 {
     if (ptr != NULL)  // check for NULL in case of dumb free() impl.
         ctx->free(ptr, ctx->malloc_data);
 } // Free
 
-static int failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
-static int failf(Context *ctx, const char *fmt, ...)
+static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
+static void failf(Context *ctx, const char *fmt, ...)
 {
-    if (ctx->failstr == NULL)  // don't change existing error.
+    const char *fname = NULL;
+    unsigned int linenum = 0;
+    int error_position = 0;
+
+    switch (ctx->parse_phase)
     {
-        char scratch = 0;
-        va_list ap;
+        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
+            error_position = -2;
+            break;
+        case MOJOSHADER_PARSEPHASE_WORKING:
+            // !!! FIXME: fname == base source file if output_pos == 0.
+            if (ctx->output_len > 0)
+            {
+                const size_t idx = ctx->output_len - 1;
+                linenum = ctx->token_to_source[idx].line;
+                fname = ctx->token_to_source[idx].filename;
+            } // if
+            error_position = linenum;
+            break;
+        case MOJOSHADER_PARSEPHASE_DONE:
+            error_position = -1;
+            break;
+        default:
+            assert(0 && "Unexpected value");
+            return;
+    } // switch
+
+    ErrorList *error = (ErrorList *) Malloc(ctx, sizeof (ErrorList));
+    if (error == NULL)
+        return;
+
+    char scratch = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    const int len = vsnprintf(&scratch, sizeof (scratch), fmt, ap);
+    va_end(ap);
+
+    char *failstr = (char *) Malloc(ctx, len + 1);
+    if (failstr == NULL)
+        Free(ctx, error);
+    else
+    {
         va_start(ap, fmt);
-        const int len = vsnprintf(&scratch, sizeof (scratch), fmt, ap);
+        vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
         va_end(ap);
 
-        char *failstr = (char *) Malloc(ctx, len + 1);
-        if (failstr != NULL)
-        {
-            va_start(ap, fmt);
-            vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
-            va_end(ap);
-            ctx->failstr = failstr;
-        } // if
-    } // if
+        error->error.error = failstr;
+        error->error.filename = fname ? StrDup(ctx, fname) : NULL;
+        error->error.error_position = error_position;
 
-    return FAIL;
+        ErrorList *prev = NULL;
+        error->next = ctx->errors;
+        while (error->next != NULL)
+        {
+            prev = error->next;
+            error->next = error->next->next;
+        } // while
+
+        if (prev != NULL)
+            prev->next = error;
+        else
+            ctx->errors = error;
+
+        ctx->error_count++;
+    } // else
 } // failf
 
-static inline int fail(Context *ctx, const char *reason)
+static inline void fail(Context *ctx, const char *reason)
 {
-    return failf(ctx, "%s", reason);
+    failf(ctx, "%s", reason);
 } // fail
 
 static inline int isfail(const Context *ctx)
 {
-    return (ctx->failstr != NULL);
+    return ctx->isfail;
 } // isfail
 
 
@@ -243,13 +299,10 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
 {
     int idx = 0;
 
-    if (isfail(ctx))
-        return FAIL;
-
     if (tctx->pushedback)
     {
         tctx->pushedback = 0;
-        return NOFAIL;
+        return 1;
     } // if
 
     if (tctx->on_endline)
@@ -262,7 +315,10 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
     {
         // !!! FIXME: carefully crafted (but legal) comments can trigger this.
         if (idx >= sizeof (tctx->token))
-            return fail(ctx, "buffer overflow");
+        {
+            fail(ctx, "buffer overflow");
+            return 0;
+        } // if
 
         char ch = *tctx->source;
         if (ch == '\t')
@@ -280,7 +336,7 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
             if ((idx > 0) && ((tctx->prevchar < '0') || (tctx->prevchar > '9')))
             {
                 tctx->token[idx++] = '\0';
-                return NOFAIL;
+                return 1;
             } // if
         } // if
         else
@@ -289,7 +345,7 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
             if ((idx > 0) && ((tctx->prevchar >= '0') && (tctx->prevchar <= '9')))
             {
                 tctx->token[idx++] = '\0';
-                return NOFAIL;
+                return 1;
             } // if
         } // else
 
@@ -310,7 +366,7 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
                     } // if
                     tctx->token[idx++] = '\0';
                 } // else
-                return NOFAIL;
+                return 1;
 
             case ' ':
                 if (tctx->prevchar == ' ')
@@ -338,13 +394,14 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
                     tctx->token[idx++] = ch;
                     tctx->token[idx++] = '\0';
                 } // else
-                return NOFAIL;
+                return 1;
 
             case '\0':
                 tctx->token[idx] = '\0';
                 if (idx != 0)  // had any chars? It's a token.
-                    return NOFAIL;
-                return END_OF_STREAM;
+                    return 1;
+                ctx->eof = 1;
+                return 0;
 
             default:
                 tctx->source++;
@@ -355,7 +412,8 @@ static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
         tctx->prevchar = ch;
     } // while
 
-    return fail(ctx, "???");  // shouldn't hit this.
+    assert(0 && "Shouldn't hit this code");
+    return 0;
 } // tokenize_ctx
 
 
@@ -364,10 +422,7 @@ static inline int tokenize(Context *ctx)
     const int rc = tokenize_ctx(ctx, &ctx->tctx);
 
     #if DEBUG_TOKENIZER
-    printf("TOKENIZE: %s '%s'\n",
-           (rc == END_OF_STREAM) ? "END_OF_STREAM" :
-           (rc == FAIL) ? "FAIL" :
-           (rc == NOFAIL) ? "NOFAIL" : "???",
+    printf("TOKENIZE: %d '%s'\n", rc,
            (ctx->tctx.token[0] == '\n') ? "\\n" : ctx->tctx.token);
     #endif
 
@@ -375,28 +430,19 @@ static inline int tokenize(Context *ctx)
 } // tokenize
 
 
-static int pushback_ctx(Context *ctx, TokenizerContext *tctx)
+static void pushback_ctx(Context *ctx, TokenizerContext *tctx)
 {
-    if (tctx->pushedback)
-        return fail(ctx, "BUG: Double pushback in parser");
-    else
-        tctx->pushedback = 1;
+    assert(!tctx->pushedback);
+    tctx->pushedback = 1;
+} // pushback_ctx
 
-    return NOFAIL;
-}
 
-static inline int pushback(Context *ctx)
+static inline void pushback(Context *ctx)
 {
-    const int rc = pushback_ctx(ctx, &ctx->tctx);
-
+    pushback_ctx(ctx, &ctx->tctx);
     #if DEBUG_TOKENIZER
-    printf("PUSHBACK: %s\n",
-           (rc == END_OF_STREAM) ? "END_OF_STREAM" :
-           (rc == FAIL) ? "FAIL" :
-           (rc == NOFAIL) ? "NOFAIL" : "???");
+    printf("PUSHBACK\n");
     #endif
-
-    return rc;
 } // pushback
 
 
@@ -404,16 +450,17 @@ static int nexttoken_ctx(Context *ctx, TokenizerContext *tctx,
                      const int ignoreeol, const int ignorewhitespace,
                      const int eolok, const int eosok)
 {
-    int rc = NOFAIL;
-
-    while ((rc = tokenize_ctx(ctx, tctx)) == NOFAIL)
+    while (tokenize_ctx(ctx, tctx))
     {
         if (tokeq(tctx, "\n"))
         {
             if (ignoreeol)
                 continue;
             else if (!eolok)
-                return fail(ctx, "Unexpected EOL");
+            {
+                fail(ctx, "Unexpected EOL");
+                return 0;
+            } // else if
         } // if
 
         else if (tokeq(tctx, " "))
@@ -425,7 +472,7 @@ static int nexttoken_ctx(Context *ctx, TokenizerContext *tctx,
         // skip comments...
         else if (tokeq(tctx, "//") || tokeq(tctx, ";"))
         {
-            while ((rc = tokenize_ctx(ctx, tctx)) == NOFAIL)
+            while (tokenize_ctx(ctx, tctx))
             {
                 if (tokeq(tctx, "\n"))
                 {
@@ -439,10 +486,13 @@ static int nexttoken_ctx(Context *ctx, TokenizerContext *tctx,
         break;
     } // while
 
-    if ((rc == END_OF_STREAM) && (!eosok))
-        return fail(ctx, "Unexpected EOF");
+    if ((ctx->eof) && (!eosok))
+    {
+        fail(ctx, "Unexpected EOF");
+        return 0;
+    } // if
 
-    return rc;
+    return 1;
 } // nexttoken_ctx
 
 
@@ -454,10 +504,7 @@ static inline int nexttoken(Context *ctx, const int ignoreeol,
                                  ignorewhitespace, eolok, eosok);
 
     #if DEBUG_TOKENIZER
-    printf("NEXTTOKEN: %s '%s'\n",
-           (rc == END_OF_STREAM) ? "END_OF_STREAM" :
-           (rc == FAIL) ? "FAIL" :
-           (rc == NOFAIL) ? "NOFAIL" : "???",
+    printf("NEXTTOKEN: %d '%s'\n", rc,
            (ctx->tctx.token[0] == '\n') ? "\\n" : ctx->tctx.token);
     #endif
 
@@ -465,17 +512,30 @@ static inline int nexttoken(Context *ctx, const int ignoreeol,
 } // nexttoken
 
 
-static int require_endline(Context *ctx)
+static void skip_line(Context *ctx)
+{
+    if (!tokeq(&ctx->tctx, "\n"))
+    {
+        while (nexttoken(ctx, 0, 1, 1, 1))
+        {
+            if (tokeq(&ctx->tctx, "\n"))
+                break;
+        } // while
+    } // if
+} // skip_line
+
+
+static void require_endline(Context *ctx)
 {
     TokenizerContext *tctx = &ctx->tctx;
     const int rc = nexttoken(ctx, 0, 1, 1, 1);
-    if (rc == FAIL)
-        return FAIL;
-    else if (rc == END_OF_STREAM)
-        return NOFAIL;  // we'll call this an EOL.
-    else if (!tokeq(tctx, "\n"))
-        return fail(ctx, "Endline expected");
-    return NOFAIL;
+    if (ctx->eof)
+        return;  // we'll call this an EOL.
+    else if ((rc == 0) || (!tokeq(tctx, "\n")))
+    {
+        fail(ctx, "Endline expected");
+        skip_line(ctx);
+    } // else if
 } // require_endline
 
 
@@ -483,19 +543,20 @@ static int require_comma(Context *ctx)
 {
     TokenizerContext *tctx = &ctx->tctx;
     const int rc = nexttoken(ctx, 0, 1, 0, 0);
-    if (rc == FAIL)
-        return FAIL;
-    else if (!tokeq(tctx, ","))
-        return fail(ctx, "Comma expected");
-    return NOFAIL;
+    if ((rc == 0) || (!tokeq(tctx, ",")))
+    {
+        fail(ctx, "Comma expected");
+        return 0;
+    } // if
+    return 1;
 } // require_comma
 
 
 static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 {
     TokenizerContext *tctx = &ctx->tctx;
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 0;
 
     int neednum = 1;
     int regnum = 0;
@@ -533,25 +594,25 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
     else if (tokeq(tctx, "o"))
     {
         if (!shader_is_vertex(ctx) || !shader_version_atleast(ctx, 3, 0))
-            return fail(ctx, "Output register not valid in this shader type");
+            fail(ctx, "Output register not valid in this shader type");
         regtype = REG_TYPE_OUTPUT;
     } // else if
     else if (tokeq(tctx, "oT"))
     {
         if (shader_is_vertex(ctx) && shader_version_atleast(ctx, 3, 0))
-            return fail(ctx, "Output register not valid in this shader type");
+            fail(ctx, "Output register not valid in this shader type");
         regtype = REG_TYPE_OUTPUT;
     } // else if
     else if (tokeq(tctx, "a"))
     {
         if (!shader_is_vertex(ctx))
-            return fail(ctx, "Address register only valid in vertex shaders.");
+            fail(ctx, "Address register only valid in vertex shaders.");
         regtype = REG_TYPE_ADDRESS;
     } // else if
     else if (tokeq(tctx, "t"))
     {
         if (!shader_is_pixel(ctx))
-            return fail(ctx, "Address register only valid in pixel shaders.");
+            fail(ctx, "Address register only valid in pixel shaders.");
         regtype = REG_TYPE_ADDRESS;
     } // else if
     else if (tokeq(tctx, "vPos"))
@@ -589,7 +650,10 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 
     else
     {
-        return fail(ctx, "expected register type");
+        fail(ctx, "expected register type");
+        regtype = REG_TYPE_CONST;
+        regnum = 0;
+        neednum = 0;
     } // else
 
     if (neednum)
@@ -599,20 +663,20 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         //  that whitespace back.
         TokenizerContext tmptctx;
         memcpy(&tmptctx, tctx, sizeof (TokenizerContext));
-        if (nexttoken_ctx(ctx, &tmptctx, 0, 1, 1, 1) == FAIL)
-            return FAIL;
+        if (!nexttoken_ctx(ctx, &tmptctx, 0, 1, 1, 1))
+            return 0;
         else if (tokeq(&tmptctx, "["))
             neednum = 0;
     } // if
 
     if (neednum)
     {
-        if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 0, 0, 0))
+            return 0;
 
         uint32 ui32 = 0;
         if (!ui32fromstr(tctx->token, &ui32))
-            return fail(ctx, "Invalid register index");
+            fail(ctx, "Invalid register index");
         regnum = (int) ui32;
     } // if
 
@@ -641,23 +705,22 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         } // if
         else
         {
-            return fail(ctx, "Invalid const register index");
+            fail(ctx, "Invalid const register index");
         } // else
     } // if
 
     *rtype = regtype;
     *rnum = regnum;
 
-    return NOFAIL;
+    return 1;
 } // parse_register_name
 
 
-static int set_result_shift(Context *ctx, DestArgInfo *info, const int val)
+static void set_result_shift(Context *ctx, DestArgInfo *info, const int val)
 {
     if (info->result_shift != 0)
-        return fail(ctx, "Multiple result shift modifiers");
+        fail(ctx, "Multiple result shift modifiers");
     info->result_shift = val;
-    return NOFAIL;
 } // set_result_shift
 
 
@@ -671,19 +734,19 @@ static int parse_destination_token(Context *ctx)
     // See if there are destination modifiers on the instruction itself...
     while (1)
     {
-        if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 0, 0, 0))
+            return 1;
         else if (tokeq(tctx, " "))
             break;  // done with modifiers.
         else if (!tokeq(tctx, "_"))
-            return fail(ctx, "Expected modifier or whitespace");
-        else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-            return FAIL;
+            fail(ctx, "Expected modifier or whitespace");
+        else if (!nexttoken(ctx, 0, 0, 0, 0))
+            return 1;
         // !!! FIXME: this can be cleaned up when tokenizer is fixed.
         else if (tokeq(tctx, "x"))
         {
-            if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-                return FAIL;
+            if (!nexttoken(ctx, 0, 0, 0, 0))
+                return 1;
             else if (tokeq(tctx, "2"))
                 set_result_shift(ctx, info, 0x1);
             else if (tokeq(tctx, "4"))
@@ -691,13 +754,13 @@ static int parse_destination_token(Context *ctx)
             else if (tokeq(tctx, "8"))
                 set_result_shift(ctx, info, 0x3);
             else
-                return fail(ctx, "Expected modifier");
+                fail(ctx, "Expected modifier");
         } // else if
         // !!! FIXME: this can be cleaned up when tokenizer is fixed.
         else if (tokeq(tctx, "d"))
         {
-            if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-                return FAIL;
+            if (!nexttoken(ctx, 0, 0, 0, 0))
+                return 1;
             else if (tokeq(tctx, "8"))
                 set_result_shift(ctx, info, 0xD);
             else if (tokeq(tctx, "4"))
@@ -705,7 +768,7 @@ static int parse_destination_token(Context *ctx)
             else if (tokeq(tctx, "2"))
                 set_result_shift(ctx, info, 0xF);
             else
-                return fail(ctx, "Expected modifier");
+                fail(ctx, "Expected modifier");
         } // else if
         else if (tokeq(tctx, "sat"))
             info->result_mod |= MOD_SATURATE;
@@ -714,25 +777,26 @@ static int parse_destination_token(Context *ctx)
         else if (tokeq(tctx, "centroid"))
             info->result_mod |= MOD_CENTROID;
         else
-            return fail(ctx, "Expected modifier");
+            fail(ctx, "Expected modifier");
     } // while
 
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 1;
 
     // !!! FIXME: predicates.
     if (tokeq(tctx, "("))
-        return fail(ctx, "Predicates unsupported at this time");
+        fail(ctx, "Predicates unsupported at this time");  // !!! FIXME: ...
+
     pushback(ctx);  // parse_register_name calls nexttoken().
 
-    if (parse_register_name(ctx, &info->regtype, &info->regnum) == FAIL)
-        return FAIL;
+    parse_register_name(ctx, &info->regtype, &info->regnum);
 
-    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return 1;
 
     // !!! FIXME: can dest registers do relative addressing?
 
+    int invalid_writemask = 0;
     int implicit_writemask = 0;
     if (!tokeq(tctx, "."))
     {
@@ -744,11 +808,11 @@ static int parse_destination_token(Context *ctx)
     // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
     //else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
     else if ( (scalar_register(ctx->shader_type, info->regtype, info->regnum)) && (info->regtype != REG_TYPE_DEPTHOUT) )
-        return fail(ctx, "Writemask specified for scalar register");
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+        fail(ctx, "Writemask specified for scalar register");
+    else if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 1;
     else if (tokeq(tctx, ""))
-        return fail(ctx, "Invalid writemask");
+        invalid_writemask = 1;
     else
     {
         char *ptr = tctx->token;
@@ -766,7 +830,7 @@ static int parse_destination_token(Context *ctx)
         } // if
 
         if (*ptr != '\0')
-            return fail(ctx, "Invalid writemask");
+            invalid_writemask = 1;
 
         info->writemask = ( ((info->writemask0 & 0x1) << 0) |
                             ((info->writemask1 & 0x1) << 1) |
@@ -774,18 +838,24 @@ static int parse_destination_token(Context *ctx)
                             ((info->writemask3 & 0x1) << 3) );
     } // else
 
+    if (invalid_writemask)
+        fail(ctx, "Invalid writemask");
+
     // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
     if (info->regtype == REG_TYPE_DEPTHOUT)
     {
         if ( (!implicit_writemask) && ((info->writemask0 + info->writemask1 +
                info->writemask2 + info->writemask3) > 1) )
-            return fail(ctx, "Writemask specified for scalar register");
+            fail(ctx, "Writemask specified for scalar register");
     } // if
 
     info->orig_writemask = info->writemask;
 
     if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
-        return fail(ctx, "Too many tokens");
+    {
+        fail(ctx, "Too many tokens");
+        return 1;
+    } // if
 
     ctx->tokenbuf[ctx->tokenbufpos++] =
             ( ((((uint32) 1)) << 31) |
@@ -818,21 +888,25 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     int retval = 1;
 
     if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
-        return fail(ctx, "Too many tokens");
+    {
+        fail(ctx, "Too many tokens");
+        return 0;
+    } // if
 
     // mark this now, so optional relative addressing token is placed second.
     uint32 *token = &ctx->tokenbuf[ctx->tokenbufpos++];
+    *token = 0;
 
     SourceMod srcmod = SRCMOD_NONE;
     int negate = 0;
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 1;
     else if (tokeq(tctx, "1"))
     {
-        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 1, 0, 0))
+            return 1;
         else if (!tokeq(tctx, "-"))
-            return fail(ctx, "Unexpected value");
+            fail(ctx, "Unexpected value");
         else
             srcmod = SRCMOD_COMPLEMENT;
     } // else
@@ -845,14 +919,13 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 
     RegisterType regtype;
     int regnum;
-    if (parse_register_name(ctx, &regtype, &regnum) == FAIL)
-        return FAIL;
-    else if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    parse_register_name(ctx, &regtype, &regnum);
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return 1;
     else if (!tokeq(tctx, "_"))
         pushback(ctx);
-    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+    else if (!nexttoken(ctx, 0, 0, 0, 0))
+        return 1;
     else if (tokeq(tctx, "bias"))
         set_source_mod(ctx, negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
     else if (tokeq(tctx, "bx2"))
@@ -866,48 +939,49 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     else if (tokeq(tctx, "abs"))
         set_source_mod(ctx, negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
     else
-        return fail(ctx, "Invalid source modifier");
+        fail(ctx, "Invalid source modifier");
 
-    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return 1;
 
     uint32 relative = 0;
     if (!tokeq(tctx, "["))
         pushback(ctx);  // not relative addressing?
-    else if (!relok)
-        return fail(ctx, "Relative addressing not permitted here.");
     else
     {
-        const int rc = parse_source_token_maybe_relative(ctx, 0);
-        if (rc == FAIL)
-            return FAIL;
-        retval += rc;
+        if (!relok)
+            fail(ctx, "Relative addressing not permitted here.");
+        else
+            retval++;
+
+        parse_source_token_maybe_relative(ctx, 0);
         relative = 1;
-        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 1, 0, 0))
+            return retval;
         else if (!tokeq(tctx, "+"))
             pushback(ctx);
-        else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        else if (!nexttoken(ctx, 0, 1, 0, 0))
+            return retval;
         else
         {
             if (regnum != 0)  // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
                 fail(ctx, "Relative addressing with explicit register number.");
             uint32 ui32 = 0;
             if (!ui32fromstr(tctx->token, &ui32))
-                return fail(ctx, "Invalid relative addressing offset");
+                fail(ctx, "Invalid relative addressing offset");
             regnum += (int) ui32;
         } // else
 
-        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 1, 0, 0))
+            return retval;
         else if (!tokeq(tctx, "]"))
-            return fail(ctx, "Expected ']'");
+            fail(ctx, "Expected ']'");
     } // else
 
-    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return retval;
 
+    int invalid_swizzle = 0;
     uint32 swizzle = 0;
     if (!tokeq(tctx, "."))
     {
@@ -915,11 +989,11 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
     else if (scalar_register(ctx->shader_type, regtype, regnum))
-        return fail(ctx, "Swizzle specified for scalar register");
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+        fail(ctx, "Swizzle specified for scalar register");
+    else if (!nexttoken(ctx, 0, 1, 0, 0))
+        return retval;
     else if (tokeq(tctx, ""))
-        return fail(ctx, "Invalid swizzle");
+        invalid_swizzle = 1;
     else
     {
         // deal with shortened form (.x = .xxxx, etc).
@@ -930,10 +1004,10 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         else if (tctx->token[3] == '\0')
             tctx->token[3] = tctx->token[2];
         else if (tctx->token[4] != '\0')
-            return fail(ctx, "Invalid swizzle");
+            invalid_swizzle = 1;
         tctx->token[4] = '\0';
 
-        uint32 val;
+        uint32 val = 0;
         int saw_xyzw = 0;
         int saw_rgba = 0;
         int i;
@@ -950,14 +1024,17 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
                 case 'g': val = 1; saw_rgba = 1; break;
                 case 'b': val = 2; saw_rgba = 1; break;
                 case 'a': val = 3; saw_rgba = 1; break;
-                default: return fail(ctx, "Invalid swizzle");
+                default: invalid_swizzle = 1; break;
             } // switch
             swizzle |= (val << (i * 2));
         } // for
 
         if (saw_xyzw && saw_rgba)
-            return fail(ctx, "Invalid swizzle");
+            invalid_swizzle = 1;
     } // else
+
+    if (invalid_swizzle)
+        fail(ctx, "Invalid swizzle");
 
     *token = ( ((((uint32) 1)) << 31) |
                ((((uint32) regnum) & 0x7ff) << 0) |
@@ -979,7 +1056,7 @@ static inline int parse_source_token(Context *ctx)
 
 static int parse_args_NULL(Context *ctx)
 {
-    return (isfail(ctx) ? FAIL : 1);
+    return 1;
 } // parse_args_NULL
 
 
@@ -990,41 +1067,43 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
     union { float f; int32 si32; uint32 ui32; } cvt;
     cvt.si32 = 0;
 
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    *token = 0;
+
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 0;
     else if (tokeq(tctx, "-"))
         negative = -1;
     else
         pushback(ctx);
 
     uint32 val = 0;
-    if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 0;
     else if (!ui32fromstr(tctx->token, &val))
-        return fail(ctx, "Expected number");
+        fail(ctx, "Expected number");
 
     uint32 fraction = 0;
-    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return 0;
     else if (!tokeq(tctx, "."))
         pushback(ctx);  // whole number
     else if (!floatok)
-        return fail(ctx, "Expected whole number");
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+        fail(ctx, "Expected whole number");
+    else if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 0;
     else if (!ui32fromstr(tctx->token, &fraction))
-        return fail(ctx, "Expected number");
+        fail(ctx, "Expected number");
 
     uint32 exponent = 0;
     int negexp = 0;
-    if (nexttoken(ctx, 0, 1, 1, 1) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 1, 1, 1))
+        return 0;
     else if (!tokeq(tctx, "e"))
         pushback(ctx);
     else if (!floatok)
-        return fail(ctx, "Exponent on whole number");  // !!! FIXME: illegal?
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+        fail(ctx, "Exponent on whole number");  // !!! FIXME: illegal?
+    else if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 0;
     else
     {
         if (!tokeq(tctx, "-"))
@@ -1032,10 +1111,10 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
         else
             negexp = 1;
 
-        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 1, 0, 0))
+            return 0;
         else if (!ui32fromstr(tctx->token, &exponent))
-            return fail(ctx, "Expected exponent");
+            fail(ctx, "Expected exponent");
     } // else
 
     if (!floatok)
@@ -1066,30 +1145,21 @@ static int parse_num(Context *ctx, const int floatok, uint32 *token)
     } // else
 
     *token = cvt.ui32;
-    return NOFAIL;
+    return 1;
 } // parse_num
 
 
 static int parse_args_DEFx(Context *ctx, const int isflt)
 {
-    if (parse_destination_token(ctx) == FAIL)
-        return FAIL;
-    else if (require_comma(ctx) == FAIL)
-        return FAIL;
-    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
-        return FAIL;
-    else if (require_comma(ctx) == FAIL)
-        return FAIL;
-    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
-        return FAIL;
-    else if (require_comma(ctx) == FAIL)
-        return FAIL;
-    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
-        return FAIL;
-    else if (require_comma(ctx) == FAIL)
-        return FAIL;
-    else if (parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]) == FAIL)
-        return FAIL;
+    parse_destination_token(ctx);
+    require_comma(ctx);
+    parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]);
+    require_comma(ctx);
+    parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]);
+    require_comma(ctx);
+    parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]);
+    require_comma(ctx);
+    parse_num(ctx, isflt, &ctx->tokenbuf[ctx->tokenbufpos++]);
     return 6;
 } // parse_args_DEFx
 
@@ -1109,20 +1179,16 @@ static int parse_args_DEFI(Context *ctx)
 static int parse_args_DEFB(Context *ctx)
 {
     TokenizerContext *tctx = &ctx->tctx;
-    if (parse_destination_token(ctx) == FAIL)
-        return FAIL;
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
-    else if (!tokeq(tctx, ","))
-        return fail(ctx, "Expected ','");
-    else if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-        return FAIL;
+    parse_destination_token(ctx);
+    require_comma(ctx);
+    if (!nexttoken(ctx, 0, 1, 0, 0))
+        return 1;
     else if (tokeq(tctx, "true"))
         ctx->tokenbuf[ctx->tokenbufpos++] = 1;
     else if (tokeq(tctx, "false"))
         ctx->tokenbuf[ctx->tokenbufpos++] = 0;
     else
-        return fail(ctx, "Expected 'true' or 'false'");
+        fail(ctx, "Expected 'true' or 'false'");
     return 3;
 } // parse_args_DEFB
 
@@ -1144,8 +1210,8 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
     strcpy(token, tctx->token);
     if (tokeq(tctx, "2"))  // "2d" is two tokens.
     {
-        if (nexttoken(ctx, 0, 0, 1, 1) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 0, 1, 1))
+            return 0;
         else if (!tokeq(tctx, "d") != 0)
             pushback(ctx);
         else
@@ -1158,7 +1224,7 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
         {
             *issampler = 0;
             *val = i;
-            return NOFAIL;
+            return 1;
         } // if
     } // for
 
@@ -1168,7 +1234,7 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
         {
             *issampler = 1;
             *val = i + 2;
-            return NOFAIL;
+            return 1;
         } // if
     } // for
 
@@ -1182,11 +1248,11 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
             tctx->source -= strlen(token);  // !!! FIXME: hack to move back
             strcpy(tctx->token, "_");  // !!! FIXME: hack to move back
             pushback(ctx);  // !!! FIXME: hack to move back
-            return NOFAIL;  // if you have "dcl_pp", then "_pp" isn't a usage.
+            return 1;  // if you have "dcl_pp", then "_pp" isn't a usage.
         } // if
     } // for
 
-    return FAIL;
+    return 0;
 } // parse_dcl_usage
 
 
@@ -1198,31 +1264,31 @@ static int parse_args_DCL(Context *ctx)
     uint32 index = 0;
 
     ctx->tokenbufpos++;  // save a spot for the usage/index token.
+    ctx->tokenbuf[0] = 0;
 
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 0, 0, 0))
+        return 1;
     else if (tokeq(tctx, " "))
         pushback(ctx);
     else if (!tokeq(tctx, "_"))
-        return fail(ctx, "Expected register or usage");
-    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
-    else if (parse_dcl_usage(ctx, &usage, &issampler) == FAIL)
-        return FAIL;
+        fail(ctx, "Expected register or usage");
+    else if (!nexttoken(ctx, 0, 0, 0, 0))
+        return 1;
+    else
+        parse_dcl_usage(ctx, &usage, &issampler);
 
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 0, 0, 0))
+        return 1;
     else if (tokeq(tctx, " ") || tokeq(tctx, "_"))
         pushback(ctx);  // parse_destination_token() wants these.
     else if (!ui32fromstr(tctx->token, &index))
-        return fail(ctx, "Expected usage index or register");
+        fail(ctx, "Expected usage index or register");
 
-    if (parse_destination_token(ctx) == FAIL)
-        return FAIL;
+    parse_destination_token(ctx);
 
     const int samplerreg = (ctx->dest_arg.regtype == REG_TYPE_SAMPLER);
     if (issampler != samplerreg)
-        return fail(ctx, "Invalid usage");
+        fail(ctx, "Invalid usage");
     else if (samplerreg)
         ctx->tokenbuf[0] = (usage << 27) | 0x80000000;
     else
@@ -1236,7 +1302,7 @@ static int parse_args_D(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_D
 
 
@@ -1244,7 +1310,7 @@ static int parse_args_S(Context *ctx)
 {
     int retval = 1;
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_S
 
 
@@ -1252,9 +1318,9 @@ static int parse_args_SS(Context *ctx)
 {
     int retval = 1;
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_SS
 
 
@@ -1262,9 +1328,9 @@ static int parse_args_DS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_DS
 
 
@@ -1272,11 +1338,11 @@ static int parse_args_DSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_DSS
 
 
@@ -1284,13 +1350,13 @@ static int parse_args_DSSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_DSSS
 
 
@@ -1298,15 +1364,15 @@ static int parse_args_DSSSS(Context *ctx)
 {
     int retval = 1;
     retval += parse_destination_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    if (require_comma(ctx) == FAIL) return FAIL;
+    require_comma(ctx);
     retval += parse_source_token(ctx);
-    return isfail(ctx) ? FAIL : retval;
+    return retval;
 } // parse_args_DSSSS
 
 
@@ -1365,7 +1431,7 @@ static const Instruction instructions[] =
 static int parse_condition(Context *ctx, uint32 *controls)
 {
     TokenizerContext *tctx = &ctx->tctx;
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+    if (!nexttoken(ctx, 0, 0, 0, 0))
         return 0;
     else if (!tokeq(tctx, "_"))
     {
@@ -1373,7 +1439,7 @@ static int parse_condition(Context *ctx, uint32 *controls)
         return 0;
     } // else if
 
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
+    if (!nexttoken(ctx, 0, 0, 0, 0))
         return 0;
     else
     {
@@ -1413,8 +1479,8 @@ static int parse_instruction_token(Context *ctx)
 
     if (tokeq(tctx, "+"))
     {
-        if (nexttoken(ctx, 0, 1, 0, 0) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 1, 0, 0))
+            return 0;
         coissue = 1;
     } // if
 
@@ -1425,7 +1491,10 @@ static int parse_instruction_token(Context *ctx)
     while (1)
     {
         if ( (strlen(opstr) + strlen(tctx->token)) >= (sizeof (opstr)-1) )
-            return fail(ctx, "Expected instruction");
+        {
+            fail(ctx, "Expected instruction");
+            return 0;
+        } // if
 
         char *ptr;
         for (ptr = tctx->token; *ptr != '\0'; ptr++)
@@ -1442,8 +1511,8 @@ static int parse_instruction_token(Context *ctx)
 
         strcat(opstr, tctx->token);
 
-        if (nexttoken(ctx, 0, 0, 1, 1) == FAIL)
-            return FAIL;
+        if (!nexttoken(ctx, 0, 0, 1, 1))
+            return 0;
     } // while
 
     uint32 controls = 0;
@@ -1479,7 +1548,10 @@ static int parse_instruction_token(Context *ctx)
     uint32 opcode = (uint32) i;
 
     if (!valid_opcode)
-        return failf(ctx, "Unknown instruction '%s'", opstr);
+    {
+        failf(ctx, "Unknown instruction '%s'", opstr);
+        return 0;
+    } // if
 
     // This might need to be IFC instead of IF.
     // !!! FIXME: compare opcode, not string
@@ -1502,7 +1574,7 @@ static int parse_instruction_token(Context *ctx)
     else if (strcmp(instruction->opcode_string, "SETP") == 0)
     {
         if (!parse_condition(ctx, &controls))
-            return fail(ctx, "SETP requires a condition");
+            fail(ctx, "SETP requires a condition");
     } // else if
 
     instruction = &instructions[opcode];  // ...in case this changed.
@@ -1512,8 +1584,7 @@ static int parse_instruction_token(Context *ctx)
     ctx->tokenbufpos = 0;
 
     const int tokcount = instruction->parse_args(ctx);
-    if (require_endline(ctx) == FAIL)
-        return FAIL;
+    require_endline(ctx);
 
     // insttoks bits are reserved and should be zero if < SM2.
     const uint32 insttoks = shader_version_atleast(ctx, 2, 0) ? tokcount-1 : 0;
@@ -1529,15 +1600,15 @@ static int parse_instruction_token(Context *ctx)
     for (i = 0; i < (tokcount-1); i++)
         output_token(ctx, ctx->tokenbuf[i]);
 
-    return NOFAIL;
+    return 1;
 } // parse_instruction_token
 
 
-static int parse_version_token(Context *ctx)
+static void parse_version_token(Context *ctx)
 {
     TokenizerContext *tctx = &ctx->tctx;
-    if (nexttoken(ctx, 1, 1, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 1, 1, 0, 0))
+        return;
 
     uint32 shader_type = 0;
     if (tokeq(tctx, "vs"))
@@ -1553,75 +1624,75 @@ static int parse_version_token(Context *ctx)
     else
     {
         // !!! FIXME: geometry shaders?
-        return fail(ctx, "Expected version string");
+        fail(ctx, "Expected version string");
     } // else
 
+    int bad_version = 0;
+
     uint32 major = 0;
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 0, 0, 0))
+        return;
     else if ( (!tokeq(tctx, "_")) && (!tokeq(tctx, ".")) )
-        return fail(ctx, "Expected version string");
-    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+        bad_version = 1;
+    else if (!nexttoken(ctx, 0, 0, 0, 0))
+        return;
     else if (!ui32fromstr(tctx->token, &major))
-        return fail(ctx, "Expected version string");
+        bad_version = 1;
 
     uint32 minor = 0;
-    if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+    if (!nexttoken(ctx, 0, 0, 0, 0))
+        return;
     else if ( (!tokeq(tctx, "_")) && (!tokeq(tctx, ".")) )
-        return fail(ctx, "Expected version string");
-    else if (nexttoken(ctx, 0, 0, 0, 0) == FAIL)
-        return FAIL;
+        bad_version = 1;
+    else if (!nexttoken(ctx, 0, 0, 0, 0))
+        return;
     else if (tokeq(tctx, "x"))
         minor = 1;
     else if (tokeq(tctx, "sw"))
         minor = 255;
     else if (!ui32fromstr(tctx->token, &minor))
-        return fail(ctx, "Expected version string");
+        bad_version = 1;
+
+    if (bad_version)
+        fail(ctx, "Expected version string");
+    else
+        require_endline(ctx);
 
     ctx->major_ver = major;
     ctx->minor_ver = minor;
 
-    if (require_endline(ctx) == FAIL)
-        return FAIL;
-
     ctx->version_token = (shader_type << 16) | (major << 8) | (minor << 0);
     output_token(ctx, ctx->version_token);
-    return NOFAIL;
 } // parse_version_token
 
 
-static int parse_phase_token(Context *ctx)
+static void parse_phase_token(Context *ctx)
 {
-    if (require_endline(ctx) == FAIL)
-        return FAIL;
+    require_endline(ctx);
     output_token(ctx, 0x0000FFFD); // phase token always 0x0000FFFD.
-    return NOFAIL;
 } // parse_phase_token
 
 
-static int parse_end_token(Context *ctx)
+static void parse_end_token(Context *ctx)
 {
-    if (require_endline(ctx) == FAIL)
-        return FAIL;
+    require_endline(ctx);
     // We don't emit the end token bits here, since it's valid for a shader
     //  to not specify an "end" string at all; it's implicit, in that case.
     // Instead, we make sure if we see "end" that it's the last thing we see.
-    if (nexttoken(ctx, 1, 1, 0, 1) != END_OF_STREAM)
-        return fail(ctx, "Content after END");
-    return NOFAIL;
+    nexttoken(ctx, 1, 1, 0, 1);
+    if (!ctx->eof)
+        fail(ctx, "Content after END");
 } // parse_end_token
 
 
-static int parse_token(Context *ctx)
+static void parse_token(Context *ctx)
 {
     TokenizerContext *tctx = &ctx->tctx;
     if (tokeq(tctx, "end"))
-        return parse_end_token(ctx);
+        parse_end_token(ctx);
     else if (tokeq(tctx, "phase"))
-        return parse_phase_token(ctx);
-    return parse_instruction_token(ctx);
+        parse_phase_token(ctx);
+    parse_instruction_token(ctx);
 } // parse_token
 
 
@@ -1647,14 +1718,26 @@ static Context *build_context(const char *source, MOJOSHADER_malloc m,
 } // build_context
 
 
+static void free_error_list(MOJOSHADER_free f, void *d, ErrorList *item)
+{
+    while (item != NULL)
+    {
+        ErrorList *next = item->next;
+        f((void *) item->error.error, d);
+        f((void *) item->error.filename, d);
+        f(item, d);
+        item = next;
+    } // while
+} // free_error_list
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
         void *d = ctx->malloc_data;
-        if ((ctx->failstr != NULL) && (ctx->failstr != out_of_mem_str))
-            f((void *) ctx->failstr, d);
+        free_error_list(f, d, ctx->errors);
         if (ctx->output != NULL)
             f(ctx->output, d);
         if (ctx->token_to_source != NULL)
@@ -1664,6 +1747,31 @@ static void destroy_context(Context *ctx)
         f(ctx, d);
     } // if
 } // destroy_context
+
+
+static MOJOSHADER_error *build_errors(Context *ctx)
+{
+    int total = 0;
+    MOJOSHADER_error *retval = (MOJOSHADER_error *)
+            Malloc(ctx, sizeof (MOJOSHADER_error) * ctx->error_count);
+    if (retval == NULL)
+        return NULL;
+
+    ErrorList *item = ctx->errors;
+    while (item != NULL)
+    {
+        ErrorList *next = item->next;
+        // reuse the string allocations
+        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
+        Free(ctx, item);
+        item = next;
+        total++;
+    } // while
+    ctx->errors = NULL;
+
+    assert(total == ctx->error_count);
+    return retval;
+} // build_errors
 
 
 static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
@@ -1681,32 +1789,13 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
 
-    // !!! FIXME: handle multiple errors.
-    retval->error_count = 1;
-    retval->errors = (MOJOSHADER_error *)
-                     Malloc(ctx, sizeof (MOJOSHADER_error));
-    if (retval->errors == NULL)
+    retval->error_count = ctx->error_count;
+    retval->errors = build_errors(ctx);
+    if ((retval->errors == NULL) && (ctx->error_count > 0))
     {
         Free(ctx, retval);
         return &out_of_mem_data;
     } // if
-    retval->errors->error = ctx->failstr;
-    retval->errors->filename = NULL;
-
-    ctx->failstr = NULL;  // don't let this get free()'d too soon.
-
-    switch (ctx->parse_phase)
-    {
-        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            retval->errors->error_position = -2;
-            break;
-        case MOJOSHADER_PARSEPHASE_WORKING:
-            retval->errors->error_position = ctx->tctx.linenum;
-            break;
-        case MOJOSHADER_PARSEPHASE_DONE:
-            retval->errors->error_position = -1;
-            break;
-    } // switch
 
     return retval;
 } // build_failed_assembly
@@ -1884,8 +1973,7 @@ static void output_comments(Context *ctx, const char **comments,
     for (i = 0; i < comment_count; i++)
         output_comment_string(ctx, comments[i]);
 
-    if (!isfail(ctx))
-        ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
 } // output_comments
 
 
@@ -1897,6 +1985,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                             unsigned int symbol_count,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    int failed = 0;
     MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
 
@@ -1913,12 +2002,22 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
     // parse out the rest of the tokens after the version token...
-    while (nexttoken(ctx, 1, 1, 0, 1) == NOFAIL)
+    while (nexttoken(ctx, 1, 1, 0, 1))
+    {
+        if (isfail(ctx))
+        {
+            failed = 1;
+            ctx->isfail = 0;
+            skip_line(ctx);  // start fresh on next line.
+        } // if
         parse_token(ctx);
+    } // while
+
+    ctx->isfail = failed;
 
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
-    if (isfail(ctx))
+    if (failed)
         retval = (MOJOSHADER_parseData *) build_failed_assembly(ctx);
     else
     {

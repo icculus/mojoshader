@@ -83,11 +83,6 @@ typedef int32_t int32;
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
-// Special-case return values from the parsing pipeline...
-#define FAIL (-1)
-#define NOFAIL (-2)
-#define END_OF_STREAM (-3)
-
 
 // Byteswap magic...
 
@@ -269,7 +264,14 @@ typedef enum
 } MOJOSHADER_parsePhase;
 
 extern MOJOSHADER_parseData out_of_mem_data;
-extern const char *out_of_mem_str;
+
+typedef struct ErrorList
+{
+    MOJOSHADER_error error;
+    struct ErrorList *next;
+} ErrorList;
+
+
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 
