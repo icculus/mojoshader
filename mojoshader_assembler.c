@@ -1682,6 +1682,7 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->malloc_data = ctx->malloc_data;
 
     // !!! FIXME: handle multiple errors.
+    retval->error_count = 1;
     retval->errors = (MOJOSHADER_error *)
                      Malloc(ctx, sizeof (MOJOSHADER_error));
     if (retval->errors == NULL)
@@ -1933,19 +1934,32 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                                       ctx->output_len * sizeof (uint32),
                                       NULL, 0, m, f, d);
 
-// !!! FIXME: multiple errors.
-#if 0
         // on error, map the bytecode back to a line number.
-        if (retval->error_position >= 0)
+        int i;
+        for (i = 0; i < retval->error_count; i++)
         {
-            assert(retval != &out_of_mem_data);
-            const int pos = retval->error_position / sizeof (uint32);
-            if (pos < ctx->output_len)
-                retval->error_position = ctx->token_to_line[pos];
-            else
-                retval->error_position = -1;  // oh well.
-        } // if
-#endif
+            MOJOSHADER_error *error = &retval->errors[i];
+            if (error->error_position >= 0)
+            {
+                assert(retval != &out_of_mem_data);
+                const int pos = error->error_position / sizeof (uint32);
+                if (pos >= ctx->output_len)
+                    error->error_position = -1;  // oh well.
+                else
+                {
+                    const SourcePos *srcpos = &ctx->token_to_source[pos];
+                    Free(ctx, (void *) error->filename);
+                    char *fname = (char *) Malloc(ctx,
+                                        strlen(srcpos->filename) + 1);
+                    if (fname != NULL)
+                    {
+                        strcpy(fname, srcpos->filename);
+                        error->error_position = srcpos->line;
+                    } // if
+                    error->filename = fname;  // may be NULL, that's okay.
+                } // else
+            } // if
+        } // for
     } // if
 
     destroy_context(ctx);
