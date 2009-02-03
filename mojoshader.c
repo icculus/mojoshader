@@ -6668,22 +6668,22 @@ static int parse_token(Context *ctx)
     if (isfail(ctx))
         return FAIL;  // just in case...catch previously unhandled fails here.
 
-    if (ctx->output_stack_len != 0)
+    else if (ctx->output_stack_len != 0)
         return fail(ctx, "BUG: output stack isn't empty on new token!");
 
-    if (ctx->tokencount == 0)
+    else if (ctx->tokencount == 0)
         return fail(ctx, "unexpected end of shader.");
 
-    if ((rc = parse_comment_token(ctx)) != 0)
+    else if ((rc = parse_comment_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_end_token(ctx)) != 0)
+    else if ((rc = parse_end_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_phase_token(ctx)) != 0)
+    else if ((rc = parse_phase_token(ctx)) != 0)
         return rc;
 
-    if ((rc = parse_instruction_token(ctx)) != 0)
+    else if ((rc = parse_instruction_token(ctx)) != 0)
         return rc;
 
     return failf(ctx, "unknown token (%u)", (uint) *ctx->tokens);
