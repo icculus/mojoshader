@@ -6533,9 +6533,6 @@ static int parse_instruction_token(Context *ctx)
 
 static int parse_version_token(Context *ctx, const char *profilestr)
 {
-    if (isfail(ctx))  // catch preexisting errors here.
-        return FAIL;
-
     if (ctx->tokencount == 0)
         return fail(ctx, "Expected version token, got none at all.");
 
@@ -6705,10 +6702,7 @@ static int parse_token(Context *ctx)
 {
     int rc = 0;
 
-    if (isfail(ctx))
-        return FAIL;  // just in case...catch previously unhandled fails here.
-
-    else if (ctx->output_stack_len != 0)
+    if (ctx->output_stack_len != 0)
         return fail(ctx, "BUG: output stack isn't empty on new token!");
 
     else if (ctx->tokencount == 0)
@@ -7485,6 +7479,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
     int rc = FAIL;
+    int failed = 0;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
         return &out_of_mem_data;  // supply both or neither.
@@ -7503,13 +7498,23 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     } // if
 
     // parse out the rest of the tokens after the version token...
-    while ( (rc > 0) && (!isfail(ctx)) )
+    while (rc > 0)
     {
+        // reset for each token.
+        if (isfail(ctx))
+        {
+            failed = 1;
+            ctx->isfail = 0;
+        } // if
+
         // reset for every token, and consider an error if it ever overflows!
         ctx->scratchidx = 0;
 
         if ( ((uint32) rc) > ctx->tokencount )
+        {
             fail(ctx, "Corrupted or truncated shader");
+            break;
+        } // if
         else
         {
             ctx->tokens += rc;
@@ -7518,15 +7523,18 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         } // else
     } // while
 
-    if (!isfail(ctx))
+    ctx->parse_phase = MOJOSHADER_PARSEPHASE_DONE;
+
+    if (!failed)
     {
-        ctx->parse_phase = MOJOSHADER_PARSEPHASE_DONE;
         process_definitions(ctx);
+        failed = isfail(ctx);
     } // if
 
-    if (!isfail(ctx))
+    if (!failed)
         ctx->profile->finalize_emitter(ctx);
 
+    ctx->isfail = failed;
     retval = build_parsedata(ctx);
     destroy_context(ctx);
     return retval;
