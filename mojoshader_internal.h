@@ -263,7 +263,8 @@ typedef enum
     MOJOSHADER_PARSEPHASE_DONE,
 } MOJOSHADER_parsePhase;
 
-extern MOJOSHADER_parseData out_of_mem_data;
+extern MOJOSHADER_error MOJOSHADER_out_of_mem_error;
+extern MOJOSHADER_parseData MOJOSHADER_out_of_mem_data;
 
 typedef struct ErrorList
 {

@@ -238,9 +238,10 @@ struct Context
 
 // Convenience functions for allocators...
 
-static MOJOSHADER_error out_of_mem_error = { "Out of memory", NULL, -1 };
-MOJOSHADER_parseData out_of_mem_data = {
-    1, &out_of_mem_error, 0, 0, 0, 0, MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+MOJOSHADER_error MOJOSHADER_out_of_mem_error = { "Out of memory", NULL, -1 };
+MOJOSHADER_parseData MOJOSHADER_out_of_mem_data = {
+    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0,
+    MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
 static inline void out_of_memory(Context *ctx)
@@ -7187,11 +7188,11 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     int attribute_count = 0;
 
     if (ctx->out_of_memory)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
 
     retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
     if (retval == NULL)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
 
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
 
@@ -7262,7 +7263,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
             } // for
             Free(ctx, ctx->errors);
             Free(ctx, retval);
-            return &out_of_mem_data;
+            return &MOJOSHADER_out_of_mem_data;
         } // if
     } // if
     else
@@ -7469,11 +7470,11 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     int failed = 0;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
-        return &out_of_mem_data;  // supply both or neither.
+        return &MOJOSHADER_out_of_mem_data;  // supply both or neither.
 
     ctx = build_context(profile, tokenbuf, bufsize, swiz, swizcount, m, f, d);
     if (ctx == NULL)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
 
     verify_swizzles(ctx);
 
@@ -7535,7 +7536,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 {
     MOJOSHADER_parseData *data = (MOJOSHADER_parseData *) _data;
-    if ((data == NULL) || (data == &out_of_mem_data))
+    if ((data == NULL) || (data == &MOJOSHADER_out_of_mem_data))
         return;  // no-op.
 
     MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;

@@ -1784,12 +1784,12 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     assert(isfail(ctx));
 
     if (ctx->out_of_memory)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
         
     MOJOSHADER_parseData *retval = NULL;
     retval = (MOJOSHADER_parseData*) Malloc(ctx, sizeof(MOJOSHADER_parseData));
     if (retval == NULL)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
 
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
     retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
@@ -1801,7 +1801,7 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     if ((retval->errors == NULL) && (ctx->error_count > 0))
     {
         Free(ctx, retval);
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
     } // if
 
     return retval;
@@ -1997,11 +1997,11 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     Context *ctx = NULL;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
-        return &out_of_mem_data;  // supply both or neither.
+        return &MOJOSHADER_out_of_mem_data;  // supply both or neither.
 
     ctx = build_context(source, m, f, d);
     if (ctx == NULL)
-        return &out_of_mem_data;
+        return &MOJOSHADER_out_of_mem_data;
 
     // Version token always comes first.
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
@@ -2054,7 +2054,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
             MOJOSHADER_error *error = &retval->errors[i];
             if (error->error_position >= 0)
             {
-                assert(retval != &out_of_mem_data);
+                assert(retval != &MOJOSHADER_out_of_mem_data);
                 const int pos = error->error_position / sizeof (uint32);
                 if (pos >= ctx->output_len)
                     error->error_position = -1;  // oh well.
