@@ -7481,6 +7481,15 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
     rc = parse_version_token(ctx, profile);
 
+    if ( ((uint32) rc) > ctx->tokencount )
+    {
+        fail(ctx, "Corrupted or truncated shader");
+        ctx->tokencount = rc;
+    } // if
+
+    ctx->tokens += rc;
+    ctx->tokencount -= rc;
+
     // parse out the rest of the tokens after the version token...
     while (ctx->tokencount > 0)
     {
@@ -7494,17 +7503,15 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         // reset for every token, and consider an error if it ever overflows!
         ctx->scratchidx = 0;
 
+        rc = parse_token(ctx);
         if ( ((uint32) rc) > ctx->tokencount )
         {
             fail(ctx, "Corrupted or truncated shader");
             break;
         } // if
-        else
-        {
-            ctx->tokens += rc;
-            ctx->tokencount -= rc;
-            rc = parse_token(ctx);
-        } // else
+
+        ctx->tokens += rc;
+        ctx->tokencount -= rc;
     } // while
 
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_DONE;
