@@ -1067,7 +1067,7 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                       ctx->malloc_fn,
                                                       ctx->free_fn,
                                                       ctx->malloc_data);
-    if (pd->errors != NULL)
+    if (pd->error_count > 0)
     {
         set_error(pd->errors[0].error);
         goto compile_shader_fail;
