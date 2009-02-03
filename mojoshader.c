@@ -7148,9 +7148,6 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         samplers = build_samplers(ctx);
 
     if (!isfail(ctx))
-        samplers = build_samplers(ctx);
-
-    if (!isfail(ctx))
     {
         if (ctx->swizzles_count > 0)
         {
