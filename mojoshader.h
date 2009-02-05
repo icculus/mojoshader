@@ -37,7 +37,7 @@ extern "C" {
 int MOJOSHADER_version(void);
 
 /*
- * For determining the revision control changeste of MojoShader you are using:
+ * For determining the revision control changeset of MojoShader you are using:
  *    const const *compiled_against = MOJOSHADER_CHANGESET;
  *    const char *linked_against = MOJOSHADER_changeset();
  *
