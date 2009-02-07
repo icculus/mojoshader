@@ -80,9 +80,7 @@ static inline void *Malloc(Context *ctx, const size_t len)
 static inline char *StrDup(Context *ctx, const char *str)
 {
     char *retval = (char *) Malloc(ctx, strlen(str) + 1);
-    if (retval == NULL)
-        out_of_memory(ctx);
-    else
+    if (retval != NULL)
         strcpy(retval, str);
     return retval;
 } // StrDup
