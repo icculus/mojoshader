@@ -1704,8 +1704,8 @@ static void parse_token(Context *ctx)
 static Context *build_context(const char *source, MOJOSHADER_malloc m,
                               MOJOSHADER_free f, void *d)
 {
-    if (m == NULL) m = internal_malloc;
-    if (f == NULL) f = internal_free;
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
@@ -1740,7 +1740,7 @@ static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
     {
-        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
+        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
         free_error_list(f, d, ctx->errors);
         if (ctx->output != NULL)
@@ -1792,8 +1792,8 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
         return &MOJOSHADER_out_of_mem_data;
 
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
-    retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
-    retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
+    retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
 
     retval->error_count = ctx->error_count;

@@ -939,8 +939,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = NULL;
 
-    if (m == NULL) m = internal_malloc;
-    if (f == NULL) f = internal_free;
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
 
     ctx = (MOJOSHADER_glContext *) m(sizeof (MOJOSHADER_glContext), d);
     if (ctx == NULL)

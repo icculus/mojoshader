@@ -237,6 +237,8 @@ struct Context
 
 
 // Convenience functions for allocators...
+void *MOJOSHADER_internal_malloc(int bytes, void *d) { return malloc(bytes); }
+void MOJOSHADER_internal_free(void *ptr, void *d) { free(ptr); }
 
 MOJOSHADER_error MOJOSHADER_out_of_mem_error = { "Out of memory", NULL, -1 };
 MOJOSHADER_parseData MOJOSHADER_out_of_mem_data = {
@@ -6745,8 +6747,8 @@ static Context *build_context(const char *profile,
                               const unsigned int swizcount,
                               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
-    if (m == NULL) m = internal_malloc;
-    if (f == NULL) f = internal_free;
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
@@ -6836,7 +6838,7 @@ static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
     {
-        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : internal_free);
+        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
         if (ctx->output_bytes != NULL)
             f(d, ctx->output_bytes);
@@ -7289,8 +7291,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
     retval->error_count = ctx->error_count;
     retval->errors = errors;
-    retval->malloc = (ctx->malloc == internal_malloc) ? NULL : ctx->malloc;
-    retval->free = (ctx->free == internal_free) ? NULL : ctx->free;
+    retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
 
     return retval;
@@ -7539,7 +7541,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
     if ((data == NULL) || (data == &MOJOSHADER_out_of_mem_data))
         return;  // no-op.
 
-    MOJOSHADER_free f = (data->free == NULL) ? internal_free : data->free;
+    MOJOSHADER_free f = (data->free == NULL) ? MOJOSHADER_internal_free : data->free;
     void *d = data->malloc_data;
     int i;
 
