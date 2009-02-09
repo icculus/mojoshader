@@ -42,6 +42,8 @@ ENDIF(MSVC)
 
 ADD_LIBRARY(mojoshader STATIC
     mojoshader.c
+    mojoshader_preprocessor.c
+    mojoshader_lexer.c
     mojoshader_assembler.c
     mojoshader_opengl.c
 )
@@ -66,6 +68,8 @@ ADD_EXECUTABLE(finderrors finderrors.c)
 TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
 ADD_EXECUTABLE(assemble assemble.c)
 TARGET_LINK_LIBRARIES(assemble mojoshader)
+ADD_EXECUTABLE(preprocess preprocess.c)
+TARGET_LINK_LIBRARIES(preprocess mojoshader)
 
 # End of CMakeLists.txt ...
 

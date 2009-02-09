@@ -273,6 +273,81 @@ typedef struct ErrorList
 } ErrorList;
 
 
+// preprocessor stuff.
+
+typedef enum
+{
+    TOKEN_UNKNOWN = 256,  // start past ASCII character values.
+    TOKEN_IDENTIFIER,
+    TOKEN_INT_LITERAL,
+    TOKEN_FLOAT_LITERAL,
+    TOKEN_STRING_LITERAL,
+    TOKEN_ELLIPSIS,
+    TOKEN_RSHIFT,
+    TOKEN_LSHIFT,
+    TOKEN_ANDAND,
+    TOKEN_OROR,
+    TOKEN_LEQ,
+    TOKEN_GEQ,
+    TOKEN_EQL,
+    TOKEN_NEQ,
+    TOKEN_HASHHASH,
+    TOKEN_PP_INCLUDE,
+    TOKEN_PP_LINE,
+    TOKEN_PP_DEFINE,
+    TOKEN_PP_UNDEF,
+    TOKEN_PP_IF,
+    TOKEN_PP_IFDEF,
+    TOKEN_PP_IFNDEF,
+    TOKEN_PP_ELSE,
+    TOKEN_PP_ELIF,
+    TOKEN_PP_ENDIF,
+    TOKEN_PP_ERROR,
+    TOKEN_PP_INCOMPLETE_COMMENT,
+    TOKEN_EOI
+} Token;
+
+
+// This is opaque.
+struct Preprocessor;
+typedef struct Preprocessor Preprocessor;
+
+typedef struct IncludeState
+{
+    char *filename;
+    int included;
+    Token insert_token;
+    Token insert_token2;
+    char insert_tokchar;
+    const char *source_base;
+    const char *source;
+    const char *token;
+    const unsigned char *lexer_marker;
+    unsigned int bytes_left;
+    unsigned int line;
+    struct IncludeState *next;
+} IncludeState;
+
+Token preprocessor_internal_lexer(IncludeState *s);
+
+// This will only fail if the allocator fails, so it doesn't return any
+//  error code...NULL on failure.
+Preprocessor *preprocessor_start(const char *fname, const char *source,
+                            unsigned int sourcelen,
+                            MOJOSHADER_includeOpen open_callback,
+                            MOJOSHADER_includeClose close_callback,
+                            const MOJOSHADER_preprocessorDefine **defines,
+                            unsigned int define_count,
+                            MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+
+void preprocessor_end(Preprocessor *pp);
+const char *preprocessor_error(Preprocessor *pp);
+void preprocessor_clearerror(Preprocessor *pp);
+int preprocessor_outofmemory(Preprocessor *pp);
+const char *preprocessor_nexttoken(Preprocessor *_ctx,
+                                   unsigned int *_len, Token *_token);
+const char *preprocessor_sourcepos(Preprocessor *pp, unsigned int *pos);
+
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 
