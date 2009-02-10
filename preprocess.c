@@ -51,7 +51,7 @@ static int preprocess(const char *buf, int len, const char *outfile)
     MOJOSHADER_freePreprocessData(pd);
 
     return retval;
-} // assemble
+} // preprocess
 
 
 int main(int argc, char **argv)
@@ -88,5 +88,5 @@ int main(int argc, char **argv)
     return retval;
 } // main
 
-// end of assemble.c ...
+// end of preprocess.c ...
 
