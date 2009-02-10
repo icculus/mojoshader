@@ -333,7 +333,11 @@ const char *preprocessor_nexttoken(Preprocessor *_ctx, unsigned int *_len,
     {
         IncludeState *state = ctx->include_stack;
         if (state == NULL)
+        {
+            *_token = TOKEN_EOI;
+            *_len = 0;
             return NULL;  // we're done!
+        } // if
 
         if (state->insert_token != TOKEN_UNKNOWN)
         {
