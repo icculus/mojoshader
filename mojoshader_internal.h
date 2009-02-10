@@ -342,7 +342,6 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
 
 void preprocessor_end(Preprocessor *pp);
 const char *preprocessor_error(Preprocessor *pp);
-void preprocessor_clearerror(Preprocessor *pp);
 int preprocessor_outofmemory(Preprocessor *pp);
 const char *preprocessor_nexttoken(Preprocessor *_ctx,
                                    unsigned int *_len, Token *_token);

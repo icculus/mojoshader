@@ -304,17 +304,16 @@ void preprocessor_end(Preprocessor *_ctx)
 } // preprocessor_end
 
 
-void preprocessor_clearerror(Preprocessor *_ctx)
-{
-    Context *ctx = (Context *) _ctx;
-    ctx->isfail = 0;
-} // preprocessor_clearerror
-
-
 const char *preprocessor_error(Preprocessor *_ctx)
 {
     Context *ctx = (Context *) _ctx;
-    return ctx->isfail ? ctx->failstr : NULL;
+    if (ctx->isfail)
+    {
+        ctx->isfail = 0;
+        return ctx->failstr;
+    } // if
+
+    return NULL;
 } // preprocessor_error
 
 
@@ -670,7 +669,6 @@ include_close = (MOJOSHADER_includeClose) 0x1;
                 error_count++;
             } // else
 
-            preprocessor_clearerror(pp);
             continue;
         } // if
 
