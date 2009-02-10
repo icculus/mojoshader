@@ -198,11 +198,14 @@ static int push_source(Context *ctx, const char *fname, const char *source,
         return 0;
     memset(state, '\0', sizeof (IncludeState));
 
-    state->filename = StrDup(ctx, fname);
-    if (state->filename == NULL)
+    if (fname != NULL)
     {
-        Free(ctx, state);
-        return 0;
+        state->filename = StrDup(ctx, fname);
+        if (state->filename == NULL)
+        {
+            Free(ctx, state);
+            return 0;
+        } // if
     } // if
 
     state->included = included;
