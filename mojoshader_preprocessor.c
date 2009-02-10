@@ -658,7 +658,7 @@ include_close = (MOJOSHADER_includeClose) 0x1;
                 while (item != NULL)
                 {
                     prev = item;
-                    item = error->next;
+                    item = item->next;
                 } // while
 
                 if (prev == NULL)

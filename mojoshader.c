@@ -404,7 +404,7 @@ static void failf(Context *ctx, const char *fmt, ...)
         while (item != NULL)
         {
             prev = item;
-            item = error->next;
+            item = item->next;
         } // while
 
         if (prev == NULL)
