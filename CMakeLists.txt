@@ -48,6 +48,13 @@ ADD_LIBRARY(mojoshader STATIC
     mojoshader_opengl.c
 )
 
+ADD_CUSTOM_COMMAND(
+    OUTPUT mojoshader_lexer.c
+    DEPENDS mojoshader_lexer.re
+    COMMAND re2c
+    ARGS -s -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
+)
+
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
