@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include "mojoshader.h"
 
-static int assemble(const char *buf, const char *outfile)
+static int assemble(const char *buf, int len, const char *outfile)
 {
     FILE *io = fopen(outfile, "wb");
     if (io == NULL)
@@ -23,7 +23,8 @@ static int assemble(const char *buf, const char *outfile)
     const MOJOSHADER_parseData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_assemble(buf, NULL, 0, NULL, 0, NULL, NULL, NULL);
+    pd = MOJOSHADER_assemble(buf, len, NULL, 0, NULL, 0, NULL, 0,
+                             NULL, NULL, NULL, NULL, NULL);
     if (pd->error_count > 0)
     {
         int i;
@@ -57,7 +58,7 @@ int main(int argc, char **argv)
     int retval = 1;
 
     if (argc != 3)
-        printf("\n\nUSAGE: %s <d3dasmfile> <outputfile>\n\n", argv[0]);
+        printf("\n\nUSAGE: %s <inputfile> <outputfile>\n\n", argv[0]);
     else
     {
         const char *infile = argv[1];
@@ -68,14 +69,13 @@ int main(int argc, char **argv)
         else
         {
             char *buf = (char *) malloc(1000000);
-            int rc = fread(buf, 1, 1000000-1, io);
+            int rc = fread(buf, 1, 1000000, io);
             fclose(io);
             if (rc == EOF)
                 printf(" ... fread('%s') failed.\n", infile);
             else
             {
-                buf[rc] = '\0';
-                if (assemble(buf, outfile))
+                if (assemble(buf, rc, outfile))
                     retval = 0;
                 else
                     remove(outfile);

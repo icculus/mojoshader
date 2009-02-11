@@ -10,19 +10,13 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-#define DEBUG_TOKENIZER 0
-
-// !!! FIXME: no #define support yet.
-
-typedef struct TokenizerContext
+// Simple linked list to cache source filenames, so we don't have to copy
+//  the same string over and over for each opcode.
+typedef struct FilenameCache
 {
-    const char *source;
-    int on_endline;
-    unsigned int linenum;
-    char prevchar;
-    char token[64];
-    char pushedback;
-} TokenizerContext;
+    char *filename;
+    struct FilenameCache *next;
+} FilenameCache;
 
 
 typedef struct SourcePos
@@ -37,20 +31,23 @@ typedef struct Context
 {
     int isfail;
     int out_of_memory;
-    int eof;
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
     int error_count;
     ErrorList *errors;
-    TokenizerContext tctx;
+    Preprocessor *preprocessor;
     MOJOSHADER_parsePhase parse_phase;
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
-    uint32 version_token;
-    uint32 tokenbuf[16];
-    int tokenbufpos;
+    int pushedback;
+    const char *token;      // assembler token!
+    unsigned int tokenlen;  // assembler token!
+    Token tokenval;         // assembler token!
+    uint32 version_token;   // bytecode token!
+    uint32 tokenbuf[16];    // bytecode tokens!
+    int tokenbufpos;        // bytecode tokens!
     DestArgInfo dest_arg;
     uint32 *output;
     SourcePos *token_to_source;
@@ -59,6 +56,7 @@ typedef struct Context
     uint32 ctab_allocation;
     size_t output_len;
     size_t output_allocation;
+    FilenameCache *filename_cache;
 } Context;
 
 
@@ -175,12 +173,6 @@ static inline int isfail(const Context *ctx)
 } // isfail
 
 
-static inline int tokeq(const TokenizerContext *tctx, const char *token)
-{
-    return (strcasecmp(tctx->token, token) == 0);
-} // tokeq
-
-
 // Shader model version magic...
 
 static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
@@ -204,21 +196,116 @@ static inline int shader_is_vertex(const Context *ctx)
     return (ctx->shader_type == MOJOSHADER_TYPE_VERTEX);
 } // shader_is_vertex
 
-
-static int ui32fromstr(const char *str, uint32 *ui32)
+static inline void pushback(Context *ctx)
 {
-    //*ui32 = (uint32) atoi(minstr);
-    char *endptr = NULL;
-    const long val = strtol(str, &endptr, 10);
-    *ui32 = (uint32) val;
-    return ((val >= 0) && (*str != '\0') && (*endptr == '\0'));
-} // ui32fromstr
+    assert(!ctx->pushedback);
+    ctx->pushedback = 1;
+} // pushback
+
+static Token _nexttoken(Context *ctx)
+{
+    ctx->token = preprocessor_nexttoken(ctx->preprocessor, &ctx->tokenlen,
+                                        &ctx->tokenval);
+
+    if (preprocessor_outofmemory(ctx->preprocessor))
+    {
+        out_of_memory(ctx);
+        ctx->tokenval = TOKEN_EOI;
+        ctx->token = NULL;
+        ctx->tokenlen = 0;
+    } // if
+    else
+    {
+        const char *err = preprocessor_error(ctx->preprocessor);
+        if (err)
+            fail(ctx, err);
+    } // else
+
+    return ctx->tokenval;
+} // _nexttoken
+
+
+static Token nexttoken(Context *ctx)
+{
+    if (ctx->pushedback)
+    {
+        ctx->pushedback = 0;
+        return ctx->tokenval;
+    } // if
+
+    Token token = _nexttoken(ctx);
+
+    while (token == ((Token) '\n'))
+        token = _nexttoken(ctx);  // skip endlines.
+
+    if (token == ((Token) ';'))  // single line comment in assembler.
+    {
+        do
+        {
+            token = _nexttoken(ctx);
+        } while ((token != ((Token) '\n')) && (token != TOKEN_EOI));
+
+        while (token == ((Token) '\n'))
+            token = _nexttoken(ctx);  // skip endlines.
+    } // if
+
+    return token;
+} // nexttoken
+
+
+static const char *cache_filename(Context *ctx, const char *fname)
+{
+    if (fname == NULL)
+        return NULL;
+
+    // !!! FIXME: this could be optimized into a hash table, but oh well.
+    FilenameCache *item = ctx->filename_cache;
+    while (item != NULL)
+    {
+        if (strcmp(item->filename, fname) == 0)
+            return item->filename;
+        item = item->next;
+    } // while
+
+    // new cache item.
+    item = (FilenameCache *) Malloc(ctx, sizeof (FilenameCache));
+    if (item == NULL)
+        return NULL;
+
+    item->filename = (char *) Malloc(ctx, strlen(fname) + 1);
+    if (item->filename == NULL)
+    {
+        Free(ctx, item);
+        return NULL;
+    } // if
+
+    strcpy(item->filename, fname);
+    item->next = ctx->filename_cache;
+    ctx->filename_cache = item;
+
+    return item->filename;
+} // cache_filename
+
+
+static void free_filename_cache(Context *ctx)
+{
+    FilenameCache *item = ctx->filename_cache;
+    while (item != NULL)
+    {
+        FilenameCache *next = item->next;
+        Free(ctx, item->filename);
+        Free(ctx, item);
+        item = next;
+    } // while
+} // free_filename_cache
 
 
 static inline void add_token_sourcepos(Context *ctx, const size_t idx)
 {
-    ctx->token_to_source[idx].line = ctx->tctx.linenum;
-    ctx->token_to_source[idx].filename = NULL;
+    unsigned int pos = 0;
+    const char *fname = preprocessor_sourcepos(ctx->preprocessor, &pos);
+    ctx->token_to_source[idx].line = pos;
+    ctx->token_to_source[idx].filename = cache_filename(ctx, fname);
 } // add_token_sourcepos
 
 
@@ -296,255 +383,10 @@ static inline void output_comment_string(Context *ctx, const char *str)
 } // output_comment_string
 
 
-static int tokenize_ctx(Context *ctx, TokenizerContext *tctx)
-{
-    int idx = 0;
-
-    if (tctx->pushedback)
-    {
-        tctx->pushedback = 0;
-        return 1;
-    } // if
-
-    if (tctx->on_endline)
-    {
-        tctx->on_endline = 0;
-        tctx->linenum++;  // passed a newline, update.
-    } // if
-
-    while (1)
-    {
-        // !!! FIXME: carefully crafted (but legal) comments can trigger this.
-        if (idx >= sizeof (tctx->token))
-        {
-            fail(ctx, "buffer overflow");
-            return 0;
-        } // if
-
-        char ch = *tctx->source;
-        if (ch == '\t')
-            ch = ' ';  // collapse tabs into single spaces.
-        else if (ch == '\r')
-        {
-            if (tctx->source[1] == '\n')
-               continue;  // ignore '\r' if this is "\r\n" ...
-            ch = '\n';
-        } // else if
-
-        if ((ch >= '0') && (ch <= '9'))
-        {
-            // starting a number, but rest of current token was not number.
-            if ((idx > 0) && ((tctx->prevchar < '0') || (tctx->prevchar > '9')))
-            {
-                tctx->token[idx++] = '\0';
-                return 1;
-            } // if
-        } // if
-        else
-        {
-            // starting a non-number, but rest of current token was numbers.
-            if ((idx > 0) && ((tctx->prevchar >= '0') && (tctx->prevchar <= '9')))
-            {
-                tctx->token[idx++] = '\0';
-                return 1;
-            } // if
-        } // else
-
-        switch (ch)
-        {
-            case '/':
-            case ';':  // !!! FIXME: comment, right?
-                if (idx != 0)  // finish off existing token.
-                    tctx->token[idx] = '\0';
-                else
-                {
-                    tctx->token[idx++] = ch;
-                    tctx->source++;
-                    if ((ch == '/') && (*tctx->source == '/'))
-                    {
-                        tctx->token[idx++] = '/';
-                        tctx->source++;
-                    } // if
-                    tctx->token[idx++] = '\0';
-                } // else
-                return 1;
-
-            case ' ':
-                if (tctx->prevchar == ' ')
-                    break;   // multiple whitespace collapses into one.
-                // intentional fall-through...
-
-            case '_':
-            case '[':
-            case ']':
-            case '(':
-            case ')':
-            case '!':
-            case '+':
-            case '-':
-            case ',':
-            case '.':
-            case '\n':
-                if (idx != 0)  // finish off existing token.
-                    tctx->token[idx] = '\0';
-                else  // this is a token in itself.
-                {
-                    if (ch == '\n')
-                        tctx->on_endline = 1;
-                    tctx->source++;
-                    tctx->token[idx++] = ch;
-                    tctx->token[idx++] = '\0';
-                } // else
-                return 1;
-
-            case '\0':
-                tctx->token[idx] = '\0';
-                if (idx != 0)  // had any chars? It's a token.
-                    return 1;
-                ctx->eof = 1;
-                return 0;
-
-            default:
-                tctx->source++;
-                tctx->token[idx++] = ch;
-                break;
-        } // switch
-
-        tctx->prevchar = ch;
-    } // while
-
-    assert(0 && "Shouldn't hit this code");
-    return 0;
-} // tokenize_ctx
-
-
-static inline int tokenize(Context *ctx)
-{
-    const int rc = tokenize_ctx(ctx, &ctx->tctx);
-
-    #if DEBUG_TOKENIZER
-    printf("TOKENIZE: %d '%s'\n", rc,
-           (ctx->tctx.token[0] == '\n') ? "\\n" : ctx->tctx.token);
-    #endif
-
-    return rc;
-} // tokenize
-
-
-static void pushback_ctx(Context *ctx, TokenizerContext *tctx)
-{
-    assert(!tctx->pushedback);
-    tctx->pushedback = 1;
-} // pushback_ctx
-
-
-static inline void pushback(Context *ctx)
-{
-    pushback_ctx(ctx, &ctx->tctx);
-    #if DEBUG_TOKENIZER
-    printf("PUSHBACK\n");
-    #endif
-} // pushback
-
-
-static int nexttoken_ctx(Context *ctx, TokenizerContext *tctx,
-                     const int ignoreeol, const int ignorewhitespace,
-                     const int eolok, const int eosok)
-{
-    while (tokenize_ctx(ctx, tctx))
-    {
-        if (tokeq(tctx, "\n"))
-        {
-            if (ignoreeol)
-                continue;
-            else if (!eolok)
-            {
-                fail(ctx, "Unexpected EOL");
-                return 0;
-            } // else if
-        } // if
-
-        else if (tokeq(tctx, " "))
-        {
-            if (ignorewhitespace)
-                continue;
-        } // else if
-
-        // skip comments...
-        else if (tokeq(tctx, "//") || tokeq(tctx, ";"))
-        {
-            while (tokenize_ctx(ctx, tctx))
-            {
-                if (tokeq(tctx, "\n"))
-                {
-                    pushback_ctx(ctx, tctx);
-                    break;
-                } // if
-            } // while
-            continue;  // pick up from newline, go again.
-        } // if
-
-        break;
-    } // while
-
-    if ((ctx->eof) && (!eosok))
-    {
-        fail(ctx, "Unexpected EOF");
-        return 0;
-    } // if
-
-    return 1;
-} // nexttoken_ctx
-
-
-static inline int nexttoken(Context *ctx, const int ignoreeol,
-                     const int ignorewhitespace, const int eolok,
-                     const int eosok)
-{
-    const int rc = nexttoken_ctx(ctx, &ctx->tctx, ignoreeol,
-                                 ignorewhitespace, eolok, eosok);
-
-    #if DEBUG_TOKENIZER
-    printf("NEXTTOKEN: %d '%s'\n", rc,
-           (ctx->tctx.token[0] == '\n') ? "\\n" : ctx->tctx.token);
-    #endif
-
-    return rc;
-} // nexttoken
-
-
-static void skip_line(Context *ctx)
-{
-    if (!tokeq(&ctx->tctx, "\n"))
-    {
-        while (nexttoken(ctx, 0, 1, 1, 1))
-        {
-            if (tokeq(&ctx->tctx, "\n"))
-                break;
-        } // while
-    } // if
-} // skip_line
-
-
-static void require_endline(Context *ctx)
-{
-    TokenizerContext *tctx = &ctx->tctx;
-    const int rc = nexttoken(ctx, 0, 1, 1, 1);
-    if (ctx->eof)
-        return;  // we'll call this an EOL.
-    else if ((rc == 0) || (!tokeq(tctx, "\n")))
-    {
-        fail(ctx, "Endline expected");
-        skip_line(ctx);
-    } // else if
-} // require_endline
-
-
 static int require_comma(Context *ctx)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    const int rc = nexttoken(ctx, 0, 1, 0, 0);
-    if ((rc == 0) || (!tokeq(tctx, ",")))
+    const Token token = nexttoken(ctx);
+    if (token != ((Token) ','))
     {
         fail(ctx, "Comma expected");
         return 0;
@@ -553,94 +395,136 @@ static int require_comma(Context *ctx)
 } // require_comma
 
 
+static int check_token_segment(Context *ctx, const char *str)
+{
+    // !!! FIXME: these are case-insensitive, right?
+    const size_t len = strlen(str);
+    if ( (ctx->tokenlen < len) || (strncasecmp(ctx->token, str, len) != 0) )
+        return 0;
+    ctx->token += len;
+    ctx->tokenlen -= len;
+    return 1;
+} // check_token_segment
+
+
+static int check_token(Context *ctx, const char *str)
+{
+    const size_t len = strlen(str);
+    if ( (ctx->tokenlen != len) || (strncasecmp(ctx->token, str, len) != 0) )
+        return 0;
+    ctx->token += len;
+    ctx->tokenlen = 0;
+    return 1;
+} // check_token
+
+
+static int ui32fromtoken(Context *ctx, uint32 *_val)
+{
+    int i;
+    for (i = 0; i < ctx->tokenlen; i++)
+    {
+        if ((ctx->token[i] < '0') || (ctx->token[i] > '9'))
+            break;
+    } // for
+
+    if (i == 0)
+    {
+        *_val = 0;
+        return 0;
+    } // if
+
+    const int len = i;
+    uint32 val = 0;
+    uint32 mult = 1;
+    while (i--)
+    {
+        val += ((uint32) (ctx->token[i] - '0')) * mult;
+        mult *= 10;
+    } // while
+
+    ctx->token += len;
+    ctx->tokenlen -= len;
+
+    *_val = val;
+    return 1;
+} // ui32fromtoken
+
+
 static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    if (!nexttoken(ctx, 0, 1, 0, 0))
+    if (nexttoken(ctx) != TOKEN_IDENTIFIER)
+    {
+        fail(ctx, "Expected register");
         return 0;
+    } // if
 
     int neednum = 1;
     int regnum = 0;
     RegisterType regtype = REG_TYPE_TEMP;
-    if (tokeq(tctx, "r"))
+
+    if (check_token_segment(ctx, "r"))
         regtype = REG_TYPE_TEMP;
-    else if (tokeq(tctx, "v"))
+    else if (check_token_segment(ctx, "v"))
         regtype = REG_TYPE_INPUT;
-    else if (tokeq(tctx, "c"))
+    else if (check_token_segment(ctx, "c"))
         regtype = REG_TYPE_CONST;
-    else if (tokeq(tctx, "i"))
+    else if (check_token_segment(ctx, "i"))
         regtype = REG_TYPE_CONSTINT;
-    else if (tokeq(tctx, "b"))
+    else if (check_token_segment(ctx, "b"))
         regtype = REG_TYPE_CONSTBOOL;
-    else if (tokeq(tctx, "oC"))
+    else if (check_token_segment(ctx, "oC"))
         regtype = REG_TYPE_COLOROUT;
-    else if (tokeq(tctx, "s"))
+    else if (check_token_segment(ctx, "s"))
         regtype = REG_TYPE_SAMPLER;
-    else if (tokeq(tctx, "oD"))
+    else if (check_token_segment(ctx, "oD"))
         regtype = REG_TYPE_ATTROUT;
-    else if (tokeq(tctx, "l"))
+    else if (check_token_segment(ctx, "l"))
         regtype = REG_TYPE_LABEL;
-    else if (tokeq(tctx, "p"))
+    else if (check_token_segment(ctx, "p"))
         regtype = REG_TYPE_PREDICATE;
-    else if (tokeq(tctx, "oDepth"))
+    else if (check_token_segment(ctx, "o"))
+        regtype = REG_TYPE_OUTPUT;
+    else if (check_token_segment(ctx, "oT"))
+        regtype = REG_TYPE_OUTPUT;
+    else if (check_token_segment(ctx, "a"))
+        regtype = REG_TYPE_ADDRESS;
+    else if (check_token_segment(ctx, "t"))
+        regtype = REG_TYPE_ADDRESS;
+    else if (check_token_segment(ctx, "oDepth"))
     {
         regtype = REG_TYPE_DEPTHOUT;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "aL"))
+    else if (check_token_segment(ctx, "aL"))
     {
         regtype = REG_TYPE_LOOP;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "o"))
-    {
-        if (!shader_is_vertex(ctx) || !shader_version_atleast(ctx, 3, 0))
-            fail(ctx, "Output register not valid in this shader type");
-        regtype = REG_TYPE_OUTPUT;
-    } // else if
-    else if (tokeq(tctx, "oT"))
-    {
-        if (shader_is_vertex(ctx) && shader_version_atleast(ctx, 3, 0))
-            fail(ctx, "Output register not valid in this shader type");
-        regtype = REG_TYPE_OUTPUT;
-    } // else if
-    else if (tokeq(tctx, "a"))
-    {
-        if (!shader_is_vertex(ctx))
-            fail(ctx, "Address register only valid in vertex shaders.");
-        regtype = REG_TYPE_ADDRESS;
-    } // else if
-    else if (tokeq(tctx, "t"))
-    {
-        if (!shader_is_pixel(ctx))
-            fail(ctx, "Address register only valid in pixel shaders.");
-        regtype = REG_TYPE_ADDRESS;
-    } // else if
-    else if (tokeq(tctx, "vPos"))
+    else if (check_token_segment(ctx, "vPos"))
     {
         regtype = REG_TYPE_MISCTYPE;
         regnum = (int) MISCTYPE_TYPE_POSITION;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "vFace"))
+    else if (check_token_segment(ctx, "vFace"))
     {
         regtype = REG_TYPE_MISCTYPE;
         regnum = (int) MISCTYPE_TYPE_FACE;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "oPos"))
+    else if (check_token_segment(ctx, "oPos"))
     {
         regtype = REG_TYPE_RASTOUT;
         regnum = (int) RASTOUT_TYPE_POSITION;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "oFog"))
+    else if (check_token_segment(ctx, "oFog"))
     {
         regtype = REG_TYPE_RASTOUT;
         regnum = (int) RASTOUT_TYPE_FOG;
         neednum = 0;
     } // else if
-    else if (tokeq(tctx, "oPts"))
+    else if (check_token_segment(ctx, "oPts"))
     {
         regtype = REG_TYPE_RASTOUT;
         regnum = (int) RASTOUT_TYPE_POINT_SIZE;
@@ -659,24 +543,15 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
 
     if (neednum)
     {
-        // Make a temp TokenizerContext, since we need to skip whitespace here,
-        //  but if the next non-whitespace token isn't '[', we'll want to get
-        //  that whitespace back.
-        TokenizerContext tmptctx;
-        memcpy(&tmptctx, tctx, sizeof (TokenizerContext));
-        if (!nexttoken_ctx(ctx, &tmptctx, 0, 1, 1, 1))
-            return 0;
-        else if (tokeq(&tmptctx, "["))
-            neednum = 0;
+        if (nexttoken(ctx) == ((Token) '['))
+            neednum = 0;  // "c[5]" is the same as "c5".
+        pushback(ctx);
     } // if
 
     if (neednum)
     {
-        if (!nexttoken(ctx, 0, 0, 0, 0))
-            return 0;
-
         uint32 ui32 = 0;
-        if (!ui32fromstr(tctx->token, &ui32))
+        if (!ui32fromtoken(ctx, &ui32))
             fail(ctx, "Invalid register index");
         regnum = (int) ui32;
     } // if
@@ -727,102 +602,85 @@ static void set_result_shift(Context *ctx, DestArgInfo *info, const int val)
 
 static int parse_destination_token(Context *ctx)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-
     DestArgInfo *info = &ctx->dest_arg;
     memset(info, '\0', sizeof (DestArgInfo));
 
-    // See if there are destination modifiers on the instruction itself...
-    while (1)
+    // parse_instruction_token() sets ctx->token to the end of the instruction
+    //  so we can see if there are destination modifiers on the instruction
+    //  itself...
+
+    int invalid_modifier = 0;
+
+    while ((ctx->tokenlen > 0) && (!invalid_modifier))
     {
-        if (!nexttoken(ctx, 0, 0, 0, 0))
-            return 1;
-        else if (tokeq(tctx, " "))
-            break;  // done with modifiers.
-        else if (!tokeq(tctx, "_"))
-            fail(ctx, "Expected modifier or whitespace");
-        else if (!nexttoken(ctx, 0, 0, 0, 0))
-            return 1;
-        // !!! FIXME: this can be cleaned up when tokenizer is fixed.
-        else if (tokeq(tctx, "x"))
-        {
-            if (!nexttoken(ctx, 0, 0, 0, 0))
-                return 1;
-            else if (tokeq(tctx, "2"))
-                set_result_shift(ctx, info, 0x1);
-            else if (tokeq(tctx, "4"))
-                set_result_shift(ctx, info, 0x2);
-            else if (tokeq(tctx, "8"))
-                set_result_shift(ctx, info, 0x3);
-            else
-                fail(ctx, "Expected modifier");
-        } // else if
-        // !!! FIXME: this can be cleaned up when tokenizer is fixed.
-        else if (tokeq(tctx, "d"))
-        {
-            if (!nexttoken(ctx, 0, 0, 0, 0))
-                return 1;
-            else if (tokeq(tctx, "8"))
-                set_result_shift(ctx, info, 0xD);
-            else if (tokeq(tctx, "4"))
-                set_result_shift(ctx, info, 0xE);
-            else if (tokeq(tctx, "2"))
-                set_result_shift(ctx, info, 0xF);
-            else
-                fail(ctx, "Expected modifier");
-        } // else if
-        else if (tokeq(tctx, "sat"))
+        if (check_token_segment(ctx, "_x2"))
+            set_result_shift(ctx, info, 0x1);
+        else if (check_token_segment(ctx, "_x4"))
+            set_result_shift(ctx, info, 0x2);
+        else if (check_token_segment(ctx, "_x8"))
+            set_result_shift(ctx, info, 0x3);
+        else if (check_token_segment(ctx, "_d8"))
+            set_result_shift(ctx, info, 0xD);
+        else if (check_token_segment(ctx, "_d4"))
+            set_result_shift(ctx, info, 0xE);
+        else if (check_token_segment(ctx, "_d2"))
+            set_result_shift(ctx, info, 0xF);
+        else if (check_token_segment(ctx, "_sat"))
             info->result_mod |= MOD_SATURATE;
-        else if (tokeq(tctx, "pp"))
+        else if (check_token_segment(ctx, "_pp"))
             info->result_mod |= MOD_PP;
-        else if (tokeq(tctx, "centroid"))
+        else if (check_token_segment(ctx, "_centroid"))
             info->result_mod |= MOD_CENTROID;
         else
-            fail(ctx, "Expected modifier");
+            invalid_modifier = 1;
     } // while
 
-    if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 1;
+    if (invalid_modifier)
+        fail(ctx, "Invalid destination modifier");
 
     // !!! FIXME: predicates.
-    if (tokeq(tctx, "("))
+    if (nexttoken(ctx) == ((Token) '('))
         fail(ctx, "Predicates unsupported at this time");  // !!! FIXME: ...
 
     pushback(ctx);  // parse_register_name calls nexttoken().
 
     parse_register_name(ctx, &info->regtype, &info->regnum);
-
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return 1;
+    // parse_register_name() can't check this: dest regs might have modifiers.
+    if (ctx->tokenlen > 0)
+        fail(ctx, "invalid register name");
 
     // !!! FIXME: can dest registers do relative addressing?
 
     int invalid_writemask = 0;
     int implicit_writemask = 0;
-    if (!tokeq(tctx, "."))
+    if (nexttoken(ctx) != ((Token) '.'))
     {
         implicit_writemask = 1;
         info->writemask = 0xF;
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
+
     // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
     //else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
     else if ( (scalar_register(ctx->shader_type, info->regtype, info->regnum)) && (info->regtype != REG_TYPE_DEPTHOUT) )
         fail(ctx, "Writemask specified for scalar register");
-    else if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 1;
-    else if (tokeq(tctx, ""))
+    else if (nexttoken(ctx) != TOKEN_IDENTIFIER)
         invalid_writemask = 1;
     else
     {
-        char *ptr = tctx->token;
+        // !!! FIXME: is out-of-order okay (yxzw instead of xyzw?)
+        char tokenbytes[5] = { '\0', '\0', '\0', '\0', '\0' };
+        const unsigned int tokenlen = ctx->tokenlen;
+        memcpy(tokenbytes, ctx->token, ((tokenlen < 4) ? tokenlen : 4));
+        char *ptr = tokenbytes;
+
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 0;
         if (*ptr == 'x') { info->writemask0 = 1; ptr++; }
         if (*ptr == 'y') { info->writemask1 = 1; ptr++; }
         if (*ptr == 'z') { info->writemask2 = 1; ptr++; }
         if (*ptr == 'w') { info->writemask3 = 1; ptr++; }
-        if ((ptr == tctx->token) && (shader_is_pixel(ctx)))
+        if ((ptr == ctx->token) && (shader_is_pixel(ctx)))
         {
             if (*ptr == 'r') { info->writemask0 = 1; ptr++; }
             if (*ptr == 'g') { info->writemask1 = 1; ptr++; }
@@ -885,7 +743,6 @@ static void set_source_mod(Context *ctx, const int negate,
 
 static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 {
-    TokenizerContext *tctx = &ctx->tctx;
     int retval = 1;
 
     if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
@@ -895,58 +752,53 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     } // if
 
     // mark this now, so optional relative addressing token is placed second.
-    uint32 *token = &ctx->tokenbuf[ctx->tokenbufpos++];
-    *token = 0;
+    uint32 *outtoken = &ctx->tokenbuf[ctx->tokenbufpos++];
+    *outtoken = 0;
 
     SourceMod srcmod = SRCMOD_NONE;
     int negate = 0;
-    if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 1;
-    else if (tokeq(tctx, "1"))
+    Token token = nexttoken(ctx);
+
+    if (token == ((Token) '!'))
+        srcmod = SRCMOD_NOT;
+    else if (token == ((Token) '-'))
+        negate = 1;
+    else if ( (token == TOKEN_INT_LITERAL) && (check_token(ctx, "1")) )
     {
-        if (!nexttoken(ctx, 0, 1, 0, 0))
-            return 1;
-        else if (!tokeq(tctx, "-"))
-            fail(ctx, "Unexpected value");
+        if (nexttoken(ctx) != ((Token) '-'))
+            fail(ctx, "Unexpected token");
         else
             srcmod = SRCMOD_COMPLEMENT;
     } // else
-    else if (tokeq(tctx, "!"))
-        srcmod = SRCMOD_NOT;
-    else if (tokeq(tctx, "-"))
-        negate = 1;
     else
+    {
         pushback(ctx);
+    } // else
 
     RegisterType regtype;
     int regnum;
     parse_register_name(ctx, &regtype, &regnum);
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return 1;
-    else if (!tokeq(tctx, "_"))
-        pushback(ctx);
-    else if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 1;
-    else if (tokeq(tctx, "bias"))
-        set_source_mod(ctx, negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
-    else if (tokeq(tctx, "bx2"))
-        set_source_mod(ctx, negate, SRCMOD_SIGN, SRCMOD_SIGNNEGATE, &srcmod);
-    else if (tokeq(tctx, "x2"))
-        set_source_mod(ctx, negate, SRCMOD_X2, SRCMOD_X2NEGATE, &srcmod);
-    else if (tokeq(tctx, "dz"))
-        set_source_mod(ctx, negate, SRCMOD_DZ, SRCMOD_NONE, &srcmod);
-    else if (tokeq(tctx, "dw"))
-        set_source_mod(ctx, negate, SRCMOD_DW, SRCMOD_NONE, &srcmod);
-    else if (tokeq(tctx, "abs"))
-        set_source_mod(ctx, negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
-    else
-        fail(ctx, "Invalid source modifier");
 
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return 1;
+    if (ctx->tokenlen > 0)
+    {
+        if (check_token_segment(ctx, "_bias"))
+            set_source_mod(ctx, negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
+        else if (check_token_segment(ctx, "_bx2"))
+            set_source_mod(ctx, negate, SRCMOD_SIGN, SRCMOD_SIGNNEGATE, &srcmod);
+        else if (check_token_segment(ctx, "_x2"))
+            set_source_mod(ctx, negate, SRCMOD_X2, SRCMOD_X2NEGATE, &srcmod);
+        else if (check_token_segment(ctx, "_dz"))
+            set_source_mod(ctx, negate, SRCMOD_DZ, SRCMOD_NONE, &srcmod);
+        else if (check_token_segment(ctx, "_dw"))
+            set_source_mod(ctx, negate, SRCMOD_DW, SRCMOD_NONE, &srcmod);
+        else if (check_token_segment(ctx, "_abs"))
+            set_source_mod(ctx, negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
+        else
+            fail(ctx, "Invalid source modifier");
+    } // if
 
     uint32 relative = 0;
-    if (!tokeq(tctx, "["))
+    if (nexttoken(ctx) != ((Token) '['))
         pushback(ctx);  // not relative addressing?
     else
     {
@@ -957,56 +809,56 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 
         parse_source_token_maybe_relative(ctx, 0);
         relative = 1;
-        if (!nexttoken(ctx, 0, 1, 0, 0))
-            return retval;
-        else if (!tokeq(tctx, "+"))
+
+        if (nexttoken(ctx) != ((Token) '+'))
             pushback(ctx);
-        else if (!nexttoken(ctx, 0, 1, 0, 0))
-            return retval;
         else
         {
-            if (regnum != 0)  // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
+            // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
+            if (regnum != 0)
                 fail(ctx, "Relative addressing with explicit register number.");
+
             uint32 ui32 = 0;
-            if (!ui32fromstr(tctx->token, &ui32))
+            if ( (nexttoken(ctx) != TOKEN_INT_LITERAL) ||
+                 (!ui32fromtoken(ctx, &ui32)) ||
+                 (ctx->tokenlen != 0) )
+            {
                 fail(ctx, "Invalid relative addressing offset");
+            } // if
             regnum += (int) ui32;
         } // else
 
-        if (!nexttoken(ctx, 0, 1, 0, 0))
-            return retval;
-        else if (!tokeq(tctx, "]"))
+        if (nexttoken(ctx) != ((Token) ']'))
             fail(ctx, "Expected ']'");
     } // else
 
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return retval;
-
     int invalid_swizzle = 0;
     uint32 swizzle = 0;
-    if (!tokeq(tctx, "."))
+    if (nexttoken(ctx) != ((Token) '.'))
     {
         swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
     else if (scalar_register(ctx->shader_type, regtype, regnum))
         fail(ctx, "Swizzle specified for scalar register");
-    else if (!nexttoken(ctx, 0, 1, 0, 0))
-        return retval;
-    else if (tokeq(tctx, ""))
+    else if (nexttoken(ctx) != TOKEN_IDENTIFIER)
         invalid_swizzle = 1;
     else
     {
+        char tokenbytes[5] = { '\0', '\0', '\0', '\0', '\0' };
+        const unsigned int tokenlen = ctx->tokenlen;
+        memcpy(tokenbytes, ctx->token, ((tokenlen < 4) ? tokenlen : 4));
+
         // deal with shortened form (.x = .xxxx, etc).
-        if (tctx->token[1] == '\0')
-            tctx->token[1] = tctx->token[2] = tctx->token[3] = tctx->token[0];
-        else if (tctx->token[2] == '\0')
-            tctx->token[2] = tctx->token[3] = tctx->token[1];
-        else if (tctx->token[3] == '\0')
-            tctx->token[3] = tctx->token[2];
-        else if (tctx->token[4] != '\0')
+        if (tokenlen == 1)
+            tokenbytes[1] = tokenbytes[2] = tokenbytes[3] = tokenbytes[0];
+        else if (tokenlen == 2)
+            tokenbytes[2] = tokenbytes[3] = tokenbytes[1];
+        else if (tokenlen == 3)
+            tokenbytes[3] = tokenbytes[2];
+        else if (tokenlen != 4)
             invalid_swizzle = 1;
-        tctx->token[4] = '\0';
+        tokenbytes[4] = '\0';
 
         uint32 val = 0;
         int saw_xyzw = 0;
@@ -1014,7 +866,7 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         int i;
         for (i = 0; i < 4; i++)
         {
-            const int component = (int) tctx->token[i];
+            const int component = (int) tokenbytes[i];
             switch (component)
             {
                 case 'x': val = 0; saw_xyzw = 1; break;
@@ -1039,13 +891,13 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     if (invalid_swizzle)
         fail(ctx, "Invalid swizzle");
 
-    *token = ( ((((uint32) 1)) << 31) |
-               ((((uint32) regnum) & 0x7ff) << 0) |
-               ((((uint32) relative) & 0x1) << 13) |
-               ((((uint32) swizzle) & 0xFF) << 16) |
-               ((((uint32) srcmod) & 0xF) << 24) |
-               ((((uint32) regtype) & 0x7) << 28) |
-               ((((uint32) regtype) & 0x18) << 8) );
+    *outtoken = ( ((((uint32) 1)) << 31) |
+                  ((((uint32) regnum) & 0x7ff) << 0) |
+                  ((((uint32) relative) & 0x1) << 13) |
+                  ((((uint32) swizzle) & 0xFF) << 16) |
+                  ((((uint32) srcmod) & 0xF) << 24) |
+                  ((((uint32) regtype) & 0x7) << 28) |
+                  ((((uint32) regtype) & 0x18) << 8) );
 
     return retval;
 } // parse_source_token_maybe_relative
@@ -1063,91 +915,35 @@ static int parse_args_NULL(Context *ctx)
 } // parse_args_NULL
 
 
-static int parse_num(Context *ctx, const int floatok, uint32 *token)
+static int parse_num(Context *ctx, const int floatok, uint32 *value)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    int32 negative = 1;
     union { float f; int32 si32; uint32 ui32; } cvt;
-    cvt.si32 = 0;
 
-    *token = 0;
-
-    if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 0;
-    else if (tokeq(tctx, "-"))
-        negative = -1;
-    else
-        pushback(ctx);
-
-    uint32 val = 0;
-    if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 0;
-    else if (!ui32fromstr(tctx->token, &val))
-        fail(ctx, "Expected number");
-
-    uint32 fraction = 0;
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return 0;
-    else if (!tokeq(tctx, "."))
-        pushback(ctx);  // whole number
-    else if (!floatok)
-        fail(ctx, "Expected whole number");
-    else if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 0;
-    else if (!ui32fromstr(tctx->token, &fraction))
-        fail(ctx, "Expected number");
-
-    uint32 exponent = 0;
-    int negexp = 0;
-    if (!nexttoken(ctx, 0, 1, 1, 1))
-        return 0;
-    else if (!tokeq(tctx, "e"))
-        pushback(ctx);
-    else if (!floatok)
-        fail(ctx, "Exponent on whole number");  // !!! FIXME: illegal?
-    else if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 0;
-    else
+    const Token token = nexttoken(ctx);
+    if (token == TOKEN_INT_LITERAL)
     {
-        if (!tokeq(tctx, "-"))
-            pushback(ctx);
-        else
-            negexp = 1;
-
-        if (!nexttoken(ctx, 0, 1, 0, 0))
-            return 0;
-        else if (!ui32fromstr(tctx->token, &exponent))
-            fail(ctx, "Expected exponent");
-    } // else
-
-    if (!floatok)
-        cvt.si32 = ((int32) val) * negative;
-    else
+        int d = 0;
+        sscanf(ctx->token, "%d", &d);
+        cvt.si32 = (int32) d;
+    } // if
+    else if (token == TOKEN_FLOAT_LITERAL)
     {
-        // !!! FIXME: this is lame.
-        char buf[128];
-        snprintf(buf, sizeof (buf), "%s%u.%u", (negative < 0) ? "-" : "",
-                 (uint) val, (uint) fraction);
-        sscanf(buf, "%f", &cvt.f);
-        cvt.f *= (float) negative;
-
-        if (exponent)
+        if (!floatok)
         {
-            int i;
-            if (negexp)
-            {
-                for (i = 0; i > exponent; i--)
-                    cvt.f /= 10.0f;
-            } // if
-            else
-            {
-                for (i = 0; i < exponent; i++)
-                    cvt.f *= 10.0f;
-            } // else
+            fail(ctx, "Expected whole number");
+            *value = 0;
+            return 0;
         } // if
+        sscanf(ctx->token, "%f", &cvt.f);
+    } // if
+    else
+    {
+        fail(ctx, "Expected number");
+        *value = 0;
+        return 0;
     } // else
 
-    *token = cvt.ui32;
+    *value = cvt.ui32;
     return 1;
 } // parse_num
 
@@ -1181,49 +977,45 @@ static int parse_args_DEFI(Context *ctx)
 
 static int parse_args_DEFB(Context *ctx)
 {
-    TokenizerContext *tctx = &ctx->tctx;
     parse_destination_token(ctx);
     require_comma(ctx);
-    if (!nexttoken(ctx, 0, 1, 0, 0))
-        return 1;
-    else if (tokeq(tctx, "true"))
+
+    // !!! FIXME: do a TOKEN_TRUE and TOKEN_FALSE? Is this case-sensitive?
+    const Token token = nexttoken(ctx);
+
+    int bad = 0;
+    if (token != TOKEN_IDENTIFIER)
+        bad = 1;
+    else if (check_token_segment(ctx, "true"))
         ctx->tokenbuf[ctx->tokenbufpos++] = 1;
-    else if (tokeq(tctx, "false"))
+    else if (check_token_segment(ctx, "false"))
         ctx->tokenbuf[ctx->tokenbufpos++] = 0;
     else
+        bad = 1;
+
+    if (ctx->tokenlen != 0)
+        bad = 1;
+
+    if (bad)
         fail(ctx, "Expected 'true' or 'false'");
+
     return 3;
 } // parse_args_DEFB
 
 
 static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
 {
-    TokenizerContext *tctx = &ctx->tctx;
     int i;
-    static const char *samplerusagestrs[] = { "2d", "cube", "volume" };
+    static const char *samplerusagestrs[] = { "_2d", "_cube", "_volume" };
     static const char *usagestrs[] = {
-        "position", "blendweight", "blendindices", "normal", "psize",
-        "texcoord", "tangent", "binormal", "tessfactor", "positiont",
-        "color", "fog", "depth", "sample"
+        "_position", "_blendweight", "_blendindices", "_normal", "_psize",
+        "_texcoord", "_tangent", "_binormal", "_tessfactor", "_positiont",
+        "_color", "_fog", "_depth", "_sample"
     };
-    static const char *ignorestrs[] = { "pp", "centroid", "saturate" };
-
-    // !!! FIXME: we need to clean this out in the tokenizer.
-    char token[sizeof (tctx->token)];
-    strcpy(token, tctx->token);
-    if (tokeq(tctx, "2"))  // "2d" is two tokens.
-    {
-        if (!nexttoken(ctx, 0, 0, 1, 1))
-            return 0;
-        else if (!tokeq(tctx, "d") != 0)
-            pushback(ctx);
-        else
-            strcpy(token, "2d");
-    } // if
 
     for (i = 0; i < STATICARRAYLEN(usagestrs); i++)
     {
-        if (strcasecmp(usagestrs[i], token) == 0)
+        if (check_token_segment(ctx, usagestrs[i]))
         {
             *issampler = 0;
             *val = i;
@@ -1233,7 +1025,7 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
 
     for (i = 0; i < STATICARRAYLEN(samplerusagestrs); i++)
     {
-        if (strcasecmp(samplerusagestrs[i], token) == 0)
+        if (check_token_segment(ctx, samplerusagestrs[i]))
         {
             *issampler = 1;
             *val = i + 2;
@@ -1241,27 +1033,14 @@ static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
         } // if
     } // for
 
-    // !!! FIXME: this probably isn't the smartest way to handle this.
     *issampler = 0;
     *val = 0;
-    for (i = 0; i < STATICARRAYLEN(ignorestrs); i++)
-    {
-        if (strcasecmp(ignorestrs[i], token) == 0)
-        {
-            tctx->source -= strlen(token);  // !!! FIXME: hack to move back
-            strcpy(tctx->token, "_");  // !!! FIXME: hack to move back
-            pushback(ctx);  // !!! FIXME: hack to move back
-            return 1;  // if you have "dcl_pp", then "_pp" isn't a usage.
-        } // if
-    } // for
-
     return 0;
 } // parse_dcl_usage
 
 
 static int parse_args_DCL(Context *ctx)
 {
-    TokenizerContext *tctx = &ctx->tctx;
     int issampler = 0;
     uint32 usage = 0;
     uint32 index = 0;
@@ -1269,23 +1048,15 @@ static int parse_args_DCL(Context *ctx)
     ctx->tokenbufpos++;  // save a spot for the usage/index token.
     ctx->tokenbuf[0] = 0;
 
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 1;
-    else if (tokeq(tctx, " "))
-        pushback(ctx);
-    else if (!tokeq(tctx, "_"))
-        fail(ctx, "Expected register or usage");
-    else if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 1;
-    else
-        parse_dcl_usage(ctx, &usage, &issampler);
+    // parse_instruction_token() sets ctx->token to the end of the instruction
+    //  so we can see if there are destination modifiers on the instruction
+    //  itself...
 
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 1;
-    else if (tokeq(tctx, " ") || tokeq(tctx, "_"))
-        pushback(ctx);  // parse_destination_token() wants these.
-    else if (!ui32fromstr(tctx->token, &index))
-        fail(ctx, "Expected usage index or register");
+    if (parse_dcl_usage(ctx, &usage, &issampler))
+    {
+        if ( (ctx->tokenlen > 0) && (!ui32fromtoken(ctx, &index)) )
+            fail(ctx, "Expected usage index");
+    } // if
 
     parse_destination_token(ctx);
 
@@ -1431,163 +1202,117 @@ static const Instruction instructions[] =
     #undef INSTRUCTION_STATE
 };
 
+
 static int parse_condition(Context *ctx, uint32 *controls)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 0;
-    else if (!tokeq(tctx, "_"))
-    {
-        pushback(ctx);
-        return 0;
-    } // else if
+    static const char *comps[] = { "_gt", "_eq", "_ge", "_lt", "_ne", "_le" };
+    int i;
 
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return 0;
-    else
+    if (ctx->tokenlen >= 3)
     {
-        int i;
-        static const char *comps[] = {"", "gt", "eq", "ge", "lt", "ne", "le"};
         for (i = 1; i < STATICARRAYLEN(comps); i++)
         {
-            if (tokeq(tctx, comps[i]))
+            if (check_token_segment(ctx, comps[i]))
             {
-                *controls = i;
+                *controls = i + 1;
                 return 1;
             } // if
         } // for
-
-        fail(ctx, "Expected comparison token");
-        return 0;
-    } // else if
+    } // if
 
     return 0;
 } // parse_condition
 
-
-static inline int valid_instruction_char(const char ch)
+static inline int Min(const int a, const int b)
 {
-    return ( ((ch >= 'A') && (ch <= 'Z')) ||
-             ((ch >= 'a') && (ch <= 'z')) ||
-             ((ch >= '0') && (ch <= '9')) );
-} // valid_instruction_char
+    return ((a < b) ? a : b);
+} // Min
 
-
-static int parse_instruction_token(Context *ctx)
+static int parse_instruction_token(Context *ctx, Token token)
 {
-    TokenizerContext *tctx = &ctx->tctx;
     int coissue = 0;
     int predicated = 0;
-    char opstr[32];
 
-    if (tokeq(tctx, "+"))
+    if (token == ((Token) '+'))
     {
-        if (!nexttoken(ctx, 0, 1, 0, 0))
-            return 0;
         coissue = 1;
+        token = nexttoken(ctx);
     } // if
 
-    // All this tapdance is because some instructions mix letters and numbers,
-    //  like "dp4" or "texm3x2depth" and the tokenizer splits words and digits
-    //  into separate tokens, which makes parsing registers ("c31") easier.
-    opstr[0] = '\0';
-    while (1)
+    if (token != TOKEN_IDENTIFIER)
     {
-        if ( (strlen(opstr) + strlen(tctx->token)) >= (sizeof (opstr)-1) )
-        {
-            fail(ctx, "Expected instruction");
-            return 0;
-        } // if
-
-        char *ptr;
-        for (ptr = tctx->token; *ptr != '\0'; ptr++)
-        {
-            if (!valid_instruction_char(*ptr))
-                break;
-        } // for
-
-        if ((ptr == tctx->token) || (*ptr != '\0'))
-        {
-            pushback(ctx);  // an invalid char or EOS in this token.
-            break;
-        } // if
-
-        strcat(opstr, tctx->token);
-
-        if (!nexttoken(ctx, 0, 0, 1, 1))
-            return 0;
-    } // while
+        fail(ctx, "Expected instruction");
+        return 0;
+    } // if
 
     uint32 controls = 0;
+    uint32 opcode = OPCODE_TEXLD;
+    const char *origtoken = ctx->token;
+    const unsigned int origtokenlen = ctx->tokenlen;
 
     // This might need to be TEXLD instead of TEXLDP.
-    if (strcasecmp(opstr, "TEXLDP") == 0)
-    {
+    if (check_token_segment(ctx, "TEXLDP"))
         controls = CONTROL_TEXLDP;
-        strcpy(opstr, "TEXLD");
-    } // if
 
     // This might need to be TEXLD instead of TEXLDB.
-    if (strcasecmp(opstr, "TEXLDB") == 0)
-    {
+    else if (check_token_segment(ctx, "TEXLDB"))
         controls = CONTROL_TEXLDB;
-        strcpy(opstr, "TEXLD");
-    } // else if
 
-    int i;
-    int valid_opcode = 0;
-    const Instruction *instruction = NULL;
-    for (i = 0; i < STATICARRAYLEN(instructions); i++)
+    else  // find the instruction.
     {
-        instruction = &instructions[i];
-        if (instruction->opcode_string == NULL)
-            continue;  // skip this.
-        else if (strcasecmp(opstr, instruction->opcode_string) != 0)
-            continue;  // not us.
-        valid_opcode = 1;
-        break;
-    } // for
+        int i;
+        for (i = 0; i < STATICARRAYLEN(instructions); i++)
+        {
+            const char *opcode_string = instructions[i].opcode_string;
+            if (opcode_string == NULL)
+                continue;  // skip this.
+            else if (!check_token_segment(ctx, opcode_string))
+                continue;  // not us.
+            break;
+        } // for
 
-    uint32 opcode = (uint32) i;
+        opcode = (uint32) i;
 
-    if (!valid_opcode)
+        // This might need to be IFC instead of IF.
+        if (opcode == OPCODE_IF)
+        {
+            if (parse_condition(ctx, &controls))
+                opcode = OPCODE_IFC;
+        } // if
+
+        // This might need to be BREAKC instead of BREAK.
+        else if (opcode == OPCODE_BREAK)
+        {
+            if (parse_condition(ctx, &controls))
+                opcode = OPCODE_BREAKC;
+        } // else if
+
+        // SETP has a conditional code, always.
+        else if (opcode == OPCODE_SETP)
+        {
+            if (!parse_condition(ctx, &controls))
+                fail(ctx, "SETP requires a condition");
+        } // else if
+    } // else
+
+    if ( (opcode == STATICARRAYLEN(instructions)) ||
+         ((ctx->tokenlen > 0) && (ctx->token[0] != '_')) )
     {
+        char opstr[32];
+        const int len = Min(sizeof (opstr) - 1, origtokenlen);
+        memcpy(opstr, origtoken, len);
+        opstr[len] = '\0';
         failf(ctx, "Unknown instruction '%s'", opstr);
         return 0;
     } // if
 
-    // This might need to be IFC instead of IF.
-    // !!! FIXME: compare opcode, not string
-    if (strcmp(instruction->opcode_string, "IF") == 0)
-    {
-        if (parse_condition(ctx, &controls))
-            opcode = OPCODE_IFC;
-    } // if
-
-    // This might need to be BREAKC instead of BREAK.
-    // !!! FIXME: compare opcode, not string
-    else if (strcmp(instruction->opcode_string, "BREAK") == 0)
-    {
-        if (parse_condition(ctx, &controls))
-            opcode = OPCODE_BREAKC;
-    } // else if
-
-    // SETP has a conditional code, always.
-    // !!! FIXME: compare opcode, not string
-    else if (strcmp(instruction->opcode_string, "SETP") == 0)
-    {
-        if (!parse_condition(ctx, &controls))
-            fail(ctx, "SETP requires a condition");
-    } // else if
-
-    instruction = &instructions[opcode];  // ...in case this changed.
+    const Instruction *instruction = &instructions[opcode];
 
     // !!! FIXME: predicated instructions
 
     ctx->tokenbufpos = 0;
 
     const int tokcount = instruction->parse_args(ctx);
-    require_endline(ctx);
 
     // insttoks bits are reserved and should be zero if < SM2.
     const uint32 insttoks = shader_version_atleast(ctx, 2, 0) ? tokcount-1 : 0;
@@ -1600,6 +1325,7 @@ static int parse_instruction_token(Context *ctx)
                       ((predicated) ? 0x10000000 : 0x00000000) );
 
     // write out the argument tokens.
+    int i;
     for (i = 0; i < (tokcount-1); i++)
         output_token(ctx, ctx->tokenbuf[i]);
 
@@ -1609,17 +1335,16 @@ static int parse_instruction_token(Context *ctx)
 
 static void parse_version_token(Context *ctx)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    if (!nexttoken(ctx, 1, 1, 0, 0))
-        return;
-
+    int bad = 0;
     uint32 shader_type = 0;
-    if (tokeq(tctx, "vs"))
+    if (nexttoken(ctx) != TOKEN_IDENTIFIER)
+        bad = 1;
+    else if (check_token_segment(ctx, "vs"))
     {
         ctx->shader_type = MOJOSHADER_TYPE_VERTEX;
         shader_type = 0xFFFE;
     } // if
-    else if (tokeq(tctx, "ps"))
+    else if (check_token_segment(ctx, "ps"))
     {
         ctx->shader_type = MOJOSHADER_TYPE_PIXEL;
         shader_type = 0xFFFF;
@@ -1627,39 +1352,39 @@ static void parse_version_token(Context *ctx)
     else
     {
         // !!! FIXME: geometry shaders?
-        fail(ctx, "Expected version string");
+        bad = 1;
     } // else
 
-    int bad_version = 0;
-
     uint32 major = 0;
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return;
-    else if ( (!tokeq(tctx, "_")) && (!tokeq(tctx, ".")) )
-        bad_version = 1;
-    else if (!nexttoken(ctx, 0, 0, 0, 0))
-        return;
-    else if (!ui32fromstr(tctx->token, &major))
-        bad_version = 1;
-
     uint32 minor = 0;
-    if (!nexttoken(ctx, 0, 0, 0, 0))
-        return;
-    else if ( (!tokeq(tctx, "_")) && (!tokeq(tctx, ".")) )
-        bad_version = 1;
-    else if (!nexttoken(ctx, 0, 0, 0, 0))
-        return;
-    else if (tokeq(tctx, "x"))
-        minor = 1;
-    else if (tokeq(tctx, "sw"))
-        minor = 255;
-    else if (!ui32fromstr(tctx->token, &minor))
-        bad_version = 1;
 
-    if (bad_version)
-        fail(ctx, "Expected version string");
+    if ( (!check_token_segment(ctx, ".")) && (!check_token_segment(ctx, "_")) )
+        bad = 1;
+    else if (check_token_segment(ctx, "1"))
+        major = 1;
+    else if (check_token_segment(ctx, "2"))
+        major = 2;
+    else if (check_token_segment(ctx, "3"))
+        major = 3;
     else
-        require_endline(ctx);
+        bad = 1;
+
+    if ( (!check_token_segment(ctx, ".")) && (!check_token_segment(ctx, "_")) )
+        bad = 1;
+    else if (check_token_segment(ctx, "0"))
+        minor = 0;
+    else if (check_token_segment(ctx, "x"))
+        minor = 1;
+    else if (check_token_segment(ctx, "sw"))
+        minor = 255;
+    else
+        bad = 1;
+
+    if (ctx->tokenlen != 0)
+        bad = 1;
+
+    if (bad)
+        fail(ctx, "Expected valid version string");
 
     ctx->major_ver = major;
     ctx->minor_ver = minor;
@@ -1671,39 +1396,49 @@ static void parse_version_token(Context *ctx)
 
 static void parse_phase_token(Context *ctx)
 {
-    require_endline(ctx);
     output_token(ctx, 0x0000FFFD); // phase token always 0x0000FFFD.
 } // parse_phase_token
 
 
 static void parse_end_token(Context *ctx)
 {
-    require_endline(ctx);
     // We don't emit the end token bits here, since it's valid for a shader
     //  to not specify an "end" string at all; it's implicit, in that case.
     // Instead, we make sure if we see "end" that it's the last thing we see.
-    nexttoken(ctx, 1, 1, 0, 1);
-    if (!ctx->eof)
+    if (nexttoken(ctx) != TOKEN_EOI)
         fail(ctx, "Content after END");
 } // parse_end_token
 
 
-static void parse_token(Context *ctx)
+static void parse_token(Context *ctx, const Token token)
 {
-    TokenizerContext *tctx = &ctx->tctx;
-    if (tokeq(tctx, "end"))
-        parse_end_token(ctx);
-    else if (tokeq(tctx, "phase"))
-        parse_phase_token(ctx);
-    parse_instruction_token(ctx);
+    if (token != TOKEN_IDENTIFIER)
+        parse_instruction_token(ctx, token);  // might be a coissue '+', etc.
+    else
+    {
+        if (check_token(ctx, "end"))
+            parse_end_token(ctx);
+        else if (check_token(ctx, "phase"))
+            parse_phase_token(ctx);
+        else
+            parse_instruction_token(ctx, token);
+    } // if
 } // parse_token
 
 
-static Context *build_context(const char *source, MOJOSHADER_malloc m,
-                              MOJOSHADER_free f, void *d)
+static Context *build_context(const char *source, unsigned int sourcelen,
+                              const MOJOSHADER_preprocessorDefine **defines,
+                              unsigned int define_count,
+                              MOJOSHADER_includeOpen include_open,
+                              MOJOSHADER_includeClose include_close,
+                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
+
+    // !!! FIXME
+    if (include_open == NULL) include_open = (MOJOSHADER_includeOpen) 0x1;
+    if (include_close == NULL) include_close = (MOJOSHADER_includeClose) 0x1;
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
@@ -1714,8 +1449,15 @@ static Context *build_context(const char *source, MOJOSHADER_malloc m,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
-    ctx->tctx.source = source;
-    ctx->tctx.linenum = 1;
+    ctx->preprocessor = preprocessor_start(NULL, source, sourcelen,
+                                           include_open, include_close,
+                                           defines, define_count, m, f, d);
+
+    if (ctx->preprocessor == NULL)
+    {
+        f(ctx, d);
+        return NULL;
+    } // if
 
     return ctx;
 } // build_context
@@ -1741,6 +1483,9 @@ static void destroy_context(Context *ctx)
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
         free_error_list(f, d, ctx->errors);
+        free_filename_cache(ctx);
+        if (ctx->preprocessor != NULL)
+            preprocessor_end(ctx->preprocessor);
         if (ctx->output != NULL)
             f(ctx->output, d);
         if (ctx->token_to_source != NULL)
@@ -1985,19 +1730,24 @@ static void output_comments(Context *ctx, const char **comments,
 // API entry point...
 
 const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
-                            const char **comments, unsigned int comment_count,
-                            const MOJOSHADER_symbol *symbols,
-                            unsigned int symbol_count,
-                            MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+                             unsigned int sourcelen,
+                             const char **comments, unsigned int comment_count,
+                             const MOJOSHADER_symbol *symbols,
+                             unsigned int symbol_count,
+                             const MOJOSHADER_preprocessorDefine **defines,
+                             unsigned int define_count,
+                             MOJOSHADER_includeOpen include_open,
+                             MOJOSHADER_includeClose include_close,
+                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
-    int failed = 0;
     MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
         return &MOJOSHADER_out_of_mem_data;  // supply both or neither.
 
-    ctx = build_context(source, m, f, d);
+    ctx = build_context(source, sourcelen, defines, define_count,
+                        include_open, include_close, m, f, d);
     if (ctx == NULL)
         return &MOJOSHADER_out_of_mem_data;
 
@@ -2006,30 +1756,14 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     parse_version_token(ctx);
     output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
-    if (isfail(ctx))
-    {
-        failed = 1;
-        ctx->isfail = 0;
-        skip_line(ctx);  // start fresh on next line.
-    } // if
-
     // parse out the rest of the tokens after the version token...
-    while ((nexttoken(ctx, 1, 1, 0, 1)) && (!ctx->eof))
-    {
-        parse_token(ctx);
-        if (isfail(ctx))
-        {
-            failed = 1;
-            ctx->isfail = 0;
-            skip_line(ctx);  // start fresh on next line.
-        } // if
-    } // while
-
-    ctx->isfail = failed;
+    Token token;
+    while ((token = nexttoken(ctx)) != TOKEN_EOI)
+        parse_token(ctx, token);
 
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
-    if (failed)
+    if (isfail(ctx))
         retval = (MOJOSHADER_parseData *) build_failed_assembly(ctx);
     else
     {
@@ -2060,12 +1794,12 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                 {
                     const SourcePos *srcpos = &ctx->token_to_source[pos];
                     Free(ctx, (void *) error->filename);
-                    char *fname = (char *) Malloc(ctx,
-                                        strlen(srcpos->filename) + 1);
-                    if (fname != NULL)
+                    char *fname = NULL;
+                    if (srcpos->filename != NULL)
                     {
-                        strcpy(fname, srcpos->filename);
-                        error->error_position = srcpos->line;
+                        fname = StrDup(ctx, srcpos->filename);
+                        if (fname != NULL)
+                            error->error_position = srcpos->line;
                     } // if
                     error->filename = fname;  // may be NULL, that's okay.
                 } // else
@@ -2076,7 +1810,6 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     destroy_context(ctx);
     return retval;
 } // MOJOSHADER_assemble
-
 
 // end of mojoshader_assembler.c ...
 

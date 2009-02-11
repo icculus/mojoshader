@@ -808,8 +808,10 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  * This function is optional. Use this to convert Direct3D shader assembly
  *  language into bytecode, which can be handled by MOJOSHADER_parse().
  *
- * (source) is an ASCII, NULL-terminated string of valid Direct3D shader
- *  assembly source code.
+ * (source) is an ASCII string of valid Direct3D shader assembly source code.
+ *  It does not need to be NULL-terminated.
+ *
+ * (sourcelen) is the length of the string pointed to by (source), in bytes.
  *
  * (comments) points to (comment_count) NULL-terminated ASCII strings, and
  *  can be NULL. These strings are inserted as comments in the bytecode.
@@ -822,7 +824,15 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  *  at this time; it will not be checked to see if it matches what was
  *  assembled in any way whatsoever.
  *
- * This will return a MOJOSHADER_parseData(), like MOJOSHADER_parse() would,
+ * (defines) points to (define_count) preprocessor definitions, and can be
+ *  NULL. These are treated by the preprocessor as if the source code started
+ *  with one #define for each entry you pass in here.
+ *
+ * (include_open) and (include_close) let the app control the preprocessor's
+ *  behaviour for #include statements. Both are optional and can be NULL, but
+ *  both must be specified if either is specified.
+ *
+ * This will return a MOJOSHADER_parseData, like MOJOSHADER_parse() would,
  *  except the profile will be MOJOSHADER_PROFILE_BYTECODE and the output
  *  will be the assembled bytecode instead of some other language. This output
  *  can be pushed back through MOJOSHADER_parseData() with a different profile.
@@ -839,16 +849,21 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  *  If your allocator needs instance-specific data, you may supply it with the
  *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
  *
- * This function is thread safe, so long as (m) and (f) are too, and that
- *  (source) remains intact for the duration of the call. This allows you
- *  to assemble several shaders on separate CPU cores at the same time.
+ * This function is thread safe, so long as the various callback functions
+ *  are, too, and that the parameters remains intact for the duration of the
+ *  call. This allows you to assemble several shaders on separate CPU cores
+ *  at the same time.
  */
 const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
+                             unsigned int sourcelen,
                              const char **comments, unsigned int comment_count,
                              const MOJOSHADER_symbol *symbols,
                              unsigned int symbol_count,
+                             const MOJOSHADER_preprocessorDefine **defines,
+                             unsigned int define_count,
+                             MOJOSHADER_includeOpen include_open,
+                             MOJOSHADER_includeClose include_close,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
-
 
 
 /* OpenGL interface... */

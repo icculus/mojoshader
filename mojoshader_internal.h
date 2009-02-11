@@ -121,8 +121,12 @@ typedef int32_t int32;
 
 // we need to reference these by explicit value occasionally...
 #define OPCODE_RET 28
+#define OPCODE_IF 40
 #define OPCODE_IFC 41
+#define OPCODE_BREAK 44
 #define OPCODE_BREAKC 45
+#define OPCODE_TEXLD 66
+#define OPCODE_SETP 94
 
 // TEXLD becomes a different instruction with these instruction controls.
 #define CONTROL_TEXLD  0
