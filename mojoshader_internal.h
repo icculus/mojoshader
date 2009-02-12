@@ -367,11 +367,9 @@ const char *preprocessor_nexttoken(Preprocessor *_ctx,
 const char *preprocessor_sourcepos(Preprocessor *pp, unsigned int *pos);
 
 
-#if DEBUG_TOKENIZER
 void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
                                   const unsigned int tokenlen,
                                   const Token tokenval);
-#endif
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 
