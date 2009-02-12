@@ -603,8 +603,8 @@ static MOJOSHADER_error *build_errors(ErrorList **errors, const int count,
 } // build_errors
 
 
-const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *source,
-                             unsigned int sourcelen,
+const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
+                             const char *source, unsigned int sourcelen,
                              const MOJOSHADER_preprocessorDefine **defines,
                              unsigned int define_count,
                              MOJOSHADER_includeOpen include_open,
@@ -626,8 +626,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *source,
 include_open = (MOJOSHADER_includeOpen) 0x1;
 include_close = (MOJOSHADER_includeClose) 0x1;
 
-    const char *fname = "*";  // !!! FIXME
-    Preprocessor *pp = preprocessor_start(fname, source, sourcelen,
+    Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
                                           defines, define_count, m, f, d);
 

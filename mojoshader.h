@@ -329,7 +329,8 @@ typedef struct MOJOSHADER_error
     const char *error;
 
     /*
-     * Filename where error happened.
+     * Filename where error happened. This can be NULL if the information
+     *  isn't available.
      */
     const char *filename;
 
@@ -747,7 +748,14 @@ typedef void (*MOJOSHADER_includeClose)(const char *data,
  *
  * This function maps to D3DXPreprocessShader().
  *
- * (source) is an ASCII string of text to preprocess. It does not need to be
+ * (filename) is a NULL-terminated UTF-8 filename. It can be NULL. We do not
+ *  actually access this file, as we obtain our data from (source). This
+ *  string is copied when we need to report errors while processing (source),
+ *  as opposed to errors in a file referenced via the #include directive in
+ *  (source). If this is NULL, then errors will report the filename as NULL,
+ *  too.
+ *
+ * (source) is an string of UTF-8 text to preprocess. It does not need to be
  *  NULL-terminated.
  *
  * (sourcelen) is the length of the string pointed to by (source), in bytes.
@@ -781,8 +789,8 @@ typedef void (*MOJOSHADER_includeClose)(const char *data,
  *  call. This allows you to preprocess several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *source,
-                             unsigned int sourcelen,
+const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
+                             const char *source, unsigned int sourcelen,
                              const MOJOSHADER_preprocessorDefine **defines,
                              unsigned int define_count,
                              MOJOSHADER_includeOpen include_open,
@@ -808,7 +816,14 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  * This function is optional. Use this to convert Direct3D shader assembly
  *  language into bytecode, which can be handled by MOJOSHADER_parse().
  *
- * (source) is an ASCII string of valid Direct3D shader assembly source code.
+ * (filename) is a NULL-terminated UTF-8 filename. It can be NULL. We do not
+ *  actually access this file, as we obtain our data from (source). This
+ *  string is copied when we need to report errors while processing (source),
+ *  as opposed to errors in a file referenced via the #include directive in
+ *  (source). If this is NULL, then errors will report the filename as NULL,
+ *  too.
+ *
+ * (source) is an UTF-8 string of valid Direct3D shader assembly source code.
  *  It does not need to be NULL-terminated.
  *
  * (sourcelen) is the length of the string pointed to by (source), in bytes.
@@ -854,8 +869,8 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  *  call. This allows you to assemble several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
-                             unsigned int sourcelen,
+const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
+                             const char *source, unsigned int sourcelen,
                              const char **comments, unsigned int comment_count,
                              const MOJOSHADER_symbol *symbols,
                              unsigned int symbol_count,

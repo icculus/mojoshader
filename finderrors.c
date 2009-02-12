@@ -84,7 +84,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         const MOJOSHADER_parseData *a;
 
         buf[rc] = '\0';  // make sure the source is null-terminated.
-        a = MOJOSHADER_assemble((char *) buf, rc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        a = MOJOSHADER_assemble(fname, (char *) buf, rc, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
         if (a->error_count > 0)
         {

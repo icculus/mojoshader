@@ -1514,7 +1514,8 @@ static void parse_token(Context *ctx, const Token token)
 } // parse_token
 
 
-static Context *build_context(const char *source, unsigned int sourcelen,
+static Context *build_context(const char *filename,
+                              const char *source, unsigned int sourcelen,
                               const MOJOSHADER_preprocessorDefine **defines,
                               unsigned int define_count,
                               MOJOSHADER_includeOpen include_open,
@@ -1537,7 +1538,7 @@ static Context *build_context(const char *source, unsigned int sourcelen,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
-    ctx->preprocessor = preprocessor_start(NULL, source, sourcelen,
+    ctx->preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
                                            defines, define_count, m, f, d);
 
@@ -1817,8 +1818,8 @@ static void output_comments(Context *ctx, const char **comments,
 
 // API entry point...
 
-const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
-                             unsigned int sourcelen,
+const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
+                             const char *source, unsigned int sourcelen,
                              const char **comments, unsigned int comment_count,
                              const MOJOSHADER_symbol *symbols,
                              unsigned int symbol_count,
@@ -1834,7 +1835,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
         return &MOJOSHADER_out_of_mem_data;  // supply both or neither.
 
-    ctx = build_context(source, sourcelen, defines, define_count,
+    ctx = build_context(filename, source, sourcelen, defines, define_count,
                         include_open, include_close, m, f, d);
     if (ctx == NULL)
         return &MOJOSHADER_out_of_mem_data;

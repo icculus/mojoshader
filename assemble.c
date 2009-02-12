@@ -11,7 +11,8 @@
 #include <stdlib.h>
 #include "mojoshader.h"
 
-static int assemble(const char *buf, int len, const char *outfile)
+static int assemble(const char *fname, const char *buf, int len,
+                    const char *outfile)
 {
     FILE *io = fopen(outfile, "wb");
     if (io == NULL)
@@ -23,8 +24,8 @@ static int assemble(const char *buf, int len, const char *outfile)
     const MOJOSHADER_parseData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_assemble(buf, len, NULL, 0, NULL, 0, NULL, 0,
-                             NULL, NULL, NULL, NULL, NULL);
+    pd = MOJOSHADER_assemble(fname, buf, len, NULL, 0, NULL, 0,
+                             NULL, 0, NULL, NULL, NULL, NULL, NULL);
     if (pd->error_count > 0)
     {
         int i;
@@ -76,7 +77,7 @@ int main(int argc, char **argv)
                 printf(" ... fread('%s') failed.\n", infile);
             else
             {
-                if (assemble(buf, rc, outfile))
+                if (assemble(infile, buf, rc, outfile))
                     retval = 0;
                 else
                     remove(outfile);

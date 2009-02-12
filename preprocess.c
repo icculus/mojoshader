@@ -11,7 +11,8 @@
 #include <stdlib.h>
 #include "mojoshader.h"
 
-static int preprocess(const char *buf, int len, const char *outfile)
+static int preprocess(const char *fname, const char *buf, int len,
+                      const char *outfile)
 {
     FILE *io = fopen(outfile, "wb");
     if (io == NULL)
@@ -23,7 +24,7 @@ static int preprocess(const char *buf, int len, const char *outfile)
     const MOJOSHADER_preprocessData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_preprocess(buf, len, NULL, 0, NULL,
+    pd = MOJOSHADER_preprocess(fname, buf, len, NULL, 0, NULL,
                                NULL, NULL, NULL, NULL);
 
     if (pd->error_count > 0)
@@ -77,7 +78,7 @@ int main(int argc, char **argv)
                 printf(" ... fread('%s') failed.\n", infile);
             else
             {
-                if (preprocess(buf, rc, outfile))
+                if (preprocess(infile, buf, rc, outfile))
                     retval = 0;
                 else
                     remove(outfile);
