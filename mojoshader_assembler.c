@@ -10,7 +10,7 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-#define DEBUG_ASSEMBLY_PARSER 1
+#define DEBUG_ASSEMBLY_PARSER 0
 
 // Simple linked list to cache source filenames, so we don't have to copy
 //  the same string over and over for each opcode.
@@ -225,7 +225,9 @@ static Token _nexttoken(Context *ctx)
 
 
 // !!! FIXME: cut-and-paste from preprocessor.
-#if DEBUG_ASSEMBLY_PARSER
+#if !DEBUG_ASSEMBLY_PARSER
+#define print_debug_token(ctx)
+#else
 static void print_debug_token(Context *ctx)
 {
     printf("ASSEMBLER TOKEN: \"");
