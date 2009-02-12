@@ -1,5 +1,6 @@
 syntax:glob
 mojoshader_version.h
+cmake-build
 CMakeCache.txt
 CMakeFiles
 Makefile
@@ -9,6 +10,8 @@ testoutput
 bestprofile
 availableprofiles
 finderrors
+assemble
+preprocess
 glcaps
 *.exe
 *.lib
