@@ -350,6 +350,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // pick up again after parent's #include line.
         } // if
 
+        else if (token == TOKEN_PP_INCOMPLETE_COMMENT)
+        {
+            fail(ctx, "Incomplete multiline comment");
+            continue;  // !!! FIXME: we should probably return TOKEN_ERROR or something.
+        } // else if
+
         *_token = token;
         *_len = (unsigned int) (state->source - state->token);
         return state->token;
