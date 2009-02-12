@@ -1,9 +1,13 @@
 #!/bin/sh
 
-for feh in ??_?_?/*.bytecode ; do
-    echo -n "$feh "
-    echo -n `./testparse glsl $feh |grep "INSTRUCTION COUNT: " |perl -w -p -e 's/\AINSTRUCTION COUNT://;'`
-    echo -n " vs. "
-    grep "instruction slots used" `echo $feh |perl -w -p -e 's/bytecode\Z/disasm/;'` |perl -w -p -e 's#\A// approximately (\d+) instruction slots used .*?\Z#$1#;'
+# !!! FIXME: use this to correct our estimates some day.
+
+for feh in shaders/??_?_?/*.bytecode ; do
+    DISASM=`echo $feh |perl -w -p -e 's/bytecode\Z/disasm/;'`
+    MINE=`./cmake-build/testparse glsl $feh |grep "INSTRUCTION COUNT: " |perl -w -p -e 's/\AINSTRUCTION COUNT: //;'`
+    THEIRS=`grep "instruction slots used" $DISASM |perl -w -p -e 's#\A// approximately (\d+) instruction slots used .*?\Z#$1#;'`
+    if [ "x$MINE" != "x$THEIRS" ]; then
+        echo "$feh $MINE vs. $THEIRS"
+    fi
 done
 
