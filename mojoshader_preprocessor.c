@@ -623,6 +623,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
 
+// !!! FIXME
 include_open = (MOJOSHADER_includeOpen) 0x1;
 include_close = (MOJOSHADER_includeClose) 0x1;
 
