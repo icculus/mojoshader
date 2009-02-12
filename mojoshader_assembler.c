@@ -982,13 +982,23 @@ static int parse_args_NULL(Context *ctx)
 static int parse_num(Context *ctx, const int floatok, uint32 *value)
 {
     union { float f; int32 si32; uint32 ui32; } cvt;
+    int negative = 0;
+    Token token = nexttoken(ctx);
 
-    const Token token = nexttoken(ctx);
+    if (token == ((Token) '-'))
+    {
+        negative = 1;
+        token = nexttoken(ctx);
+    } // if
+
     if (token == TOKEN_INT_LITERAL)
     {
         int d = 0;
         sscanf(ctx->token, "%d", &d);
-        cvt.si32 = (int32) d;
+        if (floatok)
+            cvt.f = (float) ((negative) ? -d : d);
+        else
+            cvt.si32 = (int32) ((negative) ? -d : d);
     } // if
     else if (token == TOKEN_FLOAT_LITERAL)
     {
@@ -999,6 +1009,8 @@ static int parse_num(Context *ctx, const int floatok, uint32 *value)
             return 0;
         } // if
         sscanf(ctx->token, "%f", &cvt.f);
+        if (negative)
+            cvt.f = -cvt.f;
     } // if
     else
     {
