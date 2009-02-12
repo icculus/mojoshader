@@ -1,22 +1,30 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.4)
 PROJECT(MojoShader)
 
-EXECUTE_PROCESS(
-    COMMAND hg tip --template {rev}
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    RESULT_VARIABLE HGVERSION_RC
-    OUTPUT_VARIABLE MOJOSHADER_VERSION
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-EXECUTE_PROCESS(
-    COMMAND hg tip --template hg-{rev}:{node|short}
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    RESULT_VARIABLE HGVERSION_RC
-    OUTPUT_VARIABLE MOJOSHADER_CHANGESET
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+FIND_PROGRAM(HG hg DOC "Path to hg command line app: http://www.selenic.com/mercurial/")
+IF(NOT HG)
+    MESSAGE(STATUS "Mercurial (hg) not found. You can go on, but version info will be wrong.")
+    SET(MOJOSHADER_VERSION -1)
+    SET(MOJOSHADER_CHANGESET "???")
+ELSE(NOT HG)
+    MARK_AS_ADVANCED(HG)
+    EXECUTE_PROCESS(
+        COMMAND hg tip --template {rev}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RESULT_VARIABLE HGVERSION_RC
+        OUTPUT_VARIABLE MOJOSHADER_VERSION
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    EXECUTE_PROCESS(
+        COMMAND hg tip --template hg-{rev}:{node|short}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RESULT_VARIABLE HGVERSION_RC
+        OUTPUT_VARIABLE MOJOSHADER_CHANGESET
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+ENDIF(NOT HG)
 
 WRITE_FILE(
     "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_version.h"
@@ -48,12 +56,18 @@ ADD_LIBRARY(mojoshader STATIC
     mojoshader_opengl.c
 )
 
-ADD_CUSTOM_COMMAND(
-    OUTPUT mojoshader_lexer.c
-    DEPENDS mojoshader_lexer.re
-    COMMAND re2c
-    ARGS -s -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
-)
+FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
+IF(NOT RE2C)
+    MESSAGE(STATUS "re2c missing. You can go on, but can't rebuild the lexer.")
+ELSE(NOT RE2C)
+    MARK_AS_ADVANCED(RE2C)
+    ADD_CUSTOM_COMMAND(
+        OUTPUT mojoshader_lexer.c
+        DEPENDS mojoshader_lexer.re
+        COMMAND ${RE2C}
+        ARGS -s -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
+    )
+ENDIF(NOT RE2C)
 
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
