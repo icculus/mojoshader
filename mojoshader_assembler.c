@@ -1132,8 +1132,11 @@ static int parse_args_DCL(Context *ctx)
 
     if (parse_dcl_usage(ctx, &usage, &issampler))
     {
-        if ( (ctx->tokenlen > 0) && (!ui32fromtoken(ctx, &index)) )
-            fail(ctx, "Expected usage index");
+        if ((ctx->tokenlen > 0) && (*ctx->token != '_'))
+        {
+            if (!ui32fromtoken(ctx, &index))
+                fail(ctx, "Expected usage index");
+        } // if
     } // if
 
     parse_destination_token(ctx);
