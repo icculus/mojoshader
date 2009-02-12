@@ -651,7 +651,7 @@ typedef struct MOJOSHADER_preprocessData
     MOJOSHADER_error *errors;
 
     /*
-     * Bytes of output from preprocessing. This is an ASCII string. We
+     * Bytes of output from preprocessing. This is a UTF-8 string. We
      *  guarantee it to be NULL-terminated. Will be NULL on error.
      */
     const char *output;
@@ -828,7 +828,7 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  *
  * (sourcelen) is the length of the string pointed to by (source), in bytes.
  *
- * (comments) points to (comment_count) NULL-terminated ASCII strings, and
+ * (comments) points to (comment_count) NULL-terminated UTF-8 strings, and
  *  can be NULL. These strings are inserted as comments in the bytecode.
  *
  * (symbols) points to (symbol_count) symbol structs, and can be NULL. These
