@@ -66,7 +66,8 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
         int i;
         for (i = 0; i < pd->error_count; i++)
         {
-            printf("ERROR: (position %d) %s\n",
+            printf("%s:%d: ERROR: %s\n",
+                    pd->errors[i].filename ? pd->errors[i].filename : "???",
                     pd->errors[i].error_position,
                     pd->errors[i].error);
         } // for

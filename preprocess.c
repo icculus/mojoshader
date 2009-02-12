@@ -31,7 +31,8 @@ static int preprocess(const char *buf, int len, const char *outfile)
         int i;
         for (i = 0; i < pd->error_count; i++)
         {
-            printf("ERROR: (line %d) %s\n",
+            printf("%s:%d: ERROR: %s\n",
+                    pd->errors[i].filename ? pd->errors[i].filename : "???",
                     pd->errors[i].error_position,
                     pd->errors[i].error);
         } // for

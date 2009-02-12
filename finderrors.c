@@ -88,7 +88,10 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
 
         if (a->error_count > 0)
         {
-            report("FAIL: %s (line %d) %s\n", fname, a->errors[0].error_position, a->errors[0].error);
+            report("FAIL: %s (line %d) %s\n",
+                a->errors[0].filename ? a->errors[0].filename : "???",
+                a->errors[0].error_position,
+                a->errors[0].error);
             return 1;
         } // if
 
