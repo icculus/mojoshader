@@ -6,7 +6,10 @@
 #endif
 
 // Shader bytecode format is described at MSDN:
-//  http://msdn2.microsoft.com/en-us/library/ms800307.aspx
+//  http://msdn.microsoft.com/en-us/library/ms800307.aspx
+
+// HLSL syntax is here:
+//  http://msdn.microsoft.com/en-us/library/bb509615(VS.85).aspx
 
 #include <stdio.h>
 #include <string.h>
