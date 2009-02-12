@@ -525,54 +525,23 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
     int regnum = 0;
     RegisterType regtype = REG_TYPE_TEMP;
 
-    if (check_token_segment(ctx, "r"))
-        regtype = REG_TYPE_TEMP;
-    else if (check_token_segment(ctx, "v"))
-        regtype = REG_TYPE_INPUT;
-    else if (check_token_segment(ctx, "c"))
-        regtype = REG_TYPE_CONST;
-    else if (check_token_segment(ctx, "i"))
-        regtype = REG_TYPE_CONSTINT;
-    else if (check_token_segment(ctx, "b"))
-        regtype = REG_TYPE_CONSTBOOL;
-    else if (check_token_segment(ctx, "oC"))
-        regtype = REG_TYPE_COLOROUT;
-    else if (check_token_segment(ctx, "s"))
-        regtype = REG_TYPE_SAMPLER;
-    else if (check_token_segment(ctx, "oD"))
-        regtype = REG_TYPE_ATTROUT;
-    else if (check_token_segment(ctx, "l"))
-        regtype = REG_TYPE_LABEL;
-    else if (check_token_segment(ctx, "p"))
-        regtype = REG_TYPE_PREDICATE;
-    else if (check_token_segment(ctx, "o"))
-        regtype = REG_TYPE_OUTPUT;
-    else if (check_token_segment(ctx, "oT"))
-        regtype = REG_TYPE_OUTPUT;
-    else if (check_token_segment(ctx, "a"))
-        regtype = REG_TYPE_ADDRESS;
-    else if (check_token_segment(ctx, "t"))
-        regtype = REG_TYPE_ADDRESS;
-    else if (check_token_segment(ctx, "oDepth"))
+    // Watch out for substrings! oDepth must be checked before oD, since
+    //  the latter will match either case.
+    if (check_token_segment(ctx, "oDepth"))
     {
         regtype = REG_TYPE_DEPTHOUT;
-        neednum = 0;
-    } // else if
-    else if (check_token_segment(ctx, "aL"))
-    {
-        regtype = REG_TYPE_LOOP;
-        neednum = 0;
-    } // else if
-    else if (check_token_segment(ctx, "vPos"))
-    {
-        regtype = REG_TYPE_MISCTYPE;
-        regnum = (int) MISCTYPE_TYPE_POSITION;
         neednum = 0;
     } // else if
     else if (check_token_segment(ctx, "vFace"))
     {
         regtype = REG_TYPE_MISCTYPE;
         regnum = (int) MISCTYPE_TYPE_FACE;
+        neednum = 0;
+    } // else if
+    else if (check_token_segment(ctx, "vPos"))
+    {
+        regtype = REG_TYPE_MISCTYPE;
+        regnum = (int) MISCTYPE_TYPE_POSITION;
         neednum = 0;
     } // else if
     else if (check_token_segment(ctx, "oPos"))
@@ -593,6 +562,39 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         regnum = (int) RASTOUT_TYPE_POINT_SIZE;
         neednum = 0;
     } // else if
+    else if (check_token_segment(ctx, "aL"))
+    {
+        regtype = REG_TYPE_LOOP;
+        neednum = 0;
+    } // else if
+    else if (check_token_segment(ctx, "oC"))
+        regtype = REG_TYPE_COLOROUT;
+    else if (check_token_segment(ctx, "oT"))
+        regtype = REG_TYPE_OUTPUT;
+    else if (check_token_segment(ctx, "oD"))
+        regtype = REG_TYPE_ATTROUT;
+    else if (check_token_segment(ctx, "r"))
+        regtype = REG_TYPE_TEMP;
+    else if (check_token_segment(ctx, "v"))
+        regtype = REG_TYPE_INPUT;
+    else if (check_token_segment(ctx, "c"))
+        regtype = REG_TYPE_CONST;
+    else if (check_token_segment(ctx, "i"))
+        regtype = REG_TYPE_CONSTINT;
+    else if (check_token_segment(ctx, "b"))
+        regtype = REG_TYPE_CONSTBOOL;
+    else if (check_token_segment(ctx, "s"))
+        regtype = REG_TYPE_SAMPLER;
+    else if (check_token_segment(ctx, "l"))
+        regtype = REG_TYPE_LABEL;
+    else if (check_token_segment(ctx, "p"))
+        regtype = REG_TYPE_PREDICATE;
+    else if (check_token_segment(ctx, "o"))
+        regtype = REG_TYPE_OUTPUT;
+    else if (check_token_segment(ctx, "a"))
+        regtype = REG_TYPE_ADDRESS;
+    else if (check_token_segment(ctx, "t"))
+        regtype = REG_TYPE_ADDRESS;
         
     //case REG_TYPE_TEMPFLOAT16:  // !!! FIXME: don't know this asm string
 
