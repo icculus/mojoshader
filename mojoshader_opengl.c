@@ -1069,6 +1069,8 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                       ctx->malloc_data);
     if (pd->error_count > 0)
     {
+        // !!! FIXME: put multiple errors in the buffer? Don't use
+        // !!! FIXME:  MOJOSHADER_glGetError() for this?
         set_error(pd->errors[0].error);
         goto compile_shader_fail;
     } // if
