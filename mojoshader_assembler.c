@@ -1346,7 +1346,14 @@ static int parse_instruction_token(Context *ctx, Token token)
                 continue;  // skip this.
             else if (!check_token_segment(ctx, opcode_string))
                 continue;  // not us.
-            break;
+            else if ((ctx->tokenlen > 0) && (*ctx->token != '_'))
+            {
+                ctx->token = origtoken;
+                ctx->tokenlen = origtokenlen;
+                continue;  // not the match: TEXLD when we wanted TEXLDL, etc.
+            } // if
+
+            break;  // found it!
         } // for
 
         opcode = (uint32) i;
