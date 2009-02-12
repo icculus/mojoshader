@@ -82,7 +82,18 @@ scanner_loop:
     (["] (ESC|any\[\n\\"])* ["])
                     { RET(TOKEN_STRING_LITERAL); }
     
-    "..."           { RET(TOKEN_ELLIPSIS); }
+    ">>="           { RET(TOKEN_RSHIFTASSIGN); }
+    "<<="           { RET(TOKEN_LSHIFTASSIGN); }
+    "+="            { RET(TOKEN_ADDASSIGN); }
+    "-="            { RET(TOKEN_SUBASSIGN); }
+    "*="            { RET(TOKEN_MULTASSIGN); }
+    "/="            { RET(TOKEN_DIVASSIGN); }
+    "%="            { RET(TOKEN_MODASSIGN); }
+    "^="            { RET(TOKEN_XORASSIGN); }
+    "&="            { RET(TOKEN_ANDASSIGN); }
+    "|="            { RET(TOKEN_ORASSIGN); }
+    "++"            { RET(TOKEN_INCREMENT); }
+    "--"            { RET(TOKEN_DECREMENT); }
     ">>"            { RET(TOKEN_RSHIFT); }
     "<<"            { RET(TOKEN_LSHIFT); }
     "&&"            { RET(TOKEN_ANDAND); }
