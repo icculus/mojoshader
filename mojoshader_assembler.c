@@ -106,14 +106,8 @@ static void failf(Context *ctx, const char *fmt, ...)
             error_position = -2;
             break;
         case MOJOSHADER_PARSEPHASE_WORKING:
-            // !!! FIXME: fname == base source file if output_pos == 0.
-            if (ctx->output_len > 0)
-            {
-                const size_t idx = ctx->output_len - 1;
-                linenum = ctx->token_to_source[idx].line;
-                fname = ctx->token_to_source[idx].filename;
-            } // if
-            error_position = linenum;
+            fname = preprocessor_sourcepos(ctx->preprocessor, &linenum);
+            error_position = (int) linenum;
             break;
         case MOJOSHADER_PARSEPHASE_DONE:
             error_position = -1;
