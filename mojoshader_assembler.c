@@ -10,6 +10,8 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
+#define DEBUG_ASSEMBLY_PARSER 1
+
 // Simple linked list to cache source filenames, so we don't have to copy
 //  the same string over and over for each opcode.
 typedef struct FilenameCache
@@ -198,6 +200,9 @@ static inline int shader_is_vertex(const Context *ctx)
 
 static inline void pushback(Context *ctx)
 {
+    #if DEBUG_ASSEMBLY_PARSER
+    printf("ASSEMBLER PUSHBACK\n");
+    #endif
     assert(!ctx->pushedback);
     ctx->pushedback = 1;
 } // pushback
@@ -225,10 +230,71 @@ static Token _nexttoken(Context *ctx)
 } // _nexttoken
 
 
+// !!! FIXME: cut-and-paste from preprocessor.
+#if DEBUG_ASSEMBLY_PARSER
+static void print_debug_token(Context *ctx)
+{
+    printf("ASSEMBLER TOKEN: \"");
+    unsigned int i;
+    for (i = 0; i < ctx->tokenlen; i++)
+    {
+        if (ctx->token[i] == '\n')
+            printf("\\n");
+        else
+            printf("%c", ctx->token[i]);
+    } // for
+    printf("\" (");
+    switch (ctx->tokenval)
+    {
+        #define TOKENCASE(x) case x: printf("%s", #x); break
+        TOKENCASE(TOKEN_UNKNOWN);
+        TOKENCASE(TOKEN_IDENTIFIER);
+        TOKENCASE(TOKEN_INT_LITERAL);
+        TOKENCASE(TOKEN_FLOAT_LITERAL);
+        TOKENCASE(TOKEN_STRING_LITERAL);
+        TOKENCASE(TOKEN_ELLIPSIS);
+        TOKENCASE(TOKEN_RSHIFT);
+        TOKENCASE(TOKEN_LSHIFT);
+        TOKENCASE(TOKEN_ANDAND);
+        TOKENCASE(TOKEN_OROR);
+        TOKENCASE(TOKEN_LEQ);
+        TOKENCASE(TOKEN_GEQ);
+        TOKENCASE(TOKEN_EQL);
+        TOKENCASE(TOKEN_NEQ);
+        TOKENCASE(TOKEN_HASHHASH);
+        TOKENCASE(TOKEN_PP_INCLUDE);
+        TOKENCASE(TOKEN_PP_LINE);
+        TOKENCASE(TOKEN_PP_DEFINE);
+        TOKENCASE(TOKEN_PP_UNDEF);
+        TOKENCASE(TOKEN_PP_IF);
+        TOKENCASE(TOKEN_PP_IFDEF);
+        TOKENCASE(TOKEN_PP_IFNDEF);
+        TOKENCASE(TOKEN_PP_ELSE);
+        TOKENCASE(TOKEN_PP_ELIF);
+        TOKENCASE(TOKEN_PP_ENDIF);
+        TOKENCASE(TOKEN_PP_ERROR);
+        TOKENCASE(TOKEN_PP_INCOMPLETE_COMMENT);
+        TOKENCASE(TOKEN_EOI);
+        #undef TOKENCASE
+
+        case ((Token) '\n'):
+            printf("'\\n'");
+            break;
+
+        default:
+            assert(((int)ctx->tokenval) < 256);
+            printf("'%c'", (char) ctx->tokenval);
+            break;
+    } // switch
+    printf(")\n");
+}
+#endif
+
 static Token nexttoken(Context *ctx)
 {
     if (ctx->pushedback)
     {
+        print_debug_token(ctx);
         ctx->pushedback = 0;
         return ctx->tokenval;
     } // if
@@ -249,6 +315,7 @@ static Token nexttoken(Context *ctx)
             token = _nexttoken(ctx);  // skip endlines.
     } // if
 
+    print_debug_token(ctx);
     return token;
 } // nexttoken
 

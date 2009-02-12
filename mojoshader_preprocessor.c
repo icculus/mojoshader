@@ -374,7 +374,7 @@ const char *preprocessor_nexttoken(Preprocessor *ctx, unsigned int *len,
     const char *retval = _preprocessor_nexttoken(ctx, len, token);
 
     #if DEBUG_TOKENIZER
-    printf("TOKEN: \"");
+    printf("PREPROCESSOR TOKEN: \"");
     unsigned int i;
     for (i = 0; i < *len; i++)
     {
