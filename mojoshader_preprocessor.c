@@ -10,7 +10,12 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-#define DEBUG_TOKENIZER 0
+#if DEBUG_PREPROCESSOR
+    #define print_debug_token(token, len, val) \
+        MOJOSHADER_print_debug_token("PREPROCESSOR", token, len, val)
+#else
+    #define print_debug_token(token, len, val)
+#endif
 
 typedef struct DefineHash
 {
@@ -79,6 +84,77 @@ static inline void fail(Context *ctx, const char *reason)
 {
     failf(ctx, "%s", reason);
 } // fail
+
+
+#if DEBUG_TOKENIZER
+void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
+                                  const unsigned int tokenlen,
+                                  const Token tokenval)
+{
+    printf("%s TOKEN: \"", subsystem);
+    unsigned int i;
+    for (i = 0; i < tokenlen; i++)
+    {
+        if (token[i] == '\n')
+            printf("\\n");
+        else
+            printf("%c", token[i]);
+    } // for
+    printf("\" (");
+    switch (tokenval)
+    {
+        #define TOKENCASE(x) case x: printf("%s", #x); break
+        TOKENCASE(TOKEN_UNKNOWN);
+        TOKENCASE(TOKEN_IDENTIFIER);
+        TOKENCASE(TOKEN_INT_LITERAL);
+        TOKENCASE(TOKEN_FLOAT_LITERAL);
+        TOKENCASE(TOKEN_STRING_LITERAL);
+        TOKENCASE(TOKEN_ADDASSIGN);
+        TOKENCASE(TOKEN_SUBASSIGN);
+        TOKENCASE(TOKEN_MULTASSIGN);
+        TOKENCASE(TOKEN_DIVASSIGN);
+        TOKENCASE(TOKEN_MODASSIGN);
+        TOKENCASE(TOKEN_XORASSIGN);
+        TOKENCASE(TOKEN_ANDASSIGN);
+        TOKENCASE(TOKEN_ORASSIGN);
+        TOKENCASE(TOKEN_INCREMENT);
+        TOKENCASE(TOKEN_DECREMENT);
+        TOKENCASE(TOKEN_RSHIFT);
+        TOKENCASE(TOKEN_LSHIFT);
+        TOKENCASE(TOKEN_ANDAND);
+        TOKENCASE(TOKEN_OROR);
+        TOKENCASE(TOKEN_LEQ);
+        TOKENCASE(TOKEN_GEQ);
+        TOKENCASE(TOKEN_EQL);
+        TOKENCASE(TOKEN_NEQ);
+        TOKENCASE(TOKEN_HASHHASH);
+        TOKENCASE(TOKEN_PP_INCLUDE);
+        TOKENCASE(TOKEN_PP_LINE);
+        TOKENCASE(TOKEN_PP_DEFINE);
+        TOKENCASE(TOKEN_PP_UNDEF);
+        TOKENCASE(TOKEN_PP_IF);
+        TOKENCASE(TOKEN_PP_IFDEF);
+        TOKENCASE(TOKEN_PP_IFNDEF);
+        TOKENCASE(TOKEN_PP_ELSE);
+        TOKENCASE(TOKEN_PP_ELIF);
+        TOKENCASE(TOKEN_PP_ENDIF);
+        TOKENCASE(TOKEN_PP_ERROR);
+        TOKENCASE(TOKEN_PP_INCOMPLETE_COMMENT);
+        TOKENCASE(TOKEN_EOI);
+        #undef TOKENCASE
+
+        case ((Token) '\n'):
+            printf("'\\n'");
+            break;
+
+        default:
+            assert(((int)tokenval) < 256);
+            printf("'%c'", (char) tokenval);
+            break;
+    } // switch
+    printf(")\n");
+} // MOJOSHADER_print_debug_token
+#endif
 
 
 // Preprocessor define hashtable stuff...
@@ -372,74 +448,7 @@ const char *preprocessor_nexttoken(Preprocessor *ctx, unsigned int *len,
                                    Token *token)
 {
     const char *retval = _preprocessor_nexttoken(ctx, len, token);
-
-    #if DEBUG_TOKENIZER
-    printf("PREPROCESSOR TOKEN: \"");
-    unsigned int i;
-    for (i = 0; i < *len; i++)
-    {
-        if (retval[i] == '\n')
-            printf("\\n");
-        else
-            printf("%c", retval[i]);
-    } // for
-    printf("\" (");
-    switch (*token)
-    {
-        #define TOKENCASE(x) case x: printf("%s", #x); break
-        TOKENCASE(TOKEN_UNKNOWN);
-        TOKENCASE(TOKEN_IDENTIFIER);
-        TOKENCASE(TOKEN_INT_LITERAL);
-        TOKENCASE(TOKEN_FLOAT_LITERAL);
-        TOKENCASE(TOKEN_STRING_LITERAL);
-        TOKENCASE(TOKEN_RSHIFTASSIGN);
-        TOKENCASE(TOKEN_LSHIFTASSIGN);
-        TOKENCASE(TOKEN_ADDASSIGN);
-        TOKENCASE(TOKEN_SUBASSIGN);
-        TOKENCASE(TOKEN_MULTASSIGN);
-        TOKENCASE(TOKEN_DIVASSIGN);
-        TOKENCASE(TOKEN_MODASSIGN);
-        TOKENCASE(TOKEN_XORASSIGN);
-        TOKENCASE(TOKEN_ANDASSIGN);
-        TOKENCASE(TOKEN_ORASSIGN);
-        TOKENCASE(TOKEN_INCREMENT);
-        TOKENCASE(TOKEN_DECREMENT);
-        TOKENCASE(TOKEN_RSHIFT);
-        TOKENCASE(TOKEN_LSHIFT);
-        TOKENCASE(TOKEN_ANDAND);
-        TOKENCASE(TOKEN_OROR);
-        TOKENCASE(TOKEN_LEQ);
-        TOKENCASE(TOKEN_GEQ);
-        TOKENCASE(TOKEN_EQL);
-        TOKENCASE(TOKEN_NEQ);
-        TOKENCASE(TOKEN_HASHHASH);
-        TOKENCASE(TOKEN_PP_INCLUDE);
-        TOKENCASE(TOKEN_PP_LINE);
-        TOKENCASE(TOKEN_PP_DEFINE);
-        TOKENCASE(TOKEN_PP_UNDEF);
-        TOKENCASE(TOKEN_PP_IF);
-        TOKENCASE(TOKEN_PP_IFDEF);
-        TOKENCASE(TOKEN_PP_IFNDEF);
-        TOKENCASE(TOKEN_PP_ELSE);
-        TOKENCASE(TOKEN_PP_ELIF);
-        TOKENCASE(TOKEN_PP_ENDIF);
-        TOKENCASE(TOKEN_PP_ERROR);
-        TOKENCASE(TOKEN_PP_INCOMPLETE_COMMENT);
-        TOKENCASE(TOKEN_EOI);
-        #undef TOKENCASE
-
-        case ((Token) '\n'):
-            printf("'\\n'");
-            break;
-
-        default:
-            assert(((int)*token) < 256);
-            printf("'%c'", (char) *token);
-            break;
-    } // switch
-    printf(")\n");
-    #endif
-
+    print_debug_token(retval, *len, *token);
     return retval;
 } // preprocessor_nexttoken
 

@@ -16,6 +16,10 @@
 
 #include "mojoshader.h"
 
+#define DEBUG_PREPROCESSOR 0
+#define DEBUG_ASSEMBLY_PARSER 0
+#define DEBUG_TOKENIZER ((DEBUG_PREPROCESSOR) || (DEBUG_ASSEMBLY_PARSER))
+
 #if (defined(__APPLE__) && defined(__MACH__))
 #define PLATFORM_MACOSX 1
 #endif
@@ -359,6 +363,12 @@ const char *preprocessor_nexttoken(Preprocessor *_ctx,
                                    unsigned int *_len, Token *_token);
 const char *preprocessor_sourcepos(Preprocessor *pp, unsigned int *pos);
 
+
+#if DEBUG_TOKENIZER
+void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
+                                  const unsigned int tokenlen,
+                                  const Token tokenval);
+#endif
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 
