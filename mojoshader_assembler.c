@@ -1875,6 +1875,8 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
             if (error->error_position >= 0)
             {
                 assert(retval != &MOJOSHADER_out_of_mem_data);
+                assert((error->error_position % sizeof (uint32)) == 0);
+
                 const int pos = error->error_position / sizeof (uint32);
                 if (pos >= ctx->output_len)
                     error->error_position = -1;  // oh well.
@@ -1884,11 +1886,8 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *source,
                     Free(ctx, (void *) error->filename);
                     char *fname = NULL;
                     if (srcpos->filename != NULL)
-                    {
                         fname = StrDup(ctx, srcpos->filename);
-                        if (fname != NULL)
-                            error->error_position = srcpos->line;
-                    } // if
+                    error->error_position = srcpos->line;
                     error->filename = fname;  // may be NULL, that's okay.
                 } // else
             } // if
