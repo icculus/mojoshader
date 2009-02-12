@@ -659,7 +659,7 @@ include_close = (MOJOSHADER_includeClose) 0x1;
         //  tokens. For example, after a semicolon. This allows HLSL code to
         //  be mostly readable, instead of a stream of tokens.
         if (token == ((Token) '\n'))
-            ; // ignore.
+            isnewline = nl;  // this doesn't actually care about '\n' ...
 
         else if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
         {
@@ -683,6 +683,7 @@ include_close = (MOJOSHADER_includeClose) 0x1;
             {
                 out_of_memory =
                     (!add_to_buffer(&buffer,endline,sizeof (endline),m,d)) ||
+                    (!indent_buffer(&buffer, indent, 1, m, d)) ||
                     (!add_to_buffer(&buffer, "{", 1, m, d)) ||
                     (!add_to_buffer(&buffer,endline,sizeof (endline),m,d));
                 indent++;
