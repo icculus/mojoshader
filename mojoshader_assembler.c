@@ -602,10 +602,11 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
         neednum = 0;
     } // else
 
-    if (neednum)
+    // "c[5]" is the same as "c5", so if the token is done, see if next is '['.
+    if ((neednum) && (ctx->tokenlen == 0))
     {
         if (nexttoken(ctx) == ((Token) '['))
-            neednum = 0;  // "c[5]" is the same as "c5".
+            neednum = 0;  // don't need a number on register name itself.
         pushback(ctx);
     } // if
 
