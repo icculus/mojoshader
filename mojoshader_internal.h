@@ -320,9 +320,6 @@ typedef struct IncludeState
 {
     char *filename;
     int included;
-    Token insert_token;
-    Token insert_token2;
-    char insert_tokchar;
     const char *source_base;
     const char *source;
     const char *token;

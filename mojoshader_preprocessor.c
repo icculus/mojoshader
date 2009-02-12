@@ -214,8 +214,6 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->source_base = source;
     state->source = source;
     state->token = source;
-    state->insert_token = TOKEN_UNKNOWN;
-    state->insert_token2 = TOKEN_UNKNOWN;
     state->bytes_left = srclen;
     state->line = 1;
     state->next = ctx->include_stack;
@@ -344,24 +342,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             return NULL;  // we're done!
         } // if
 
-        if (state->insert_token != TOKEN_UNKNOWN)
-        {
-            state->insert_tokchar = (char) state->insert_token;
-            *_token = state->insert_token;
-            *_len = 1;
-            state->insert_token = TOKEN_UNKNOWN;
-            return &state->insert_tokchar;
-        } // if
-
-        else if (state->insert_token2 != TOKEN_UNKNOWN)
-        {
-            state->insert_tokchar = (char) state->insert_token2;
-            *_token = state->insert_token2;
-            *_len = 1;
-            state->insert_token2 = TOKEN_UNKNOWN;
-            return &state->insert_tokchar;
-        } // if
-
         Token token = preprocessor_internal_lexer(state);
         if (token == TOKEN_EOI)
         {
@@ -369,23 +349,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             pop_source(ctx);
             continue;  // pick up again after parent's #include line.
         } // if
-
-        // Microsoft's preprocessor is weird.
-        // It ignores newlines, and then inserts its own around certain
-        //  tokens. For example, after a semicolon. This allows HLSL code to
-        //  be mostly readable, and lets the ';' work as a single line comment
-        //  in the assembler.
-        if ( (token == ((Token) ';')) || (token == ((Token) '}')) )
-            state->insert_token = (Token) '\n';
-        else if (token == ((Token) '{'))
-        {
-            state->insert_token = (Token) '{';
-            state->insert_token2 = (Token) '\n';
-            state->insert_tokchar = '\n';
-            *_token = (Token) '\n';
-            *_len = 1;
-            return &state->insert_tokchar;
-        } // else if
 
         *_token = token;
         *_len = (unsigned int) (state->source - state->token);
@@ -642,6 +605,12 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *source,
                              MOJOSHADER_includeClose include_close,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    #ifdef _WINDOWS
+    static const char endline[] = { '\r', '\n' };
+    #else
+    static const char endline[] = { '\n' };
+    #endif
+
     ErrorList *errors = NULL;
     int error_count = 0;
 
@@ -669,34 +638,61 @@ include_close = (MOJOSHADER_includeClose) 0x1;
     int nl = 1;
     int indent = 0;
     unsigned int len = 0;
+    int out_of_memory = 0;
     while ((tokstr = preprocessor_nexttoken(pp, &len, &token)) != NULL)
     {
-        #ifdef _WINDOWS
-        static const char endline[] = { '\r', '\n' };
-        #else
-        static const char endline[] = { '\n' };
-        #endif
+        int isnewline = 0;
 
-        const int isnewline = (token == ((Token) '\n'));
-        if (isnewline)
-        {
-            tokstr = endline;  // convert to platform-specific.
-            len = sizeof (endline);
-        } // if
-
-        if ((token == ((Token) '}')) && (indent > 0))
-            indent--;
-
-        int out_of_memory = preprocessor_outofmemory(pp);
-
-        if ((!out_of_memory) && (!isnewline))
-            out_of_memory = !indent_buffer(&buffer, indent, nl, m, d);
+        assert(token != TOKEN_EOI);
 
         if (!out_of_memory)
-            out_of_memory = !add_to_buffer(&buffer, tokstr, len, m, d);
+            out_of_memory = preprocessor_outofmemory(pp);
 
-        if (token == ((Token) '{'))
-            indent++;
+        // Microsoft's preprocessor is weird.
+        // It ignores newlines, and then inserts its own around certain
+        //  tokens. For example, after a semicolon. This allows HLSL code to
+        //  be mostly readable, instead of a stream of tokens.
+        if (token == ((Token) '\n'))
+            ; // ignore.
+
+        else if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
+        {
+            if (!out_of_memory)
+            {
+                if ( (token == ((Token) '}')) && (indent > 0) )
+                    indent--;
+
+                out_of_memory =
+                    (!indent_buffer(&buffer, indent, nl, m, d)) ||
+                    (!add_to_buffer(&buffer, tokstr, len, m, d)) ||
+                    (!add_to_buffer(&buffer, endline, sizeof (endline), m, d));
+
+                isnewline = 1;
+            } // if
+        } // if
+
+        else if (token == ((Token) '{'))
+        {
+            if (!out_of_memory)
+            {
+                out_of_memory =
+                    (!add_to_buffer(&buffer,endline,sizeof (endline),m,d)) ||
+                    (!add_to_buffer(&buffer, "{", 1, m, d)) ||
+                    (!add_to_buffer(&buffer,endline,sizeof (endline),m,d));
+                indent++;
+                isnewline = 1;
+            } // if
+        } // else if
+
+        else
+        {
+            if (!out_of_memory)
+            {
+                out_of_memory = (!indent_buffer(&buffer, indent, nl, m, d)) ||
+                                (!add_to_buffer(&buffer, tokstr, len, m, d));
+
+            } // if
+        } // else
 
         nl = isnewline;
 
@@ -760,6 +756,8 @@ include_close = (MOJOSHADER_includeClose) 0x1;
         } // if
     } // while
     
+    assert((token == TOKEN_EOI) || (out_of_memory));
+
     preprocessor_end(pp);
 
     const size_t total_bytes = buffer.total_bytes;

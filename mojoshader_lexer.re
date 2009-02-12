@@ -24,7 +24,7 @@
 
 typedef unsigned char uchar;
 
-#define RET(t) { update_state(s, cursor, token); return t; }
+#define RET(t) do { update_state(s, cursor, token); return t; } while (0)
 #define YYCTYPE uchar
 #define YYCURSOR cursor
 #define YYLIMIT limit
@@ -43,6 +43,7 @@ Token preprocessor_internal_lexer(IncludeState *s)
     const uchar *cursor = (const uchar *) s->source;
     const uchar *token;
     const uchar *limit = cursor + s->bytes_left;
+    int saw_newline = 0;
 
 scanner_loop:
     token = cursor;
@@ -131,7 +132,7 @@ scanner_loop:
     PP "error"      { RET(TOKEN_PP_ERROR); }
 
     WHITESPACE      { goto scanner_loop; }
-    NEWLINE         { s->line++; goto scanner_loop; }
+    NEWLINE         { s->line++; RET('\n'); }
     any             { printf("bad char\n"); goto scanner_loop; }
 */
 
@@ -140,8 +141,17 @@ multilinecomment:
         RET(TOKEN_PP_INCOMPLETE_COMMENT);
 // The "*\/" is just to avoid screwing up text editor syntax highlighting.
 /*!re2c
-    "*\/"           { goto scanner_loop; }
-    NEWLINE         { s->line++; goto multilinecomment; }
+    "*\/"           {
+                        if (saw_newline)
+                            RET('\n');
+                        goto scanner_loop;
+                    }
+    NEWLINE         {
+                        s->line++;
+                        token = cursor-1;
+                        saw_newline = 1;
+                        goto multilinecomment;
+                    }
     any             { goto multilinecomment; }
 */
 
@@ -149,7 +159,7 @@ singlelinecomment:
     if (YYLIMIT == YYCURSOR)
         RET(TOKEN_EOI);
 /*!re2c
-    NEWLINE         { s->line++; goto scanner_loop; }
+    NEWLINE         { s->line++; token = cursor-1; RET('\n'); }
     any             { goto singlelinecomment; }
 */
 
