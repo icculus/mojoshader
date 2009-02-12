@@ -7,8 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#ifndef __INCL_MOJOSHADER_H_
-#define __INCL_MOJOSHADER_H_
+#ifndef _INCL_MOJOSHADER_H_
+#define _INCL_MOJOSHADER_H_
 
 #ifdef __cplusplus
 extern "C" {
