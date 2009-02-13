@@ -140,6 +140,7 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
         TOKENCASE(TOKEN_PP_ENDIF);
         TOKENCASE(TOKEN_PP_ERROR);
         TOKENCASE(TOKEN_PP_INCOMPLETE_COMMENT);
+        TOKENCASE(TOKEN_PP_BAD_CHARS);
         TOKENCASE(TOKEN_EOI);
         #undef TOKENCASE
 

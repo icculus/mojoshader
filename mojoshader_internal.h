@@ -326,6 +326,7 @@ typedef enum
     TOKEN_PP_ENDIF,
     TOKEN_PP_ERROR,
     TOKEN_PP_INCOMPLETE_COMMENT,
+    TOKEN_PP_BAD_CHARS,
     TOKEN_EOI
 } Token;
 

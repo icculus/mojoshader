@@ -54,6 +54,7 @@ scanner_loop:
 
 /*!re2c
     ANY = [\000-\377];
+    ANYLEGAL = [a-zA-Z0-9_/'*=+%^&|!#<>()[{}.,~^:;? \t\v\f\r\n\-\]\\];
     O = [0-7];
     D = [0-9];
     L = [a-zA-Z_];
@@ -145,7 +146,7 @@ scanner_loop:
 
     WHITESPACE      { goto scanner_loop; }
     NEWLINE         { s->line++; RET('\n'); }
-    ANY             { printf("bad char\n"); goto scanner_loop; }
+    ANY             { goto bad_chars; }
 */
 
 multilinecomment:
@@ -177,17 +178,13 @@ singlelinecomment:
     ANY             { goto singlelinecomment; }
 */
 
-// !!! FIXME
-/*
 bad_chars:
     if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_BAD_TOKEN);
-*/
+        RET(TOKEN_PP_BAD_CHARS);
 
 /*!re2c
-    NEWLINE         { s->line++; goto scanner_loop; }
-    WHITESPACE      { goto scanner_loop; }
-    any             { goto singlelinecomment; }
+    ANYLEGAL        { cursor--; RET(TOKEN_PP_BAD_CHARS); }
+    ANY             { goto bad_chars; }
 */
 
     assert(0 && "Shouldn't hit this code");
