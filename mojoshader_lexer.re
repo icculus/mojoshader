@@ -42,6 +42,7 @@ Token preprocessor_internal_lexer(IncludeState *s)
 {
     const uchar *cursor = (const uchar *) s->source;
     const uchar *token;
+    const uchar *matchptr;
     const uchar *limit = cursor + s->bytes_left;
     int saw_newline = 0;
 
@@ -150,6 +151,7 @@ scanner_loop:
 multilinecomment:
     if (YYLIMIT == YYCURSOR)
         RET(TOKEN_PP_INCOMPLETE_COMMENT);
+    matchptr = cursor;
 // The "*\/" is just to avoid screwing up text editor syntax highlighting.
 /*!re2c
     "*\/"           {
@@ -159,7 +161,7 @@ multilinecomment:
                     }
     NEWLINE         {
                         s->line++;
-                        token = cursor-1;
+                        token = matchptr;
                         saw_newline = 1;
                         goto multilinecomment;
                     }
@@ -169,8 +171,9 @@ multilinecomment:
 singlelinecomment:
     if (YYLIMIT == YYCURSOR)
         RET(TOKEN_EOI);
+    matchptr = cursor;
 /*!re2c
-    NEWLINE         { s->line++; token = cursor-1; RET('\n'); }
+    NEWLINE         { s->line++; token = matchptr; RET('\n'); }
     any             { goto singlelinecomment; }
 */
 
