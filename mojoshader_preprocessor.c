@@ -30,9 +30,6 @@ typedef struct Context
     char failstr[256];
     IncludeState *include_stack;
     DefineHash *define_hashtable[256];
-    int pushedback;
-    const char *token;
-    unsigned int tokenlen;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
     MOJOSHADER_malloc malloc;
