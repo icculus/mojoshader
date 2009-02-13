@@ -415,6 +415,19 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             return NULL;  // we're done!
         } // if
 
+        // !!! FIXME: todo.
+        // TOKEN_PP_INCLUDE,
+        // TOKEN_PP_LINE,
+        // TOKEN_PP_DEFINE,
+        // TOKEN_PP_UNDEF,
+        // TOKEN_PP_IF,
+        // TOKEN_PP_IFDEF,
+        // TOKEN_PP_IFNDEF,
+        // TOKEN_PP_ELSE,
+        // TOKEN_PP_ELIF,
+        // TOKEN_PP_ENDIF,
+        // TOKEN_PP_ERROR,
+
         Token token = preprocessor_internal_lexer(state);
         if (token == TOKEN_EOI)
         {
