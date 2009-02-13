@@ -155,6 +155,22 @@ void *MOJOSHADER_internal_malloc(int bytes, void *d);
 void MOJOSHADER_internal_free(void *ptr, void *d);
 #endif
 
+#if MOJOSHADER_FORCE_INCLUDE_CALLBACKS
+#define MOJOSHADER_internal_include_open NULL
+#define MOJOSHADER_internal_include_close NULL
+#else
+int MOJOSHADER_internal_include_open(MOJOSHADER_includeType inctype,
+                                     const char *fname, const char *parent,
+                                     const char **outdata,
+                                     unsigned int *outbytes,
+                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                     void *d);
+
+void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
+                                       MOJOSHADER_free f, void *d);
+#endif
+
+
 // result modifiers.
 // !!! FIXME: why isn't this an enum?
 #define MOD_SATURATE 0x01

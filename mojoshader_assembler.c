@@ -1468,12 +1468,10 @@ static Context *build_context(const char *filename,
                               MOJOSHADER_includeClose include_close,
                               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
-    if (m == NULL) m = MOJOSHADER_internal_malloc;
-    if (f == NULL) f = MOJOSHADER_internal_free;
-
-    // !!! FIXME
-    if (include_open == NULL) include_open = (MOJOSHADER_includeOpen) 0x1;
-    if (include_close == NULL) include_close = (MOJOSHADER_includeClose) 0x1;
+    if (!m) m = MOJOSHADER_internal_malloc;
+    if (!f) f = MOJOSHADER_internal_free;
+    if (!include_open) include_open = MOJOSHADER_internal_include_open;
+    if (!include_close) include_close = MOJOSHADER_internal_include_close;
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)

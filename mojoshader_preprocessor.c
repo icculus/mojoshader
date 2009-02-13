@@ -156,6 +156,64 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
 #endif
 
 
+
+#if !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
+
+// !!! FIXME: most of these _MSC_VER should probably be _WINDOWS?
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN 1
+#include <windows.h>  // GL headers need this for WINGDIAPI definition.
+#else
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+int MOJOSHADER_internal_include_open(MOJOSHADER_includeType inctype,
+                                     const char *fname, const char *parent,
+                                     const char **outdata,
+                                     unsigned int *outbytes,
+                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                     void *d)
+{
+#ifdef _MSC_VER
+#error Write me.
+#else
+    struct stat statbuf;
+    if (stat(fname, &statbuf) == -1)
+        return 0;
+    char *data = (char *) m(statbuf.st_size, d);
+    if (data == NULL)
+        return 0;
+    const int fd = open(fname, O_RDONLY);
+    if (fd == -1)
+    {
+        f(data, d);
+        return 0;
+    } // if
+    if (read(fd, data, statbuf.st_size) != statbuf.st_size)
+    {
+        f(data, d);
+        close(fd);
+        return 0;
+    } // if
+    close(fd);
+    *outdata = data;
+    *outbytes = (unsigned int) statbuf.st_size;
+    return 1;
+#endif
+} // MOJOSHADER_internal_include_open
+
+
+void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
+                                       MOJOSHADER_free f, void *d)
+{
+    f((void *) data, d);
+} // MOJOSHADER_internal_include_close
+#endif  // !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
+
+
+
 // Preprocessor define hashtable stuff...
 
 static unsigned char hash_define(const char *sym)
@@ -389,6 +447,82 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+static void handle_pp_include(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Token token = preprocessor_internal_lexer(state);
+    MOJOSHADER_includeType incltype;
+    char *filename = NULL;
+    int bogus = 0;
+
+    if (token == TOKEN_STRING_LITERAL)
+        incltype = MOJOSHADER_INCLUDETYPE_LOCAL;
+    else if (token == ((Token) '<'))
+    {
+        incltype = MOJOSHADER_INCLUDETYPE_SYSTEM;
+        // can't use lexer, since every byte between the < > pair is
+        //  considered part of the filename.  :/
+        while (!bogus)
+        {
+            if ( !(bogus = (state->bytes_left == 0)) )
+            {
+                const char ch = *state->source;
+                if ( !(bogus = ((ch == '\r') || (ch == '\n'))) )
+                {
+                    state->source++;
+                    state->bytes_left--;
+
+                    if (ch == '>')
+                        break;
+                } // if
+            } // if
+        } // while
+    } // else if
+    else
+    {
+        bogus = 1;
+    } // else
+
+    if (!bogus)
+    {
+        state->token++;  // skip '<' or '\"'...
+        const unsigned int len = ((unsigned int) (state->source-state->token));
+        filename = (char *) alloca(len);
+        memcpy(filename, state->token, len-1);
+        filename[len-1] = '\0';
+
+        // make sure this is EOL.
+        const char *source = state->source;
+        token = preprocessor_internal_lexer(state);
+        if (token == TOKEN_INCOMPLETE_COMMENT)
+            state->source = source;  // pick this up later.
+        bogus = ( (token != ((Token) '\n')) && (token != TOKEN_EOI) );
+    } // if
+
+    if (bogus)
+    {
+        fail(ctx, "Invalid #include directive");
+        return;
+    } // else
+
+    const char *newdata = NULL;
+    unsigned int newbytes = 0;
+    if (!ctx->open_callback(incltype, filename, state->source_base,
+                            &newdata, &newbytes, ctx->malloc,
+                            ctx->free, ctx->malloc_data))
+    {
+        fail(ctx, "Include callback failed");  // !!! FIXME: better error
+        return;
+    } // if
+
+    if (!push_source(ctx, filename, newdata, newbytes, 1))
+    {
+        assert(ctx->out_of_memory);
+        ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
+    } // if
+} // handle_pp_include
+
+
 static void handle_pp_error(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -454,7 +588,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         } // if
 
         // !!! FIXME: todo.
-        // TOKEN_PP_INCLUDE,
         // TOKEN_PP_LINE,
         // TOKEN_PP_DEFINE,
         // TOKEN_PP_UNDEF,
@@ -477,6 +610,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             fail(ctx, "Incomplete multiline comment");
             continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_PP_INCLUDE)
+        {
+            handle_pp_include(ctx);
+            continue;  // will return error or use new top of include_stack.
         } // else if
 
         else if (token == TOKEN_PP_ERROR)
@@ -693,12 +832,10 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     ErrorList *errors = NULL;
     int error_count = 0;
 
-    if (m == NULL) m = MOJOSHADER_internal_malloc;
-    if (f == NULL) f = MOJOSHADER_internal_free;
-
-// !!! FIXME
-include_open = (MOJOSHADER_includeOpen) 0x1;
-include_close = (MOJOSHADER_includeClose) 0x1;
+    if (!m) m = MOJOSHADER_internal_malloc;
+    if (!f) f = MOJOSHADER_internal_free;
+    if (!include_open) include_open = MOJOSHADER_internal_include_open;
+    if (!include_close) include_close = MOJOSHADER_internal_include_close;
 
     Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
