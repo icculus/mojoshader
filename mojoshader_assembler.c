@@ -18,15 +18,6 @@
 #endif
 
 
-// Simple linked list to cache source filenames, so we don't have to copy
-//  the same string over and over for each opcode.
-typedef struct FilenameCache
-{
-    char *filename;
-    struct FilenameCache *next;
-} FilenameCache;
-
-
 typedef struct SourcePos
 {
     const char *filename;
@@ -64,7 +55,6 @@ typedef struct Context
     uint32 ctab_allocation;
     size_t output_len;
     size_t output_allocation;
-    FilenameCache *filename_cache;
 } Context;
 
 
@@ -266,59 +256,12 @@ static Token nexttoken(Context *ctx)
 } // nexttoken
 
 
-static const char *cache_filename(Context *ctx, const char *fname)
-{
-    if (fname == NULL)
-        return NULL;
-
-    // !!! FIXME: this could be optimized into a hash table, but oh well.
-    FilenameCache *item = ctx->filename_cache;
-    while (item != NULL)
-    {
-        if (strcmp(item->filename, fname) == 0)
-            return item->filename;
-        item = item->next;
-    } // while
-
-    // new cache item.
-    item = (FilenameCache *) Malloc(ctx, sizeof (FilenameCache));
-    if (item == NULL)
-        return NULL;
-
-    item->filename = (char *) Malloc(ctx, strlen(fname) + 1);
-    if (item->filename == NULL)
-    {
-        Free(ctx, item);
-        return NULL;
-    } // if
-
-    strcpy(item->filename, fname);
-    item->next = ctx->filename_cache;
-    ctx->filename_cache = item;
-
-    return item->filename;
-} // cache_filename
-
-
-static void free_filename_cache(Context *ctx)
-{
-    FilenameCache *item = ctx->filename_cache;
-    while (item != NULL)
-    {
-        FilenameCache *next = item->next;
-        Free(ctx, item->filename);
-        Free(ctx, item);
-        item = next;
-    } // while
-} // free_filename_cache
-
-
 static inline void add_token_sourcepos(Context *ctx, const size_t idx)
 {
     unsigned int pos = 0;
     const char *fname = preprocessor_sourcepos(ctx->preprocessor, &pos);
     ctx->token_to_source[idx].line = pos;
-    ctx->token_to_source[idx].filename = cache_filename(ctx, fname);
+    ctx->token_to_source[idx].filename = fname;  // cached in preprocessor!
 } // add_token_sourcepos
 
 
@@ -1516,7 +1459,6 @@ static void destroy_context(Context *ctx)
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
         free_error_list(f, d, ctx->errors);
-        free_filename_cache(ctx);
         if (ctx->preprocessor != NULL)
             preprocessor_end(ctx->preprocessor);
         if (ctx->output != NULL)

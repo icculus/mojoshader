@@ -377,7 +377,7 @@ typedef struct Preprocessor Preprocessor;
 
 typedef struct IncludeState
 {
-    char *filename;
+    const char *filename;
     int included;
     const char *source_base;
     const char *source;

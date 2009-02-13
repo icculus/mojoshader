@@ -23,6 +23,14 @@ typedef struct DefineHash
     struct DefineHash *next;
 } DefineHash;
 
+// Simple linked list to cache source filenames, so we don't have to copy
+//  the same string over and over for each opcode.
+typedef struct FilenameCache
+{
+    char *filename;
+    struct FilenameCache *next;
+} FilenameCache;
+
 typedef struct Context
 {
     int isfail;
@@ -30,6 +38,7 @@ typedef struct Context
     char failstr[256];
     IncludeState *include_stack;
     DefineHash *define_hashtable[256];
+    FilenameCache *filename_cache;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
     MOJOSHADER_malloc malloc;
@@ -325,6 +334,54 @@ static void free_all_defines(Context *ctx)
 } // find_define
 
 
+// filename cache stuff...
+
+static const char *cache_filename(Context *ctx, const char *fname)
+{
+    if (fname == NULL)
+        return NULL;
+
+    // !!! FIXME: this could be optimized into a hash table, but oh well.
+    FilenameCache *item = ctx->filename_cache;
+    while (item != NULL)
+    {
+        if (strcmp(item->filename, fname) == 0)
+            return item->filename;
+        item = item->next;
+    } // while
+
+    // new cache item.
+    item = (FilenameCache *) Malloc(ctx, sizeof (FilenameCache));
+    if (item == NULL)
+        return NULL;
+
+    item->filename = StrDup(ctx, fname);
+    if (item->filename == NULL)
+    {
+        Free(ctx, item);
+        return NULL;
+    } // if
+
+    item->next = ctx->filename_cache;
+    ctx->filename_cache = item;
+
+    return item->filename;
+} // cache_filename
+
+
+static void free_filename_cache(Context *ctx)
+{
+    FilenameCache *item = ctx->filename_cache;
+    while (item != NULL)
+    {
+        FilenameCache *next = item->next;
+        Free(ctx, item->filename);
+        Free(ctx, item);
+        item = next;
+    } // while
+} // free_filename_cache
+
+
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, int included)
 {
@@ -335,7 +392,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
 
     if (fname != NULL)
     {
-        state->filename = StrDup(ctx, fname);
+        state->filename = cache_filename(ctx, fname);
         if (state->filename == NULL)
         {
             Free(ctx, state);
@@ -369,8 +426,9 @@ static void pop_source(Context *ctx)
                             ctx->free, ctx->malloc_data);
     } // if
 
+    // state->filename is a pointer to the filename cache; don't free it here!
+
     ctx->include_stack = state->next;
-    Free(ctx, state->filename);
     Free(ctx, state);
 } // pop_source
 
@@ -435,6 +493,7 @@ void preprocessor_end(Preprocessor *_ctx)
         pop_source(ctx);
 
     free_all_defines(ctx);
+    free_filename_cache(ctx);
 
     Free(ctx, ctx);
 } // preprocessor_end
