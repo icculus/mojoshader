@@ -16,7 +16,6 @@
 #ifdef _MSC_VER
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>  // GL headers need this for WINGDIAPI definition.
-#include <malloc.h>  // for alloca().
 #endif
 
 #if (defined(__APPLE__) && defined(__MACH__))
