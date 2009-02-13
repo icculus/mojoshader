@@ -62,7 +62,7 @@ scanner_loop:
     IS = [uUlL]*;
     ESC = [\\] ([abfnrtv?'"\\] | "x" H+ | O+);
     PP = "#" [ \t]*;
-    NEWLINE = "\r\n" | "\r" | "\n";
+    NEWLINE = ("\r\n" | "\r" | "\n");
     WHITESPACE = [ \t\v\f]+;
 */
 
@@ -73,13 +73,13 @@ scanner_loop:
     L (L|D)*        { RET(TOKEN_IDENTIFIER); }
     
     ("0" [xX] H+ IS?) | ("0" D+ IS?) | (D+ IS?) |
-    (['] (ESC|any\[\n\\'])* ['])
+    (['] (ESC|any\[\r\n\\'])* ['])
                     { RET(TOKEN_INT_LITERAL); }
     
     (D+ E FS?) | (D* "." D+ E? FS?) | (D+ "." D* E? FS?)
                     { RET(TOKEN_FLOAT_LITERAL); }
     
-    (["] (ESC|any\[\n\\"])* ["])
+    (["] (ESC|any\[\r\n\\"])* ["])
                     { RET(TOKEN_STRING_LITERAL); }
     
     ">>="           { RET(TOKEN_RSHIFTASSIGN); }
