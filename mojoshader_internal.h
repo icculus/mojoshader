@@ -119,6 +119,11 @@ typedef int32_t int32;
 #   define SWAP32(x) (x)
 #endif
 
+static inline int Min(const int a, const int b)
+{
+    return ((a < b) ? a : b);
+} // Min
+
 // This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.
 #define CTAB_ID 0x42415443  // 0x42415443 == 'CTAB'
 #define CTAB_SIZE 28  // sizeof (D3DXSHADER_CONSTANTTABLE).

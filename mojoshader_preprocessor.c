@@ -27,7 +27,7 @@ typedef struct Context
 {
     int isfail;
     int out_of_memory;
-    char failstr[128];
+    char failstr[256];
     IncludeState *include_stack;
     DefineHash *define_hashtable[256];
     int pushedback;
@@ -392,6 +392,47 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+static void handle_pp_error(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    const char *data = NULL;
+    int done = 0;
+
+    while (!done)
+    {
+        const char *source = state->source;
+        const Token token = preprocessor_internal_lexer(state);
+        switch (token)
+        {
+            case TOKEN_INCOMPLETE_COMMENT:
+                state->source = source;  // move back so we catch this later.
+                done = 1;
+                break;
+
+            case ((Token) '\n'):
+            case TOKEN_EOI:
+                done = 1;
+                break;
+
+            default:
+                if (data == NULL)
+                    data = state->token;  // skip #error token.
+                break;
+        } // switch
+    } // while
+
+    const char *prefix = "#error ";
+    const size_t prefixlen = strlen(prefix);
+    const int len = (int) (state->source - data);
+    const int cpy = Min(len, sizeof (ctx->failstr) - prefixlen);
+    strcpy(ctx->failstr, prefix);
+    if (cpy > 0)
+        memcpy(ctx->failstr + prefixlen, data, cpy);
+    ctx->failstr[cpy + prefixlen] = '\0';
+    ctx->isfail = 1;
+} // handle_pp_error
+
+
 static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
                                              unsigned int *_len, Token *_token)
 {
@@ -426,7 +467,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         // TOKEN_PP_ELSE,
         // TOKEN_PP_ELIF,
         // TOKEN_PP_ENDIF,
-        // TOKEN_PP_ERROR,
 
         Token token = preprocessor_internal_lexer(state);
         if (token == TOKEN_EOI)
@@ -439,6 +479,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_INCOMPLETE_COMMENT)
         {
             fail(ctx, "Incomplete multiline comment");
+            continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_PP_ERROR)
+        {
+            handle_pp_error(ctx);
             continue;  // will return at top of loop.
         } // else if
 

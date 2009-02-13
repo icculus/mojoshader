@@ -1254,10 +1254,6 @@ static int parse_condition(Context *ctx, uint32 *controls)
     return 0;
 } // parse_condition
 
-static inline int Min(const int a, const int b)
-{
-    return ((a < b) ? a : b);
-} // Min
 
 static int parse_instruction_token(Context *ctx, Token token)
 {
