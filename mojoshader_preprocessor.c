@@ -45,7 +45,7 @@ typedef struct Context
 
 static inline void out_of_memory(Context *ctx)
 {
-    ctx->isfail = ctx->out_of_memory = 1;
+    ctx->out_of_memory = 1;
 } // out_of_memory
 
 static inline void *Malloc(Context *ctx, const size_t len)
@@ -76,7 +76,7 @@ static void failf(Context *ctx, const char *fmt, ...)
     ctx->isfail = 1;
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(ctx->failstr, sizeof (ctx->failstr), fmt, ap);  // rebuild it.
+    vsnprintf(ctx->failstr, sizeof (ctx->failstr), fmt, ap);
     va_end(ap);
 } // failf
 
@@ -142,6 +142,7 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
         TOKENCASE(TOKEN_PP_INCOMPLETE_COMMENT);
         TOKENCASE(TOKEN_PP_BAD_CHARS);
         TOKENCASE(TOKEN_EOI);
+        TOKENCASE(TOKEN_PREPROCESSING_ERROR);
         #undef TOKENCASE
 
         case ((Token) '\n'):
@@ -384,19 +385,6 @@ void preprocessor_end(Preprocessor *_ctx)
 } // preprocessor_end
 
 
-const char *preprocessor_error(Preprocessor *_ctx)
-{
-    Context *ctx = (Context *) _ctx;
-    if (ctx->isfail)
-    {
-        ctx->isfail = 0;
-        return ctx->failstr;
-    } // if
-
-    return NULL;
-} // preprocessor_error
-
-
 int preprocessor_outofmemory(Preprocessor *_ctx)
 {
     Context *ctx = (Context *) _ctx;
@@ -411,6 +399,14 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
 
     while (1)
     {
+        if (ctx->isfail)
+        {
+            ctx->isfail = 0;
+            *_token = TOKEN_PREPROCESSING_ERROR;
+            *_len = strlen(ctx->failstr);
+            return ctx->failstr;
+        } // if
+
         IncludeState *state = ctx->include_stack;
         if (state == NULL)
         {
@@ -430,7 +426,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_INCOMPLETE_COMMENT)
         {
             fail(ctx, "Incomplete multiline comment");
-            continue;  // !!! FIXME: we should probably return TOKEN_ERROR or something.
+            continue;  // will return at top of loop.
         } // else if
 
         *_token = token;
@@ -657,7 +653,6 @@ include_close = (MOJOSHADER_includeClose) 0x1;
 
     Token token = TOKEN_UNKNOWN;
     const char *tokstr = NULL;
-    const char *err = NULL;
 
     Buffer buffer;
     buffer_init(&buffer);
@@ -712,6 +707,58 @@ include_close = (MOJOSHADER_includeClose) 0x1;
             } // if
         } // else if
 
+        else if (token == TOKEN_PREPROCESSING_ERROR)
+        {
+            if (!out_of_memory)
+            {
+                ErrorList *error = (ErrorList *) m(sizeof (ErrorList), d);
+                unsigned int pos = 0;
+                char *fname = NULL;
+                const char *str = preprocessor_sourcepos(pp, &pos);
+                if (str != NULL)
+                {
+                    fname = (char *) m(strlen(str) + 1, d);
+                    if (fname != NULL)
+                        strcpy(fname, str);
+                } // if
+
+                // !!! FIXME: cut and paste with other error handlers.
+                char *errstr = (char *) m(len + 1, d);
+                if (errstr != NULL)
+                    strcpy(errstr, tokstr);
+
+                out_of_memory = ((!error) || ((!fname) && (str)) || (!errstr));
+                if (out_of_memory)
+                {
+                    if (errstr) f(errstr, d);
+                    if (fname) f(fname, d);
+                    if (error) f(error, d);
+                } // if
+                else
+                {
+                    error->error.error = errstr;
+                    error->error.filename = fname;
+                    error->error.error_position = pos;
+                    error->next = NULL;
+
+                    ErrorList *prev = NULL;
+                    ErrorList *item = errors;
+                    while (item != NULL)
+                    {
+                        prev = item;
+                        item = item->next;
+                    } // while
+
+                    if (prev == NULL)
+                        errors = error;
+                    else
+                        prev->next = error;
+
+                    error_count++;
+                } // else
+            } // if
+        } // else if
+
         else
         {
             if (!out_of_memory)
@@ -723,57 +770,6 @@ include_close = (MOJOSHADER_includeClose) 0x1;
         } // else
 
         nl = isnewline;
-
-        if ((!out_of_memory) && ((err = preprocessor_error(pp)) != NULL))
-        {
-            ErrorList *error = (ErrorList *) m(sizeof (ErrorList), d);
-            unsigned int pos = 0;
-            char *fname = NULL;
-            const char *str = preprocessor_sourcepos(pp, &pos);
-            if (str != NULL)
-            {
-                fname = (char *) m(strlen(str) + 1, d);
-                if (fname != NULL)
-                    strcpy(fname, str);
-            } // if
-
-            // !!! FIXME: cut and paste with other error handlers.
-            char *errstr = (char *) m(strlen(err) + 1, d);
-            if (errstr != NULL)
-                strcpy(errstr, err);
-
-            out_of_memory = ((!error) || ((!fname) && (str)) || (!errstr));
-            if (out_of_memory)
-            {
-                if (errstr) f(errstr, d);
-                if (fname) f(fname, d);
-                if (error) f(error, d);
-            } // if
-            else
-            {
-                error->error.error = errstr;
-                error->error.filename = fname;
-                error->error.error_position = pos;
-                error->next = NULL;
-
-                ErrorList *prev = NULL;
-                ErrorList *item = errors;
-                while (item != NULL)
-                {
-                    prev = item;
-                    item = item->next;
-                } // while
-
-                if (prev == NULL)
-                    errors = error;
-                else
-                    prev->next = error;
-
-                error_count++;
-            } // else
-
-            continue;
-        } // if
 
         if (out_of_memory)
         {

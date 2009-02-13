@@ -209,22 +209,28 @@ static inline void pushback(Context *ctx)
 
 static Token _nexttoken(Context *ctx)
 {
-    ctx->token = preprocessor_nexttoken(ctx->preprocessor, &ctx->tokenlen,
-                                        &ctx->tokenval);
+    while (1)
+    {
+        ctx->token = preprocessor_nexttoken(ctx->preprocessor, &ctx->tokenlen,
+                                            &ctx->tokenval);
 
-    if (preprocessor_outofmemory(ctx->preprocessor))
-    {
-        out_of_memory(ctx);
-        ctx->tokenval = TOKEN_EOI;
-        ctx->token = NULL;
-        ctx->tokenlen = 0;
-    } // if
-    else
-    {
-        const char *err = preprocessor_error(ctx->preprocessor);
-        if (err)
-            fail(ctx, err);
-    } // else
+        if (preprocessor_outofmemory(ctx->preprocessor))
+        {
+            out_of_memory(ctx);
+            ctx->tokenval = TOKEN_EOI;
+            ctx->token = NULL;
+            ctx->tokenlen = 0;
+            break;
+        } // if
+
+        if (ctx->tokenval == TOKEN_PREPROCESSING_ERROR)
+        {
+            fail(ctx, ctx->token);
+            continue;
+        } // else
+
+        break;
+    } // while
 
     return ctx->tokenval;
 } // _nexttoken
