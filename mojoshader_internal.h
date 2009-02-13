@@ -333,9 +333,8 @@ typedef enum
     //  is reported. It happens for things like missing #includes, etc.
     TOKEN_PREPROCESSING_ERROR,
 
-    TOKEN_INCOMPLETE_COMMENT,  // caught, becomes TOKEN_PREPROCESSING_ERROR
-
     // These are all caught by the preprocessor. Caller won't ever see them.
+    //  They control the preprocessor (#includes new files, etc).
     TOKEN_PP_INCLUDE,
     TOKEN_PP_LINE,
     TOKEN_PP_DEFINE,
@@ -347,6 +346,7 @@ typedef enum
     TOKEN_PP_ELIF,
     TOKEN_PP_ENDIF,
     TOKEN_PP_ERROR,  // caught, becomes TOKEN_PREPROCESSING_ERROR
+    TOKEN_INCOMPLETE_COMMENT,  // caught, becomes TOKEN_PREPROCESSING_ERROR
 } Token;
 
 
