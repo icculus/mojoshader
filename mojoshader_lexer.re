@@ -53,7 +53,7 @@ scanner_loop:
         RET(TOKEN_EOI);
 
 /*!re2c
-    any = [\000-\377];
+    ANY = [\000-\377];
     O = [0-7];
     D = [0-9];
     L = [a-zA-Z_];
@@ -74,13 +74,13 @@ scanner_loop:
     L (L|D)*        { RET(TOKEN_IDENTIFIER); }
     
     ("0" [xX] H+ IS?) | ("0" D+ IS?) | (D+ IS?) |
-    (['] (ESC|any\[\r\n\\'])* ['])
+    (['] (ESC|ANY\[\r\n\\'])* ['])
                     { RET(TOKEN_INT_LITERAL); }
     
     (D+ E FS?) | (D* "." D+ E? FS?) | (D+ "." D* E? FS?)
                     { RET(TOKEN_FLOAT_LITERAL); }
     
-    (["] (ESC|any\[\r\n\\"])* ["])
+    (["] (ESC|ANY\[\r\n\\"])* ["])
                     { RET(TOKEN_STRING_LITERAL); }
     
     ">>="           { RET(TOKEN_RSHIFTASSIGN); }
@@ -145,7 +145,7 @@ scanner_loop:
 
     WHITESPACE      { goto scanner_loop; }
     NEWLINE         { s->line++; RET('\n'); }
-    any             { printf("bad char\n"); goto scanner_loop; }
+    ANY             { printf("bad char\n"); goto scanner_loop; }
 */
 
 multilinecomment:
@@ -165,7 +165,7 @@ multilinecomment:
                         saw_newline = 1;
                         goto multilinecomment;
                     }
-    any             { goto multilinecomment; }
+    ANY             { goto multilinecomment; }
 */
 
 singlelinecomment:
@@ -174,7 +174,7 @@ singlelinecomment:
     matchptr = cursor;
 /*!re2c
     NEWLINE         { s->line++; token = matchptr; RET('\n'); }
-    any             { goto singlelinecomment; }
+    ANY             { goto singlelinecomment; }
 */
 
 // !!! FIXME
