@@ -67,7 +67,7 @@ ELSE(NOT RE2C)
         OUTPUT mojoshader_lexer.c
         DEPENDS mojoshader_lexer.re
         COMMAND ${RE2C}
-        ARGS -s -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
+        ARGS -is -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
     )
 ENDIF(NOT RE2C)
 
