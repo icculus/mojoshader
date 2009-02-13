@@ -151,7 +151,7 @@ scanner_loop:
 
 multilinecomment:
     if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_PP_INCOMPLETE_COMMENT);
+        RET(TOKEN_INCOMPLETE_COMMENT);
     matchptr = cursor;
 // The "*\/" is just to avoid screwing up text editor syntax highlighting.
 /*!re2c
@@ -180,10 +180,10 @@ singlelinecomment:
 
 bad_chars:
     if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_PP_BAD_CHARS);
+        RET(TOKEN_BAD_CHARS);
 
 /*!re2c
-    ANYLEGAL        { cursor--; RET(TOKEN_PP_BAD_CHARS); }
+    ANYLEGAL        { cursor--; RET(TOKEN_BAD_CHARS); }
     ANY             { goto bad_chars; }
 */
 

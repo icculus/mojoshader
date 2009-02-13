@@ -289,6 +289,10 @@ typedef struct ErrorList
 typedef enum
 {
     TOKEN_UNKNOWN = 256,  // start past ASCII character values.
+
+    // These are all C-like constructs. Tokens < 256 may be single
+    //  chars (like '+' or whatever). These are just multi-char sequences
+    //  (like "+=" or whatever).
     TOKEN_IDENTIFIER,
     TOKEN_INT_LITERAL,
     TOKEN_FLOAT_LITERAL,
@@ -314,6 +318,24 @@ typedef enum
     TOKEN_EQL,
     TOKEN_NEQ,
     TOKEN_HASHHASH,
+
+    // This is returned at the end of input...no more to process.
+    TOKEN_EOI,
+
+    // This is returned for char sequences we think are bogus. You'll have
+    //  to judge for yourself. In most cases, you'll probably just fail with
+    //  bogus syntax without explicitly checking for this token.
+    TOKEN_BAD_CHARS,
+
+    // This is returned if there's an error condition (the error is returned
+    //  as a NULL-terminated string from preprocessor_nexttoken(), instead
+    //  of actual token data). You can continue getting tokens after this
+    //  is reported. It happens for things like missing #includes, etc.
+    TOKEN_PREPROCESSING_ERROR,
+
+    TOKEN_INCOMPLETE_COMMENT,  // caught, becomes TOKEN_PREPROCESSING_ERROR
+
+    // These are all caught by the preprocessor. Caller won't ever see them.
     TOKEN_PP_INCLUDE,
     TOKEN_PP_LINE,
     TOKEN_PP_DEFINE,
@@ -324,11 +346,7 @@ typedef enum
     TOKEN_PP_ELSE,
     TOKEN_PP_ELIF,
     TOKEN_PP_ENDIF,
-    TOKEN_PP_ERROR,
-    TOKEN_PP_INCOMPLETE_COMMENT,
-    TOKEN_PP_BAD_CHARS,
-    TOKEN_EOI,
-    TOKEN_PREPROCESSING_ERROR
+    TOKEN_PP_ERROR,  // caught, becomes TOKEN_PREPROCESSING_ERROR
 } Token;
 
 
