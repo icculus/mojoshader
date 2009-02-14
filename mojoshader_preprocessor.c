@@ -296,7 +296,6 @@ static int remove_define(Context *ctx, const char *sym)
         bucket = bucket->next;
     } // while
 
-    failf(ctx, "'%s' not defined", sym);
     return 0;
 } // remove_define
 
@@ -675,6 +674,31 @@ static void handle_pp_error(Context *ctx)
 } // handle_pp_error
 
 
+static void handle_pp_undef(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+
+    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    {
+        fail(ctx, "Macro names must be indentifiers");
+        return;
+    } // if
+
+    const unsigned int len = ((unsigned int) (state->source-state->token));
+    char *sym = (char *) alloca(len);
+    memcpy(sym, state->token, len-1);
+    sym[len-1] = '\0';
+
+    if (!require_newline(state))
+    {
+        fail(ctx, "Invalid #undef directive");
+        return;
+    } // if
+
+    remove_define(ctx, sym);
+} // handle_pp_undef
+
+
 static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
                                              unsigned int *_len, Token *_token)
 {
@@ -700,7 +724,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
 
         // !!! FIXME: todo.
         // TOKEN_PP_DEFINE,
-        // TOKEN_PP_UNDEF,
         // TOKEN_PP_IF,
         // TOKEN_PP_IFDEF,
         // TOKEN_PP_IFNDEF,
@@ -737,6 +760,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_ERROR)
         {
             handle_pp_error(ctx);
+            continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_PP_UNDEF)
+        {
+            handle_pp_undef(ctx);
             continue;  // will return at top of loop.
         } // else if
 
