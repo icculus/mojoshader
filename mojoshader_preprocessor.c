@@ -744,6 +744,69 @@ static void handle_pp_undef(Context *ctx)
 } // handle_pp_undef
 
 
+static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
+{
+    IncludeState *state = ctx->include_stack;
+
+    assert((type == TOKEN_PP_IFDEF) || (type == TOKEN_PP_IFNDEF));
+
+    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    {
+        fail(ctx, "Macro names must be indentifiers");
+        return NULL;
+    } // if
+
+    const unsigned int len = ((unsigned int) (state->source-state->token));
+    char *sym = (char *) alloca(len);
+    memcpy(sym, state->token, len-1);
+    sym[len-1] = '\0';
+
+    if (!require_newline(state))
+    {
+        if (type == TOKEN_PP_IFDEF)
+            fail(ctx, "Invalid #ifdef directive");
+        else
+            fail(ctx, "Invalid #ifndef directive");
+        return NULL;
+    } // if
+
+    Conditional *conditional = get_conditional(ctx);
+    assert((conditional != NULL) || (ctx->out_of_memory));
+    if (conditional == NULL)
+        return NULL;
+
+    Conditional *prev = state->conditional_stack;
+    int skipping = ((prev != NULL) && (prev->skipping));
+    if (!skipping)
+    {
+        const int found = (find_define(ctx, sym) != NULL);
+        if (type == TOKEN_PP_IFDEF)
+            skipping = !found;
+        else
+            skipping = found;
+    } // if
+
+    conditional->type = type;
+    conditional->linenum = state->line - 1;
+    conditional->skipping = skipping;
+    conditional->next = prev;
+    state->conditional_stack = conditional;
+    return conditional;
+} // _handle_pp_ifdef
+
+
+static inline void handle_pp_ifdef(Context *ctx)
+{
+    _handle_pp_ifdef(ctx, TOKEN_PP_IFDEF);
+} // handle_pp_ifdef
+
+
+static inline void handle_pp_ifndef(Context *ctx)
+{
+    _handle_pp_ifdef(ctx, TOKEN_PP_IFNDEF);
+} // handle_pp_ifndef
+
+
 static void handle_pp_endif(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -812,8 +875,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         // !!! FIXME: todo.
         // TOKEN_PP_DEFINE,
         // TOKEN_PP_IF,
-        // TOKEN_PP_IFDEF,
-        // TOKEN_PP_IFNDEF,
         // TOKEN_PP_ELSE,
         // TOKEN_PP_ELIF,
 
@@ -840,17 +901,27 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
+        else if (token == TOKEN_PP_IFDEF)
+        {
+            handle_pp_ifdef(ctx);
+            continue;  // get the next thing.
+        } // else if
+
+        else if (token == TOKEN_PP_IFNDEF)
+        {
+            handle_pp_ifndef(ctx);
+            continue;  // get the next thing.
+        } // else if
+
         else if (token == TOKEN_PP_ENDIF)
         {
             handle_pp_endif(ctx);
             continue;  // get the next thing.
         } // else if
 
-        // !!! FIXME: #else, #elif and #endif must be above (skipping) test.
+        // NOTE: Conditionals must be above (skipping) test.
         else if (skipping)
-        {
             continue;  // just keep dumping tokens until we get end of block.
-        } // else if
 
         else if (token == TOKEN_PP_INCLUDE)
         {
@@ -876,12 +947,10 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
-        else if (!skipping)
-        {
-            *_token = token;
-            *_len = (unsigned int) (state->source - state->token);
-            return state->token;
-        } // else if
+        assert(!skipping);
+        *_token = token;
+        *_len = (unsigned int) (state->source - state->token);
+        return state->token;
 
         // !!! FIXME: check for ((Token) '\n'), so we know if a preprocessor
         // !!! FIXME:  directive started a line.
