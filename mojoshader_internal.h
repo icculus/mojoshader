@@ -375,6 +375,14 @@ typedef enum
 struct Preprocessor;
 typedef struct Preprocessor Preprocessor;
 
+typedef struct Conditional
+{
+    Token type;
+    int linenum;
+    int skipping;
+    struct Conditional *next;
+} Conditional;
+
 typedef struct IncludeState
 {
     const char *filename;
@@ -385,6 +393,7 @@ typedef struct IncludeState
     const unsigned char *lexer_marker;
     unsigned int bytes_left;
     unsigned int line;
+    Conditional *conditional_stack;
     struct IncludeState *next;
 } IncludeState;
 

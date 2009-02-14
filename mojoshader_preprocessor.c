@@ -23,6 +23,7 @@ typedef struct DefineHash
     struct DefineHash *next;
 } DefineHash;
 
+
 // Simple linked list to cache source filenames, so we don't have to copy
 //  the same string over and over for each opcode.
 typedef struct FilenameCache
@@ -36,6 +37,7 @@ typedef struct Context
     int isfail;
     int out_of_memory;
     char failstr[256];
+    Conditional *conditional_pool;
     IncludeState *include_stack;
     DefineHash *define_hashtable[256];
     FilenameCache *filename_cache;
@@ -221,6 +223,46 @@ void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
 } // MOJOSHADER_internal_include_close
 #endif  // !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
 
+
+// Conditional pool stuff...
+
+static void free_conditional_pool(Context *ctx)
+{
+    Conditional *item = ctx->conditional_pool;
+    while (item != NULL)
+    {
+        Conditional *next = item->next;
+        Free(ctx, item);
+        item = next;
+    } // while
+} // free_conditional_pool
+
+
+static Conditional *get_conditional(Context *ctx)
+{
+    Conditional *retval = ctx->conditional_pool;
+    if (retval != NULL)
+        ctx->conditional_pool = retval->next;
+    else
+        retval = (Conditional *) Malloc(ctx, sizeof (Conditional));
+
+    if (retval != NULL)
+        memset(retval, '\0', sizeof (Conditional));
+
+    return retval;
+} // get_conditional
+
+
+static void put_conditionals(Context *ctx, Conditional *item)
+{
+    while (item != NULL)
+    {
+        Conditional *next = item->next;
+        item->next = ctx->conditional_pool;
+        ctx->conditional_pool = item;
+        item = next;
+    } // while
+} // put_conditionals
 
 
 // Preprocessor define hashtable stuff...
@@ -427,6 +469,8 @@ static void pop_source(Context *ctx)
 
     // state->filename is a pointer to the filename cache; don't free it here!
 
+    put_conditionals(ctx, state->conditional_stack);
+
     ctx->include_stack = state->next;
     Free(ctx, state);
 } // pop_source
@@ -493,6 +537,7 @@ void preprocessor_end(Preprocessor *_ctx)
 
     free_all_defines(ctx);
     free_filename_cache(ctx);
+    free_conditional_pool(ctx);
 
     Free(ctx, ctx);
 } // preprocessor_end
@@ -699,6 +744,31 @@ static void handle_pp_undef(Context *ctx)
 } // handle_pp_undef
 
 
+static void unterminated_pp_condition(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+
+    // !!! FIXME: report the line number where the #if is, not the EOI.
+    switch (cond->type)
+    {
+        case TOKEN_PP_IF: fail(ctx, "Unterminated #if"); break;
+        case TOKEN_PP_IFDEF: fail(ctx, "Unterminated #ifdef"); break;
+        case TOKEN_PP_IFNDEF: fail(ctx, "Unterminated #ifndef"); break;
+        case TOKEN_PP_ELSE: fail(ctx, "Unterminated #else"); break;
+        case TOKEN_PP_ELIF: fail(ctx, "Unterminated #elif"); break;
+        default: assert(0 && "Shouldn't hit this case"); break;
+    } // switch
+
+    // pop this conditional, we'll report the next error next time...
+
+    state->conditional_stack = cond->next;  // pop it.
+
+    cond->next = NULL;
+    put_conditionals(ctx, cond);
+} // unterminated_pp_condition
+
+
 static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
                                              unsigned int *_len, Token *_token)
 {
@@ -731,10 +801,19 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         // TOKEN_PP_ELIF,
         // TOKEN_PP_ENDIF,
 
+        const Conditional *cond = state->conditional_stack;
+        const int skipping = ((cond != NULL) && (cond->skipping));
+
         Token token = preprocessor_internal_lexer(state);
         if (token == TOKEN_EOI)
         {
             assert(state->bytes_left == 0);
+            if (state->conditional_stack != NULL)
+            {
+                unterminated_pp_condition(ctx);
+                continue;  // returns an error.
+            } // if
+
             pop_source(ctx);
             continue;  // pick up again after parent's #include line.
         } // if
@@ -743,6 +822,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             fail(ctx, "Incomplete multiline comment");
             continue;  // will return at top of loop.
+        } // else if
+
+        // !!! FIXME: #else, #elif and #endif must be above (skipping) test.
+        else if (skipping)
+        {
+            continue;  // just keep dumping tokens until we get end of block.
         } // else if
 
         else if (token == TOKEN_PP_INCLUDE)
@@ -769,12 +854,15 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
+        else if (!skipping)
+        {
+            *_token = token;
+            *_len = (unsigned int) (state->source - state->token);
+            return state->token;
+        } // else if
+
         // !!! FIXME: check for ((Token) '\n'), so we know if a preprocessor
         // !!! FIXME:  directive started a line.
-
-        *_token = token;
-        *_len = (unsigned int) (state->source - state->token);
-        return state->token;
     } // while
 
     assert(0 && "shouldn't hit this code");
