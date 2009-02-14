@@ -270,7 +270,7 @@ static void put_conditionals(Context *ctx, Conditional *item)
 static unsigned char hash_define(const char *sym)
 {
     unsigned char retval = 0;
-    while (sym)
+    while (*sym)
         retval += *(sym++);
     return retval;
 } // hash_define
