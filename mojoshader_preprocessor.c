@@ -740,6 +740,9 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
+        // !!! FIXME: check for ((Token) '\n'), so we know if a preprocessor
+        // !!! FIXME:  directive started a line.
+
         *_token = token;
         *_len = (unsigned int) (state->source - state->token);
         return state->token;
