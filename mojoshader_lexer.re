@@ -130,7 +130,6 @@ scanner_loop:
     "="             { RET('='); }
     "?"             { RET('?'); }
     "\\"            { RET('\\'); }
-    "#"             { RET('#'); }
 
     PP "include"    { RET(TOKEN_PP_INCLUDE); }
     PP "line"       { RET(TOKEN_PP_LINE); }
