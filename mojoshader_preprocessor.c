@@ -744,6 +744,24 @@ static void handle_pp_undef(Context *ctx)
 } // handle_pp_undef
 
 
+static void handle_pp_endif(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+
+    if (!require_newline(state))
+        fail(ctx, "Invalid #endif directive");
+    else if (cond == NULL)
+        fail(ctx, "Unmatched #endif");
+    else
+    {
+        state->conditional_stack = cond->next;  // pop it.
+        cond->next = NULL;
+        put_conditionals(ctx, cond);
+    } // else
+} // handle_pp_endif
+
+
 static void unterminated_pp_condition(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -763,7 +781,6 @@ static void unterminated_pp_condition(Context *ctx)
     // pop this conditional, we'll report the next error next time...
 
     state->conditional_stack = cond->next;  // pop it.
-
     cond->next = NULL;
     put_conditionals(ctx, cond);
 } // unterminated_pp_condition
@@ -799,7 +816,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         // TOKEN_PP_IFNDEF,
         // TOKEN_PP_ELSE,
         // TOKEN_PP_ELIF,
-        // TOKEN_PP_ENDIF,
 
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
@@ -822,6 +838,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             fail(ctx, "Incomplete multiline comment");
             continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_PP_ENDIF)
+        {
+            handle_pp_endif(ctx);
+            continue;  // get the next thing.
         } // else if
 
         // !!! FIXME: #else, #elif and #endif must be above (skipping) test.
