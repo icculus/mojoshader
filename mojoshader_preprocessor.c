@@ -506,6 +506,19 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+static int require_newline(IncludeState *state)
+{
+    const char *source = state->source;
+    const Token token = preprocessor_internal_lexer(state);
+    if (token == TOKEN_INCOMPLETE_COMMENT)
+    {
+        state->source = source;  // pick this up later.
+        return 1;  // call it an eol.
+    } // if
+    return ( (token == ((Token) '\n')) || (token == TOKEN_EOI) );
+} // require_newline
+
+
 static void handle_pp_include(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -549,13 +562,7 @@ static void handle_pp_include(Context *ctx)
         filename = (char *) alloca(len);
         memcpy(filename, state->token, len-1);
         filename[len-1] = '\0';
-
-        // make sure this is EOL.
-        const char *source = state->source;
-        token = preprocessor_internal_lexer(state);
-        if (token == TOKEN_INCOMPLETE_COMMENT)
-            state->source = source;  // pick this up later.
-        bogus = ( (token != ((Token) '\n')) && (token != TOKEN_EOI) );
+        bogus = !require_newline(state);
     } // if
 
     if (bogus)
@@ -580,6 +587,50 @@ static void handle_pp_include(Context *ctx)
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
     } // if
 } // handle_pp_include
+
+
+static void handle_pp_line(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    char *filename = NULL;
+    int linenum = 0;
+    int bogus = 0;
+
+    if (preprocessor_internal_lexer(state) != TOKEN_INT_LITERAL)
+        bogus = 1;
+    else
+    {
+        const unsigned int len = ((unsigned int) (state->source-state->token));
+        char *buf = (char *) alloca(len+1);
+        memcpy(buf, state->token, len);
+        buf[len] = '\0';
+        linenum = atoi(buf);
+    } // else
+
+    if (!bogus)
+        bogus = (preprocessor_internal_lexer(state) != TOKEN_STRING_LITERAL);
+
+    if (!bogus)
+    {
+        state->token++;  // skip '\"'...
+        const unsigned int len = ((unsigned int) (state->source-state->token));
+        filename = (char *) alloca(len);
+        memcpy(filename, state->token, len-1);
+        filename[len-1] = '\0';
+        bogus = !require_newline(state);
+    } // if
+
+    if (bogus)
+    {
+        fail(ctx, "Invalid #line directive");
+        return;
+    } // if
+
+    const char *cached = cache_filename(ctx, filename);
+    assert((cached != NULL) || (ctx->out_of_memory));
+    state->filename = cached;
+    state->line = linenum;
+} // handle_pp_line
 
 
 static void handle_pp_error(Context *ctx)
@@ -647,7 +698,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         } // if
 
         // !!! FIXME: todo.
-        // TOKEN_PP_LINE,
         // TOKEN_PP_DEFINE,
         // TOKEN_PP_UNDEF,
         // TOKEN_PP_IF,
@@ -675,6 +725,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             handle_pp_include(ctx);
             continue;  // will return error or use new top of include_stack.
+        } // else if
+
+        else if (token == TOKEN_PP_LINE)
+        {
+            handle_pp_line(ctx);
+            continue;  // get the next thing.
         } // else if
 
         else if (token == TOKEN_PP_ERROR)
