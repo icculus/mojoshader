@@ -639,18 +639,17 @@ static void handle_pp_error(Context *ctx)
     const char *data = NULL;
     int done = 0;
 
+    const char *source = NULL;
     while (!done)
     {
-        const char *source = state->source;
+        source = state->source;
         const Token token = preprocessor_internal_lexer(state);
         switch (token)
         {
-            case TOKEN_INCOMPLETE_COMMENT:
-                state->source = source;  // move back so we catch this later.
-                done = 1;
-                break;
-
             case ((Token) '\n'):
+                state->line--;  // make sure error is on the right line.
+                // fall through!
+            case TOKEN_INCOMPLETE_COMMENT:
             case TOKEN_EOI:
                 done = 1;
                 break;
@@ -661,6 +660,8 @@ static void handle_pp_error(Context *ctx)
                 break;
         } // switch
     } // while
+
+    state->source = source;  // move back so we catch this later.
 
     const char *prefix = "#error ";
     const size_t prefixlen = strlen(prefix);
