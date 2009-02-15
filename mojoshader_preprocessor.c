@@ -807,6 +807,26 @@ static inline void handle_pp_ifndef(Context *ctx)
 } // handle_pp_ifndef
 
 
+static inline void handle_pp_else(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+
+    if (!require_newline(state))
+        fail(ctx, "Invalid #else directive");
+    else if (cond == NULL)
+        fail(ctx, "#else without #if");
+    else if (cond->type == TOKEN_PP_ELSE)
+        fail(ctx, "#else after #else");
+    else
+    {
+        // !!! FIXME: doesn't work for #elif
+        cond->type = TOKEN_PP_ELSE;
+        cond->skipping = !cond->skipping;
+    } // else
+} // handle_pp_else
+
+
 static void handle_pp_endif(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -875,7 +895,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         // !!! FIXME: todo.
         // TOKEN_PP_DEFINE,
         // TOKEN_PP_IF,
-        // TOKEN_PP_ELSE,
         // TOKEN_PP_ELIF,
 
         const Conditional *cond = state->conditional_stack;
@@ -916,6 +935,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_ENDIF)
         {
             handle_pp_endif(ctx);
+            continue;  // get the next thing.
+        } // else if
+
+        else if (token == TOKEN_PP_ELSE)
+        {
+            handle_pp_else(ctx);
             continue;  // get the next thing.
         } // else if
 
