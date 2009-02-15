@@ -1018,11 +1018,6 @@ const char *preprocessor_sourcepos(Preprocessor *_ctx, unsigned int *pos)
 } // preprocessor_sourcepos
 
 
-// public API...
-
-static const MOJOSHADER_preprocessData out_of_mem_data_preprocessor = {
-    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0
-};
 
 #define BUFFER_LEN (64 * 1024)
 typedef struct BufferList
@@ -1173,6 +1168,13 @@ static MOJOSHADER_error *build_errors(ErrorList **errors, const int count,
     return retval;
 } // build_errors
 
+
+static const MOJOSHADER_preprocessData out_of_mem_data_preprocessor = {
+    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0
+};
+
+
+// public API...
 
 const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                              const char *source, unsigned int sourcelen,
