@@ -17,6 +17,18 @@
     #define print_debug_token(token, len, val)
 #endif
 
+#if DEBUG_LEXER
+static Token debug_preprocessor_internal_lexer(IncludeState *s)
+{
+    const Token retval = preprocessor_internal_lexer(s);
+    MOJOSHADER_print_debug_token("LEXER", s->token,
+                                 (unsigned int) (s->source - s->token),
+                                 retval);
+    return retval;
+} // debug_preprocessor_internal_lexer
+#define preprocessor_internal_lexer(s) debug_preprocessor_internal_lexer(s)
+#endif
+
 typedef struct DefineHash
 {
     MOJOSHADER_preprocessorDefine define;
