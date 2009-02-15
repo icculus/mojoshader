@@ -69,6 +69,8 @@ scanner_loop:
 */
 
 /*!re2c
+    "\\" [ \t\v\f]* NEWLINE  { s->line++; goto scanner_loop; }
+
     "/*"            { goto multilinecomment; }
     "//"            { goto singlelinecomment; }
 
@@ -83,7 +85,7 @@ scanner_loop:
     
     (["] (ESC|ANY\[\r\n\\"])* ["])
                     { RET(TOKEN_STRING_LITERAL); }
-    
+
     ">>="           { RET(TOKEN_RSHIFTASSIGN); }
     "<<="           { RET(TOKEN_LSHIFTASSIGN); }
     "+="            { RET(TOKEN_ADDASSIGN); }
@@ -129,7 +131,6 @@ scanner_loop:
     "}"             { RET('}'); }
     "="             { RET('='); }
     "?"             { RET('?'); }
-    "\\"            { RET('\\'); }
 
     PP "include"    { RET(TOKEN_PP_INCLUDE); }
     PP "line"       { RET(TOKEN_PP_LINE); }

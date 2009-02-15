@@ -568,10 +568,6 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
-// !!! FIXME: (almost?) all preprocessor directives can end a line with a
-// !!! FIXME:  '\\' to continue to the next line.
-
-
 static int require_newline(IncludeState *state)
 {
     const char *source = state->source;
