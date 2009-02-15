@@ -105,6 +105,8 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
     {
         if (token[i] == '\n')
             printf("\\n");
+        else if (token[i] == '\\')
+            printf("\\\\");
         else
             printf("%c", token[i]);
     } // for
@@ -155,6 +157,10 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
 
         case ((Token) '\n'):
             printf("'\\n'");
+            break;
+
+        case ((Token) '\\'):
+            printf("'\\\\'");
             break;
 
         default:
