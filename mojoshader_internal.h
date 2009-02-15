@@ -380,6 +380,7 @@ typedef struct Conditional
     Token type;
     int linenum;
     int skipping;
+    int chosen;
     struct Conditional *next;
 } Conditional;
 

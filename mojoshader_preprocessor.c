@@ -789,6 +789,7 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
     conditional->type = type;
     conditional->linenum = state->line - 1;
     conditional->skipping = skipping;
+    conditional->chosen = !skipping;
     conditional->next = prev;
     state->conditional_stack = conditional;
     return conditional;
@@ -820,9 +821,10 @@ static inline void handle_pp_else(Context *ctx)
         fail(ctx, "#else after #else");
     else
     {
-        // !!! FIXME: doesn't work for #elif
         cond->type = TOKEN_PP_ELSE;
-        cond->skipping = !cond->skipping;
+        cond->skipping = cond->chosen;
+        if (!cond->chosen)
+            cond->chosen = 1;
     } // else
 } // handle_pp_else
 
