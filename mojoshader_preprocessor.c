@@ -550,6 +550,10 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+// !!! FIXME: (almost?) all preprocessor directives can end a line with a
+// !!! FIXME:  '\\' to continue to the next line.
+
+
 static int require_newline(IncludeState *state)
 {
     const char *source = state->source;
@@ -677,6 +681,7 @@ static void handle_pp_line(Context *ctx)
 } // handle_pp_line
 
 
+// !!! FIXME: this should use the lexer, apparently gcc does so.
 static void handle_pp_error(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
