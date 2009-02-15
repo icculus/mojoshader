@@ -553,12 +553,12 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 static int require_newline(IncludeState *state)
 {
     const char *source = state->source;
+    const unsigned int linenum = state->line;
     const Token token = preprocessor_internal_lexer(state);
+    state->source = source;  // rewind no matter what.
+    state->line = linenum;
     if (token == TOKEN_INCOMPLETE_COMMENT)
-    {
-        state->source = source;  // pick this up later.
-        return 1;  // call it an eol.
-    } // if
+        return 1; // call it an eol.
     return ( (token == ((Token) '\n')) || (token == TOKEN_EOI) );
 } // require_newline
 
