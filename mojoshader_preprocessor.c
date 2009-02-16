@@ -259,13 +259,13 @@ typedef struct Buffer
     BufferList *tail;
 } Buffer;
 
-static void buffer_init(Buffer *buffer)
+static void init_buffer(Buffer *buffer)
 {
     buffer->total_bytes = 0;
     buffer->head.bytes = 0;
     buffer->head.next = NULL;
     buffer->tail = &buffer->head;
-} // buffer_init
+} // init_buffer
 
 
 static int add_to_buffer(Buffer *buffer, const char *data,
@@ -328,7 +328,7 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
         f(item, d);
         item = next;
     } // while
-    buffer_init(buffer);
+    init_buffer(buffer);
 } // free_buffer
 
 
@@ -1225,7 +1225,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     const char *tokstr = NULL;
 
     Buffer buffer;
-    buffer_init(&buffer);
+    init_buffer(&buffer);
 
     int nl = 1;
     int indent = 0;
