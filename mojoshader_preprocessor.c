@@ -870,9 +870,9 @@ static void handle_pp_define(Context *ctx)
     void *d = ctx->malloc_data;
     const char space = ' ';
     unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len);
-    memcpy(sym, state->token, len-1);
-    sym[len-1] = '\0';
+    char *sym = (char *) alloca(len+1);
+    memcpy(sym, state->token, len);
+    sym[len] = '\0';
 
     Buffer buffer;
     init_buffer(&buffer);
@@ -939,9 +939,9 @@ static void handle_pp_undef(Context *ctx)
     } // if
 
     const unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len);
-    memcpy(sym, state->token, len-1);
-    sym[len-1] = '\0';
+    char *sym = (char *) alloca(len+1);
+    memcpy(sym, state->token, len);
+    sym[len] = '\0';
 
     if (!require_newline(state))
     {
@@ -966,9 +966,9 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
     } // if
 
     const unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len);
-    memcpy(sym, state->token, len-1);
-    sym[len-1] = '\0';
+    char *sym = (char *) alloca(len+1);
+    memcpy(sym, state->token, len);
+    sym[len] = '\0';
 
     if (!require_newline(state))
     {
