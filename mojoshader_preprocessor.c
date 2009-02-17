@@ -856,6 +856,78 @@ static void handle_pp_error(Context *ctx)
 } // handle_pp_error
 
 
+static void handle_pp_define(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+
+    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    {
+        fail(ctx, "Macro names must be indentifiers");
+        return;
+    } // if
+
+    MOJOSHADER_malloc m = ctx->malloc;
+    void *d = ctx->malloc_data;
+    const char space = ' ';
+    unsigned int len = ((unsigned int) (state->source-state->token));
+    char *sym = (char *) alloca(len);
+    memcpy(sym, state->token, len-1);
+    sym[len-1] = '\0';
+
+    Buffer buffer;
+    init_buffer(&buffer);
+
+    int done = 0;
+    const char *source = NULL;
+    unsigned int bytes_left = 0;
+    state->report_whitespace = 1;
+    while ((!done) && (!ctx->out_of_memory))
+    {
+        bytes_left = state->bytes_left;
+        source = state->source;
+        const Token token = preprocessor_internal_lexer(state);
+        switch (token)
+        {
+            case TOKEN_INCOMPLETE_COMMENT:
+            case TOKEN_EOI:
+                state->bytes_left = bytes_left;
+                state->source = source;  // move back so we catch this later.
+                // fall through!
+            case ((Token) '\n'):
+                done = 1;
+                break;
+
+            case ((Token) ' '):  // may not actually point to ' '.
+                if (!add_to_buffer(&buffer, &space, 1, m, d))
+                    ctx->out_of_memory = 1;
+                break;
+
+            default:
+                len = ((unsigned int) (state->source-state->token));
+                if (!add_to_buffer(&buffer, state->token, len, m, d))
+                    ctx->out_of_memory = 1;
+                break;
+        } // switch
+    } // while
+    state->report_whitespace = 0;
+
+    char *definition = NULL;
+    if (!ctx->out_of_memory)
+    {
+        definition = flatten_buffer(&buffer, m, d);
+        ctx->out_of_memory = (definition == NULL);
+    } // if
+
+    free_buffer(&buffer, ctx->free, d);
+
+    if (ctx->out_of_memory)
+        return;
+
+    assert(done);
+    add_define(ctx, sym, definition, 0);
+} // handle_pp_define
+
+
 static void handle_pp_undef(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -1032,7 +1104,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         } // if
 
         // !!! FIXME: todo.
-        // TOKEN_PP_DEFINE,
         // TOKEN_PP_IF,
         // TOKEN_PP_ELIF,
 
@@ -1102,6 +1173,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_ERROR)
         {
             handle_pp_error(ctx);
+            continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_PP_DEFINE)
+        {
+            handle_pp_define(ctx);
             continue;  // will return at top of loop.
         } // else if
 
