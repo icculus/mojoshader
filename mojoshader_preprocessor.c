@@ -669,6 +669,7 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+// !!! FIXME: parsing fails on preprocessor directives should skip rest of line.
 static int require_newline(IncludeState *state)
 {
     const char *source = state->source;
