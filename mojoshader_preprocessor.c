@@ -242,6 +242,97 @@ void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
 #endif  // !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
 
 
+// data buffer stuff...
+
+#define BUFFER_LEN (64 * 1024)
+typedef struct BufferList
+{
+    char buffer[BUFFER_LEN];
+    size_t bytes;
+    struct BufferList *next;
+} BufferList;
+
+typedef struct Buffer
+{
+    size_t total_bytes;
+    BufferList head;
+    BufferList *tail;
+} Buffer;
+
+static void init_buffer(Buffer *buffer)
+{
+    buffer->total_bytes = 0;
+    buffer->head.bytes = 0;
+    buffer->head.next = NULL;
+    buffer->tail = &buffer->head;
+} // init_buffer
+
+
+static int add_to_buffer(Buffer *buffer, const char *data,
+                         size_t len, MOJOSHADER_malloc m, void *d)
+{
+    buffer->total_bytes += len;
+    while (len > 0)
+    {
+        const size_t avail = BUFFER_LEN - buffer->tail->bytes;
+        const size_t cpy = (avail > len) ? len : avail;
+        memcpy(buffer->tail->buffer + buffer->tail->bytes, data, cpy);
+        len -= cpy;
+        data += cpy;
+        buffer->tail->bytes += cpy;
+        assert(buffer->tail->bytes <= BUFFER_LEN);
+        if (buffer->tail->bytes == BUFFER_LEN)
+        {
+            BufferList *item = (BufferList *) m(sizeof (BufferList), d);
+            if (item == NULL)
+                return 0;
+            item->bytes = 0;
+            item->next = NULL;
+            buffer->tail->next = item;
+            buffer->tail = item;
+        } // if
+    } // while
+
+    return 1;
+} // add_to_buffer
+
+
+static char *flatten_buffer(Buffer *buffer, MOJOSHADER_malloc m, void *d)
+{
+    char *retval = m(buffer->total_bytes + 1, d);
+    if (retval == NULL)
+        return NULL;
+    BufferList *item = &buffer->head;
+    char *ptr = retval;
+    while (item != NULL)
+    {
+        BufferList *next = item->next;
+        memcpy(ptr, item->buffer, item->bytes);
+        ptr += item->bytes;
+        item = next;
+    } // while
+    *ptr = '\0';
+
+    assert(ptr == (retval + buffer->total_bytes));
+    return retval;
+} // flatten_buffer
+
+
+static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
+{
+    // head is statically allocated, so start with head.next...
+    BufferList *item = buffer->head.next;
+    while (item != NULL)
+    {
+        BufferList *next = item->next;
+        f(item, d);
+        item = next;
+    } // while
+    init_buffer(buffer);
+} // free_buffer
+
+
+
 // Conditional pool stuff...
 
 static void free_conditional_pool(Context *ctx)
@@ -1048,116 +1139,6 @@ const char *preprocessor_sourcepos(Preprocessor *_ctx, unsigned int *pos)
 } // preprocessor_sourcepos
 
 
-
-#define BUFFER_LEN (64 * 1024)
-typedef struct BufferList
-{
-    char buffer[BUFFER_LEN];
-    size_t bytes;
-    struct BufferList *next;
-} BufferList;
-
-typedef struct Buffer
-{
-    size_t total_bytes;
-    BufferList head;
-    BufferList *tail;
-} Buffer;
-
-static void buffer_init(Buffer *buffer)
-{
-    buffer->total_bytes = 0;
-    buffer->head.bytes = 0;
-    buffer->head.next = NULL;
-    buffer->tail = &buffer->head;
-} // buffer_init
-
-
-static int add_to_buffer(Buffer *buffer, const char *data,
-                         size_t len, MOJOSHADER_malloc m, void *d)
-{
-    buffer->total_bytes += len;
-    while (len > 0)
-    {
-        const size_t avail = BUFFER_LEN - buffer->tail->bytes;
-        const size_t cpy = (avail > len) ? len : avail;
-        memcpy(buffer->tail->buffer + buffer->tail->bytes, data, cpy);
-        len -= cpy;
-        data += cpy;
-        buffer->tail->bytes += cpy;
-        assert(buffer->tail->bytes <= BUFFER_LEN);
-        if (buffer->tail->bytes == BUFFER_LEN)
-        {
-            BufferList *item = (BufferList *) m(sizeof (BufferList), d);
-            if (item == NULL)
-                return 0;
-            item->bytes = 0;
-            item->next = NULL;
-            buffer->tail->next = item;
-            buffer->tail = item;
-        } // if
-    } // while
-
-    return 1;
-} // add_to_buffer
-
-
-static int indent_buffer(Buffer *buffer, int n, int newline,
-                         MOJOSHADER_malloc m, void *d)
-{
-    static char spaces[4] = { ' ', ' ', ' ', ' ' };
-    if (newline)
-    {
-        while (n--)
-        {
-            if (!add_to_buffer(buffer, spaces, sizeof (spaces), m, d))
-                return 0;
-        } // while
-    } // if
-    else
-    {
-        if (!add_to_buffer(buffer, spaces, 1, m, d))
-            return 0;
-    } // else
-    return 1;
-} // indent_buffer
-
-
-static char *flatten_buffer(Buffer *buffer, MOJOSHADER_malloc m, void *d)
-{
-    char *retval = m(buffer->total_bytes + 1, d);
-    if (retval == NULL)
-        return NULL;
-    BufferList *item = &buffer->head;
-    char *ptr = retval;
-    while (item != NULL)
-    {
-        BufferList *next = item->next;
-        memcpy(ptr, item->buffer, item->bytes);
-        ptr += item->bytes;
-        item = next;
-    } // while
-    *ptr = '\0';
-
-    assert(ptr == (retval + buffer->total_bytes));
-    return retval;
-} // flatten_buffer
-
-
-static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
-{
-    // head is statically allocated, so start with head.next...
-    BufferList *item = buffer->head.next;
-    while (item != NULL)
-    {
-        BufferList *next = item->next;
-        f(item, d);
-        item = next;
-    } // while
-    buffer_init(buffer);
-} // free_buffer
-
-
 // !!! FIXME: cut and paste.
 static void free_error_list(ErrorList *item, MOJOSHADER_free f, void *d)
 {
@@ -1197,6 +1178,27 @@ static MOJOSHADER_error *build_errors(ErrorList **errors, const int count,
     assert(total == count);
     return retval;
 } // build_errors
+
+
+static int indent_buffer(Buffer *buffer, int n, int newline,
+                         MOJOSHADER_malloc m, void *d)
+{
+    static char spaces[4] = { ' ', ' ', ' ', ' ' };
+    if (newline)
+    {
+        while (n--)
+        {
+            if (!add_to_buffer(buffer, spaces, sizeof (spaces), m, d))
+                return 0;
+        } // while
+    } // if
+    else
+    {
+        if (!add_to_buffer(buffer, spaces, 1, m, d))
+            return 0;
+    } // else
+    return 1;
+} // indent_buffer
 
 
 static const MOJOSHADER_preprocessData out_of_mem_data_preprocessor = {
@@ -1239,7 +1241,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     const char *tokstr = NULL;
 
     Buffer buffer;
-    buffer_init(&buffer);
+    init_buffer(&buffer);
 
     int nl = 1;
     int indent = 0;
