@@ -545,6 +545,7 @@ static void free_filename_cache(Context *ctx)
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum, int included)
 {
+    // !!! FIXME: keep a pool of these.
     IncludeState *state = (IncludeState *) Malloc(ctx, sizeof (IncludeState));
     if (state == NULL)
         return 0;
