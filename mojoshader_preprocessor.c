@@ -385,7 +385,7 @@ static unsigned char hash_define(const char *sym)
 } // hash_define
 
 
-static int add_define(Context *ctx, const char *sym, const char *val)
+static int add_define(Context *ctx, const char *sym, const char *val, int copy)
 {
     char *identifier = NULL;
     char *definition = NULL;
@@ -406,19 +406,29 @@ static int add_define(Context *ctx, const char *sym, const char *val)
         return 0;
 
     identifier = (char *) Malloc(ctx, strlen(sym) + 1);
-    definition = (char *) Malloc(ctx, strlen(val) + 1);
-    if ((identifier == NULL) || (definition == NULL))
+    if (identifier == NULL)
     {
-        Free(ctx, identifier);
-        Free(ctx, definition);
         Free(ctx, bucket);
         return 0;
     } // if
-
     strcpy(identifier, sym);
-    strcpy(definition, val);
+
+    if (!copy)
+        bucket->define.definition = val;
+    else
+    {
+        definition = (char *) Malloc(ctx, strlen(val) + 1);
+        if (definition == NULL)
+        {
+            Free(ctx, identifier);
+            Free(ctx, bucket);
+            return 0;
+        } // if
+        strcpy(definition, val);
+        bucket->define.definition = definition;
+    } // if
+
     bucket->define.identifier = identifier;
-    bucket->define.definition = definition;
     bucket->next = ctx->define_hashtable[hash];
     ctx->define_hashtable[hash] = bucket;
     return 1;
@@ -615,7 +625,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
 
     for (i = 0; i < define_count; i++)
     {
-        if (!add_define(ctx, defines[i]->identifier, defines[i]->definition))
+        if (!add_define(ctx, defines[i]->identifier, defines[i]->definition, 1))
         {
             okay = 0;
             break;
