@@ -543,7 +543,7 @@ static void free_filename_cache(Context *ctx)
 
 
 static int push_source(Context *ctx, const char *fname, const char *source,
-                       unsigned int srclen, int included)
+                       unsigned int srclen, unsigned int linenum, int included)
 {
     IncludeState *state = (IncludeState *) Malloc(ctx, sizeof (IncludeState));
     if (state == NULL)
@@ -565,7 +565,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->source = source;
     state->token = source;
     state->bytes_left = srclen;
-    state->line = 1;
+    state->line = linenum;
     state->next = ctx->include_stack;
 
     ctx->include_stack = state;
@@ -632,7 +632,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
         } // if
     } // for
 
-    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 0)))
+    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, 0)))
         okay = 0;
 
     if (!okay)
@@ -747,7 +747,7 @@ static void handle_pp_include(Context *ctx)
         return;
     } // if
 
-    if (!push_source(ctx, filename, newdata, newbytes, 1))
+    if (!push_source(ctx, filename, newdata, newbytes, 1, 1))
     {
         assert(ctx->out_of_memory);
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
