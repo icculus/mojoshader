@@ -1060,6 +1060,28 @@ static void handle_pp_endif(Context *ctx)
 } // handle_pp_endif
 
 
+static int handle_pp_identifier(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    const unsigned int len = ((unsigned int) (state->source-state->token));
+    char *sym = (char *) alloca(len+1);
+    memcpy(sym, state->token, len);
+    sym[len] = '\0';
+
+    const char *def = find_define(ctx, sym);
+    if (def == NULL)
+        return 0;   // just send the token through unchanged.
+
+    if (!push_source(ctx, state->filename, def, strlen(def), state->line, 0))
+    {
+        assert(ctx->out_of_memory);
+        return 0;
+    } // if
+
+    return 1;
+} // handle_pp_identifier
+
+
 static void unterminated_pp_condition(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -1190,6 +1212,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             handle_pp_undef(ctx);
             continue;  // will return at top of loop.
+        } // else if
+
+        else if (token == TOKEN_IDENTIFIER)
+        {
+            if (handle_pp_identifier(ctx))
+                continue;  // pushed the include_stack.
         } // else if
 
         assert(!skipping);
