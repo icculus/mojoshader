@@ -24,18 +24,34 @@
 
 typedef unsigned char uchar;
 
-#define RET(t) do { update_state(s, cursor, token); return t; } while (0)
+/*!max:re2c */
+#define RET(t) do { update_state(s, eoi, cursor, token); return t; } while (0)
 #define YYCTYPE uchar
 #define YYCURSOR cursor
 #define YYLIMIT limit
 #define YYMARKER s->lexer_marker
-#define YYFILL(n) { if ((n) == 1) { RET(TOKEN_EOI); } }
+#define YYFILL(n) { if ((n) == 1) { cursor = sentinel; limit = cursor + YYMAXFILL; eoi = 1; } }
 
-static void update_state(IncludeState *s, const uchar *cur, const uchar *tok)
+static uchar sentinel[YYMAXFILL];
+
+static void update_state(IncludeState *s, int eoi,
+                         const uchar *cur, const uchar *tok)
 {
-    s->bytes_left -= (unsigned int) (cur - ((const uchar *) s->source));
-    s->source = (const char *) cur;
-    s->token = (const char *) tok;
+    if (eoi)
+    {
+        s->bytes_left = 0;
+        s->source = (const char *) s->source_base + s->orig_length;
+        if ( (tok >= sentinel) && (tok < (sentinel+YYMAXFILL)) )
+            s->token = s->source;
+        else
+            s->token = (const char *) tok;
+    } // if
+    else
+    {
+        s->bytes_left -= (unsigned int) (cur - ((const uchar *) s->source));
+        s->source = (const char *) cur;
+        s->token = (const char *) tok;
+    } // else
 } // update_state
 
 Token preprocessor_internal_lexer(IncludeState *s)
@@ -44,13 +60,12 @@ Token preprocessor_internal_lexer(IncludeState *s)
     const uchar *token;
     const uchar *matchptr;
     const uchar *limit = cursor + s->bytes_left;
+    int eoi = 0;
     int saw_newline = 0;
 
 scanner_loop:
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
     token = cursor;
-
-    if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_EOI);
 
 /*!re2c
     ANY = [\000-\377];
@@ -132,6 +147,8 @@ scanner_loop:
     "="             { RET('='); }
     "?"             { RET('?'); }
 
+    "\000"          { if (eoi) { RET(TOKEN_EOI); } goto bad_chars; }
+
     PP "include"    { RET(TOKEN_PP_INCLUDE); }
     PP "line"       { RET(TOKEN_PP_LINE); }
     PP "define"     { RET(TOKEN_PP_DEFINE); }
@@ -150,8 +167,7 @@ scanner_loop:
 */
 
 multilinecomment:
-    if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_INCOMPLETE_COMMENT);
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
     matchptr = cursor;
 // The "*\/" is just to avoid screwing up text editor syntax highlighting.
 /*!re2c
@@ -168,24 +184,39 @@ multilinecomment:
                         saw_newline = 1;
                         goto multilinecomment;
                     }
+    "\000"          {
+                        if (eoi)
+                            RET(TOKEN_INCOMPLETE_COMMENT);
+                        goto multilinecomment;
+                    }
     ANY             { goto multilinecomment; }
 */
 
 singlelinecomment:
-    if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_EOI);
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
     matchptr = cursor;
 /*!re2c
     NEWLINE         { s->line++; token = matchptr; RET('\n'); }
+    "\000"          { if (eoi) { RET(TOKEN_EOI); } goto singlelinecomment; }
     ANY             { goto singlelinecomment; }
 */
 
 bad_chars:
-    if (YYLIMIT == YYCURSOR)
-        RET(TOKEN_BAD_CHARS);
-
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
 /*!re2c
     ANYLEGAL        { cursor--; RET(TOKEN_BAD_CHARS); }
+    "\000"          {
+                        if (eoi)
+                        {
+                            assert( !((token >= sentinel) &&
+                                     (token < sentinel+YYMAXFILL)) );
+                            eoi = 0;
+                            cursor = (uchar *) s->source_base + s->orig_length;
+                            RET(TOKEN_BAD_CHARS);  // next call will be EOI.
+                        }
+                        goto bad_chars;
+                    }
+
     ANY             { goto bad_chars; }
 */
 

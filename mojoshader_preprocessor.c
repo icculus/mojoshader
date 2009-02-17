@@ -564,6 +564,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->source_base = source;
     state->source = source;
     state->token = source;
+    state->orig_length = srclen;
     state->bytes_left = srclen;
     state->line = linenum;
     state->next = ctx->include_stack;
