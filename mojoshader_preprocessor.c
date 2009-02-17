@@ -899,8 +899,11 @@ static void handle_pp_define(Context *ctx)
                 break;
 
             case ((Token) ' '):  // may not actually point to ' '.
-                if (!add_to_buffer(&buffer, &space, 1, m, d))
-                    ctx->out_of_memory = 1;
+                if (buffer.total_bytes > 0)
+                {
+                    if (!add_to_buffer(&buffer, &space, 1, m, d))
+                        ctx->out_of_memory = 1;
+                } // if
                 break;
 
             default:
