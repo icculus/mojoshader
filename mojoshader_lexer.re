@@ -144,7 +144,7 @@ scanner_loop:
     PP "endif"      { RET(TOKEN_PP_ENDIF); }
     PP "error"      { RET(TOKEN_PP_ERROR); }
 
-    WHITESPACE      { goto scanner_loop; }
+    WHITESPACE      { if (s->report_whitespace) RET(' '); goto scanner_loop; }
     NEWLINE         { s->line++; RET('\n'); }
     ANY             { goto bad_chars; }
 */
@@ -158,6 +158,8 @@ multilinecomment:
     "*\/"           {
                         if (saw_newline)
                             RET('\n');
+                        else if (s->report_whitespace)
+                            RET(' ');
                         goto scanner_loop;
                     }
     NEWLINE         {

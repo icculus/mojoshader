@@ -697,16 +697,26 @@ static void handle_pp_line(Context *ctx)
 } // handle_pp_line
 
 
-// !!! FIXME: this should use the lexer, apparently gcc does so.
 static void handle_pp_error(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    const char *data = NULL;
+    unsigned int bytes_left = 0;
+    char *ptr = ctx->failstr;
+    int avail = sizeof (ctx->failstr) - 1;
+    int cpy = 0;
     int done = 0;
 
+    const char *prefix = "#error";
+    const size_t prefixlen = strlen(prefix);
+    strcpy(ctx->failstr, prefix);
+    avail -= prefixlen;
+    ptr += prefixlen;
+
+    state->report_whitespace = 1;
     const char *source = NULL;
     while (!done)
     {
+        bytes_left = state->bytes_left;
         source = state->source;
         const Token token = preprocessor_internal_lexer(state);
         switch (token)
@@ -716,26 +726,30 @@ static void handle_pp_error(Context *ctx)
                 // fall through!
             case TOKEN_INCOMPLETE_COMMENT:
             case TOKEN_EOI:
+                state->bytes_left = bytes_left;
+                state->source = source;  // move back so we catch this later.
                 done = 1;
                 break;
 
+            case ' ':
+                if (!avail)
+                    break;
+                *(ptr++) = ' ';
+                avail--;
+                break;
+
             default:
-                if (data == NULL)
-                    data = state->token;  // skip #error token.
+                cpy = Min(avail, (int) (state->source-state->token));
+                if (cpy)
+                    memcpy(ptr, state->token, cpy);
+                ptr += cpy;
+                avail -= cpy;
                 break;
         } // switch
     } // while
 
-    state->source = source;  // move back so we catch this later.
-
-    const char *prefix = "#error ";
-    const size_t prefixlen = strlen(prefix);
-    const int len = (int) (state->source - data);
-    const int cpy = Min(len, sizeof (ctx->failstr) - prefixlen);
-    strcpy(ctx->failstr, prefix);
-    if (cpy > 0)
-        memcpy(ctx->failstr + prefixlen, data, cpy);
-    ctx->failstr[cpy + prefixlen] = '\0';
+    *ptr = '\0';
+    state->report_whitespace = 0;
     ctx->isfail = 1;
 } // handle_pp_error
 
