@@ -670,26 +670,39 @@ int preprocessor_outofmemory(Preprocessor *_ctx)
 } // preprocessor_outofmemory
 
 
+static inline void pushback(IncludeState *state)
+{
+    #if DEBUG_PREPROCESSOR
+    printf("PREPROCESSOR PUSHBACK\n");
+    #endif
+    assert(!state->pushedback);
+    state->pushedback = 1;
+} // pushback
+
+
+static Token lexer(IncludeState *state)
+{
+    if (!state->pushedback)
+        return preprocessor_lexer(state);
+    state->pushedback = 0;
+    return state->tokenval;
+} // lexer
+
+
 // !!! FIXME: parsing fails on preprocessor directives should skip rest of line.
 static int require_newline(IncludeState *state)
 {
-    const char *source = state->source;
-    const unsigned int bytes_left = state->bytes_left;
-    const unsigned int linenum = state->line;
-    const Token token = preprocessor_lexer(state);
-    state->source = source;  // rewind no matter what.
-    state->bytes_left = bytes_left;
-    state->line = linenum;
-    if (token == TOKEN_INCOMPLETE_COMMENT)
-        return 1; // call it an eol.
-    return ( (token == ((Token) '\n')) || (token == TOKEN_EOI) );
+    const Token token = lexer(state);
+    pushback(state);  // rewind no matter what.
+    return ( (token == TOKEN_INCOMPLETE_COMMENT) // call it an eol.
+             (token == ((Token) '\n')) || (token == TOKEN_EOI) );
 } // require_newline
 
 
 static void handle_pp_include(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    Token token = preprocessor_lexer(state);
+    Token token = lexer(state);
     MOJOSHADER_includeType incltype;
     char *filename = NULL;
     int bogus = 0;
@@ -763,7 +776,7 @@ static void handle_pp_line(Context *ctx)
     int linenum = 0;
     int bogus = 0;
 
-    if (preprocessor_lexer(state) != TOKEN_INT_LITERAL)
+    if (lexer(state) != TOKEN_INT_LITERAL)
         bogus = 1;
     else
     {
@@ -774,7 +787,7 @@ static void handle_pp_line(Context *ctx)
     } // else
 
     if (!bogus)
-        bogus = (preprocessor_lexer(state) != TOKEN_STRING_LITERAL);
+        bogus = (lexer(state) != TOKEN_STRING_LITERAL);
 
     if (!bogus)
     {
@@ -801,7 +814,6 @@ static void handle_pp_line(Context *ctx)
 static void handle_pp_error(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    unsigned int bytes_left = 0;
     char *ptr = ctx->failstr;
     int avail = sizeof (ctx->failstr) - 1;
     int cpy = 0;
@@ -814,12 +826,9 @@ static void handle_pp_error(Context *ctx)
     ptr += prefixlen;
 
     state->report_whitespace = 1;
-    const char *source = NULL;
     while (!done)
     {
-        bytes_left = state->bytes_left;
-        source = state->source;
-        const Token token = preprocessor_lexer(state);
+        const Token token = lexer(state);
         switch (token)
         {
             case ((Token) '\n'):
@@ -827,8 +836,7 @@ static void handle_pp_error(Context *ctx)
                 // fall through!
             case TOKEN_INCOMPLETE_COMMENT:
             case TOKEN_EOI:
-                state->bytes_left = bytes_left;
-                state->source = source;  // move back so we catch this later.
+                pushback(state);  // move back so we catch this later.
                 done = 1;
                 break;
 
@@ -859,7 +867,7 @@ static void handle_pp_define(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
 
-    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
+    if (lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return;
@@ -877,19 +885,16 @@ static void handle_pp_define(Context *ctx)
 
     int done = 0;
     const char *source = NULL;
-    unsigned int bytes_left = 0;
     state->report_whitespace = 1;
     while ((!done) && (!ctx->out_of_memory))
     {
         bytes_left = state->bytes_left;
-        source = state->source;
-        const Token token = preprocessor_lexer(state);
+        const Token token = lexer(state);
         switch (token)
         {
             case TOKEN_INCOMPLETE_COMMENT:
             case TOKEN_EOI:
-                state->bytes_left = bytes_left;
-                state->source = source;  // move back so we catch this later.
+                pushback(state);  // move back so we catch this later.
                 // fall through!
             case ((Token) '\n'):
                 done = 1;
@@ -932,7 +937,7 @@ static void handle_pp_undef(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
 
-    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
+    if (lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return;
@@ -958,7 +963,7 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
 
     assert((type == TOKEN_PP_IFDEF) || (type == TOKEN_PP_IFNDEF));
 
-    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
+    if (lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return NULL;
@@ -1127,7 +1132,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
 
-        Token token = preprocessor_lexer(state);
+        Token token = lexer(state);
         if (token == TOKEN_EOI)
         {
             assert(state->bytes_left == 0);
