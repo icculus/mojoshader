@@ -52,6 +52,7 @@ static void update_state(IncludeState *s, int eoi,
         s->source = (const char *) cur;
         s->token = (const char *) tok;
     } // else
+    s->tokenlen = (unsigned int) (s->source - s->token);
 } // update_state
 
 Token preprocessor_internal_lexer(IncludeState *s)

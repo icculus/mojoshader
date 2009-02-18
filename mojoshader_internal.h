@@ -394,6 +394,7 @@ typedef struct IncludeState
     const char *source_base;
     const char *source;
     const char *token;
+    unsigned int tokenlen;
     const unsigned char *lexer_marker;
     int report_whitespace;
     unsigned int orig_length;

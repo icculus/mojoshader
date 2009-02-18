@@ -21,9 +21,7 @@
 static Token debug_preprocessor_internal_lexer(IncludeState *s)
 {
     const Token retval = preprocessor_internal_lexer(s);
-    MOJOSHADER_print_debug_token("LEXER", s->token,
-                                 (unsigned int) (s->source - s->token),
-                                 retval);
+    MOJOSHADER_print_debug_token("LEXER", s->token, s->tokenlen, retval);
     return retval;
 } // debug_preprocessor_internal_lexer
 #define preprocessor_internal_lexer(s) debug_preprocessor_internal_lexer(s)
@@ -769,10 +767,9 @@ static void handle_pp_line(Context *ctx)
         bogus = 1;
     else
     {
-        const unsigned int len = ((unsigned int) (state->source-state->token));
-        char *buf = (char *) alloca(len+1);
-        memcpy(buf, state->token, len);
-        buf[len] = '\0';
+        char *buf = (char *) alloca(state->tokenlen+1);
+        memcpy(buf, state->token, state->tokenlen);
+        buf[state->tokenlen] = '\0';
         linenum = atoi(buf);
     } // else
 
@@ -782,10 +779,9 @@ static void handle_pp_line(Context *ctx)
     if (!bogus)
     {
         state->token++;  // skip '\"'...
-        const unsigned int len = ((unsigned int) (state->source-state->token));
-        filename = (char *) alloca(len);
-        memcpy(filename, state->token, len-1);
-        filename[len-1] = '\0';
+        filename = (char *) alloca(state->tokenlen);
+        memcpy(filename, state->token, state->tokenlen-1);
+        filename[state->tokenlen-1] = '\0';
         bogus = !require_newline(state);
     } // if
 
@@ -844,7 +840,7 @@ static void handle_pp_error(Context *ctx)
                 break;
 
             default:
-                cpy = Min(avail, (int) (state->source-state->token));
+                cpy = Min(avail, (int) source->tokenlen);
                 if (cpy)
                     memcpy(ptr, state->token, cpy);
                 ptr += cpy;
@@ -872,10 +868,9 @@ static void handle_pp_define(Context *ctx)
     MOJOSHADER_malloc m = ctx->malloc;
     void *d = ctx->malloc_data;
     const char space = ' ';
-    unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len+1);
-    memcpy(sym, state->token, len);
-    sym[len] = '\0';
+    char *sym = (char *) alloca(state->tokenlen+1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
 
     Buffer buffer;
     init_buffer(&buffer);
@@ -909,8 +904,7 @@ static void handle_pp_define(Context *ctx)
                 break;
 
             default:
-                len = ((unsigned int) (state->source-state->token));
-                if (!add_to_buffer(&buffer, state->token, len, m, d))
+                if (!add_to_buffer(&buffer,state->token,state->tokenlen,m,d))
                     ctx->out_of_memory = 1;
                 break;
         } // switch
@@ -944,10 +938,9 @@ static void handle_pp_undef(Context *ctx)
         return;
     } // if
 
-    const unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len+1);
-    memcpy(sym, state->token, len);
-    sym[len] = '\0';
+    char *sym = (char *) alloca(state->tokenlen+1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
 
     if (!require_newline(state))
     {
@@ -971,10 +964,9 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
         return NULL;
     } // if
 
-    const unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len+1);
-    memcpy(sym, state->token, len);
-    sym[len] = '\0';
+    char *sym = (char *) alloca(state->tokenlen+1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
 
     if (!require_newline(state))
     {
@@ -1064,10 +1056,9 @@ static void handle_pp_endif(Context *ctx)
 static int handle_pp_identifier(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    const unsigned int len = ((unsigned int) (state->source-state->token));
-    char *sym = (char *) alloca(len+1);
-    memcpy(sym, state->token, len);
-    sym[len] = '\0';
+    char *sym = (char *) alloca(state->tokenlen+1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
 
     const char *def = find_define(ctx, sym);
     if (def == NULL)
@@ -1222,7 +1213,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
 
         assert(!skipping);
         *_token = token;
-        *_len = (unsigned int) (state->source - state->token);
+        *_len = state->tokenlen;
         return state->token;
 
         // !!! FIXME: check for ((Token) '\n'), so we know if a preprocessor
