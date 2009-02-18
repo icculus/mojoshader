@@ -840,7 +840,7 @@ static void handle_pp_error(Context *ctx)
                 break;
 
             default:
-                cpy = Min(avail, (int) source->tokenlen);
+                cpy = Min(avail, (int) state->tokenlen);
                 if (cpy)
                     memcpy(ptr, state->token, cpy);
                 ptr += cpy;
