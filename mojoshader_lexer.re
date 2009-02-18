@@ -25,7 +25,7 @@
 typedef unsigned char uchar;
 
 /*!max:re2c */
-#define RET(t) do { update_state(s, eoi, cursor, token); return t; } while (0)
+#define RET(t) do { return update_state(s, eoi, cursor, token, t); } while (0)
 #define YYCTYPE uchar
 #define YYCURSOR cursor
 #define YYLIMIT limit
@@ -34,8 +34,8 @@ typedef unsigned char uchar;
 
 static uchar sentinel[YYMAXFILL];
 
-static void update_state(IncludeState *s, int eoi,
-                         const uchar *cur, const uchar *tok)
+static Token update_state(IncludeState *s, int eoi, const uchar *cur,
+                          const uchar *tok, const Token val)
 {
     if (eoi)
     {
@@ -53,6 +53,8 @@ static void update_state(IncludeState *s, int eoi,
         s->token = (const char *) tok;
     } // else
     s->tokenlen = (unsigned int) (s->source - s->token);
+    s->tokenval = val;
+    return val;
 } // update_state
 
 Token preprocessor_lexer(IncludeState *s)
