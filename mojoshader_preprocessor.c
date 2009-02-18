@@ -51,7 +51,9 @@ typedef struct Context
     char failstr[256];
     Conditional *conditional_pool;
     IncludeState *include_stack;
+    IncludeState *include_pool;
     DefineHash *define_hashtable[256];
+    DefineHash *define_pool;
     FilenameCache *filename_cache;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
@@ -333,45 +335,43 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
 
 
 
-// Conditional pool stuff...
+// Pool stuff...
+// ugh, I hate this macro salsa.
+#define FREE_POOL(type, poolname) \
+    static void free_##poolname##_pool(Context *ctx) { \
+        type *item = ctx->poolname##_pool; \
+        while (item != NULL) { \
+            type *next = item->next; \
+            Free(ctx, item); \
+            item = next; \
+        } \
+    }
 
-static void free_conditional_pool(Context *ctx)
-{
-    Conditional *item = ctx->conditional_pool;
-    while (item != NULL)
-    {
-        Conditional *next = item->next;
-        Free(ctx, item);
-        item = next;
-    } // while
-} // free_conditional_pool
+#define GET_POOL(type, poolname) \
+    static type *get_##poolname(Context *ctx) { \
+        type *retval = ctx->poolname##_pool; \
+        if (retval != NULL) \
+            ctx->poolname##_pool = retval->next; \
+        else \
+            retval = (type *) Malloc(ctx, sizeof (type)); \
+        if (retval != NULL) \
+            memset(retval, '\0', sizeof (type)); \
+        return retval; \
+    }
 
+#define PUT_POOL(type, poolname) \
+    static void put_##poolname(Context *ctx, type *item) { \
+        item->next = ctx->poolname##_pool; \
+    }
 
-static Conditional *get_conditional(Context *ctx)
-{
-    Conditional *retval = ctx->conditional_pool;
-    if (retval != NULL)
-        ctx->conditional_pool = retval->next;
-    else
-        retval = (Conditional *) Malloc(ctx, sizeof (Conditional));
+#define IMPLEMENT_POOL(type, poolname) \
+    FREE_POOL(type, poolname) \
+    GET_POOL(type, poolname) \
+    PUT_POOL(type, poolname)
 
-    if (retval != NULL)
-        memset(retval, '\0', sizeof (Conditional));
-
-    return retval;
-} // get_conditional
-
-
-static void put_conditionals(Context *ctx, Conditional *item)
-{
-    while (item != NULL)
-    {
-        Conditional *next = item->next;
-        item->next = ctx->conditional_pool;
-        ctx->conditional_pool = item;
-        item = next;
-    } // while
-} // put_conditionals
+IMPLEMENT_POOL(Conditional, conditional)
+IMPLEMENT_POOL(IncludeState, include)
+IMPLEMENT_POOL(DefineHash, define)
 
 
 // Preprocessor define hashtable stuff...
@@ -401,30 +401,28 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
         bucket = bucket->next;
     } // while
 
-    bucket = (DefineHash *) Malloc(ctx, sizeof (DefineHash));
+    bucket = get_define(ctx);
     if (bucket == NULL)
         return 0;
 
-    identifier = (char *) Malloc(ctx, strlen(sym) + 1);
+    identifier = StrDup(ctx, sym);
     if (identifier == NULL)
     {
-        Free(ctx, bucket);
+        put_define(ctx, bucket);
         return 0;
     } // if
-    strcpy(identifier, sym);
 
     if (!copy)
         bucket->define.definition = val;
     else
     {
-        definition = (char *) Malloc(ctx, strlen(val) + 1);
+        definition = StrDup(ctx, val);
         if (definition == NULL)
         {
             Free(ctx, identifier);
-            Free(ctx, bucket);
+            put_define(ctx, bucket);
             return 0;
         } // if
-        strcpy(definition, val);
         bucket->define.definition = definition;
     } // if
 
@@ -450,7 +448,7 @@ static int remove_define(Context *ctx, const char *sym)
                 prev->next = bucket->next;
             Free(ctx, (void *) bucket->define.identifier);
             Free(ctx, (void *) bucket->define.definition);
-            Free(ctx, bucket);
+            put_define(ctx, bucket);
             return 1;
         } // if
         prev = bucket;
@@ -475,7 +473,7 @@ static const char *find_define(Context *ctx, const char *sym)
 } // find_define
 
 
-static void free_all_defines(Context *ctx)
+static void put_all_defines(Context *ctx)
 {
     int i;
     for (i = 0; i < STATICARRAYLEN(ctx->define_hashtable); i++)
@@ -487,7 +485,7 @@ static void free_all_defines(Context *ctx)
             DefineHash *next = bucket->next;
             Free(ctx, (void *) bucket->define.identifier);
             Free(ctx, (void *) bucket->define.definition);
-            Free(ctx, bucket);
+            put_define(ctx, bucket);
             bucket = next;
         } // while
     } // for
@@ -545,18 +543,16 @@ static void free_filename_cache(Context *ctx)
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum, int included)
 {
-    // !!! FIXME: keep a pool of these.
-    IncludeState *state = (IncludeState *) Malloc(ctx, sizeof (IncludeState));
+    IncludeState *state = get_include(ctx);
     if (state == NULL)
         return 0;
-    memset(state, '\0', sizeof (IncludeState));
 
     if (fname != NULL)
     {
         state->filename = cache_filename(ctx, fname);
         if (state->filename == NULL)
         {
-            Free(ctx, state);
+            put_include(ctx, state);
             return 0;
         } // if
     } // if
@@ -590,10 +586,11 @@ static void pop_source(Context *ctx)
 
     // state->filename is a pointer to the filename cache; don't free it here!
 
-    put_conditionals(ctx, state->conditional_stack);
+    while (state->conditional_stack)
+        put_conditional(ctx, state->conditional_stack);
 
     ctx->include_stack = state->next;
-    Free(ctx, state);
+    put_include(ctx, state);
 } // pop_source
 
 
@@ -656,9 +653,12 @@ void preprocessor_end(Preprocessor *_ctx)
     while (ctx->include_stack != NULL)
         pop_source(ctx);
 
-    free_all_defines(ctx);
+    put_all_defines(ctx);
+
     free_filename_cache(ctx);
+    free_define_pool(ctx);
     free_conditional_pool(ctx);
+    free_include_pool(ctx);
 
     Free(ctx, ctx);
 } // preprocessor_end
@@ -1055,8 +1055,7 @@ static void handle_pp_endif(Context *ctx)
     else
     {
         state->conditional_stack = cond->next;  // pop it.
-        cond->next = NULL;
-        put_conditionals(ctx, cond);
+        put_conditional(ctx, cond);
     } // else
 } // handle_pp_endif
 
@@ -1102,8 +1101,7 @@ static void unterminated_pp_condition(Context *ctx)
     // pop this conditional, we'll report the next error next time...
 
     state->conditional_stack = cond->next;  // pop it.
-    cond->next = NULL;
-    put_conditionals(ctx, cond);
+    put_conditional(ctx, cond);
 } // unterminated_pp_condition
 
 
