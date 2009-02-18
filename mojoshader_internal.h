@@ -300,6 +300,7 @@ typedef enum
 extern MOJOSHADER_error MOJOSHADER_out_of_mem_error;
 extern MOJOSHADER_parseData MOJOSHADER_out_of_mem_data;
 
+// !!! FIXME: unify all the routines in various modules that deal with these.
 typedef struct ErrorList
 {
     MOJOSHADER_error error;

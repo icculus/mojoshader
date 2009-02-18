@@ -334,6 +334,7 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
 } // free_buffer
 
 
+// !!! FIXME: maybe use these pool magic elsewhere?
 
 // Pool stuff...
 // ugh, I hate this macro salsa.
