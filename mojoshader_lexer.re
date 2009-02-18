@@ -55,7 +55,7 @@ static void update_state(IncludeState *s, int eoi,
     s->tokenlen = (unsigned int) (s->source - s->token);
 } // update_state
 
-Token preprocessor_internal_lexer(IncludeState *s)
+Token preprocessor_lexer(IncludeState *s)
 {
     const uchar *cursor = (const uchar *) s->source;
     const uchar *token;
@@ -223,7 +223,7 @@ bad_chars:
 
     assert(0 && "Shouldn't hit this code");
     RET(TOKEN_UNKNOWN);
-} // preprocessor_internal_lexer
+} // preprocessor_lexer
 
 // end of mojoshader_lexer_preprocessor.re (or .c) ...
 

@@ -18,13 +18,13 @@
 #endif
 
 #if DEBUG_LEXER
-static Token debug_preprocessor_internal_lexer(IncludeState *s)
+static Token debug_preprocessor_lexer(IncludeState *s)
 {
-    const Token retval = preprocessor_internal_lexer(s);
+    const Token retval = preprocessor_lexer(s);
     MOJOSHADER_print_debug_token("LEXER", s->token, s->tokenlen, retval);
     return retval;
-} // debug_preprocessor_internal_lexer
-#define preprocessor_internal_lexer(s) debug_preprocessor_internal_lexer(s)
+} // debug_preprocessor_lexer
+#define preprocessor_lexer(s) debug_preprocessor_lexer(s)
 #endif
 
 typedef struct DefineHash
@@ -676,7 +676,7 @@ static int require_newline(IncludeState *state)
     const char *source = state->source;
     const unsigned int bytes_left = state->bytes_left;
     const unsigned int linenum = state->line;
-    const Token token = preprocessor_internal_lexer(state);
+    const Token token = preprocessor_lexer(state);
     state->source = source;  // rewind no matter what.
     state->bytes_left = bytes_left;
     state->line = linenum;
@@ -689,7 +689,7 @@ static int require_newline(IncludeState *state)
 static void handle_pp_include(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    Token token = preprocessor_internal_lexer(state);
+    Token token = preprocessor_lexer(state);
     MOJOSHADER_includeType incltype;
     char *filename = NULL;
     int bogus = 0;
@@ -763,7 +763,7 @@ static void handle_pp_line(Context *ctx)
     int linenum = 0;
     int bogus = 0;
 
-    if (preprocessor_internal_lexer(state) != TOKEN_INT_LITERAL)
+    if (preprocessor_lexer(state) != TOKEN_INT_LITERAL)
         bogus = 1;
     else
     {
@@ -774,7 +774,7 @@ static void handle_pp_line(Context *ctx)
     } // else
 
     if (!bogus)
-        bogus = (preprocessor_internal_lexer(state) != TOKEN_STRING_LITERAL);
+        bogus = (preprocessor_lexer(state) != TOKEN_STRING_LITERAL);
 
     if (!bogus)
     {
@@ -819,7 +819,7 @@ static void handle_pp_error(Context *ctx)
     {
         bytes_left = state->bytes_left;
         source = state->source;
-        const Token token = preprocessor_internal_lexer(state);
+        const Token token = preprocessor_lexer(state);
         switch (token)
         {
             case ((Token) '\n'):
@@ -859,7 +859,7 @@ static void handle_pp_define(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
 
-    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return;
@@ -883,7 +883,7 @@ static void handle_pp_define(Context *ctx)
     {
         bytes_left = state->bytes_left;
         source = state->source;
-        const Token token = preprocessor_internal_lexer(state);
+        const Token token = preprocessor_lexer(state);
         switch (token)
         {
             case TOKEN_INCOMPLETE_COMMENT:
@@ -932,7 +932,7 @@ static void handle_pp_undef(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
 
-    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return;
@@ -958,7 +958,7 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
 
     assert((type == TOKEN_PP_IFDEF) || (type == TOKEN_PP_IFNDEF));
 
-    if (preprocessor_internal_lexer(state) != TOKEN_IDENTIFIER)
+    if (preprocessor_lexer(state) != TOKEN_IDENTIFIER)
     {
         fail(ctx, "Macro names must be indentifiers");
         return NULL;
@@ -1127,7 +1127,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
 
-        Token token = preprocessor_internal_lexer(state);
+        Token token = preprocessor_lexer(state);
         if (token == TOKEN_EOI)
         {
             assert(state->bytes_left == 0);

@@ -404,7 +404,7 @@ typedef struct IncludeState
     struct IncludeState *next;
 } IncludeState;
 
-Token preprocessor_internal_lexer(IncludeState *s);
+Token preprocessor_lexer(IncludeState *s);
 
 // This will only fail if the allocator fails, so it doesn't return any
 //  error code...NULL on failure.
