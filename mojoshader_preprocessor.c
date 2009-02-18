@@ -694,7 +694,7 @@ static int require_newline(IncludeState *state)
 {
     const Token token = lexer(state);
     pushback(state);  // rewind no matter what.
-    return ( (token == TOKEN_INCOMPLETE_COMMENT) // call it an eol.
+    return ( (token == TOKEN_INCOMPLETE_COMMENT) || // call it an eol.
              (token == ((Token) '\n')) || (token == TOKEN_EOI) );
 } // require_newline
 
@@ -884,11 +884,9 @@ static void handle_pp_define(Context *ctx)
     init_buffer(&buffer);
 
     int done = 0;
-    const char *source = NULL;
     state->report_whitespace = 1;
     while ((!done) && (!ctx->out_of_memory))
     {
-        bytes_left = state->bytes_left;
         const Token token = lexer(state);
         switch (token)
         {
