@@ -595,6 +595,13 @@ static void pop_source(Context *ctx)
 } // pop_source
 
 
+static void close_define_include(const char *data, MOJOSHADER_malloc m,
+                                 MOJOSHADER_free f, void *d)
+{
+    f((void *) data, d);
+} // close_define_include
+
+
 Preprocessor *preprocessor_start(const char *fname, const char *source,
                             unsigned int sourcelen,
                             MOJOSHADER_includeOpen open_callback,
@@ -623,17 +630,41 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->open_callback = open_callback;
     ctx->close_callback = close_callback;
 
-    for (i = 0; i < define_count; i++)
+    // let the usual preprocessor parser sort these out.
+    char *define_include = NULL;
+    unsigned int define_include_len = 0;
+    if (define_count > 0)
     {
-        if (!add_define(ctx, defines[i]->identifier, defines[i]->definition, 1))
+        for (i = 0; i < define_count; i++)
         {
+            define_include_len += strlen(defines[i]->identifier);
+            define_include_len += strlen(defines[i]->definition);
+            define_include_len += 10;  // "#define<space><space><newline>"
+        } // for
+        define_include_len++;  // for null terminator.
+
+        define_include = (char *) Malloc(ctx, define_include_len);
+        if (define_include == NULL)
             okay = 0;
-            break;
-        } // if
-    } // for
+        else
+        {
+            char *ptr = define_include;
+            for (i = 0; i < define_count; i++)
+            {
+                ptr += sprintf(ptr, "#define %s %s\n", defines[i]->identifier,
+                               defines[i]->definition);
+            } // for
+        } // else
+    } // if
 
     if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, NULL)))
         okay = 0;
+
+    if ((okay) && (define_include != NULL))
+    {
+        okay = push_source(ctx, "<predefined macros>", define_include,
+                           define_include_len, 1, close_define_include);
+    } // if
 
     if (!okay)
     {
