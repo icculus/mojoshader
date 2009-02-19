@@ -111,15 +111,8 @@ static void close_include(const char *data, MOJOSHADER_malloc m,
 static int preprocess(const char *fname, const char *buf, int len,
                       const char *outfile,
                       const MOJOSHADER_preprocessorDefine *defs,
-                      unsigned int defcount)
+                      unsigned int defcount, FILE *io)
 {
-    FILE *io = outfile ? fopen(outfile, "wb") : stdout;
-    if (io == NULL)
-    {
-        printf(" ... fopen('%s') failed.\n", outfile);
-        return 0;
-    } // if
-
     const MOJOSHADER_preprocessData *pd;
     int retval = 0;
 
@@ -155,8 +148,58 @@ static int preprocess(const char *fname, const char *buf, int len,
 } // preprocess
 
 
+static int assemble(const char *fname, const char *buf, int len,
+                    const char *outfile,
+                    const MOJOSHADER_preprocessorDefine *defs,
+                    unsigned int defcount, FILE *io)
+{
+    const MOJOSHADER_parseData *pd;
+    int retval = 0;
+
+    pd = MOJOSHADER_assemble(fname, buf, len, NULL, 0, NULL, 0,
+                             defs, defcount, open_include, close_include,
+                             Malloc, Free, NULL);
+
+    if (pd->error_count > 0)
+    {
+        int i;
+        for (i = 0; i < pd->error_count; i++)
+        {
+            printf("%s:%d: ERROR: %s\n",
+                    pd->errors[i].filename ? pd->errors[i].filename : "???",
+                    pd->errors[i].error_position,
+                    pd->errors[i].error);
+        } // for
+    } // if
+    else
+    {
+        if (pd->output != NULL)
+        {
+            if (fwrite(pd->output, pd->output_len, 1, io) != 1)
+                printf(" ... fwrite('%s') failed.\n", outfile);
+            else if ((outfile != NULL) && (fclose(io) == EOF))
+                printf(" ... fclose('%s') failed.\n", outfile);
+            else
+                retval = 1;
+        } // if
+    } // else
+    MOJOSHADER_freeParseData(pd);
+
+    return retval;
+} // assemble
+
+
+typedef enum
+{
+    ACTION_UNKNOWN,
+    ACTION_PREPROCESS,
+    ACTION_ASSEMBLE,
+} Action;
+
+
 int main(int argc, char **argv)
 {
+    Action action = ACTION_UNKNOWN;
     int retval = 1;
     const char *infile = NULL;
     const char *outfile = NULL;
@@ -169,7 +212,21 @@ int main(int argc, char **argv)
     {
         const char *arg = argv[i];
 
-        if (strcmp(arg, "-o") == 0)
+        if (strcmp(arg, "-P") == 0)
+        {
+            if (action != ACTION_UNKNOWN)
+                fail("Multiple actions specified");
+            action = ACTION_PREPROCESS;
+        } // if
+
+        else if (strcmp(arg, "-A") == 0)
+        {
+            if (action != ACTION_UNKNOWN)
+                fail("Multiple actions specified");
+            action = ACTION_ASSEMBLE;
+        } // else if
+
+        else if (strcmp(arg, "-o") == 0)
         {
             if (outfile != NULL)
                 fail("multiple output files specified");
@@ -219,36 +276,41 @@ int main(int argc, char **argv)
         } // else
     } // for
 
+    if (action == ACTION_UNKNOWN)
+        action = ACTION_ASSEMBLE;
+
     if (infile == NULL)
         fail("no input file specified.");
 
     FILE *io = fopen(infile, "rb");
     if (io == NULL)
-        printf(" ... fopen('%s') failed.\n", infile);
-    else
-    {
-        fseek(io, 0, SEEK_END);
-        long fsize = ftell(io);
-        fseek(io, 0, SEEK_SET);
-        if (fsize == -1)
-            fsize = 1000000;
-        char *buf = (char *) malloc(fsize);
-        const int rc = fread(buf, 1, fsize, io);
-        fclose(io);
-        if (rc == EOF)
-            printf(" ... fread('%s') failed.\n", infile);
-        else
-        {
-            if (preprocess(infile, buf, rc, outfile, defs, defcount))
-                retval = 0;
-            else
-            {
-                if (outfile != NULL)
-                    remove(outfile);
-            } // else
-            free(buf);
-        } // else
-    } // else
+        fail("failed to open input file");
+
+    fseek(io, 0, SEEK_END);
+    long fsize = ftell(io);
+    fseek(io, 0, SEEK_SET);
+    if (fsize == -1)
+        fsize = 1000000;
+    char *buf = (char *) malloc(fsize);
+    const int rc = fread(buf, 1, fsize, io);
+    fclose(io);
+    if (rc == EOF)
+        fail("failed to read input file");
+
+    FILE *outio = outfile ? fopen(outfile, "wb") : stdout;
+    if (outio == NULL)
+        fail("failed to open output file");
+
+
+    if (action == ACTION_PREPROCESS)
+        retval = (!preprocess(infile, buf, rc, outfile, defs, defcount, outio));
+    else if (action == ACTION_ASSEMBLE)
+        retval = (!assemble(infile, buf, rc, outfile, defs, defcount, outio));
+
+    if ((retval != 0) && (outfile != NULL))
+        remove(outfile);
+
+    free(buf);
 
     for (i = 0; i < defcount; i++)
         free((void *) defs[i].identifier);

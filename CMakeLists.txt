@@ -89,10 +89,8 @@ ADD_EXECUTABLE(testoutput utils/testoutput.c)
 TARGET_LINK_LIBRARIES(testoutput mojoshader)
 ADD_EXECUTABLE(finderrors utils/finderrors.c)
 TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
-ADD_EXECUTABLE(assemble utils/assemble.c)
-TARGET_LINK_LIBRARIES(assemble mojoshader)
-ADD_EXECUTABLE(preprocess utils/preprocess.c)
-TARGET_LINK_LIBRARIES(preprocess mojoshader)
+ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
+TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader)
 
 # End of CMakeLists.txt ...
 
