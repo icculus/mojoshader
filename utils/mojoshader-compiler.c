@@ -15,7 +15,7 @@
 static const char **include_paths = NULL;
 static unsigned int include_path_count = 0;
 
-#define MOJOSHADER_DEBUG_MALLOC 1
+#define MOJOSHADER_DEBUG_MALLOC 0
 
 #if MOJOSHADER_DEBUG_MALLOC
 static void *Malloc(int len, void *d)
