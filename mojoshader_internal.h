@@ -403,6 +403,7 @@ typedef struct IncludeState
     unsigned int bytes_left;
     unsigned int line;
     Conditional *conditional_stack;
+    MOJOSHADER_includeClose close_callback;
     struct IncludeState *next;
 } IncludeState;
 

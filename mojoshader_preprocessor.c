@@ -541,7 +541,8 @@ static void free_filename_cache(Context *ctx)
 
 
 static int push_source(Context *ctx, const char *fname, const char *source,
-                       unsigned int srclen, unsigned int linenum, int included)
+                       unsigned int srclen, unsigned int linenum,
+                       MOJOSHADER_includeClose close_callback)
 {
     IncludeState *state = get_include(ctx);
     if (state == NULL)
@@ -557,7 +558,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
         } // if
     } // if
 
-    state->included = included;
+    state->close_callback = close_callback;
     state->source_base = source;
     state->source = source;
     state->token = source;
@@ -578,10 +579,10 @@ static void pop_source(Context *ctx)
     if (state == NULL)
         return;
 
-    if (state->included)
+    if (state->close_callback)
     {
-        ctx->close_callback(state->source_base, ctx->malloc,
-                            ctx->free, ctx->malloc_data);
+        state->close_callback(state->source_base, ctx->malloc,
+                              ctx->free, ctx->malloc_data);
     } // if
 
     // state->filename is a pointer to the filename cache; don't free it here!
@@ -631,7 +632,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
         } // if
     } // for
 
-    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, 0)))
+    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, NULL)))
         okay = 0;
 
     if (!okay)
@@ -762,7 +763,7 @@ static void handle_pp_include(Context *ctx)
         return;
     } // if
 
-    if (!push_source(ctx, filename, newdata, newbytes, 1, 1))
+    if (!push_source(ctx, filename, newdata, newbytes, 1, ctx->close_callback))
     {
         assert(ctx->out_of_memory);
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
