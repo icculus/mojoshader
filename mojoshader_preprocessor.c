@@ -29,7 +29,8 @@ static Token debug_preprocessor_lexer(IncludeState *s)
 
 typedef struct DefineHash
 {
-    MOJOSHADER_preprocessorDefine define;
+    const char *identifier;
+    const char *definition;
     struct DefineHash *next;
 } DefineHash;
 
@@ -392,7 +393,7 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
     DefineHash *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
-        if (strcmp(bucket->define.identifier, sym) == 0)
+        if (strcmp(bucket->identifier, sym) == 0)
         {
             failf(ctx, "'%s' already defined", sym);
             return 0;
@@ -412,7 +413,7 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
     } // if
 
     if (!copy)
-        bucket->define.definition = val;
+        bucket->definition = val;
     else
     {
         definition = StrDup(ctx, val);
@@ -422,10 +423,10 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
             put_define(ctx, bucket);
             return 0;
         } // if
-        bucket->define.definition = definition;
+        bucket->definition = definition;
     } // if
 
-    bucket->define.identifier = identifier;
+    bucket->identifier = identifier;
     bucket->next = ctx->define_hashtable[hash];
     ctx->define_hashtable[hash] = bucket;
     return 1;
@@ -439,14 +440,14 @@ static int remove_define(Context *ctx, const char *sym)
     DefineHash *prev = NULL;
     while (bucket)
     {
-        if (strcmp(bucket->define.identifier, sym) == 0)
+        if (strcmp(bucket->identifier, sym) == 0)
         {
             if (prev == NULL)
                 ctx->define_hashtable[hash] = bucket->next;
             else
                 prev->next = bucket->next;
-            Free(ctx, (void *) bucket->define.identifier);
-            Free(ctx, (void *) bucket->define.definition);
+            Free(ctx, (void *) bucket->identifier);
+            Free(ctx, (void *) bucket->definition);
             put_define(ctx, bucket);
             return 1;
         } // if
@@ -464,8 +465,8 @@ static const char *find_define(Context *ctx, const char *sym)
     DefineHash *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
-        if (strcmp(bucket->define.identifier, sym) == 0)
-            return bucket->define.definition;
+        if (strcmp(bucket->identifier, sym) == 0)
+            return bucket->definition;
         bucket = bucket->next;
     } // while
     return NULL;
@@ -482,8 +483,8 @@ static void put_all_defines(Context *ctx)
         while (bucket)
         {
             DefineHash *next = bucket->next;
-            Free(ctx, (void *) bucket->define.identifier);
-            Free(ctx, (void *) bucket->define.definition);
+            Free(ctx, (void *) bucket->identifier);
+            Free(ctx, (void *) bucket->definition);
             put_define(ctx, bucket);
             bucket = next;
         } // while
