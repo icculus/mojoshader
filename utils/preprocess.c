@@ -70,8 +70,8 @@ static int open_include(MOJOSHADER_includeType inctype, const char *fname,
 } // open_include
 
 
-void close_include(const char *data, MOJOSHADER_malloc m,
-                   MOJOSHADER_free f, void *d)
+static void close_include(const char *data, MOJOSHADER_malloc m,
+                          MOJOSHADER_free f, void *d)
 {
     f((void *) data, d);
 } // close_include
