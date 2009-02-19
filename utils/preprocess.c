@@ -229,7 +229,7 @@ int main(int argc, char **argv)
     } // else
 
     for (i = 0; i < defcount; i++)
-        free((void *) defs[defcount].identifier);
+        free((void *) defs[i].identifier);
     free(defs);
 
     free(include_paths);
