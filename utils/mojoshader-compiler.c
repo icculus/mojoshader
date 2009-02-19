@@ -265,5 +265,5 @@ int main(int argc, char **argv)
     return retval;
 } // main
 
-// end of preprocess.c ...
+// end of mojoshader-compiler.c ...
 
