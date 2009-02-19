@@ -362,6 +362,7 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
 #define PUT_POOL(type, poolname) \
     static void put_##poolname(Context *ctx, type *item) { \
         item->next = ctx->poolname##_pool; \
+        ctx->poolname##_pool = item; \
     }
 
 #define IMPLEMENT_POOL(type, poolname) \
