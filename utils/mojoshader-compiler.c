@@ -15,6 +15,29 @@
 static const char **include_paths = NULL;
 static unsigned int include_path_count = 0;
 
+#if MOJOSHADER_DEBUG_MALLOC
+static void *Malloc(int len)
+{
+    void *ptr = malloc(len + sizeof (int));
+    int *store = (int *) ptr;
+    printf("malloc() %d bytes (%p)\n", len, ptr);
+    if (ptr == NULL) return NULL;
+    *store = len;
+    return (void *) (store + 1);
+} // Malloc
+
+
+static void Free(void *_ptr)
+{
+    int *ptr = (((int *) _ptr) - 1);
+    int len = *ptr;
+    printf("free() %d bytes (%p)\n", len, ptr);
+    free(ptr);
+} // Free
+#else
+#define Malloc NULL
+#define Free NULL
+#endif
 
 static int open_include(MOJOSHADER_includeType inctype, const char *fname,
                         const char *parent, const char **outdata,
@@ -92,8 +115,8 @@ static int preprocess(const char *fname, const char *buf, int len,
     const MOJOSHADER_preprocessData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_preprocess(fname, buf, len, defs, defcount,
-                               open_include, close_include, NULL, NULL, NULL);
+    pd = MOJOSHADER_preprocess(fname, buf, len, defs, defcount, open_include,
+                               close_include, Malloc, Free, NULL);
 
     if (pd->error_count > 0)
     {
