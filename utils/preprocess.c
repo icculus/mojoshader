@@ -210,8 +210,13 @@ int main(int argc, char **argv)
         printf(" ... fopen('%s') failed.\n", infile);
     else
     {
-        char *buf = (char *) malloc(1000000);
-        int rc = fread(buf, 1, 1000000, io);
+        fseek(io, 0, SEEK_END);
+        long fsize = ftell(io);
+        fseek(io, 0, SEEK_SET);
+        if (fsize == -1)
+            fsize = 1000000;
+        char *buf = (char *) malloc(fsize);
+        const int rc = fread(buf, 1, fsize, io);
         fclose(io);
         if (rc == EOF)
             printf(" ... fread('%s') failed.\n", infile);
