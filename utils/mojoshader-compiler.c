@@ -39,6 +39,14 @@ static void Free(void *_ptr)
 #define Free NULL
 #endif
 
+
+static void fail(const char *err)
+{
+    printf("%s.\n", err);
+    exit(1);
+} // fail
+
+
 static int open_include(MOJOSHADER_includeType inctype, const char *fname,
                         const char *parent, const char **outdata,
                         unsigned int *outbytes, MOJOSHADER_malloc m,
@@ -164,17 +172,11 @@ int main(int argc, char **argv)
         if (strcmp(arg, "-o") == 0)
         {
             if (outfile != NULL)
-            {
-                printf("multiple output files specified.\n");
-                exit(1);
-            } // if
+                fail("multiple output files specified");
 
             arg = argv[++i];
             if (arg == NULL)
-            {
-                printf("no filename after '-o'\n");
-                exit(1);
-            } // if
+                fail("no filename after '-o'");
             outfile = arg;
         } // if
 
@@ -182,10 +184,8 @@ int main(int argc, char **argv)
         {
             arg = argv[++i];
             if (arg == NULL)
-            {
-                printf("no path after '-I'\n");
-                exit(1);
-            } // if
+                fail("no path after '-I'");
+
             include_paths = (const char **) realloc(include_paths,
                        (include_path_count+1) * sizeof (char *));
             include_paths[include_path_count] = arg;
@@ -214,19 +214,13 @@ int main(int argc, char **argv)
         else
         {
             if (infile != NULL)
-            {
-                printf("multiple input files specified.\n");
-                exit(1);
-            } // if
+                fail("multiple input files specified.");
             infile = arg;
         } // else
     } // for
 
     if (infile == NULL)
-    {
-        printf("no input file specified.\n");
-        exit(1);
-    } // if
+        fail("no input file specified.");
 
     FILE *io = fopen(infile, "rb");
     if (io == NULL)
