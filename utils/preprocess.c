@@ -12,6 +12,71 @@
 #include <string.h>
 #include "mojoshader.h"
 
+static const char **include_paths = NULL;
+static unsigned int include_path_count = 0;
+
+
+static int open_include(MOJOSHADER_includeType inctype, const char *fname,
+                        const char *parent, const char **outdata,
+                        unsigned int *outbytes, MOJOSHADER_malloc m,
+                        MOJOSHADER_free f, void *d)
+{
+    int i;
+    for (i = 0; i < include_path_count; i++)
+    {
+        const char *path = include_paths[i];
+        const size_t len = strlen(path) + strlen(fname) + 2;
+        char *buf = (char *) m(len, d);
+        if (buf == NULL)
+            return 0;
+
+        snprintf(buf, len, "%s/%s", path, fname);
+        FILE *io = fopen(buf, "rb");
+        f(buf, d);
+        if (io == NULL)
+            continue;
+
+        if (fseek(io, 0, SEEK_END) != -1)
+        {
+            const long fsize = ftell(io);
+            if ((fsize == -1) || (fseek(io, 0, SEEK_SET) == -1))
+            {
+                fclose(io);
+                return 0;
+            } // if
+
+            char *data = (char *) m(fsize, d);
+            if (data == NULL)
+            {
+                fclose(io);
+                return 0;
+            } // if
+
+            if (fread(data, fsize, 1, io) != 1)
+            {
+                f(data, d);
+                fclose(io);
+                return 0;
+            } // if
+
+            fclose(io);
+            *outdata = data;
+            *outbytes = (unsigned int) fsize;
+            return 1;
+        } // if
+    } // for
+
+    return 0;
+} // open_include
+
+
+void close_include(const char *data, MOJOSHADER_malloc m,
+                   MOJOSHADER_free f, void *d)
+{
+    f((void *) data, d);
+} // close_include
+
+
 static int preprocess(const char *fname, const char *buf, int len,
                       const char *outfile,
                       const MOJOSHADER_preprocessorDefine *defs,
@@ -27,8 +92,8 @@ static int preprocess(const char *fname, const char *buf, int len,
     const MOJOSHADER_preprocessData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_preprocess(fname, buf, len, defs, defcount, NULL,
-                               NULL, NULL, NULL, NULL);
+    pd = MOJOSHADER_preprocess(fname, buf, len, defs, defcount,
+                               open_include, close_include, NULL, NULL, NULL);
 
     if (pd->error_count > 0)
     {
@@ -88,6 +153,20 @@ int main(int argc, char **argv)
                 exit(1);
             } // if
             outfile = arg;
+        } // if
+
+        if (strcmp(arg, "-I") == 0)
+        {
+            arg = argv[++i];
+            if (arg == NULL)
+            {
+                printf("no path after '-I'\n");
+                exit(1);
+            } // if
+            include_paths = (const char **) realloc(include_paths,
+                       (include_path_count+1) * sizeof (char *));
+            include_paths[include_path_count] = arg;
+            include_path_count++;
         } // if
 
         else if (strncmp(arg, "-D", 2) == 0)
@@ -152,6 +231,8 @@ int main(int argc, char **argv)
     for (i = 0; i < defcount; i++)
         free((void *) defs[defcount].identifier);
     free(defs);
+
+    free(include_paths);
 
     return retval;
 } // main
