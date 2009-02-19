@@ -606,7 +606,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
                             unsigned int sourcelen,
                             MOJOSHADER_includeOpen open_callback,
                             MOJOSHADER_includeClose close_callback,
-                            const MOJOSHADER_preprocessorDefine **defines,
+                            const MOJOSHADER_preprocessorDefine *defines,
                             unsigned int define_count,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
@@ -637,8 +637,8 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     {
         for (i = 0; i < define_count; i++)
         {
-            define_include_len += strlen(defines[i]->identifier);
-            define_include_len += strlen(defines[i]->definition);
+            define_include_len += strlen(defines[i].identifier);
+            define_include_len += strlen(defines[i].definition);
             define_include_len += 10;  // "#define<space><space><newline>"
         } // for
         define_include_len++;  // for null terminator.
@@ -651,8 +651,8 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
             char *ptr = define_include;
             for (i = 0; i < define_count; i++)
             {
-                ptr += sprintf(ptr, "#define %s %s\n", defines[i]->identifier,
-                               defines[i]->definition);
+                ptr += sprintf(ptr, "#define %s %s\n", defines[i].identifier,
+                               defines[i].definition);
             } // for
         } // else
     } // if
@@ -1357,7 +1357,7 @@ static const MOJOSHADER_preprocessData out_of_mem_data_preprocessor = {
 
 const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                              const char *source, unsigned int sourcelen,
-                             const MOJOSHADER_preprocessorDefine **defines,
+                             const MOJOSHADER_preprocessorDefine *defines,
                              unsigned int define_count,
                              MOJOSHADER_includeOpen include_open,
                              MOJOSHADER_includeClose include_close,

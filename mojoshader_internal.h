@@ -415,7 +415,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
                             unsigned int sourcelen,
                             MOJOSHADER_includeOpen open_callback,
                             MOJOSHADER_includeClose close_callback,
-                            const MOJOSHADER_preprocessorDefine **defines,
+                            const MOJOSHADER_preprocessorDefine *defines,
                             unsigned int define_count,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
