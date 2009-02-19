@@ -9,12 +9,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mojoshader.h"
 
 static int preprocess(const char *fname, const char *buf, int len,
-                      const char *outfile)
+                      const char *outfile,
+                      const MOJOSHADER_preprocessorDefine *defs,
+                      unsigned int defcount)
 {
-    FILE *io = fopen(outfile, "wb");
+    FILE *io = outfile ? fopen(outfile, "wb") : stdout;
     if (io == NULL)
     {
         printf(" ... fopen('%s') failed.\n", outfile);
@@ -24,7 +27,7 @@ static int preprocess(const char *fname, const char *buf, int len,
     const MOJOSHADER_preprocessData *pd;
     int retval = 0;
 
-    pd = MOJOSHADER_preprocess(fname, buf, len, NULL, 0, NULL,
+    pd = MOJOSHADER_preprocess(fname, buf, len, defs, defcount, NULL,
                                NULL, NULL, NULL, NULL);
 
     if (pd->error_count > 0)
@@ -44,7 +47,7 @@ static int preprocess(const char *fname, const char *buf, int len,
         {
             if (fwrite(pd->output, pd->output_len, 1, io) != 1)
                 printf(" ... fwrite('%s') failed.\n", outfile);
-            else if (fclose(io) == EOF)
+            else if ((outfile != NULL) && (fclose(io) == EOF))
                 printf(" ... fclose('%s') failed.\n", outfile);
             else
                 retval = 1;
@@ -59,33 +62,96 @@ static int preprocess(const char *fname, const char *buf, int len,
 int main(int argc, char **argv)
 {
     int retval = 1;
+    const char *infile = NULL;
+    const char *outfile = NULL;
+    int i;
 
-    if (argc != 3)
-        printf("\n\nUSAGE: %s <inputfile> <outputfile>\n\n", argv[0]);
-    else
+    MOJOSHADER_preprocessorDefine *defs = NULL;
+    unsigned int defcount = 0;
+
+    for (i = 1; i < argc; i++)
     {
-        const char *infile = argv[1];
-        const char *outfile = argv[2];
-        FILE *io = fopen(infile, "rb");
-        if (io == NULL)
-            printf(" ... fopen('%s') failed.\n", infile);
+        const char *arg = argv[i];
+
+        if (strcmp(arg, "-o") == 0)
+        {
+            if (outfile != NULL)
+            {
+                printf("multiple output files specified.\n");
+                exit(1);
+            } // if
+
+            arg = argv[++i];
+            if (arg == NULL)
+            {
+                printf("no filename after '-o'\n");
+                exit(1);
+            } // if
+            outfile = arg;
+        } // if
+
+        else if (strncmp(arg, "-D", 2) == 0)
+        {
+            arg += 2;
+            char *ident = strdup(arg);
+            char *ptr = strchr(ident, '=');
+            const char *val = "";
+            if (ptr)
+            {
+                *ptr = '\0';
+                val = ptr+1;
+            } // if
+
+            defs = (MOJOSHADER_preprocessorDefine *) realloc(defs,
+                       (defcount+1) * sizeof (MOJOSHADER_preprocessorDefine));
+            defs[defcount].identifier = ident;
+            defs[defcount].definition = val;
+            defcount++;
+        } // else if
+
         else
         {
-            char *buf = (char *) malloc(1000000);
-            int rc = fread(buf, 1, 1000000, io);
-            fclose(io);
-            if (rc == EOF)
-                printf(" ... fread('%s') failed.\n", infile);
+            if (infile != NULL)
+            {
+                printf("multiple input files specified.\n");
+                exit(1);
+            } // if
+            infile = arg;
+        } // else
+    } // for
+
+    if (infile == NULL)
+    {
+        printf("no input file specified.\n");
+        exit(1);
+    } // if
+
+    FILE *io = fopen(infile, "rb");
+    if (io == NULL)
+        printf(" ... fopen('%s') failed.\n", infile);
+    else
+    {
+        char *buf = (char *) malloc(1000000);
+        int rc = fread(buf, 1, 1000000, io);
+        fclose(io);
+        if (rc == EOF)
+            printf(" ... fread('%s') failed.\n", infile);
+        else
+        {
+            if (preprocess(infile, buf, rc, outfile, defs, defcount))
+                retval = 0;
             else
             {
-                if (preprocess(infile, buf, rc, outfile))
-                    retval = 0;
-                else
+                if (outfile != NULL)
                     remove(outfile);
-                free(buf);
             } // else
-        } // for
+            free(buf);
+        } // else
     } // else
+
+    for (i = 0; i < defcount; i++)
+        free((void *) defs[defcount].identifier);
+    free(defs);
 
     return retval;
 } // main
