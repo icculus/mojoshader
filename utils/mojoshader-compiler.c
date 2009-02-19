@@ -271,7 +271,7 @@ int main(int argc, char **argv)
         else
         {
             if (infile != NULL)
-                fail("multiple input files specified.");
+                fail("multiple input files specified");
             infile = arg;
         } // else
     } // for
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
         action = ACTION_ASSEMBLE;
 
     if (infile == NULL)
-        fail("no input file specified.");
+        fail("no input file specified");
 
     FILE *io = fopen(infile, "rb");
     if (io == NULL)
