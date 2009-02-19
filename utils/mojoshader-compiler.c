@@ -178,7 +178,7 @@ int main(int argc, char **argv)
             outfile = arg;
         } // if
 
-        if (strcmp(arg, "-I") == 0)
+        else if (strcmp(arg, "-I") == 0)
         {
             arg = argv[++i];
             if (arg == NULL)
