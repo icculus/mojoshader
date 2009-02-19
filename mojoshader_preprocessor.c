@@ -961,7 +961,8 @@ static void handle_pp_define(Context *ctx)
         return;
 
     assert(done);
-    add_define(ctx, sym, definition, 0);
+    if (!add_define(ctx, sym, definition, 0))
+        Free(ctx, definition);
 } // handle_pp_define
 
 
