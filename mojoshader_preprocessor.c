@@ -588,8 +588,13 @@ static void pop_source(Context *ctx)
 
     // state->filename is a pointer to the filename cache; don't free it here!
 
-    while (state->conditional_stack)
-        put_conditional(ctx, state->conditional_stack);
+    Conditional *cond = state->conditional_stack;
+    while (cond)
+    {
+        Conditional *next = cond->next;
+        put_conditional(ctx, cond);
+        cond = next;
+    } // while
 
     ctx->include_stack = state->next;
     put_include(ctx, state);
