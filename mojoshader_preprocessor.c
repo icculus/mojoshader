@@ -27,12 +27,12 @@ static Token debug_preprocessor_lexer(IncludeState *s)
 #define preprocessor_lexer(s) debug_preprocessor_lexer(s)
 #endif
 
-typedef struct DefineHash
+typedef struct Define
 {
     const char *identifier;
     const char *definition;
-    struct DefineHash *next;
-} DefineHash;
+    struct Define *next;
+} Define;
 
 
 // Simple linked list to cache source filenames, so we don't have to copy
@@ -51,8 +51,8 @@ typedef struct Context
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
-    DefineHash *define_hashtable[256];
-    DefineHash *define_pool;
+    Define *define_hashtable[256];
+    Define *define_pool;
     FilenameCache *filename_cache;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
@@ -372,7 +372,7 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
 
 IMPLEMENT_POOL(Conditional, conditional)
 IMPLEMENT_POOL(IncludeState, include)
-IMPLEMENT_POOL(DefineHash, define)
+IMPLEMENT_POOL(Define, define)
 
 
 // Preprocessor define hashtable stuff...
@@ -391,7 +391,7 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
     char *identifier = NULL;
     char *definition = NULL;
     const unsigned char hash = hash_define(sym);
-    DefineHash *bucket = ctx->define_hashtable[hash];
+    Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
         if (strcmp(bucket->identifier, sym) == 0)
@@ -437,8 +437,8 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
 static int remove_define(Context *ctx, const char *sym)
 {
     const unsigned char hash = hash_define(sym);
-    DefineHash *bucket = ctx->define_hashtable[hash];
-    DefineHash *prev = NULL;
+    Define *bucket = ctx->define_hashtable[hash];
+    Define *prev = NULL;
     while (bucket)
     {
         if (strcmp(bucket->identifier, sym) == 0)
@@ -463,7 +463,7 @@ static int remove_define(Context *ctx, const char *sym)
 static const char *find_define(Context *ctx, const char *sym)
 {
     const unsigned char hash = hash_define(sym);
-    DefineHash *bucket = ctx->define_hashtable[hash];
+    Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
         if (strcmp(bucket->identifier, sym) == 0)
@@ -479,11 +479,11 @@ static void put_all_defines(Context *ctx)
     int i;
     for (i = 0; i < STATICARRAYLEN(ctx->define_hashtable); i++)
     {
-        DefineHash *bucket = ctx->define_hashtable[i];
+        Define *bucket = ctx->define_hashtable[i];
         ctx->define_hashtable[i] = NULL;
         while (bucket)
         {
-            DefineHash *next = bucket->next;
+            Define *next = bucket->next;
             Free(ctx, (void *) bucket->identifier);
             Free(ctx, (void *) bucket->definition);
             put_define(ctx, bucket);
