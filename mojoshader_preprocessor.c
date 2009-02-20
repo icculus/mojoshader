@@ -490,7 +490,7 @@ static void put_all_defines(Context *ctx)
             bucket = next;
         } // while
     } // for
-} // find_define
+} // put_all_defines
 
 
 // filename cache stuff...

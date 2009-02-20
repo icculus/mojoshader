@@ -615,6 +615,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 /*
  * Structure used to pass predefined macros. Maps to D3DXMACRO.
+ *  You can have macro arguments: set identifier to "a(b, c)" or whatever.
  */
 typedef struct MOJOSHADER_preprocessorDefine
 {
