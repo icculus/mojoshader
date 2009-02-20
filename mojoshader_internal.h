@@ -387,6 +387,15 @@ typedef struct Conditional
     struct Conditional *next;
 } Conditional;
 
+typedef struct Define
+{
+    const char *identifier;
+    const char *definition;
+    const char **parameters;
+    unsigned int paramcount;
+    struct Define *next;
+} Define;
+
 typedef struct IncludeState
 {
     const char *filename;
@@ -403,6 +412,7 @@ typedef struct IncludeState
     unsigned int bytes_left;
     unsigned int line;
     Conditional *conditional_stack;
+    Define *defines;  // temp defines for macros with parameters.
     MOJOSHADER_includeClose close_callback;
     struct IncludeState *next;
 } IncludeState;

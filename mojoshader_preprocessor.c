@@ -27,13 +27,6 @@ static Token debug_preprocessor_lexer(IncludeState *s)
 #define preprocessor_lexer(s) debug_preprocessor_lexer(s)
 #endif
 
-typedef struct Define
-{
-    const char *identifier;
-    const char *definition;
-    struct Define *next;
-} Define;
-
 
 // Simple linked list to cache source filenames, so we don't have to copy
 //  the same string over and over for each opcode.
@@ -386,10 +379,9 @@ static unsigned char hash_define(const char *sym)
 } // hash_define
 
 
-static int add_define(Context *ctx, const char *sym, const char *val, int copy)
+static int add_define(Context *ctx, const char *sym, const char *val,
+                      char **parameters, unsigned int paramcount)
 {
-    char *identifier = NULL;
-    char *definition = NULL;
     const unsigned char hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
@@ -406,32 +398,26 @@ static int add_define(Context *ctx, const char *sym, const char *val, int copy)
     if (bucket == NULL)
         return 0;
 
-    identifier = StrDup(ctx, sym);
-    if (identifier == NULL)
-    {
-        put_define(ctx, bucket);
-        return 0;
-    } // if
-
-    if (!copy)
-        bucket->definition = val;
-    else
-    {
-        definition = StrDup(ctx, val);
-        if (definition == NULL)
-        {
-            Free(ctx, identifier);
-            put_define(ctx, bucket);
-            return 0;
-        } // if
-        bucket->definition = definition;
-    } // if
-
-    bucket->identifier = identifier;
+    bucket->definition = val;
+    bucket->identifier = sym;
+    bucket->parameters = (const char **) parameters;
+    bucket->paramcount = paramcount;
     bucket->next = ctx->define_hashtable[hash];
     ctx->define_hashtable[hash] = bucket;
     return 1;
 } // add_define
+
+
+static void free_define(Context *ctx, Define *def)
+{
+    unsigned int i;
+    for (i = 0; i < def->paramcount; i++)
+        Free(ctx, (void *) def->parameters[i]);
+    Free(ctx, (void *) def->parameters);
+    Free(ctx, (void *) def->identifier);
+    Free(ctx, (void *) def->definition);
+    put_define(ctx, def);
+} // free_define
 
 
 static int remove_define(Context *ctx, const char *sym)
@@ -447,9 +433,7 @@ static int remove_define(Context *ctx, const char *sym)
                 ctx->define_hashtable[hash] = bucket->next;
             else
                 prev->next = bucket->next;
-            Free(ctx, (void *) bucket->identifier);
-            Free(ctx, (void *) bucket->definition);
-            put_define(ctx, bucket);
+            free_define(ctx, bucket);
             return 1;
         } // if
         prev = bucket;
@@ -460,14 +444,14 @@ static int remove_define(Context *ctx, const char *sym)
 } // remove_define
 
 
-static const char *find_define(Context *ctx, const char *sym)
+static const Define *find_define(Context *ctx, const char *sym)
 {
     const unsigned char hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
         if (strcmp(bucket->identifier, sym) == 0)
-            return bucket->definition;
+            return bucket;
         bucket = bucket->next;
     } // while
     return NULL;
@@ -484,9 +468,7 @@ static void put_all_defines(Context *ctx)
         while (bucket)
         {
             Define *next = bucket->next;
-            Free(ctx, (void *) bucket->identifier);
-            Free(ctx, (void *) bucket->definition);
-            put_define(ctx, bucket);
+            free_define(ctx, bucket);
             bucket = next;
         } // while
     } // for
@@ -543,7 +525,7 @@ static void free_filename_cache(Context *ctx)
 
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum,
-                       MOJOSHADER_includeClose close_callback)
+                       MOJOSHADER_includeClose close_callback, Define *defs)
 {
     IncludeState *state = get_include(ctx);
     if (state == NULL)
@@ -566,6 +548,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->orig_length = srclen;
     state->bytes_left = srclen;
     state->line = linenum;
+    state->defines = defs;
     state->next = ctx->include_stack;
 
     ctx->include_stack = state;
@@ -594,6 +577,17 @@ static void pop_source(Context *ctx)
         Conditional *next = cond->next;
         put_conditional(ctx, cond);
         cond = next;
+    } // while
+
+    Define *def = state->defines;
+    while (def)
+    {
+        Define *next = def->next;
+        def->identifier = NULL;  // we reuse an allocation here, don't free!
+        assert(def->parameters == NULL);
+        assert(def->paramcount == 0);
+        free_define(ctx, def);
+        def = next;
     } // while
 
     ctx->include_stack = state->next;
@@ -663,13 +657,13 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
         } // else
     } // if
 
-    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, NULL)))
+    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, NULL, NULL)))
         okay = 0;
 
     if ((okay) && (define_include != NULL))
     {
         okay = push_source(ctx, "<predefined macros>", define_include,
-                           define_include_len, 1, close_define_include);
+                           define_include_len, 1, close_define_include, NULL);
     } // if
 
     if (!okay)
@@ -800,7 +794,8 @@ static void handle_pp_include(Context *ctx)
         return;
     } // if
 
-    if (!push_source(ctx, filename, newdata, newbytes, 1, ctx->close_callback))
+    MOJOSHADER_includeClose callback = ctx->close_callback;
+    if (!push_source(ctx, filename, newdata, newbytes, 1, callback, NULL))
     {
         assert(ctx->out_of_memory);
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
@@ -905,6 +900,7 @@ static void handle_pp_error(Context *ctx)
 static void handle_pp_define(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
+    unsigned int i;
 
     if (lexer(state) != TOKEN_IDENTIFIER)
     {
@@ -912,18 +908,88 @@ static void handle_pp_define(Context *ctx)
         return;
     } // if
 
-    MOJOSHADER_malloc m = ctx->malloc;
-    void *d = ctx->malloc_data;
-    const char space = ' ';
-    char *sym = (char *) alloca(state->tokenlen+1);
+    char *definition = NULL;
+    char *sym = (char *) Malloc(ctx, state->tokenlen+1);
+    if (sym == NULL)
+        return;
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
+
+    // #define a(b) is different than #define a (b)    :(
+    state->report_whitespace = 1;
+    lexer(state);
+    state->report_whitespace = 0;
+
+    unsigned int params = 0;
+    char **idents = NULL;
+
+    if (state->tokenval == ((Token) ' '))
+        lexer(state);  // skip it.
+    else if (state->tokenval == ((Token) '('))
+    {
+        IncludeState saved;
+        memcpy(&saved, state, sizeof (IncludeState));
+        while (1)
+        {
+            if (lexer(state) != TOKEN_IDENTIFIER)
+                break;
+            params++;
+            if (lexer(state) != ((Token) ','))
+                break;
+        } // while
+
+        if (state->tokenval != ((Token) ')'))
+        {
+            fail(ctx, "syntax error in macro parameter list");
+            goto handle_pp_define_failed;
+        } // if
+
+        idents = (char **) Malloc(ctx, sizeof (char *) * params);
+        if (idents == NULL)
+            goto handle_pp_define_failed;
+
+        // roll all the way back, do it again.
+        memcpy(state, &saved, sizeof (IncludeState));
+        memset(idents, '\0', sizeof (char *) * params);
+        
+        for (i = 0; i < params; i++)
+        {
+            lexer(state);
+            assert(state->tokenval == TOKEN_IDENTIFIER);
+
+            char *dst = (char *) Malloc(ctx, state->tokenlen+1);
+            if (dst == NULL)
+                break;
+
+            memcpy(dst, state->token, state->tokenlen);
+            dst[state->tokenlen] = '\0';
+            idents[i] = dst;
+
+            lexer(state);
+            assert( (state->tokenval == ((Token) ')')) || (state->tokenval == ((Token) ',')) );
+        } // for
+
+        if (i != params)
+        {
+            assert(ctx->out_of_memory);
+            goto handle_pp_define_failed;
+        } // if
+
+        assert(state->tokenval == ((Token) ')'));
+        lexer(state);
+    } // else if
+
+    pushback(state);
 
     Buffer buffer;
     init_buffer(&buffer);
 
-    int done = 0;
+    MOJOSHADER_malloc m = ctx->malloc;
+    void *d = ctx->malloc_data;
+    static const char space = ' ';
+
     state->report_whitespace = 1;
+    int done = 0;
     while ((!done) && (!ctx->out_of_memory))
     {
         const Token token = lexer(state);
@@ -938,11 +1004,9 @@ static void handle_pp_define(Context *ctx)
                 break;
 
             case ((Token) ' '):  // may not actually point to ' '.
-                if (buffer.total_bytes > 0)
-                {
-                    if (!add_to_buffer(&buffer, &space, 1, m, d))
-                        ctx->out_of_memory = 1;
-                } // if
+                assert(buffer.total_bytes > 0);
+                if (!add_to_buffer(&buffer, &space, 1, m, d))
+                    ctx->out_of_memory = 1;
                 break;
 
             default:
@@ -953,7 +1017,6 @@ static void handle_pp_define(Context *ctx)
     } // while
     state->report_whitespace = 0;
 
-    char *definition = NULL;
     if (!ctx->out_of_memory)
     {
         definition = flatten_buffer(&buffer, m, d);
@@ -963,11 +1026,20 @@ static void handle_pp_define(Context *ctx)
     free_buffer(&buffer, ctx->free, d);
 
     if (ctx->out_of_memory)
-        return;
+        goto handle_pp_define_failed;
 
     assert(done);
-    if (!add_define(ctx, sym, definition, 0))
-        Free(ctx, definition);
+    if (!add_define(ctx, sym, definition, idents, params))
+        goto handle_pp_define_failed;
+
+    return;
+
+handle_pp_define_failed:
+    Free(ctx, sym);
+    Free(ctx, definition);
+    for (i = 0; i < params; i++)
+        Free(ctx, idents[i]);
+    Free(ctx, idents);
 } // handle_pp_define
 
 
@@ -1103,17 +1175,111 @@ static int handle_pp_identifier(Context *ctx)
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
 
-    const char *def = find_define(ctx, sym);
-    if (def == NULL)
-        return 0;   // just send the token through unchanged.
+    // IncludeState defines take precedence over Context defines.
+    const Define *def = state->defines;
+    while (def)
+    {
+        assert(def->paramcount == 0);
+        if (strcmp(def->identifier, sym) == 0)
+            break;
+        def = def->next;
+    } // while
 
-    if (!push_source(ctx, state->filename, def, strlen(def), state->line, 0))
+    Define *params = NULL;
+
+    if (def == NULL)
+    {
+        def = find_define(ctx, sym);
+        if (def == NULL)
+            return 0;   // just send the token through unchanged.
+
+        if (def->paramcount > 0)
+        {
+            IncludeState saved;  // can't pushback, we need the original token.
+            memcpy(&saved, state, sizeof (IncludeState));
+            if (lexer(state) != ((Token) '('))
+            {
+                memcpy(state, &saved, sizeof (IncludeState));
+                return 0;  // gcc abandons replacement in this case, too.
+            } // if
+
+            unsigned int i;
+            for (i = 0; i < def->paramcount; i++)
+            {
+                const char *expr = state->source;
+                const char *exprend = NULL;
+                int paren = 0;
+                while (1)
+                {
+                    exprend = state->source;
+                    const Token t = lexer(state);
+                    if (t == '(')
+                        paren++;
+                    else if (t == ')')
+                    {
+                        if (i != def->paramcount-1)
+                        {
+                            fail(ctx, "Too few macro arguments");
+                            goto handle_pp_identifier_failed;
+                        } // if
+
+                        if (paren == 0)
+                            break;
+
+                        paren--;
+                    } // else if
+                    else if (t == ',')
+                    {
+                        if (paren == 0)
+                            break;
+                    } // else if
+                    else if ((t == TOKEN_INCOMPLETE_COMMENT) || (t == TOKEN_EOI))
+                    {
+                        pushback(state);
+                        fail(ctx, "Unterminated macro list");
+                        goto handle_pp_identifier_failed;
+                    } // else if
+                } // while
+
+                Define *p = get_define(ctx);
+                if (p == NULL)
+                    goto handle_pp_identifier_failed;
+
+                p->next = params;
+                params = p;
+
+                const unsigned int exprlen = (unsigned int) (exprend - expr);
+                char *definition = (char *) Malloc(ctx, exprlen + 1);
+                if (definition == NULL)
+                    goto handle_pp_identifier_failed;
+                memcpy(definition, expr, exprlen);
+                definition[exprlen] = '\0';
+                p->identifier = def->parameters[i];
+                p->definition = definition;
+            } // for
+        } // if
+    } // if
+
+    const char *val = def->definition;
+    const size_t vallen = strlen(val);
+    const char *fname = state->filename;
+    if (!push_source(ctx, fname, val, vallen, state->line, NULL, params))
     {
         assert(ctx->out_of_memory);
-        return 0;
+        goto handle_pp_identifier_failed;
     } // if
 
     return 1;
+
+handle_pp_identifier_failed:
+    while (params)
+    {
+        Define *next = params->next;
+        params->identifier = NULL;
+        free_define(ctx, params);
+        params = next;
+    } // while
+    return 0;
 } // handle_pp_identifier
 
 
