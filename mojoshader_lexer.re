@@ -60,15 +60,11 @@ static Token update_state(IncludeState *s, int eoi, const uchar *cur,
 Token preprocessor_lexer(IncludeState *s)
 {
     const uchar *cursor = (const uchar *) s->source;
-    const uchar *token;
+    const uchar *token = cursor;
     const uchar *matchptr;
     const uchar *limit = cursor + s->bytes_left;
     int eoi = 0;
     int saw_newline = 0;
-
-scanner_loop:
-    if (YYLIMIT == YYCURSOR) YYFILL(1);
-    token = cursor;
 
 /*!re2c
     ANY = [\000-\377];
@@ -85,6 +81,14 @@ scanner_loop:
     NEWLINE = ("\r\n" | "\r" | "\n");
     WHITESPACE = [ \t\v\f]+;
 */
+
+    // preprocessor directives are only valid at start of line.
+    if (s->tokenval == ((Token) '\n'))
+        goto ppdirective;  // may jump back to scanner_loop.
+
+scanner_loop:
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
+    token = cursor;
 
 /*!re2c
     "\\" [ \t\v\f]* NEWLINE  { s->line++; goto scanner_loop; }
@@ -152,18 +156,6 @@ scanner_loop:
 
     "\000"          { if (eoi) { RET(TOKEN_EOI); } goto bad_chars; }
 
-    PP "include"    { RET(TOKEN_PP_INCLUDE); }
-    PP "line"       { RET(TOKEN_PP_LINE); }
-    PP "define"     { RET(TOKEN_PP_DEFINE); }
-    PP "undef"      { RET(TOKEN_PP_UNDEF); }
-    PP "if"         { RET(TOKEN_PP_IF); }
-    PP "ifdef"      { RET(TOKEN_PP_IFDEF); }
-    PP "ifndef"     { RET(TOKEN_PP_IFNDEF); }
-    PP "else"       { RET(TOKEN_PP_ELSE); }
-    PP "elif"       { RET(TOKEN_PP_ELIF); }
-    PP "endif"      { RET(TOKEN_PP_ENDIF); }
-    PP "error"      { RET(TOKEN_PP_ERROR); }
-
     WHITESPACE      { if (s->report_whitespace) RET(' '); goto scanner_loop; }
     NEWLINE         { s->line++; RET('\n'); }
     ANY             { goto bad_chars; }
@@ -202,6 +194,24 @@ singlelinecomment:
     NEWLINE         { s->line++; token = matchptr; RET('\n'); }
     "\000"          { if (eoi) { RET(TOKEN_EOI); } goto singlelinecomment; }
     ANY             { goto singlelinecomment; }
+*/
+
+ppdirective:
+    if (YYLIMIT == YYCURSOR) YYFILL(1);
+/*!re2c
+        PP "include"    { RET(TOKEN_PP_INCLUDE); }
+        PP "line"       { RET(TOKEN_PP_LINE); }
+        PP "define"     { RET(TOKEN_PP_DEFINE); }
+        PP "undef"      { RET(TOKEN_PP_UNDEF); }
+        PP "if"         { RET(TOKEN_PP_IF); }
+        PP "ifdef"      { RET(TOKEN_PP_IFDEF); }
+        PP "ifndef"     { RET(TOKEN_PP_IFNDEF); }
+        PP "else"       { RET(TOKEN_PP_ELSE); }
+        PP "elif"       { RET(TOKEN_PP_ELIF); }
+        PP "endif"      { RET(TOKEN_PP_ENDIF); }
+        PP "error"      { RET(TOKEN_PP_ERROR); }
+        WHITESPACE      { goto ppdirective; }
+        ANY             { cursor=(const uchar*)s->source; goto scanner_loop; }
 */
 
 bad_chars:
