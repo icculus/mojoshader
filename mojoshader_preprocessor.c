@@ -1169,6 +1169,7 @@ static void handle_pp_endif(Context *ctx)
 } // handle_pp_endif
 
 
+// !!! FIXME: #define a b, #define b a ... recursion! check for this!
 static int handle_pp_identifier(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
