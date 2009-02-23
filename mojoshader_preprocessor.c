@@ -1277,6 +1277,84 @@ static int find_precedence(const Token token)
     return -1;
 } // find_precedence
 
+// !!! FIXME: we're using way too much stack space here...
+typedef struct RpnTokens
+{
+    int isoperator;
+    int value;
+} RpnTokens;
+
+static long interpret_rpn(const RpnTokens *tokens, int tokencount, int *error)
+{
+    long stack[128];
+    int stacksize = 0;
+
+    *error = 1;
+
+    #define NEED_X_TOKENS(x) do { if (stacksize < x) return 0; } while (0)
+
+    #define BINARY_OPERATION(op) do { \
+        NEED_X_TOKENS(2); \
+        stack[stacksize-2] = stack[stacksize-2] op stack[stacksize-1]; \
+        stacksize--; \
+    } while (0)
+
+    #define UNARY_OPERATION(op) do { \
+        NEED_X_TOKENS(1); \
+        stack[stacksize-1] = op stack[stacksize-1]; \
+    } while (0)
+
+    while (tokencount-- > 0)
+    {
+        if (!tokens->isoperator)
+        {
+            assert(stacksize < STATICARRAYLEN(stack));
+            stack[stacksize++] = (long) tokens->value;
+            tokens++;
+            continue;
+        } // if
+
+        // operators.
+        switch (tokens->value)
+        {
+            case '!': UNARY_OPERATION(!); break;
+            case '~': UNARY_OPERATION(~); break;
+            case TOKEN_PP_UNARY_MINUS: UNARY_OPERATION(-); break;
+            case TOKEN_PP_UNARY_PLUS: UNARY_OPERATION(+); break;
+            case TOKEN_OROR: BINARY_OPERATION(||); break;
+            case TOKEN_ANDAND: BINARY_OPERATION(&&); break;
+            case '|': BINARY_OPERATION(|); break;
+            case '^': BINARY_OPERATION(^); break;
+            case '&': BINARY_OPERATION(&); break;
+            case TOKEN_NEQ: BINARY_OPERATION(!=); break;
+            case TOKEN_EQL: BINARY_OPERATION(==); break;
+            case '<': BINARY_OPERATION(<); break;
+            case '>': BINARY_OPERATION(>); break;
+            case TOKEN_LEQ: BINARY_OPERATION(<=); break;
+            case TOKEN_GEQ: BINARY_OPERATION(>=); break;
+            case TOKEN_LSHIFT: BINARY_OPERATION(<<); break;
+            case TOKEN_RSHIFT: BINARY_OPERATION(>>); break;
+            case '-': BINARY_OPERATION(-); break;
+            case '+': BINARY_OPERATION(+); break;
+            case '%': BINARY_OPERATION(%); break;
+            case '/': BINARY_OPERATION(/); break;
+            case '*': BINARY_OPERATION(*); break;
+            default: return 0;
+        } // switch
+
+        tokens++;
+    } // while
+
+    #undef NEED_X_TOKENS
+    #undef BINARY_OPERATION
+    #undef UNARY_OPERATION
+
+    if (stacksize != 1)
+        return 0;
+
+    *error = 0;
+    return stack[0];
+} // interpret_rpn
 
 // http://en.wikipedia.org/wiki/Shunting_yard_algorithm
 //  Convert from infix to postfix, then use this for constant folding.
@@ -1286,11 +1364,10 @@ static int find_precedence(const Token token)
 // returns 1 (true), 0 (false), or -1 (error)
 static int reduce_pp_expression(Context *ctx)
 {
-    struct { int isoperator; int value; } output[128];
+    RpnTokens output[128];
     Token stack[64];
     Token previous_token = TOKEN_UNKNOWN;
     int outputsize = 0;
-    int previous_precedence = -1;
     int stacksize = 0;
     int matched = 0;
     int done = 0;
@@ -1338,23 +1415,11 @@ static int reduce_pp_expression(Context *ctx)
                     continue;  // go again with new IncludeState.
 
                 // can't replace identifier with a number? It becomes zero.
-                if (previous_token == TOKEN_INT_LITERAL)  // 1 2, not 1 + 2?
-                {
-                    pushback(state);
-                    fail(ctx, "Invalid expression");
-                    return -1;
-                } // if
                 token = TOKEN_INT_LITERAL;
                 ADD_TO_OUTPUT(0, 0);
                 break;
 
             case TOKEN_INT_LITERAL:
-                if (previous_token == TOKEN_INT_LITERAL)  // 1 2, not 1 + 2?
-                {
-                    pushback(state);
-                    fail(ctx, "Invalid expression");
-                    return -1;
-                } // if
                 ADD_TO_OUTPUT(0, token_to_int(state));
                 break;
 
@@ -1385,7 +1450,7 @@ static int reduce_pp_expression(Context *ctx)
             default:
                 precedence = find_precedence(token);
                 // bogus token, or two operators together.
-                if ((previous_precedence > 0) || (precedence < 0))
+                if (precedence < 0)
                 {
                     pushback(state);
                     fail(ctx, "Invalid expression");
@@ -1415,7 +1480,6 @@ static int reduce_pp_expression(Context *ctx)
                 break;
         } // switch
         previous_token = token;
-        previous_precedence = precedence;
     } // while
 
     while (stacksize > 0)
@@ -1434,7 +1498,7 @@ static int reduce_pp_expression(Context *ctx)
 
     // okay, you now have some validated data in reverse polish notation.
     #if DEBUG_PREPROCESSOR
-    printf("EXPRESSION RPN:");
+    printf("PREPROCESSOR EXPRESSION RPN:");
     int i = 0;
     for (i = 0; i < outputsize; i++)
     {
@@ -1461,7 +1525,20 @@ static int reduce_pp_expression(Context *ctx)
     printf("\n");
     #endif
 
-    return 1;
+    int error = 0;
+    const long val = interpret_rpn(output, outputsize, &error);
+
+    #if DEBUG_PREPROCESSOR
+    printf("PREPROCESSOR RPN RESULT: %ld%s\n", val, error ? " (ERROR)" : "");
+    #endif
+
+    if (error)
+    {
+        fail(ctx, "Invalid expression");
+        return -1;
+    } // if
+
+    return ((val) ? 1 : 0);
 } // reduce_pp_expression
 
 
