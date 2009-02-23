@@ -733,6 +733,16 @@ static int require_newline(IncludeState *state)
 } // require_newline
 
 
+static int token_to_int(IncludeState *state)
+{
+    assert(state->tokenval == TOKEN_INT_LITERAL);
+    char *buf = (char *) alloca(state->tokenlen+1);
+    memcpy(buf, state->token, state->tokenlen);
+    buf[state->tokenlen] = '\0';
+    return atoi(buf);
+} // token_to_int
+
+
 static void handle_pp_include(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -814,12 +824,7 @@ static void handle_pp_line(Context *ctx)
     if (lexer(state) != TOKEN_INT_LITERAL)
         bogus = 1;
     else
-    {
-        char *buf = (char *) alloca(state->tokenlen+1);
-        memcpy(buf, state->token, state->tokenlen);
-        buf[state->tokenlen] = '\0';
-        linenum = atoi(buf);
-    } // else
+        linenum = token_to_int(state);
 
     if (!bogus)
         bogus = (lexer(state) != TOKEN_STRING_LITERAL);
@@ -1131,44 +1136,6 @@ static inline void handle_pp_ifndef(Context *ctx)
 } // handle_pp_ifndef
 
 
-static inline void handle_pp_else(Context *ctx)
-{
-    IncludeState *state = ctx->include_stack;
-    Conditional *cond = state->conditional_stack;
-
-    if (!require_newline(state))
-        fail(ctx, "Invalid #else directive");
-    else if (cond == NULL)
-        fail(ctx, "#else without #if");
-    else if (cond->type == TOKEN_PP_ELSE)
-        fail(ctx, "#else after #else");
-    else
-    {
-        cond->type = TOKEN_PP_ELSE;
-        cond->skipping = cond->chosen;
-        if (!cond->chosen)
-            cond->chosen = 1;
-    } // else
-} // handle_pp_else
-
-
-static void handle_pp_endif(Context *ctx)
-{
-    IncludeState *state = ctx->include_stack;
-    Conditional *cond = state->conditional_stack;
-
-    if (!require_newline(state))
-        fail(ctx, "Invalid #endif directive");
-    else if (cond == NULL)
-        fail(ctx, "Unmatched #endif");
-    else
-    {
-        state->conditional_stack = cond->next;  // pop it.
-        put_conditional(ctx, cond);
-    } // else
-} // handle_pp_endif
-
-
 // !!! FIXME: #define a b, #define b a ... recursion! check for this!
 static int handle_pp_identifier(Context *ctx)
 {
@@ -1285,6 +1252,282 @@ handle_pp_identifier_failed:
 } // handle_pp_identifier
 
 
+static int find_precedence(const Token token)
+{
+    // operator precedence, left and right associative...
+    typedef struct { int precedence; Token token; } Precedence;
+    static const Precedence ops[] = {
+        { 0, TOKEN_OROR }, { 1, TOKEN_ANDAND }, { 2, TOKEN_ANDAND },
+        { 3, ((Token) '|') }, { 4, ((Token) '^') }, { 5, ((Token) '&') },
+        { 6, TOKEN_NEQ }, { 6, TOKEN_EQL }, { 7, ((Token) '<') },
+        { 7, ((Token) '>') }, { 7, TOKEN_LEQ }, { 7, TOKEN_GEQ },
+        { 8, TOKEN_LSHIFT }, { 8, TOKEN_RSHIFT }, { 9, ((Token) '-') },
+        { 9, ((Token) '+') }, { 10, ((Token) '%') }, { 10, ((Token) '/') },
+        { 10, ((Token) '*') }, { 11, TOKEN_PP_UNARY_PLUS },
+        { 11, TOKEN_PP_UNARY_MINUS }, { 11, ((Token) '!') },
+        { 11, ((Token) '~') },
+    };
+
+    int i;
+    for (i = 0; i < STATICARRAYLEN(ops); i++)
+    {
+        if (ops[i].token == token)
+            return ops[i].precedence;
+    } // for
+
+    return -1;
+} // find_precedence
+
+
+// http://en.wikipedia.org/wiki/Shunting_yard_algorithm
+//  Convert from infix to postfix, then use this for constant folding.
+//  Everything that parses should fold down to a constant value: any
+//  identifiers that aren't resolved as macros become zero. Anything we
+//  don't explicitly expect becomes a parsing error.
+// returns 1 (true), 0 (false), or -1 (error)
+static int reduce_pp_expression(Context *ctx)
+{
+    struct { int isoperator; int value; } output[128];
+    Token stack[64];
+    Token previous_token = TOKEN_UNKNOWN;
+    int outputsize = 0;
+    int previous_precedence = -1;
+    int stacksize = 0;
+    int matched = 0;
+    int done = 0;
+
+    #define ADD_TO_OUTPUT(op, val) \
+        assert(outputsize < STATICARRAYLEN(output)); \
+        output[outputsize].isoperator = op; \
+        output[outputsize].value = val; \
+        outputsize++;
+
+    #define PUSH_TO_STACK(t) \
+        assert(stacksize < STATICARRAYLEN(stack)); \
+        stack[stacksize] = t; \
+        stacksize++;
+
+    while (!done)
+    {
+        IncludeState *state = ctx->include_stack;
+        Token token = lexer(state);
+        int isleft = 1;
+        int precedence = -1;
+
+        if ( (token == ((Token) '!')) || (token == ((Token) '~')) )
+            isleft = 0;
+        else if (token == ((Token) '-'))
+        {
+            if ((isleft = (previous_token == TOKEN_INT_LITERAL)) == 0)
+                token = TOKEN_PP_UNARY_MINUS;
+        } // else if
+        else if (token == ((Token) '+'))
+        {
+            if ((isleft = (previous_token == TOKEN_INT_LITERAL)) == 0)
+                token = TOKEN_PP_UNARY_PLUS;
+        } // else if
+
+        switch (token)
+        {
+            case TOKEN_EOI:
+            case ((Token) '\n'):
+                done = 1;
+                break;  // we're done!
+
+            case TOKEN_IDENTIFIER:
+                if (handle_pp_identifier(ctx))
+                    continue;  // go again with new IncludeState.
+
+                // can't replace identifier with a number? It becomes zero.
+                if (previous_token == TOKEN_INT_LITERAL)  // 1 2, not 1 + 2?
+                {
+                    pushback(state);
+                    fail(ctx, "Invalid expression");
+                    return -1;
+                } // if
+                token = TOKEN_INT_LITERAL;
+                ADD_TO_OUTPUT(0, 0);
+                break;
+
+            case TOKEN_INT_LITERAL:
+                if (previous_token == TOKEN_INT_LITERAL)  // 1 2, not 1 + 2?
+                {
+                    pushback(state);
+                    fail(ctx, "Invalid expression");
+                    return -1;
+                } // if
+                ADD_TO_OUTPUT(0, token_to_int(state));
+                break;
+
+            case ((Token) '('):
+                PUSH_TO_STACK((Token) '(');
+                break;
+
+            case ((Token) ')'):
+                matched = 0;
+                while (stacksize > 0)
+                {
+                    const Token t = stack[--stacksize];
+                    if (t == ((Token) '('))
+                    {
+                        matched = 1;
+                        break;
+                    } // if
+                    ADD_TO_OUTPUT(1, t);
+                } // while
+
+                if (!matched)
+                {
+                    fail(ctx, "Unmatched ')'");
+                    return -1;
+                } // if
+                break;
+
+            default:
+                precedence = find_precedence(token);
+                // bogus token, or two operators together.
+                if ((previous_precedence > 0) || (precedence < 0))
+                {
+                    pushback(state);
+                    fail(ctx, "Invalid expression");
+                    return -1;
+                } // if
+
+                else  // it's an operator.
+                {
+                    while (stacksize > 0)
+                    {
+                        const Token t = stack[stacksize-1];
+                        const int p = find_precedence(t);
+                        if ( (p >= 0) &&
+                             ( ((isleft) && (precedence <= p)) ||
+                               ((!isleft) && (precedence < p)) ) )
+                        {
+                            stacksize--;
+                            ADD_TO_OUTPUT(1, t);
+                        } // if
+                        else
+                        {
+                            break;
+                        } // else
+                    } // while
+                    PUSH_TO_STACK(token);
+                } // else
+                break;
+        } // switch
+        previous_token = token;
+        previous_precedence = precedence;
+    } // while
+
+    while (stacksize > 0)
+    {
+        const Token t = stack[--stacksize];
+        if (t == ((Token) '('))
+        {
+            fail(ctx, "Unmatched ')'");
+            return -1;
+        } // if
+        ADD_TO_OUTPUT(1, t);
+    } // while
+
+    #undef ADD_TO_OUTPUT
+    #undef PUSH_TO_STACK
+
+    // okay, you now have some validated data in reverse polish notation.
+    printf("RPN:");
+    int i = 0;
+    for (i = 0; i < outputsize; i++)
+    {
+        if (!output[i].isoperator)
+            printf(" %d", output[i].value);
+        else
+        {
+            switch (output[i].value)
+            {
+                case TOKEN_OROR: printf(" ||"); break;
+                case TOKEN_ANDAND: printf(" &&"); break;
+                case TOKEN_NEQ: printf(" !="); break;
+                case TOKEN_EQL: printf(" =="); break;
+                case TOKEN_LEQ: printf(" <="); break;
+                case TOKEN_GEQ: printf(" >="); break;
+                case TOKEN_LSHIFT: printf(" <<"); break;
+                case TOKEN_RSHIFT: printf(" >>"); break;
+                case TOKEN_PP_UNARY_PLUS: printf(" +"); break;
+                case TOKEN_PP_UNARY_MINUS: printf(" -"); break;
+                default: printf(" %c", output[i].value); break;
+            } // switch
+        } // else
+    } // for
+    printf("\n");
+    return 1;
+} // reduce_pp_expression
+
+
+static Conditional *handle_pp_if(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    const int result = reduce_pp_expression(ctx);
+    if (result == -1)
+        return NULL;
+
+    Conditional *conditional = get_conditional(ctx);
+    assert((conditional != NULL) || (ctx->out_of_memory));
+    if (conditional == NULL)
+        return NULL;
+
+    Conditional *prev = state->conditional_stack;
+    int skipping = ((prev != NULL) && (prev->skipping));
+    if (!skipping)
+        skipping = !result;
+
+    conditional->type = TOKEN_PP_IF;
+    conditional->linenum = state->line - 1;
+    conditional->skipping = skipping;
+    conditional->chosen = !skipping;
+    conditional->next = prev;
+    state->conditional_stack = conditional;
+    return conditional;
+} // handle_pp_if
+
+
+static inline void handle_pp_else(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+
+    if (!require_newline(state))
+        fail(ctx, "Invalid #else directive");
+    else if (cond == NULL)
+        fail(ctx, "#else without #if");
+    else if (cond->type == TOKEN_PP_ELSE)
+        fail(ctx, "#else after #else");
+    else
+    {
+        cond->type = TOKEN_PP_ELSE;
+        cond->skipping = cond->chosen;
+        if (!cond->chosen)
+            cond->chosen = 1;
+    } // else
+} // handle_pp_else
+
+
+static void handle_pp_endif(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+
+    if (!require_newline(state))
+        fail(ctx, "Invalid #endif directive");
+    else if (cond == NULL)
+        fail(ctx, "Unmatched #endif");
+    else
+    {
+        state->conditional_stack = cond->next;  // pop it.
+        put_conditional(ctx, cond);
+    } // else
+} // handle_pp_endif
+
+
 static void unterminated_pp_condition(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -1332,7 +1575,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         } // if
 
         // !!! FIXME: todo.
-        // TOKEN_PP_IF,
         // TOKEN_PP_ELIF,
 
         const Conditional *cond = state->conditional_stack;
@@ -1367,6 +1609,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_IFNDEF)
         {
             handle_pp_ifndef(ctx);
+            continue;  // get the next thing.
+        } // else if
+
+        else if (token == TOKEN_PP_IF)
+        {
+            handle_pp_if(ctx);
             continue;  // get the next thing.
         } // else if
 

@@ -371,6 +371,8 @@ typedef enum
     TOKEN_PP_ENDIF,
     TOKEN_PP_ERROR,  // caught, becomes TOKEN_PREPROCESSING_ERROR
     TOKEN_INCOMPLETE_COMMENT,  // caught, becomes TOKEN_PREPROCESSING_ERROR
+    TOKEN_PP_UNARY_MINUS,  // used internally, never returned.
+    TOKEN_PP_UNARY_PLUS,   // used internally, never returned.
 } Token;
 
 
