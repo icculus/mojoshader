@@ -1569,7 +1569,29 @@ static Conditional *handle_pp_if(Context *ctx)
 } // handle_pp_if
 
 
-static inline void handle_pp_else(Context *ctx)
+static void handle_pp_elif(Context *ctx)
+{
+    const int result = reduce_pp_expression(ctx);
+    if (result == -1)
+        return;
+
+    IncludeState *state = ctx->include_stack;
+    Conditional *cond = state->conditional_stack;
+    if (cond == NULL)
+        fail(ctx, "#elif without #if");
+    else if (cond->type == TOKEN_PP_ELSE)
+        fail(ctx, "#elif after #else");
+    else
+    {
+        cond->type = TOKEN_PP_ELIF;
+        cond->skipping = ((cond->chosen) || (!result));
+        if (!cond->chosen)
+            cond->chosen = result;
+    } // else
+} // handle_pp_elif
+
+
+static void handle_pp_else(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
     Conditional *cond = state->conditional_stack;
@@ -1653,9 +1675,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             return NULL;  // we're done!
         } // if
 
-        // !!! FIXME: todo.
-        // TOKEN_PP_ELIF,
-
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
 
@@ -1694,6 +1713,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == TOKEN_PP_IF)
         {
             handle_pp_if(ctx);
+            continue;  // get the next thing.
+        } // else if
+
+        else if (token == TOKEN_PP_ELIF)
+        {
+            handle_pp_elif(ctx);
             continue;  // get the next thing.
         } // else if
 
