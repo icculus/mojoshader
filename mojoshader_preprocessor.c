@@ -1257,15 +1257,14 @@ static int find_precedence(const Token token)
     // operator precedence, left and right associative...
     typedef struct { int precedence; Token token; } Precedence;
     static const Precedence ops[] = {
-        { 0, TOKEN_OROR }, { 1, TOKEN_ANDAND }, { 2, TOKEN_ANDAND },
-        { 3, ((Token) '|') }, { 4, ((Token) '^') }, { 5, ((Token) '&') },
-        { 6, TOKEN_NEQ }, { 6, TOKEN_EQL }, { 7, ((Token) '<') },
-        { 7, ((Token) '>') }, { 7, TOKEN_LEQ }, { 7, TOKEN_GEQ },
-        { 8, TOKEN_LSHIFT }, { 8, TOKEN_RSHIFT }, { 9, ((Token) '-') },
-        { 9, ((Token) '+') }, { 10, ((Token) '%') }, { 10, ((Token) '/') },
-        { 10, ((Token) '*') }, { 11, TOKEN_PP_UNARY_PLUS },
-        { 11, TOKEN_PP_UNARY_MINUS }, { 11, ((Token) '!') },
-        { 11, ((Token) '~') },
+        { 0, TOKEN_OROR }, { 1, TOKEN_ANDAND }, { 2, ((Token) '|') },
+        { 3, ((Token) '^') }, { 4, ((Token) '&') }, { 5, TOKEN_NEQ },
+        { 6, TOKEN_EQL }, { 7, ((Token) '<') }, { 7, ((Token) '>') },
+        { 7, TOKEN_LEQ }, { 7, TOKEN_GEQ }, { 8, TOKEN_LSHIFT },
+        { 8, TOKEN_RSHIFT }, { 9, ((Token) '-') }, { 9, ((Token) '+') },
+        { 10, ((Token) '%') }, { 10, ((Token) '/') }, { 10, ((Token) '*') },
+        { 11, TOKEN_PP_UNARY_PLUS }, { 11, TOKEN_PP_UNARY_MINUS },
+        { 11, ((Token) '!') }, { 11, ((Token) '~') },
     };
 
     int i;
