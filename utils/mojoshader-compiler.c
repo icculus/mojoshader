@@ -210,6 +210,10 @@ int main(int argc, char **argv)
     MOJOSHADER_preprocessorDefine *defs = NULL;
     unsigned int defcount = 0;
 
+    include_paths = (const char **) malloc(sizeof (char *));
+    include_paths[0] = ".";
+    include_path_count = 1;
+
     for (i = 1; i < argc; i++)
     {
         const char *arg = argv[i];
