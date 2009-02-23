@@ -1434,7 +1434,8 @@ static int reduce_pp_expression(Context *ctx)
     #undef PUSH_TO_STACK
 
     // okay, you now have some validated data in reverse polish notation.
-    printf("RPN:");
+    #if DEBUG_PREPROCESSOR
+    printf("EXPRESSION RPN:");
     int i = 0;
     for (i = 0; i < outputsize; i++)
     {
@@ -1459,6 +1460,8 @@ static int reduce_pp_expression(Context *ctx)
         } // else
     } // for
     printf("\n");
+    #endif
+
     return 1;
 } // reduce_pp_expression
 
