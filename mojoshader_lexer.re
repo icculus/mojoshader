@@ -212,7 +212,12 @@ ppdirective:
         PP "endif"      { RET(TOKEN_PP_ENDIF); }
         PP "error"      { RET(TOKEN_PP_ERROR); }
         WHITESPACE      { goto ppdirective; }
-        ANY             { cursor=(const uchar*)s->source; goto scanner_loop; }
+
+        ANY             {
+                            token = cursor = (const uchar *) s->source;
+                            limit = cursor + s->bytes_left;
+                            goto scanner_loop;
+                        }
 */
 
 bad_chars:

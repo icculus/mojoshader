@@ -1245,7 +1245,11 @@ ppdirective:
 		}
 	}
 yy206:
-	{ cursor=(const uchar*)s->source; goto scanner_loop; }
+	{
+                            token = cursor = (const uchar *) s->source;
+                            limit = cursor + s->bytes_left;
+                            goto scanner_loop;
+                        }
 yy207:
 	++YYCURSOR;
 	yych = *YYCURSOR;
