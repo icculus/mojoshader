@@ -117,11 +117,11 @@ scanner_loop:
 	case '8':
 	case '9':	goto yy10;
 	case ':':	goto yy50;
-	case ';':	goto yy52;
+	case ';':	goto yy58;
 	case '<':	goto yy17;
 	case '=':	goto yy33;
 	case '>':	goto yy15;
-	case '?':	goto yy58;
+	case '?':	goto yy56;
 	case 'A':
 	case 'B':
 	case 'C':
@@ -179,9 +179,9 @@ scanner_loop:
 	case '\\':	goto yy2;
 	case ']':	goto yy44;
 	case '^':	goto yy27;
-	case '{':	goto yy54;
+	case '{':	goto yy52;
 	case '|':	goto yy31;
-	case '}':	goto yy56;
+	case '}':	goto yy54;
 	case '~':	goto yy48;
 	default:	goto yy67;
 	}
@@ -335,16 +335,16 @@ yy50:
 	{ RET(':'); }
 yy52:
 	++YYCURSOR;
-	{ RET(';'); }
+	{ RET('{'); }
 yy54:
 	++YYCURSOR;
-	{ RET('{'); }
+	{ RET('}'); }
 yy56:
 	++YYCURSOR;
-	{ RET('}'); }
+	{ RET('?'); }
 yy58:
 	++YYCURSOR;
-	{ RET('?'); }
+	{ if (s->asm_comments) goto singlelinecomment; RET(';'); }
 yy60:
 	++YYCURSOR;
 	{ if (eoi) { RET(TOKEN_EOI); } goto bad_chars; }
