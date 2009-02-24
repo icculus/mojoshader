@@ -529,6 +529,9 @@ static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum,
                        MOJOSHADER_includeClose close_callback, Define *defs)
 {
+    if (srclen == 0)
+        return 1;  // nothing to do: just pretend you did it.
+
     IncludeState *state = get_include(ctx);
     if (state == NULL)
         return 0;
