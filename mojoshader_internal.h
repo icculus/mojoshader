@@ -60,7 +60,7 @@
 #ifdef _WINDOWS
 #define ENDLINE_STR "\r\n"
 #else
-#define ENDLINE_STR "\n";
+#define ENDLINE_STR "\n"
 #endif
 
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
