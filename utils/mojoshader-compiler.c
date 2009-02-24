@@ -220,14 +220,14 @@ int main(int argc, char **argv)
 
         if (strcmp(arg, "-P") == 0)
         {
-            if (action != ACTION_UNKNOWN)
+            if ((action != ACTION_UNKNOWN) && (action != ACTION_PREPROCESS))
                 fail("Multiple actions specified");
             action = ACTION_PREPROCESS;
         } // if
 
         else if (strcmp(arg, "-A") == 0)
         {
-            if (action != ACTION_UNKNOWN)
+            if ((action != ACTION_UNKNOWN) && (action != ACTION_ASSEMBLE))
                 fail("Multiple actions specified");
             action = ACTION_ASSEMBLE;
         } // else if
