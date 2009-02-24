@@ -7,6 +7,9 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: this should probably use a formal grammar and not a hand-written
+// !!! FIXME:  pile of C code.
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
