@@ -41,6 +41,7 @@ typedef struct Context
     int isfail;
     int out_of_memory;
     char failstr[256];
+    int recursion_count;
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
@@ -1136,9 +1137,14 @@ static inline void handle_pp_ifndef(Context *ctx)
 } // handle_pp_ifndef
 
 
-// !!! FIXME: #define a b, #define b a ... recursion! check for this!
 static int handle_pp_identifier(Context *ctx)
 {
+    if (ctx->recursion_count++ >= 256)
+    {
+        fail(ctx, "Recursing macros");
+        return 0;
+    } // if
+
     IncludeState *state = ctx->include_stack;
     char *sym = (char *) alloca(state->tokenlen+1);
     memcpy(sym, state->token, state->tokenlen);
@@ -1402,6 +1408,9 @@ static int reduce_pp_expression(Context *ctx)
             if ((isleft = (previous_token == TOKEN_INT_LITERAL)) == 0)
                 token = TOKEN_PP_UNARY_PLUS;
         } // else if
+
+        if (token != TOKEN_IDENTIFIER)
+            ctx->recursion_count = 0;
 
         switch (token)
         {
@@ -1679,6 +1688,10 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         const int skipping = ((cond != NULL) && (cond->skipping));
 
         Token token = lexer(state);
+
+        if (token != TOKEN_IDENTIFIER)
+            ctx->recursion_count = 0;
+
         if (token == TOKEN_EOI)
         {
             assert(state->bytes_left == 0);
