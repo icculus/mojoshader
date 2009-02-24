@@ -460,6 +460,17 @@ static const Define *find_define(Context *ctx, const char *sym)
 } // find_define
 
 
+static const Define *find_define_by_token(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    assert(state->tokenval == TOKEN_IDENTIFIER);
+    char *sym = (char *) alloca(state->tokenlen+1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
+    return find_define(ctx, sym);
+} // find_define_by_token
+
+
 static void put_all_defines(Context *ctx)
 {
     int i;
@@ -927,6 +938,13 @@ static void handle_pp_define(Context *ctx)
         return;
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
+
+    if (strcmp(sym, "defined") == 0)
+    {
+        Free(ctx, sym);
+        fail(ctx, "'defined' cannot be used as a macro name");
+        return;
+    } // if
 
     // #define a(b) is different than #define a (b)    :(
     state->report_whitespace = 1;
@@ -1428,6 +1446,33 @@ static int reduce_pp_expression(Context *ctx)
             case TOKEN_IDENTIFIER:
                 if (handle_pp_identifier(ctx))
                     continue;  // go again with new IncludeState.
+
+                if ( (state->tokenlen == 7) &&
+                     (memcmp(state->token, "defined", 7) == 0) )
+                {
+                    token = lexer(state);
+                    const int paren = (token == ((Token) '('));
+                    if (paren)  // gcc doesn't let us nest parens here, either.
+                        token = lexer(state);
+                    if (token != TOKEN_IDENTIFIER)
+                    {
+                        fail(ctx, "operator 'defined' requires an identifier");
+                        return -1;
+                    } // if
+                    const int found = (find_define_by_token(ctx) != NULL);
+
+                    if (paren)
+                    {
+                        if (lexer(state) != ((Token) ')'))
+                        {
+                            fail(ctx, "Unmatched ')'");
+                            return -1;
+                        } // if
+                    } // if
+
+                    ADD_TO_OUTPUT(0, found);
+                    continue;
+                } // if
 
                 // can't replace identifier with a number? It becomes zero.
                 token = TOKEN_INT_LITERAL;
