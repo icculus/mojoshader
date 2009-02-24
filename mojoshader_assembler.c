@@ -197,62 +197,40 @@ static inline void pushback(Context *ctx)
     ctx->pushedback = 1;
 } // pushback
 
-static Token _nexttoken(Context *ctx)
-{
-    while (1)
-    {
-        ctx->token = preprocessor_nexttoken(ctx->preprocessor, &ctx->tokenlen,
-                                            &ctx->tokenval);
-
-        if (preprocessor_outofmemory(ctx->preprocessor))
-        {
-            out_of_memory(ctx);
-            ctx->tokenval = TOKEN_EOI;
-            ctx->token = NULL;
-            ctx->tokenlen = 0;
-            break;
-        } // if
-
-        if (ctx->tokenval == TOKEN_PREPROCESSING_ERROR)
-        {
-            fail(ctx, ctx->token);
-            continue;
-        } // else
-
-        break;
-    } // while
-
-    return ctx->tokenval;
-} // _nexttoken
-
 
 static Token nexttoken(Context *ctx)
 {
     if (ctx->pushedback)
-    {
-        print_debug_token(ctx->token, ctx->tokenlen, ctx->tokenval);
         ctx->pushedback = 0;
-        return ctx->tokenval;
-    } // if
-
-    Token token = _nexttoken(ctx);
-
-    while (token == ((Token) '\n'))
-        token = _nexttoken(ctx);  // skip endlines.
-
-    if (token == ((Token) ';'))  // single line comment in assembler.
+    else
     {
-        do
+        while (1)
         {
-            token = _nexttoken(ctx);
-        } while ((token != ((Token) '\n')) && (token != TOKEN_EOI));
+            ctx->token = preprocessor_nexttoken(ctx->preprocessor,
+                                                &ctx->tokenlen,
+                                                &ctx->tokenval);
 
-        while (token == ((Token) '\n'))
-            token = _nexttoken(ctx);  // skip endlines.
-    } // if
+            if (preprocessor_outofmemory(ctx->preprocessor))
+            {
+                out_of_memory(ctx);
+                ctx->tokenval = TOKEN_EOI;
+                ctx->token = NULL;
+                ctx->tokenlen = 0;
+                break;
+            } // if
+
+            else if (ctx->tokenval == TOKEN_PREPROCESSING_ERROR)
+            {
+                fail(ctx, ctx->token);
+                continue;
+            } // else if
+
+            break;
+        } // while
+    } // else
 
     print_debug_token(ctx->token, ctx->tokenlen, ctx->tokenval);
-    return token;
+    return ctx->tokenval;
 } // nexttoken
 
 
@@ -1427,7 +1405,7 @@ static Context *build_context(const char *filename,
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
     ctx->preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
-                                           defines, define_count, m, f, d);
+                                           defines, define_count, 1, m, f, d);
 
     if (ctx->preprocessor == NULL)
     {

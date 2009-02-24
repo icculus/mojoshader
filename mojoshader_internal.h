@@ -410,6 +410,7 @@ typedef struct IncludeState
     int pushedback;
     const unsigned char *lexer_marker;
     int report_whitespace;
+    int asm_comments;
     unsigned int orig_length;
     unsigned int bytes_left;
     unsigned int line;
@@ -428,7 +429,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
                             MOJOSHADER_includeOpen open_callback,
                             MOJOSHADER_includeClose close_callback,
                             const MOJOSHADER_preprocessorDefine *defines,
-                            unsigned int define_count,
+                            unsigned int define_count, int asm_comments,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 void preprocessor_end(Preprocessor *pp);

@@ -148,11 +148,12 @@ scanner_loop:
     "^"             { RET('^'); }
     "|"             { RET('|'); }
     ":"             { RET(':'); }
-    ";"             { RET(';'); }
     "{"             { RET('{'); }
     "}"             { RET('}'); }
     "="             { RET('='); }
     "?"             { RET('?'); }
+
+    ";"             { if (s->asm_comments) goto singlelinecomment; RET(';'); }
 
     "\000"          { if (eoi) { RET(TOKEN_EOI); } goto bad_chars; }
 

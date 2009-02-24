@@ -42,6 +42,7 @@ typedef struct Context
     int out_of_memory;
     char failstr[256];
     int recursion_count;
+    int asm_comments;
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
@@ -552,6 +553,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->line = linenum;
     state->defines = defs;
     state->next = ctx->include_stack;
+    state->asm_comments = ctx->asm_comments;
 
     ctx->include_stack = state;
 
@@ -609,7 +611,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
                             MOJOSHADER_includeOpen open_callback,
                             MOJOSHADER_includeClose close_callback,
                             const MOJOSHADER_preprocessorDefine *defines,
-                            unsigned int define_count,
+                            unsigned int define_count, int asm_comments,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     int okay = 1;
@@ -631,6 +633,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->malloc_data = d;
     ctx->open_callback = open_callback;
     ctx->close_callback = close_callback;
+    ctx->asm_comments = asm_comments;
 
     // let the usual preprocessor parser sort these out.
     char *define_include = NULL;
@@ -1919,7 +1922,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
 
     Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
-                                          defines, define_count, m, f, d);
+                                          defines, define_count, 0, m, f, d);
 
     if (pp == NULL)
         return &out_of_mem_data_preprocessor;
