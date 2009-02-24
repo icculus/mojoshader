@@ -1128,22 +1128,16 @@ static Conditional *_handle_pp_ifdef(Context *ctx, const Token type)
     if (conditional == NULL)
         return NULL;
 
-    Conditional *prev = state->conditional_stack;
-    int skipping = ((prev != NULL) && (prev->skipping));
-    if (!skipping)
-    {
-        const int found = (find_define(ctx, sym) != NULL);
-        if (type == TOKEN_PP_IFDEF)
-            skipping = !found;
-        else
-            skipping = found;
-    } // if
+    Conditional *parent = state->conditional_stack;
+    const int found = (find_define(ctx, sym) != NULL);
+    const int chosen = (type == TOKEN_PP_IFDEF) ? found : !found;
+    const int skipping = ( (((parent) && (parent->skipping))) || (!chosen) );
 
     conditional->type = type;
     conditional->linenum = state->line - 1;
     conditional->skipping = skipping;
-    conditional->chosen = !skipping;
-    conditional->next = prev;
+    conditional->chosen = chosen;
+    conditional->next = parent;
     state->conditional_stack = conditional;
     return conditional;
 } // _handle_pp_ifdef
@@ -1614,16 +1608,15 @@ static Conditional *handle_pp_if(Context *ctx)
     if (conditional == NULL)
         return NULL;
 
-    Conditional *prev = state->conditional_stack;
-    int skipping = ((prev != NULL) && (prev->skipping));
-    if (!skipping)
-        skipping = !result;
+    Conditional *parent = state->conditional_stack;
+    const int chosen = result;
+    const int skipping = ( (((parent) && (parent->skipping))) || (!chosen) );
 
     conditional->type = TOKEN_PP_IF;
     conditional->linenum = state->line - 1;
     conditional->skipping = skipping;
-    conditional->chosen = !skipping;
-    conditional->next = prev;
+    conditional->chosen = chosen;
+    conditional->next = parent;
     state->conditional_stack = conditional;
     return conditional;
 } // handle_pp_if
@@ -1631,8 +1624,8 @@ static Conditional *handle_pp_if(Context *ctx)
 
 static void handle_pp_elif(Context *ctx)
 {
-    const int result = reduce_pp_expression(ctx);
-    if (result == -1)
+    const int rc = reduce_pp_expression(ctx);
+    if (rc == -1)
         return;
 
     IncludeState *state = ctx->include_stack;
@@ -1643,10 +1636,11 @@ static void handle_pp_elif(Context *ctx)
         fail(ctx, "#elif after #else");
     else
     {
+        const Conditional *parent = cond->next;
         cond->type = TOKEN_PP_ELIF;
-        cond->skipping = ((cond->chosen) || (!result));
+        cond->skipping = (parent && parent->skipping) || cond->chosen || !rc;
         if (!cond->chosen)
-            cond->chosen = result;
+            cond->chosen = rc;
     } // else
 } // handle_pp_elif
 
@@ -1664,8 +1658,9 @@ static void handle_pp_else(Context *ctx)
         fail(ctx, "#else after #else");
     else
     {
+        const Conditional *parent = cond->next;
         cond->type = TOKEN_PP_ELSE;
-        cond->skipping = cond->chosen;
+        cond->skipping = (parent && parent->skipping) || cond->chosen;
         if (!cond->chosen)
             cond->chosen = 1;
     } // else
