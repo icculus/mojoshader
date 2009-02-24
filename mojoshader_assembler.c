@@ -1291,7 +1291,9 @@ static int parse_instruction_token(Context *ctx, Token token)
 static void parse_version_token(Context *ctx)
 {
     int bad = 0;
+    int dot_form = 0;
     uint32 shader_type = 0;
+
     if (nexttoken(ctx) != TOKEN_IDENTIFIER)
         bad = 1;
     else if (check_token_segment(ctx, "vs"))
@@ -1310,32 +1312,90 @@ static void parse_version_token(Context *ctx)
         bad = 1;
     } // else
 
+    dot_form = ((!bad) && (ctx->tokenlen == 0));  // it's in xs.x.x form?
+
     uint32 major = 0;
     uint32 minor = 0;
 
-    if ( (!check_token_segment(ctx, ".")) && (!check_token_segment(ctx, "_")) )
-        bad = 1;
-    else if (check_token_segment(ctx, "1"))
-        major = 1;
-    else if (check_token_segment(ctx, "2"))
-        major = 2;
-    else if (check_token_segment(ctx, "3"))
-        major = 3;
-    else
-        bad = 1;
+    if (dot_form)
+    {
+        Token t = TOKEN_UNKNOWN;
 
-    if ( (!check_token_segment(ctx, ".")) && (!check_token_segment(ctx, "_")) )
-        bad = 1;
-    else if (check_token_segment(ctx, "0"))
-        minor = 0;
-    else if (check_token_segment(ctx, "x"))
-        minor = 1;
-    else if (check_token_segment(ctx, "sw"))
-        minor = 255;
-    else
-        bad = 1;
+        if (!bad)
+        {
+            t = nexttoken(ctx);
+            // stupid lexer sees "vs.2.0" and makes the ".2" into a float.
+            if (t == ((Token) '.'))
+                t = nexttoken(ctx);
+            else
+            {
+                if ((t != TOKEN_FLOAT_LITERAL) || (ctx->token[0] != '.'))
+                    bad = 1;
+                else
+                {
+                    ctx->tokenval = t = TOKEN_INT_LITERAL;
+                    ctx->token++;
+                    ctx->tokenlen--;
+                } // else
+            } // else
+        } // if
 
-    if (ctx->tokenlen != 0)
+        if (!bad)
+        {
+            if (t != TOKEN_INT_LITERAL)
+                bad = 1;
+            else if (!ui32fromtoken(ctx, &major))
+                bad = 1;
+        } // if
+
+        if (!bad)
+        {
+            t = nexttoken(ctx);
+            // stupid lexer sees "vs.2.0" and makes the ".2" into a float.
+            if (t == ((Token) '.'))
+                t = nexttoken(ctx);
+            else
+            {
+                if ((t != TOKEN_FLOAT_LITERAL) || (ctx->token[0] != '.'))
+                    bad = 1;
+                else
+                {
+                    ctx->tokenval = t = TOKEN_INT_LITERAL;
+                    ctx->token++;
+                    ctx->tokenlen--;
+                } // else
+            } // else
+        } // if
+
+        if (!bad)
+        {
+            if ((t == TOKEN_INT_LITERAL) && (ui32fromtoken(ctx, &minor)))
+                ;  // good to go.
+            else if ((t == TOKEN_IDENTIFIER) && (check_token_segment(ctx, "x")))
+                minor = 1;
+            else if ((t == TOKEN_IDENTIFIER) && (check_token_segment(ctx, "sw")))
+                minor = 255;
+            else
+                bad = 1;
+        } // if
+    } // if
+    else
+    {
+        if (!check_token_segment(ctx, "_"))
+            bad = 1;
+        else if (!ui32fromtoken(ctx, &major))
+            bad = 1;
+        else if (!check_token_segment(ctx, "_"))
+            bad = 1;
+        else if (check_token_segment(ctx, "x"))
+            minor = 1;
+        else if (check_token_segment(ctx, "sw"))
+            minor = 255;
+        else if (!ui32fromtoken(ctx, &minor))
+            bad = 1;
+    } // else
+
+    if ((!bad) && (ctx->tokenlen != 0))
         bad = 1;
 
     if (bad)
