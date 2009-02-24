@@ -719,8 +719,14 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     int regnum;
     parse_register_name(ctx, &regtype, &regnum);
 
-    if (ctx->tokenlen > 0)
+    if (ctx->tokenlen == 0)
     {
+        if (negate)
+            set_source_mod(ctx, negate, SRCMOD_NONE, SRCMOD_NEGATE, &srcmod);
+    } // if
+    else
+    {
+        assert(ctx->tokenlen > 0);
         if (check_token_segment(ctx, "_bias"))
             set_source_mod(ctx, negate, SRCMOD_BIAS, SRCMOD_BIASNEGATE, &srcmod);
         else if (check_token_segment(ctx, "_bx2"))
@@ -735,7 +741,7 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
             set_source_mod(ctx, negate, SRCMOD_ABS, SRCMOD_ABSNEGATE, &srcmod);
         else
             fail(ctx, "Invalid source modifier");
-    } // if
+    } // else
 
     uint32 relative = 0;
     if (nexttoken(ctx) != ((Token) '['))
