@@ -1790,6 +1790,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
                 continue;  // pushed the include_stack.
         } // else if
 
+        else if (token == ((Token) '\n'))
+        {
+            // preprocessor is line-oriented, nothing else gets newlines.
+            continue;  // get the next thing.
+        } // else if
+
         assert(!skipping);
         *_token = token;
         *_len = state->tokenlen;
@@ -1947,10 +1953,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         // It ignores newlines, and then inserts its own around certain
         //  tokens. For example, after a semicolon. This allows HLSL code to
         //  be mostly readable, instead of a stream of tokens.
-        if (token == ((Token) '\n'))
-            isnewline = nl;  // this doesn't actually care about '\n' ...
-
-        else if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
+        if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
         {
             if (!out_of_memory)
             {
