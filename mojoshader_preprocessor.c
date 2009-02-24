@@ -1794,9 +1794,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         *_token = token;
         *_len = state->tokenlen;
         return state->token;
-
-        // !!! FIXME: check for ((Token) '\n'), so we know if a preprocessor
-        // !!! FIXME:  directive started a line.
     } // while
 
     assert(0 && "shouldn't hit this code");
