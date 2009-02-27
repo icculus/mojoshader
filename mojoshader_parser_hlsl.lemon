@@ -1,432 +1,344 @@
-%token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF
-%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
-%token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
-%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
-%token XOR_ASSIGN OR_ASSIGN TYPE_NAME
-
-%token TYPEDEF EXTERN STATIC AUTO REGISTER
-%token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
-%token STRUCT UNION ENUM ELIPSIS RANGE
-
-%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
-
-%start file
-%%
-
-primary_expr
-	: identifier
-	| CONSTANT
-	| STRING_LITERAL
-	| '(' expr ')'
-	;
-
-postfix_expr
-	: primary_expr
-	| postfix_expr '[' expr ']'
-	| postfix_expr '(' ')'
-	| postfix_expr '(' argument_expr_list ')'
-	| postfix_expr '.' identifier
-	| postfix_expr PTR_OP identifier
-	| postfix_expr INC_OP
-	| postfix_expr DEC_OP
-	;
-
-argument_expr_list
-	: assignment_expr
-	| argument_expr_list ',' assignment_expr
-	;
-
-unary_expr
-	: postfix_expr
-	| INC_OP unary_expr
-	| DEC_OP unary_expr
-	| unary_operator cast_expr
-	| SIZEOF unary_expr
-	| SIZEOF '(' type_name ')'
-	;
-
-unary_operator
-	: '&'
-	| '*'
-	| '+'
-	| '-'
-	| '~'
-	| '!'
-	;
-
-cast_expr
-	: unary_expr
-	| '(' type_name ')' cast_expr
-	;
-
-multiplicative_expr
-	: cast_expr
-	| multiplicative_expr '*' cast_expr
-	| multiplicative_expr '/' cast_expr
-	| multiplicative_expr '%' cast_expr
-	;
-
-additive_expr
-	: multiplicative_expr
-	| additive_expr '+' multiplicative_expr
-	| additive_expr '-' multiplicative_expr
-	;
-
-shift_expr
-	: additive_expr
-	| shift_expr LEFT_OP additive_expr
-	| shift_expr RIGHT_OP additive_expr
-	;
-
-relational_expr
-	: shift_expr
-	| relational_expr '<' shift_expr
-	| relational_expr '>' shift_expr
-	| relational_expr LE_OP shift_expr
-	| relational_expr GE_OP shift_expr
-	;
-
-equality_expr
-	: relational_expr
-	| equality_expr EQ_OP relational_expr
-	| equality_expr NE_OP relational_expr
-	;
-
-and_expr
-	: equality_expr
-	| and_expr '&' equality_expr
-	;
-
-exclusive_or_expr
-	: and_expr
-	| exclusive_or_expr '^' and_expr
-	;
-
-inclusive_or_expr
-	: exclusive_or_expr
-	| inclusive_or_expr '|' exclusive_or_expr
-	;
-
-logical_and_expr
-	: inclusive_or_expr
-	| logical_and_expr AND_OP inclusive_or_expr
-	;
-
-logical_or_expr
-	: logical_and_expr
-	| logical_or_expr OR_OP logical_and_expr
-	;
-
-conditional_expr
-	: logical_or_expr
-	| logical_or_expr '?' logical_or_expr ':' conditional_expr
-	;
-
-assignment_expr
-	: conditional_expr
-	| unary_expr assignment_operator assignment_expr
-	;
-
-assignment_operator
-	: '='
-	| MUL_ASSIGN
-	| DIV_ASSIGN
-	| MOD_ASSIGN
-	| ADD_ASSIGN
-	| SUB_ASSIGN
-	| LEFT_ASSIGN
-	| RIGHT_ASSIGN
-	| AND_ASSIGN
-	| XOR_ASSIGN
-	| OR_ASSIGN
-	;
-
-expr
-	: assignment_expr
-	| expr ',' assignment_expr
-	;
-
-constant_expr
-	: conditional_expr
-	;
-
-declaration
-	: declaration_specifiers ';'
-	| declaration_specifiers init_declarator_list ';'
-	;
-
-declaration_specifiers
-	: storage_class_specifier
-	| storage_class_specifier declaration_specifiers
-	| type_specifier
-	| type_specifier declaration_specifiers
-	;
-
-init_declarator_list
-	: init_declarator
-	| init_declarator_list ',' init_declarator
-	;
-
-init_declarator
-	: declarator
-	| declarator '=' initializer
-	;
-
-storage_class_specifier
-	: TYPEDEF
-	| EXTERN
-	| STATIC
-	| AUTO
-	| REGISTER
-	;
-
-type_specifier
-	: CHAR
-	| SHORT
-	| INT
-	| LONG
-	| SIGNED
-	| UNSIGNED
-	| FLOAT
-	| DOUBLE
-	| CONST
-	| VOLATILE
-	| VOID
-	| struct_or_union_specifier
-	| enum_specifier
-	| TYPE_NAME
-	;
-
-struct_or_union_specifier
-	: struct_or_union identifier '{' struct_declaration_list '}'
-	| struct_or_union '{' struct_declaration_list '}'
-	| struct_or_union identifier
-	;
-
-struct_or_union
-	: STRUCT
-	| UNION
-	;
-
-struct_declaration_list
-	: struct_declaration
-	| struct_declaration_list struct_declaration
-	;
-
-struct_declaration
-	: type_specifier_list struct_declarator_list ';'
-	;
-
-struct_declarator_list
-	: struct_declarator
-	| struct_declarator_list ',' struct_declarator
-	;
-
-struct_declarator
-	: declarator
-	| ':' constant_expr
-	| declarator ':' constant_expr
-	;
-
-enum_specifier
-	: ENUM '{' enumerator_list '}'
-	| ENUM identifier '{' enumerator_list '}'
-	| ENUM identifier
-	;
-
-enumerator_list
-	: enumerator
-	| enumerator_list ',' enumerator
-	;
-
-enumerator
-	: identifier
-	| identifier '=' constant_expr
-	;
-
-declarator
-	: declarator2
-	| pointer declarator2
-	;
-
-declarator2
-	: identifier
-	| '(' declarator ')'
-	| declarator2 '[' ']'
-	| declarator2 '[' constant_expr ']'
-	| declarator2 '(' ')'
-	| declarator2 '(' parameter_type_list ')'
-	| declarator2 '(' parameter_identifier_list ')'
-	;
-
-pointer
-	: '*'
-	| '*' type_specifier_list
-	| '*' pointer
-	| '*' type_specifier_list pointer
-	;
-
-type_specifier_list
-	: type_specifier
-	| type_specifier_list type_specifier
-	;
-
-parameter_identifier_list
-	: identifier_list
-	| identifier_list ',' ELIPSIS
-	;
-
-identifier_list
-	: identifier
-	| identifier_list ',' identifier
-	;
-
-parameter_type_list
-	: parameter_list
-	| parameter_list ',' ELIPSIS
-	;
-
-parameter_list
-	: parameter_declaration
-	| parameter_list ',' parameter_declaration
-	;
-
-parameter_declaration
-	: type_specifier_list declarator
-	| type_name
-	;
-
-type_name
-	: type_specifier_list
-	| type_specifier_list abstract_declarator
-	;
-
-abstract_declarator
-	: pointer
-	| abstract_declarator2
-	| pointer abstract_declarator2
-	;
-
-abstract_declarator2
-	: '(' abstract_declarator ')'
-	| '[' ']'
-	| '[' constant_expr ']'
-	| abstract_declarator2 '[' ']'
-	| abstract_declarator2 '[' constant_expr ']'
-	| '(' ')'
-	| '(' parameter_type_list ')'
-	| abstract_declarator2 '(' ')'
-	| abstract_declarator2 '(' parameter_type_list ')'
-	;
-
-initializer
-	: assignment_expr
-	| '{' initializer_list '}'
-	| '{' initializer_list ',' '}'
-	;
-
-initializer_list
-	: initializer
-	| initializer_list ',' initializer
-	;
-
-statement
-	: labeled_statement
-	| compound_statement
-	| expression_statement
-	| selection_statement
-	| iteration_statement
-	| jump_statement
-	;
-
-labeled_statement
-	: identifier ':' statement
-	| CASE constant_expr ':' statement
-	| DEFAULT ':' statement
-	;
-
-compound_statement
-	: '{' '}'
-	| '{' statement_list '}'
-	| '{' declaration_list '}'
-	| '{' declaration_list statement_list '}'
-	;
-
-declaration_list
-	: declaration
-	| declaration_list declaration
-	;
-
-statement_list
-	: statement
-	| statement_list statement
-	;
-
-expression_statement
-	: ';'
-	| expr ';'
-	;
-
-selection_statement
-	: IF '(' expr ')' statement
-	| IF '(' expr ')' statement ELSE statement
-	| SWITCH '(' expr ')' statement
-	;
-
-iteration_statement
-	: WHILE '(' expr ')' statement
-	| DO statement WHILE '(' expr ')' ';'
-	| FOR '(' ';' ';' ')' statement
-	| FOR '(' ';' ';' expr ')' statement
-	| FOR '(' ';' expr ';' ')' statement
-	| FOR '(' ';' expr ';' expr ')' statement
-	| FOR '(' expr ';' ';' ')' statement
-	| FOR '(' expr ';' ';' expr ')' statement
-	| FOR '(' expr ';' expr ';' ')' statement
-	| FOR '(' expr ';' expr ';' expr ')' statement
-	;
-
-jump_statement
-	: GOTO identifier ';'
-	| CONTINUE ';'
-	| BREAK ';'
-	| RETURN ';'
-	| RETURN expr ';'
-	;
-
-file
-	: external_definition
-	| file external_definition
-	;
-
-external_definition
-	: function_definition
-	| declaration
-	;
-
-function_definition
-	: declarator function_body
-	| declaration_specifiers declarator function_body
-	;
-
-function_body
-	: compound_statement
-	| declaration_list compound_statement
-	;
-
-identifier
-	: IDENTIFIER
-	;
-%%
-
-#include <stdio.h>
-
-extern char yytext[];
-extern int column;
-
-yyerror(s)
-char *s;
-{
-	fflush(stdout);
-	printf("\n%*s\n%*s\n", column, "^", column, s);
+/**
+ * MojoShader; generate shader programs from bytecode of compiled
+ *  Direct3D shaders.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
+// This is a Lemon Parser grammar for HLSL. It is based on an ANSI C YACC
+//  grammar by Jeff Lee: http://www.lysator.liu.se/c/ANSI-C-grammar-y.html
+
+// Lemon is here: http://www.hwaci.com/sw/lemon/  ...  the source is included
+//  with MojoShader, and built with the library, so you don't have to track
+//  down the dependency.
+
+// HLSL syntax is described, informally, here:
+//  http://msdn.microsoft.com/en-us/library/bb509615(VS.85).aspx
+
+%name ParseHLSL
+
+%start_symbol shader
+%token_prefix TOKEN_HLSL_
+%token_type { IncludeState * }
+%extra_argument { Context *ctx }
+
+%include {
+#define __MOJOSHADER_INTERNAL__ 1
+#include "mojoshader_internal.h"
 }
+
+%parse_failure {
+    fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
+}
+
+%stack_overflow {
+    fprintf(stderr,"Giving up.  Parser stack overflow\n");
+}
+
+// operator precedence (matches C spec)...
+
+%left COMMA.
+%right ASSIGN ADDASSIGN SUBASSIGN MULASSIGN DIVASSIGN MODASSIGN LSHIFTASSIGN
+       RSHIFTASSIGN ANDASSIGN ORASSIGN XORASSIGN.
+%right QUESTION.
+%left OROR.
+%left ANDAND.
+%left OR.
+%left XOR.
+%left AND.
+%left EQL NEQ.
+%left LT LEQ GT GEQ.
+%left LSHIFT RSHIFT.
+%left PLUS MINUS.
+%left STAR SLASH PERCENT.
+%right TYPECAST EXCLAMATION COMPLEMENT MINUSMINUS PLUSPLUS.
+%left DOT LBRACKET RBRACKET LPAREN RPAREN.
+
+
+// The rules...
+
+shader ::= file.
+
+primary_expr ::= identifier.
+primary_expr ::= CONSTANT.
+primary_expr ::= STRING_LITERAL.
+primary_expr ::= LPAREN expr RPAREN.
+
+postfix_expr ::= primary_expr.
+postfix_expr ::= postfix_expr LBRACKET expr RBRACKET.
+postfix_expr ::= postfix_expr LPAREN RPAREN.
+postfix_expr ::= postfix_expr LPAREN argument_expr_list RPAREN.
+postfix_expr ::= postfix_expr DOT identifier.
+postfix_expr ::= postfix_expr PTR_OP identifier.
+postfix_expr ::= postfix_expr INC_OP.
+postfix_expr ::= postfix_expr DEC_OP.
+
+argument_expr_list ::= assignment_expr.
+argument_expr_list ::= argument_expr_list COMMA assignment_expr.
+
+unary_expr ::= postfix_expr.
+unary_expr ::= INC_OP unary_expr.
+unary_expr ::= DEC_OP unary_expr.
+unary_expr ::= unary_operator cast_expr.
+unary_expr ::= SIZEOF unary_expr.
+unary_expr ::= SIZEOF LPAREN type_name RPAREN.
+
+unary_operator ::= AND.
+unary_operator ::= STAR.
+unary_operator ::= PLUS.
+unary_operator ::= MINUS.
+unary_operator ::= COMPLEMENT.
+unary_operator ::= EXCLAMATION.
+
+cast_expr ::= unary_expr.
+cast_expr ::= LPAREN type_name RPAREN cast_expr.
+
+multiplicative_expr ::= cast_expr.
+multiplicative_expr ::= multiplicative_expr STAR cast_expr.
+multiplicative_expr ::= multiplicative_expr SLASH cast_expr.
+multiplicative_expr ::= multiplicative_expr PERCENT cast_expr.
+
+additive_expr ::= multiplicative_expr.
+additive_expr ::= additive_expr PLUS multiplicative_expr.
+additive_expr ::= additive_expr MINUS multiplicative_expr.
+
+shift_expr ::= additive_expr.
+shift_expr ::= shift_expr LSHIFT additive_expr.
+shift_expr ::= shift_expr RSHIFT additive_expr.
+
+relational_expr ::= shift_expr.
+relational_expr ::= relational_expr LT shift_expr.
+relational_expr ::= relational_expr GT shift_expr.
+relational_expr ::= relational_expr LEQ shift_expr.
+relational_expr ::= relational_expr GEQ shift_expr.
+
+equality_expr ::= relational_expr.
+equality_expr ::= equality_expr EQL relational_expr.
+equality_expr ::= equality_expr NEQ relational_expr.
+
+and_expr ::= equality_expr.
+and_expr ::= and_expr AND equality_expr.
+
+exclusive_or_expr ::= and_expr.
+exclusive_or_expr ::= exclusive_or_expr XOR and_expr.
+
+inclusive_or_expr ::= exclusive_or_expr.
+inclusive_or_expr ::= inclusive_or_expr OR exclusive_or_expr.
+
+logical_and_expr ::= inclusive_or_expr.
+logical_and_expr ::= logical_and_expr ANDAND inclusive_or_expr.
+
+logical_or_expr ::= logical_and_expr.
+logical_or_expr ::= logical_or_expr OROR logical_and_expr.
+
+conditional_expr ::= logical_or_expr.
+conditional_expr ::= logical_or_expr QUESTION logical_or_expr COLON conditional_expr.
+
+assignment_expr ::= conditional_expr.
+assignment_expr ::= unary_expr assignment_operator assignment_expr.
+
+assignment_operator ::= ASSIGN.
+assignment_operator ::= MULASSIGN.
+assignment_operator ::= DIVASSIGN.
+assignment_operator ::= MODASSIGN.
+assignment_operator ::= ADDASSIGN.
+assignment_operator ::= SUBASSIGN.
+assignment_operator ::= LSHIFTASSIGN.
+assignment_operator ::= RSHIFTASSIGN.
+assignment_operator ::= ANDASSIGN.
+assignment_operator ::= XORASSIGN.
+assignment_operator ::= ORASSIGN.
+
+expr ::= assignment_expr.
+expr ::= expr COMMA assignment_expr.
+
+constant_expr ::= conditional_expr.
+
+declaration ::= declaration_specifiers SEMICOLON.
+declaration ::= declaration_specifiers init_declarator_list SEMICOLON.
+
+declaration_specifiers ::= storage_class_specifier.
+declaration_specifiers ::= storage_class_specifier declaration_specifiers.
+declaration_specifiers ::= type_specifier.
+declaration_specifiers ::= type_specifier declaration_specifiers.
+
+init_declarator_list ::= init_declarator.
+init_declarator_list ::= init_declarator_list COMMA init_declarator.
+
+init_declarator ::= declarator.
+init_declarator ::= declarator ASSIGN initializer.
+
+storage_class_specifier ::= TYPEDEF.
+storage_class_specifier ::= EXTERN.
+storage_class_specifier ::= STATIC.
+storage_class_specifier ::= AUTO.
+storage_class_specifier ::= REGISTER.
+
+type_specifier ::= CHAR.
+type_specifier ::= SHORT.
+type_specifier ::= INT.
+type_specifier ::= LONG.
+type_specifier ::= SIGNED.
+type_specifier ::= UNSIGNED.
+type_specifier ::= FLOAT.
+type_specifier ::= DOUBLE.
+type_specifier ::= CONST.
+type_specifier ::= VOLATILE.
+type_specifier ::= VOID.
+type_specifier ::= struct_or_union_specifier.
+type_specifier ::= enum_specifier.
+type_specifier ::= TYPE_NAME.
+
+struct_or_union_specifier ::= struct_or_union identifier LBRACE
+                              struct_declaration_list RBRACE.
+struct_or_union_specifier ::= struct_or_union LBRACE struct_declaration_list
+                              RBRACE.
+struct_or_union_specifier ::= struct_or_union identifier.
+
+struct_or_union ::= STRUCT.
+struct_or_union ::= UNION.
+
+struct_declaration_list ::= struct_declaration.
+struct_declaration_list ::= struct_declaration_list struct_declaration.
+
+struct_declaration ::= type_specifier_list struct_declarator_list SEMICOLON.
+
+struct_declarator_list ::= struct_declarator.
+struct_declarator_list ::= struct_declarator_list COMMA struct_declarator.
+
+struct_declarator ::= declarator.
+struct_declarator ::= COLON constant_expr.
+struct_declarator ::= declarator COLON constant_expr.
+
+enum_specifier ::= ENUM LBRACE enumerator_list RBRACE.
+enum_specifier ::= ENUM identifier LBRACE enumerator_list RBRACE.
+enum_specifier ::= ENUM identifier.
+
+enumerator_list ::= enumerator.
+enumerator_list ::= enumerator_list COMMA enumerator.
+
+enumerator ::= identifier.
+enumerator ::= identifier ASSIGN constant_expr.
+
+declarator ::= declarator2.
+declarator ::= pointer declarator2.
+
+declarator2 ::= identifier.
+declarator2 ::= LPAREN declarator RPAREN.
+declarator2 ::= declarator2 LBRACKET RBRACKET.
+declarator2 ::= declarator2 LBRACKET constant_expr RBRACKET.
+declarator2 ::= declarator2 LPAREN RPAREN.
+declarator2 ::= declarator2 LPAREN parameter_type_list RPAREN.
+declarator2 ::= declarator2 LPAREN parameter_identifier_list RPAREN.
+
+pointer ::= STAR.
+pointer ::= STAR type_specifier_list.
+pointer ::= STAR pointer.
+pointer ::= STAR type_specifier_list pointer.
+
+type_specifier_list ::= type_specifier.
+type_specifier_list ::= type_specifier_list type_specifier.
+
+parameter_identifier_list ::= identifier_list.
+parameter_identifier_list ::= identifier_list COMMA ELIPSIS.
+
+identifier_list ::= identifier.
+identifier_list ::= identifier_list COMMA identifier.
+
+parameter_type_list ::= parameter_list.
+parameter_type_list ::= parameter_list COMMA ELIPSIS.
+
+parameter_list ::= parameter_declaration.
+parameter_list ::= parameter_list COMMA parameter_declaration.
+
+parameter_declaration ::= type_specifier_list declarator.
+parameter_declaration ::= type_name.
+
+type_name ::= type_specifier_list.
+type_name ::= type_specifier_list abstract_declarator.
+
+abstract_declarator ::= pointer.
+abstract_declarator ::= abstract_declarator2.
+abstract_declarator ::= pointer abstract_declarator2.
+
+abstract_declarator2 ::= LPAREN abstract_declarator RPAREN.
+abstract_declarator2 ::= LBRACKET RBRACKET.
+abstract_declarator2 ::= LBRACKET constant_expr RBRACKET.
+abstract_declarator2 ::= abstract_declarator2 LBRACKET RBRACKET.
+abstract_declarator2 ::= abstract_declarator2 LBRACKET constant_expr RBRACKET.
+abstract_declarator2 ::= LPAREN RPAREN.
+abstract_declarator2 ::= LPAREN parameter_type_list RPAREN.
+abstract_declarator2 ::= abstract_declarator2 LPAREN RPAREN.
+abstract_declarator2 ::= abstract_declarator2 LPAREN parameter_type_list RPAREN.
+
+initializer ::= assignment_expr.
+initializer ::= LBRACE initializer_list RBRACE.
+initializer ::= LBRACE initializer_list COMMA RBRACE.
+
+initializer_list ::= initializer.
+initializer_list ::= initializer_list COMMA initializer.
+
+statement ::= labeled_statement.
+statement ::= compound_statement.
+statement ::= expression_statement.
+statement ::= selection_statement.
+statement ::= iteration_statement.
+statement ::= jump_statement.
+
+labeled_statement ::= identifier COLON statement.
+labeled_statement ::= CASE constant_expr COLON statement.
+labeled_statement ::= DEFAULT COLON statement.
+
+compound_statement ::= LBRACE RBRACE.
+compound_statement ::= LBRACE statement_list RBRACE.
+compound_statement ::= LBRACE declaration_list RBRACE.
+compound_statement ::= LBRACE declaration_list statement_list RBRACE.
+
+declaration_list ::= declaration.
+declaration_list ::= declaration_list declaration.
+
+statement_list ::= statement.
+statement_list ::= statement_list statement.
+
+expression_statement ::= SEMICOLON.
+expression_statement ::= expr SEMICOLON.
+
+selection_statement ::= IF LPAREN expr RPAREN statement.
+selection_statement ::= IF LPAREN expr RPAREN statement ELSE statement.
+selection_statement ::= SWITCH LPAREN expr RPAREN statement.
+
+iteration_statement ::= WHILE LPAREN expr RPAREN statement.
+iteration_statement ::= DO statement WHILE LPAREN expr RPAREN SEMICOLON.
+iteration_statement ::= FOR LPAREN SEMICOLON SEMICOLON RPAREN statement.
+iteration_statement ::= FOR LPAREN SEMICOLON SEMICOLON expr RPAREN statement.
+iteration_statement ::= FOR LPAREN SEMICOLON expr SEMICOLON RPAREN statement.
+iteration_statement ::= FOR LPAREN SEMICOLON expr SEMICOLON expr RPAREN statement.
+iteration_statement ::= FOR LPAREN expr SEMICOLON SEMICOLON RPAREN statement.
+iteration_statement ::= FOR LPAREN expr SEMICOLON SEMICOLON expr RPAREN statement.
+iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON RPAREN statement.
+iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON expr RPAREN statement.
+
+jump_statement ::= GOTO identifier SEMICOLON.
+jump_statement ::= CONTINUE SEMICOLON.
+jump_statement ::= BREAK SEMICOLON.
+jump_statement ::= RETURN SEMICOLON.
+jump_statement ::= RETURN expr SEMICOLON.
+
+file ::= external_definition.
+file ::= file external_definition.
+
+external_definition ::= function_definition.
+external_definition ::= declaration.
+
+function_definition ::= declarator function_body.
+function_definition ::= declaration_specifiers declarator function_body.
+
+function_body ::= compound_statement.
+function_body ::= declaration_list compound_statement.
+
+identifier ::= IDENTIFIER.
+
+// end of mojoshader_parser_hlsl.lemon ...
+
