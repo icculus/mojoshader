@@ -56,6 +56,10 @@
 %right TYPECAST EXCLAMATION COMPLEMENT MINUSMINUS PLUSPLUS.
 %left DOT LBRACKET RBRACKET LPAREN RPAREN.
 
+// bump up the precedence of ELSE, to avoid shift/reduce conflict on the
+//  usual "dangling else ambiguity" ...
+%right ELSE.
+
 
 // The rules...
 
