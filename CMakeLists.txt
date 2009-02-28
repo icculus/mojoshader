@@ -50,8 +50,21 @@ IF(MSVC)
     ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
 ENDIF(MSVC)
 
+# We build lemon, then use it to generate parser C code.
+ADD_EXECUTABLE(lemon "misc/lemon.c")
+GET_TARGET_PROPERTY(LEMON lemon LOCATION)
+ADD_CUSTOM_COMMAND(
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
+    MAIN_DEPENDENCY mojoshader_parser_hlsl.lemon
+    DEPENDS lemon
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/misc"
+    COMMAND "${LEMON}"
+    ARGS -l -q "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
+)
+
 ADD_LIBRARY(mojoshader STATIC
     mojoshader.c
+    mojoshader_compiler.c
     mojoshader_preprocessor.c
     mojoshader_lexer.c
     mojoshader_assembler.c

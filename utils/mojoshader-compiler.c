@@ -190,12 +190,34 @@ static int assemble(const char *fname, const char *buf, int len,
     return retval;
 } // assemble
 
+void MOJOSHADER_compile(const char *filename,
+                             const char *source, unsigned int sourcelen,
+                             const MOJOSHADER_preprocessorDefine *defines,
+                             unsigned int define_count,
+                             MOJOSHADER_includeOpen include_open,
+                             MOJOSHADER_includeClose include_close,
+                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+
+static int compile(const char *fname, const char *buf, int len,
+                    const char *outfile,
+                    const MOJOSHADER_preprocessorDefine *defs,
+                    unsigned int defcount, FILE *io)
+{
+    const MOJOSHADER_parseData *pd;
+    int retval = 0;
+
+    MOJOSHADER_compile(fname, buf, len, defs, defcount,
+                             open_include, close_include,
+                             Malloc, Free, NULL);
+    return 1;
+} // compile
 
 typedef enum
 {
     ACTION_UNKNOWN,
     ACTION_PREPROCESS,
     ACTION_ASSEMBLE,
+    ACTION_COMPILE,
 } Action;
 
 
@@ -230,6 +252,13 @@ int main(int argc, char **argv)
             if ((action != ACTION_UNKNOWN) && (action != ACTION_ASSEMBLE))
                 fail("Multiple actions specified");
             action = ACTION_ASSEMBLE;
+        } // else if
+
+        else if (strcmp(arg, "-C") == 0)
+        {
+            if ((action != ACTION_UNKNOWN) && (action != ACTION_COMPILE))
+                fail("Multiple actions specified");
+            action = ACTION_COMPILE;
         } // else if
 
         else if (strcmp(arg, "-o") == 0)
@@ -312,6 +341,8 @@ int main(int argc, char **argv)
         retval = (!preprocess(infile, buf, rc, outfile, defs, defcount, outio));
     else if (action == ACTION_ASSEMBLE)
         retval = (!assemble(infile, buf, rc, outfile, defs, defcount, outio));
+    else if (action == ACTION_COMPILE)
+        retval = (!compile(infile, buf, rc, outfile, defs, defcount, outio));
 
     if ((retval != 0) && (outfile != NULL))
         remove(outfile);
