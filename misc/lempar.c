@@ -2,7 +2,9 @@
  * My changes over the original lempar.c from SQLite are encased in
  *  #if __MOJOSHADER__ blocks.  --ryan.
  */
+#ifndef __MOJOSHADER__
 #define __MOJOSHADER__ 1
+#endif
 
 /* Driver template for the LEMON parser generator.
 ** The author disclaims copyright to this source code.
@@ -200,6 +202,9 @@ static char *yyTracePrompt = 0;
 ** Outputs:
 ** None.
 */
+#if __MOJOSHADER__
+static
+#endif
 void ParseTrace(FILE *TraceFILE, char *zTracePrompt){
   yyTraceFILE = TraceFILE;
   yyTracePrompt = zTracePrompt;
@@ -261,7 +266,7 @@ static void yyGrowStack(yyParser *p){
 ** to Parse and ParseFree.
 */
 #if __MOJOSHADER__
-void *ParseAlloc(void *(*mallocProc)(size_t,void *), void *malloc_data){
+static void *ParseAlloc(void *(*mallocProc)(size_t,void *), void *malloc_data){
   yyParser *pParser;
   pParser = (yyParser*)(*mallocProc)( (size_t)sizeof(yyParser), malloc_data );
 #else
@@ -348,6 +353,9 @@ static int yy_pop_parser_stack(yyParser *pParser){
 **       from malloc.
 ** </ul>
 */
+#if __MOJOSHADER__
+static
+#endif
 void ParseFree(
   void *p,                    /* The parser to be deleted */
 #if __MOJOSHADER__
@@ -374,7 +382,7 @@ void ParseFree(
 ** Return the peak depth of the stack for a parser.
 */
 #ifdef YYTRACKMAXSTACKDEPTH
-int ParseStackPeak(void *p){
+static int ParseStackPeak(void *p){
   yyParser *pParser = (yyParser*)p;
   return pParser->yyidxMax;
 }
@@ -697,6 +705,9 @@ static void yy_accept(
 ** Outputs:
 ** None.
 */
+#if __MOJOSHADER__
+static
+#endif
 void Parse(
   void *yyp,                   /* The parser */
   int yymajor,                 /* The major token code number */
