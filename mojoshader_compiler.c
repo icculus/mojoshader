@@ -10,7 +10,6 @@ typedef struct Context
 } Context;
 
 #define __MOJOSHADER_HLSL_COMPILER__ 1
-#include "mojoshader_parser_hlsl.h"
 #include "mojoshader_parser_hlsl.c"
 
 static int ConvertToLemonToken(const Context *ctx)
