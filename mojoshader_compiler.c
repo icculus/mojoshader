@@ -1,14 +1,17 @@
-typedef struct Context Context;
-#include "mojoshader_parser_hlsl.h"
-#include "mojoshader_parser_hlsl.c"
+#define __MOJOSHADER_INTERNAL__ 1
+#include "mojoshader_internal.h"
 
-struct Context
+typedef struct Context
 {
     Preprocessor *preprocessor;
     const char *token;      // assembler token!
     unsigned int tokenlen;  // assembler token!
     Token tokenval;         // assembler token!
-};
+} Context;
+
+#define __MOJOSHADER_HLSL_COMPILER__ 1
+#include "mojoshader_parser_hlsl.h"
+#include "mojoshader_parser_hlsl.c"
 
 static int ConvertToLemonToken(const Context *ctx)
 {
@@ -87,15 +90,14 @@ static int ConvertToLemonToken(const Context *ctx)
             if (tokencmp("void")) return TOKEN_HLSL_VOID;
             if (tokencmp("struct")) return TOKEN_HLSL_STRUCT;
             if (tokencmp("union")) return TOKEN_HLSL_UNION;
-            if (tokencmp("enum")) return TOKEN_HLSL_ENUM;
             if (tokencmp("case")) return TOKEN_HLSL_CASE;
             if (tokencmp("default")) return TOKEN_HLSL_DEFAULT;
+            if (tokencmp("discard")) return TOKEN_HLSL_DISCARD;
             if (tokencmp("if")) return TOKEN_HLSL_IF;
             if (tokencmp("switch")) return TOKEN_HLSL_SWITCH;
             if (tokencmp("while")) return TOKEN_HLSL_WHILE;
             if (tokencmp("do")) return TOKEN_HLSL_DO;
             if (tokencmp("for")) return TOKEN_HLSL_FOR;
-            if (tokencmp("goto")) return TOKEN_HLSL_GOTO;
             if (tokencmp("continue")) return TOKEN_HLSL_CONTINUE;
             if (tokencmp("break")) return TOKEN_HLSL_BREAK;
             if (tokencmp("return")) return TOKEN_HLSL_RETURN;

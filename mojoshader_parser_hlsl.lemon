@@ -25,8 +25,9 @@
 %extra_argument { Context *ctx }
 
 %include {
-#define __MOJOSHADER_INTERNAL__ 1
-#include "mojoshader_internal.h"
+#ifndef __MOJOSHADER_HLSL_COMPILER__
+#error Do not compile this file directly.
+#endif
 }
 
 %parse_failure {
@@ -192,7 +193,6 @@ type_specifier ::= CONST.
 type_specifier ::= VOLATILE.
 type_specifier ::= VOID.
 type_specifier ::= struct_or_union_specifier.
-type_specifier ::= enum_specifier.
 type_specifier ::= TYPE_NAME.
 
 struct_or_union_specifier ::= struct_or_union identifier LBRACE
@@ -216,18 +216,7 @@ struct_declarator ::= declarator.
 struct_declarator ::= COLON constant_expr.
 struct_declarator ::= declarator COLON constant_expr.
 
-enum_specifier ::= ENUM LBRACE enumerator_list RBRACE.
-enum_specifier ::= ENUM identifier LBRACE enumerator_list RBRACE.
-enum_specifier ::= ENUM identifier.
-
-enumerator_list ::= enumerator.
-enumerator_list ::= enumerator_list COMMA enumerator.
-
-enumerator ::= identifier.
-enumerator ::= identifier ASSIGN constant_expr.
-
 declarator ::= declarator2.
-declarator ::= pointer declarator2.
 
 declarator2 ::= identifier.
 declarator2 ::= LPAREN declarator RPAREN.
@@ -237,22 +226,15 @@ declarator2 ::= declarator2 LPAREN RPAREN.
 declarator2 ::= declarator2 LPAREN parameter_type_list RPAREN.
 declarator2 ::= declarator2 LPAREN parameter_identifier_list RPAREN.
 
-pointer ::= STAR.
-pointer ::= STAR type_specifier_list.
-pointer ::= STAR pointer.
-pointer ::= STAR type_specifier_list pointer.
-
 type_specifier_list ::= type_specifier.
 type_specifier_list ::= type_specifier_list type_specifier.
 
 parameter_identifier_list ::= identifier_list.
-parameter_identifier_list ::= identifier_list COMMA ELIPSIS.
 
 identifier_list ::= identifier.
 identifier_list ::= identifier_list COMMA identifier.
 
 parameter_type_list ::= parameter_list.
-parameter_type_list ::= parameter_list COMMA ELIPSIS.
 
 parameter_list ::= parameter_declaration.
 parameter_list ::= parameter_list COMMA parameter_declaration.
@@ -263,9 +245,7 @@ parameter_declaration ::= type_name.
 type_name ::= type_specifier_list.
 type_name ::= type_specifier_list abstract_declarator.
 
-abstract_declarator ::= pointer.
 abstract_declarator ::= abstract_declarator2.
-abstract_declarator ::= pointer abstract_declarator2.
 
 abstract_declarator2 ::= LPAREN abstract_declarator RPAREN.
 abstract_declarator2 ::= LBRACKET RBRACKET.
@@ -324,9 +304,9 @@ iteration_statement ::= FOR LPAREN expr SEMICOLON SEMICOLON expr RPAREN statemen
 iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON RPAREN statement.
 iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON expr RPAREN statement.
 
-jump_statement ::= GOTO identifier SEMICOLON.
 jump_statement ::= CONTINUE SEMICOLON.
 jump_statement ::= BREAK SEMICOLON.
+jump_statement ::= DISCARD SEMICOLON.
 jump_statement ::= RETURN SEMICOLON.
 jump_statement ::= RETURN expr SEMICOLON.
 
