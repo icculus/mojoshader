@@ -11,7 +11,10 @@
 #endif
 
 /* Driver template for the LEMON parser generator.
-** The author disclaims copyright to this source code.
+** The original author(s) of lempar.c disclaim copyright to this source code.
+** However, changes made for MojoShader fall under the same license as the
+** rest of MojoShader. Please see the file LICENSE.txt in the source's root
+** directory.
 */
 /* First off, code is included that follows the "include" declaration
 ** in the input grammar file. */
