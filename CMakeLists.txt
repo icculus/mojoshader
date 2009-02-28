@@ -64,10 +64,10 @@ IF(NOT RE2C)
 ELSE(NOT RE2C)
     MARK_AS_ADVANCED(RE2C)
     ADD_CUSTOM_COMMAND(
-        OUTPUT mojoshader_lexer.c
+        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c"
         DEPENDS mojoshader_lexer.re
-        COMMAND ${RE2C}
-        ARGS -is --no-generation-date -o ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c ${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re
+        COMMAND "${RE2C}"
+        ARGS -is --no-generation-date -o "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re"
     )
 ENDIF(NOT RE2C)
 
