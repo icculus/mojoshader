@@ -9,6 +9,10 @@ typedef struct Context
     Token tokenval;         // assembler token!
 } Context;
 
+#if DEBUG_COMPILER_PARSER
+#define LEMON_SUPPORT_TRACING 1
+#endif
+
 #define __MOJOSHADER_HLSL_COMPILER__ 1
 #include "mojoshader_parser_hlsl.h"
 
@@ -130,7 +134,10 @@ void MOJOSHADER_compile(const char *filename,
                                            defines, define_count, 0, m, f, d);
 
     void *pParser = ParseHLSLAlloc(m, d);
-    ParseHLSLTrace(stdout, "TRACE: ");
+
+    #if DEBUG_COMPILER_PARSER
+    ParseHLSLTrace(stdout, "COMPILER: ");
+    #endif
 
     do {
         ctx.token = preprocessor_nexttoken(ctx.preprocessor,

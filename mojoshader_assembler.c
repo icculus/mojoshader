@@ -13,7 +13,7 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-#if DEBUG_ASSEMBLY_PARSER
+#if DEBUG_ASSEMBLER_PARSER
     #define print_debug_token(token, len, val) \
         MOJOSHADER_print_debug_token("ASSEMBLER", token, len, val)
 #else
@@ -193,7 +193,7 @@ static inline int shader_is_vertex(const Context *ctx)
 
 static inline void pushback(Context *ctx)
 {
-    #if DEBUG_ASSEMBLY_PARSER
+    #if DEBUG_ASSEMBLER_PARSER
     printf("ASSEMBLER PUSHBACK\n");
     #endif
     assert(!ctx->pushedback);

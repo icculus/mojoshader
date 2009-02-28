@@ -6,6 +6,10 @@
 #define __MOJOSHADER__ 1
 #endif
 
+#if !__MOJOSHADER__
+#define LEMON_SUPPORT_TRACING (!defined(NDEBUG))
+#endif
+
 /* Driver template for the LEMON parser generator.
 ** The author disclaims copyright to this source code.
 */
@@ -178,14 +182,14 @@ struct yyParser {
 };
 typedef struct yyParser yyParser;
 
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
 #include <stdio.h>
 static FILE *yyTraceFILE = 0;
 static char *yyTracePrompt = 0;
 #endif /* NDEBUG */
 
-#ifndef NDEBUG
-/* 
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
+/*
 ** Turn parser tracing on by giving a stream to which to write the trace
 ** and a prompt to preface each trace message.  Tracing is turned off
 ** by making either argument NULL 
@@ -213,7 +217,7 @@ void ParseTrace(FILE *TraceFILE, char *zTracePrompt){
 }
 #endif /* NDEBUG */
 
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
 /* For tracing shifts, the names of all terminals and nonterminals
 ** are required.  The following table supplies these names */
 static const char *const yyTokenName[] = { 
@@ -221,7 +225,7 @@ static const char *const yyTokenName[] = {
 };
 #endif /* NDEBUG */
 
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
 /* For tracing reduce actions, the names of all rules are required.
 */
 static const char *const yyRuleName[] = {
@@ -243,7 +247,7 @@ static void yyGrowStack(yyParser *p){
   if( pNew ){
     p->yystack = pNew;
     p->yystksz = newSize;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
     if( yyTraceFILE ){
       fprintf(yyTraceFILE,"%sStack grows to %d entries!\n",
               yyTracePrompt, p->yystksz);
@@ -328,7 +332,7 @@ static int yy_pop_parser_stack(yyParser *pParser){
   yyStackEntry *yytos = &pParser->yystack[pParser->yyidx];
 
   if( pParser->yyidx<0 ) return 0;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
   if( yyTraceFILE && pParser->yyidx>=0 ){
     fprintf(yyTraceFILE,"%sPopping %s\n",
       yyTracePrompt,
@@ -414,7 +418,7 @@ static int yy_find_shift_action(
       YYCODETYPE iFallback;            /* Fallback token */
       if( iLookAhead<sizeof(yyFallback)/sizeof(yyFallback[0])
              && (iFallback = yyFallback[iLookAhead])!=0 ){
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
         if( yyTraceFILE ){
           fprintf(yyTraceFILE, "%sFALLBACK %s => %s\n",
              yyTracePrompt, yyTokenName[iLookAhead], yyTokenName[iFallback]);
@@ -427,7 +431,7 @@ static int yy_find_shift_action(
       {
         int j = i - iLookAhead + YYWILDCARD;
         if( j>=0 && j<YY_SZ_ACTTAB && yy_lookahead[j]==YYWILDCARD ){
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
           if( yyTraceFILE ){
             fprintf(yyTraceFILE, "%sWILDCARD %s => %s\n",
                yyTracePrompt, yyTokenName[iLookAhead], yyTokenName[YYWILDCARD]);
@@ -485,7 +489,7 @@ static int yy_find_reduce_action(
 static void yyStackOverflow(yyParser *yypParser, YYMINORTYPE *yypMinor){
    ParseARG_FETCH;
    yypParser->yyidx--;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
    if( yyTraceFILE ){
      fprintf(yyTraceFILE,"%sStack Overflow!\n",yyTracePrompt);
    }
@@ -531,7 +535,7 @@ static void yy_shift(
   yytos->stateno = (YYACTIONTYPE)yyNewState;
   yytos->major = (YYCODETYPE)yyMajor;
   yytos->minor = *yypMinor;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
   if( yyTraceFILE && yypParser->yyidx>0 ){
     int i;
     fprintf(yyTraceFILE,"%sShift %d\n",yyTracePrompt,yyNewState);
@@ -570,8 +574,8 @@ static void yy_reduce(
   int yysize;                     /* Amount to pop the stack */
   ParseARG_FETCH;
   yymsp = &yypParser->yystack[yypParser->yyidx];
-#ifndef NDEBUG
-  if( yyTraceFILE && yyruleno>=0 
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
+  if( yyTraceFILE && yyruleno>=0
         && yyruleno<(int)(sizeof(yyRuleName)/sizeof(yyRuleName[0])) ){
     fprintf(yyTraceFILE, "%sReduce [%s].\n", yyTracePrompt,
       yyRuleName[yyruleno]);
@@ -612,7 +616,7 @@ static void yy_reduce(
   yypParser->yyidx -= yysize;
   yyact = yy_find_reduce_action(yymsp[-yysize].stateno,(YYCODETYPE)yygoto);
   if( yyact < YYNSTATE ){
-#ifdef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
     /* If we are not debugging and the reduce action popped at least
     ** one element off the stack, then we can push the new element back
     ** onto the stack here, and skip the stack overflow test in yy_shift().
@@ -641,7 +645,7 @@ static void yy_parse_failed(
   yyParser *yypParser           /* The parser */
 ){
   ParseARG_FETCH;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
   if( yyTraceFILE ){
     fprintf(yyTraceFILE,"%sFail!\n",yyTracePrompt);
   }
@@ -674,7 +678,7 @@ static void yy_accept(
   yyParser *yypParser           /* The parser */
 ){
   ParseARG_FETCH;
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
   if( yyTraceFILE ){
     fprintf(yyTraceFILE,"%sAccept!\n",yyTracePrompt);
   }
@@ -742,7 +746,7 @@ void Parse(
   yyendofinput = (yymajor==0);
   ParseARG_STORE;
 
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
   if( yyTraceFILE ){
     fprintf(yyTraceFILE,"%sInput %s\n",yyTracePrompt,yyTokenName[yymajor]);
   }
@@ -762,7 +766,7 @@ void Parse(
 #ifdef YYERRORSYMBOL
       int yymx;
 #endif
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
       if( yyTraceFILE ){
         fprintf(yyTraceFILE,"%sSyntax Error!\n",yyTracePrompt);
       }
@@ -792,7 +796,7 @@ void Parse(
       }
       yymx = yypParser->yystack[yypParser->yyidx].major;
       if( yymx==YYERRORSYMBOL || yyerrorhit ){
-#ifndef NDEBUG
+#if LEMON_SUPPORT_TRACING   /* __MOJOSHADER__ */
         if( yyTraceFILE ){
           fprintf(yyTraceFILE,"%sDiscard input token %s\n",
              yyTracePrompt,yyTokenName[yymajor]);
