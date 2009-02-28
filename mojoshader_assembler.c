@@ -614,18 +614,10 @@ static int parse_destination_token(Context *ctx)
         memcpy(tokenbytes, ctx->token, ((tokenlen < 4) ? tokenlen : 4));
         char *ptr = tokenbytes;
 
-        info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 0;
-        if (*ptr == 'x') { info->writemask0 = 1; ptr++; }
-        if (*ptr == 'y') { info->writemask1 = 1; ptr++; }
-        if (*ptr == 'z') { info->writemask2 = 1; ptr++; }
-        if (*ptr == 'w') { info->writemask3 = 1; ptr++; }
-        if ((ptr == ctx->token) && (shader_is_pixel(ctx)))
-        {
-            if (*ptr == 'r') { info->writemask0 = 1; ptr++; }
-            if (*ptr == 'g') { info->writemask1 = 1; ptr++; }
-            if (*ptr == 'b') { info->writemask2 = 1; ptr++; }
-            if (*ptr == 'a') { info->writemask3 = 1; ptr++; }
-        } // if
+        if ((*ptr == 'r') || (*ptr == 'x')) { info->writemask0 = 1; ptr++; }
+        if ((*ptr == 'g') || (*ptr == 'y')) { info->writemask1 = 1; ptr++; }
+        if ((*ptr == 'b') || (*ptr == 'z')) { info->writemask2 = 1; ptr++; }
+        if ((*ptr == 'a') || (*ptr == 'w')) { info->writemask3 = 1; ptr++; }
 
         if (*ptr != '\0')
             invalid_writemask = 1;
