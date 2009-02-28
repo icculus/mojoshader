@@ -3611,9 +3611,9 @@ int mhflag;     /* Output in makeheaders format if true */
   in = tplt_open(lemp);
   if( in==0 ) return;
 #if __MOJOSHADER__
-  out = file_open(lemp,".c","wb");
-#else
   out = file_open(lemp,".h","wb");
+#else
+  out = file_open(lemp,".c","wb");
 #endif
   if( out==0 ){
     fclose(in);

@@ -54,7 +54,7 @@ ENDIF(MSVC)
 ADD_EXECUTABLE(lemon "misc/lemon.c")
 GET_TARGET_PROPERTY(LEMON lemon LOCATION)
 ADD_CUSTOM_COMMAND(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c"
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
     MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
     DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
     COMMAND "${LEMON}"
@@ -72,7 +72,7 @@ ADD_LIBRARY(mojoshader STATIC
 
 SET_SOURCE_FILES_PROPERTIES(
     mojoshader_compiler.c
-    PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c"
+    PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
 )
 
 FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
