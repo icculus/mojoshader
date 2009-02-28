@@ -76,15 +76,15 @@ postfix_expr ::= postfix_expr LPAREN RPAREN.
 postfix_expr ::= postfix_expr LPAREN argument_expr_list RPAREN.
 postfix_expr ::= postfix_expr DOT identifier.
 postfix_expr ::= postfix_expr PTR_OP identifier.
-postfix_expr ::= postfix_expr INC_OP.
-postfix_expr ::= postfix_expr DEC_OP.
+postfix_expr ::= postfix_expr PLUSPLUS.
+postfix_expr ::= postfix_expr MINUSMINUS.
 
 argument_expr_list ::= assignment_expr.
 argument_expr_list ::= argument_expr_list COMMA assignment_expr.
 
 unary_expr ::= postfix_expr.
-unary_expr ::= INC_OP unary_expr.
-unary_expr ::= DEC_OP unary_expr.
+unary_expr ::= PLUSPLUS unary_expr.
+unary_expr ::= MINUSMINUS unary_expr.
 unary_expr ::= unary_operator cast_expr.
 unary_expr ::= SIZEOF unary_expr.
 unary_expr ::= SIZEOF LPAREN type_name RPAREN.
