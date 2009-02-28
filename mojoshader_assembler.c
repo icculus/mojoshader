@@ -609,7 +609,6 @@ static int parse_destination_token(Context *ctx)
         invalid_writemask = 1;
     else
     {
-        // !!! FIXME: is out-of-order okay (yxzw instead of xyzw?)
         char tokenbytes[5] = { '\0', '\0', '\0', '\0', '\0' };
         const unsigned int tokenlen = ctx->tokenlen;
         memcpy(tokenbytes, ctx->token, ((tokenlen < 4) ? tokenlen : 4));
