@@ -1530,7 +1530,9 @@ char **argv;
     /* Produce a header file for use by the scanner.  (This step is
     ** omitted if the "-m" option is used because makeheaders will
     ** generate the file for us.) */
+#if !__MOJOSHADER__
     if( !mhflag ) ReportHeader(&lem);
+#endif
   }
   if( statistics ){
     printf("Parser statistics: %d terminals, %d nonterminals, %d rules\n",
@@ -3608,7 +3610,11 @@ int mhflag;     /* Output in makeheaders format if true */
 
   in = tplt_open(lemp);
   if( in==0 ) return;
+#if __MOJOSHADER__
   out = file_open(lemp,".c","wb");
+#else
+  out = file_open(lemp,".h","wb");
+#endif
   if( out==0 ){
     fclose(in);
     return;
@@ -3618,11 +3624,13 @@ int mhflag;     /* Output in makeheaders format if true */
 
   /* Generate the include code, if any */
   tplt_print(out,lemp,lemp->include,&lineno);
+#if !__MOJOSHADER__
   if( mhflag ){
     char *name = file_makename(lemp, ".h");
     fprintf(out,"#include \"%s\"\n", name); lineno++;
     free(name);
   }
+#endif
   tplt_xfer(lemp->name,in,out,&lineno);
 
   /* Generate #defines for all tokens */
