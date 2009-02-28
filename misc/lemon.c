@@ -1,4 +1,10 @@
 /*
+ * My changes over the original lemon.c from SQLite are encased in
+ *  #if __MOJOSHADER__ blocks.  --ryan.
+ */
+#define __MOJOSHADER__ 1
+
+/*
 ** This file contains all sources (including headers) to the LEMON
 ** LALR(1) parser generator.  The sources have been combined into a
 ** single file to make it easy to include LEMON in the source tree
@@ -1389,6 +1395,17 @@ static void handle_D_option(char *z){
   *z = 0;
 }
 
+#if __MOJOSHADER__
+static char *user_templatename = NULL;
+static void handle_T_option(char *z){
+  user_templatename = malloc( lemonStrlen(z)+1 );
+  if( user_templatename==0 ){
+    fprintf(stderr,"out of memory\n");
+    exit(1);
+  }
+  strcpy(user_templatename, z);
+}
+#endif
 
 /* The main program.  Parse the command line and do it... */
 int main(argc,argv)
@@ -1407,6 +1424,9 @@ char **argv;
     {OPT_FLAG, "b", (char*)&basisflag, "Print only the basis in report."},
     {OPT_FLAG, "c", (char*)&compress, "Don't compress the action table."},
     {OPT_FSTR, "D", (char*)handle_D_option, "Define an %ifdef macro."},
+#if __MOJOSHADER__
+    {OPT_FSTR, "T", (char*)handle_T_option, "Specify a template file."},
+#endif
     {OPT_FLAG, "g", (char*)&rpflag, "Print grammar without actions."},
     {OPT_FLAG, "m", (char*)&mhflag, "Output a makeheaders compatible file."},
     {OPT_FLAG, "l", (char*)&nolinenosflag, "Do not print #line statements."},
@@ -1422,7 +1442,10 @@ char **argv;
   OptInit(argv,options,stderr);
   if( version ){
      printf("Lemon version 1.0\n");
-     exit(0); 
+#if __MOJOSHADER__
+     printf(" (...with MojoShader hacks.)\n");
+#endif
+     exit(0);
   }
   if( OptNArgs()!=1 ){
     fprintf(stderr,"Exactly one filename argument is required.\n");
@@ -3070,8 +3093,26 @@ struct lemon *lemp;
   static char templatename[] = "lempar.c";
   char buf[1000];
   FILE *in;
-  char *tpltname;
+  char *tpltname = 0;
   char *cp;
+
+  #if __MOJOSHADER__
+  if (user_templatename != 0) {
+    if( access(user_templatename,004)==-1 ){
+      fprintf(stderr,"Can't find the parser driver template file \"%s\".\n",
+        user_templatename);
+      lemp->errorcnt++;
+      return 0;
+    }
+    in = fopen(user_templatename,"rb");
+    if( in==0 ){
+      fprintf(stderr,"Can't open the template file \"%s\".\n",user_templatename);
+      lemp->errorcnt++;
+      return 0;
+    }
+    return in;
+  }
+  #endif
 
   cp = strrchr(lemp->filename,'.');
   if( cp ){
@@ -3585,16 +3626,24 @@ int mhflag;     /* Output in makeheaders format if true */
   tplt_xfer(lemp->name,in,out,&lineno);
 
   /* Generate #defines for all tokens */
+#if __MOJOSHADER__
+  if( 1 ){
+#else
   if( mhflag ){
+#endif
     char *prefix;
+#if !__MOJOSHADER__
     fprintf(out,"#if INTERFACE\n"); lineno++;
+#endif
     if( lemp->tokenprefix ) prefix = lemp->tokenprefix;
     else                    prefix = "";
     for(i=1; i<lemp->nterminal; i++){
       fprintf(out,"#define %s%-30s %2d\n",prefix,lemp->symbols[i]->name,i);
       lineno++;
     }
+#if !__MOJOSHADER__
     fprintf(out,"#endif\n"); lineno++;
+#endif
   }
   tplt_xfer(lemp->name,in,out,&lineno);
 
