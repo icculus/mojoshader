@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.4)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(MojoShader)
 
 INCLUDE_DIRECTORIES(.)
@@ -54,10 +54,9 @@ ENDIF(MSVC)
 ADD_EXECUTABLE(lemon "misc/lemon.c")
 GET_TARGET_PROPERTY(LEMON lemon LOCATION)
 ADD_CUSTOM_COMMAND(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
-    MAIN_DEPENDENCY mojoshader_parser_hlsl.lemon
-    DEPENDS lemon
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/misc"
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c"
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
+    DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
     COMMAND "${LEMON}"
     ARGS -l -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
 )
@@ -69,6 +68,11 @@ ADD_LIBRARY(mojoshader STATIC
     mojoshader_lexer.c
     mojoshader_assembler.c
     mojoshader_opengl.c
+)
+
+SET_SOURCE_FILES_PROPERTIES(
+    mojoshader_compiler.c
+    PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.c"
 )
 
 FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
@@ -87,7 +91,6 @@ ENDIF(NOT RE2C)
 FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
-    ADD_DEFINITIONS(-DFINDERRORS_COMPILE_SHADERS=1)
     ADD_EXECUTABLE(glcaps utils/glcaps.c)
     TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY})
     ADD_EXECUTABLE(bestprofile utils/bestprofile.c)
@@ -96,12 +99,19 @@ IF(SDL_FOUND)
     TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL_LIBRARY})
 ENDIF(SDL_FOUND)
 
+ADD_EXECUTABLE(finderrors utils/finderrors.c)
+TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
+IF(SDL_FOUND)
+    SET_SOURCE_FILES_PROPERTIES(
+        utils/finderrors.c
+        PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
+    )
+ENDIF(SDL_FOUND)
+
 ADD_EXECUTABLE(testparse utils/testparse.c)
 TARGET_LINK_LIBRARIES(testparse mojoshader)
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
 TARGET_LINK_LIBRARIES(testoutput mojoshader)
-ADD_EXECUTABLE(finderrors utils/finderrors.c)
-TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
 ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
 TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader)
 
