@@ -807,31 +807,20 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         tokenbytes[4] = '\0';
 
         uint32 val = 0;
-        int saw_xyzw = 0;
-        int saw_rgba = 0;
         int i;
         for (i = 0; i < 4; i++)
         {
             const int component = (int) tokenbytes[i];
             switch (component)
             {
-                case 'x': val = 0; saw_xyzw = 1; break;
-                case 'y': val = 1; saw_xyzw = 1; break;
-                case 'z': val = 2; saw_xyzw = 1; break;
-                case 'w': val = 3; saw_xyzw = 1; break;
-                case 'r': val = 0; saw_rgba = 1; break;
-                case 'g': val = 1; saw_rgba = 1; break;
-                case 'b': val = 2; saw_rgba = 1; break;
-                case 'a': val = 3; saw_rgba = 1; break;
+                case 'r': case 'x': val = 0; break;
+                case 'g': case 'y': val = 1; break;
+                case 'b': case 'z': val = 2; break;
+                case 'a': case 'w': val = 3; break;
                 default: invalid_swizzle = 1; break;
             } // switch
             swizzle |= (val << (i * 2));
         } // for
-
-        if (saw_xyzw && saw_rgba)
-            invalid_swizzle = 1;
-        else if (saw_rgba && !shader_is_pixel(ctx))
-            invalid_swizzle = 1;
     } // else
 
     if (invalid_swizzle)
