@@ -30,7 +30,8 @@ static Token debug_preprocessor_lexer(IncludeState *s)
 #if DEBUG_TOKENIZER
 static void print_debug_lexing_position(IncludeState *s)
 {
-    printf("NOW LEXING %s:%d ...\n", s->filename, s->line);
+    if (s != NULL)
+        printf("NOW LEXING %s:%d ...\n", s->filename, s->line);
 } // print_debug_lexing_position
 #else
 #define print_debug_lexing_position(s)
