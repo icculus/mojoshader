@@ -64,19 +64,402 @@
 
 // The rules...
 
-shader ::= file.
+shader ::= compilation_units.
 
+compilation_units ::= compilation_unit.
+compilation_units ::= compilation_units compilation_unit.
+
+compilation_unit ::= function_declaration.
+compilation_unit ::= function_definition.
+compilation_unit ::= global_variable.
+compilation_unit ::= typedef_statement.
+compilation_unit ::= struct_statement.
+
+function_declaration ::= function_signature SEMICOLON.
+
+function_definition ::= function_signature statement_block.
+
+function_signature ::= function_storageclass function_details semantic.
+function_signature ::= function_storageclass function_details.
+function_signature ::= function_details semantic.
+function_signature ::= function_details.
+
+function_details ::= datatype identifier LPAREN function_arguments RPAREN.
+
+// !!! FIXME: there is a "target" storage class that is the name of the
+// !!! FIXME:  platform that this function is meant for...but I don't know
+// !!! FIXME:  what tokens are valid here.
+
+// !!! FIXME: Also, the docs say "one of" inline or target, but I bet you can
+// !!! FIXME:  specify both.
+//function_storageclass ::= target.
+function_storageclass ::= INLINE.
+
+function_arguments ::= VOID.
+function_arguments ::= function_argument_list.
+function_arguments ::= .
+
+function_argument_list ::= function_argument.
+function_argument_list ::= function_argument_list COMMA function_argument.
+
+function_argument ::= input_modifier datatype identifier semantic interpolation_mod initializer.
+function_argument ::= input_modifier datatype identifier semantic interpolation_mod.
+function_argument ::= input_modifier datatype identifier semantic initializer.
+function_argument ::= input_modifier datatype identifier semantic.
+function_argument ::= input_modifier datatype identifier interpolation_mod initializer.
+function_argument ::= input_modifier datatype identifier interpolation_mod.
+function_argument ::= input_modifier datatype identifier initializer.
+function_argument ::= input_modifier datatype identifier.
+function_argument ::= datatype identifier semantic interpolation_mod initializer.
+function_argument ::= datatype identifier semantic interpolation_mod.
+function_argument ::= datatype identifier semantic initializer.
+function_argument ::= datatype identifier semantic.
+function_argument ::= datatype identifier interpolation_mod initializer.
+function_argument ::= datatype identifier interpolation_mod.
+function_argument ::= datatype identifier initializer.
+function_argument ::= datatype identifier.
+
+input_modifier ::= IN.
+input_modifier ::= INOUT.
+input_modifier ::= OUT.
+input_modifier ::= UNIFORM.
+
+semantic ::= COLON semantic_name.
+semantic_name ::= identifier.  // !!! FIXME: list these here
+
+// DX10 only?
+interpolation_mod ::= LINEAR.
+interpolation_mod ::= CENTROID.
+interpolation_mod ::= NOINTERPOLATION.
+interpolation_mod ::= NOPERSPECTIVE.
+interpolation_mod ::= SAMPLE.
+
+global_variable ::= variable_declaration.
+
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations initializer SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic initializer SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations initializer SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array initializer SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype scalar_or_array SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic annotations initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic annotations initializer SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic annotations variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic annotations SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic initializer SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array semantic SEMICOLON.
+variable_declaration ::= datatype scalar_or_array annotations initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array annotations initializer SEMICOLON.
+variable_declaration ::= datatype scalar_or_array annotations variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array annotations SEMICOLON.
+variable_declaration ::= datatype scalar_or_array initializer variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array initializer SEMICOLON.
+variable_declaration ::= datatype scalar_or_array variable_lowlevel SEMICOLON.
+variable_declaration ::= datatype scalar_or_array SEMICOLON.
+variable_declaration ::= struct_declaration scalar_or_array SEMICOLON.
+
+struct_declaration ::= STRUCT identifier LBRACE struct_member_list RBRACE.
+
+struct_member_list ::= struct_member.
+struct_member_list ::= struct_member_list struct_member.
+
+struct_member ::= interpolation_mod struct_member_details.
+struct_member ::= struct_member_details.
+
+struct_member_details ::= scalar_or_array identifier SEMICOLON.
+
+typedef_statement ::= TYPEDEF CONST datatype scalar_or_array.
+typedef_statement ::= TYPEDEF datatype scalar_or_array.
+
+variable_lowlevel ::= packoffset register.
+variable_lowlevel ::= packoffset.
+variable_lowlevel ::= register.
+
+scalar_or_array ::= identifier LBRACKET INT_CONSTANT RBRACKET.
+scalar_or_array ::= identifier.
+
+packoffset ::= PACKOFFSET LPAREN identifier identifier RPAREN.
+packoffset ::= PACKOFFSET LPAREN identifier RPAREN.
+
+register ::= COLON REGISTER LPAREN identifier RPAREN.
+
+annotations ::= LT annotation_list GT.
+
+annotation_list ::= annotation.
+annotation_list ::= annotation_list annotation.
+
+annotation ::= datatype_scalar initializer SEMICOLON.
+
+variable_attribute_list ::= variable_attribute.
+variable_attribute_list ::= variable_attribute_list variable_attribute.
+
+variable_attribute ::= EXTERN.
+variable_attribute ::= NOINTERPOLATION.
+variable_attribute ::= SHARED.
+variable_attribute ::= STATIC.
+variable_attribute ::= UNIFORM.
+variable_attribute ::= VOLATILE.
+variable_attribute ::= CONST.
+variable_attribute ::= ROWMAJOR.
+variable_attribute ::= COLUMNMAJOR.
+
+initializer ::= ASSIGN expression.
+
+intrinsic_datatype ::= datatype_vector.
+intrinsic_datatype ::= datatype_matrix.
+intrinsic_datatype ::= datatype_scalar.
+
+datatype ::= intrinsic_datatype.
+datatype ::= USERTYPE.
+
+datatype_scalar ::= BOOL.
+datatype_scalar ::= INT.
+datatype_scalar ::= UINT.
+datatype_scalar ::= HALF.
+datatype_scalar ::= FLOAT.
+datatype_scalar ::= DOUBLE.
+datatype_scalar ::= STRING.  // this is for the effects framework, not HLSL.
+datatype_scalar ::= SNORM FLOAT.
+datatype_scalar ::= UNORM FLOAT.
+datatype_scalar ::= BUFFER LT datatype_scalar GT.
+
+// !!! FIXME: MSDN suggests that the matrix ones are just typedefs inserted
+// !!! FIXME:  before parsing begins, like:
+// !!! FIXME: typedef matrix <bool,4,3> bool4x3;
+// !!! FIXME:  ...maybe we can rip these out of the grammar and just create
+// !!! FIXME:  them at startup?
+datatype_vector ::= VECTOR LT datatype_scalar COMMA INT_CONSTANT GT.
+datatype_vector ::= BOOL1.
+datatype_vector ::= BOOL2.
+datatype_vector ::= BOOL3.
+datatype_vector ::= BOOL4.
+datatype_vector ::= INT1.
+datatype_vector ::= INT2.
+datatype_vector ::= INT3.
+datatype_vector ::= INT4.
+datatype_vector ::= UINT1.
+datatype_vector ::= UINT2.
+datatype_vector ::= UINT3.
+datatype_vector ::= UINT4.
+datatype_vector ::= HALF1.
+datatype_vector ::= HALF2.
+datatype_vector ::= HALF3.
+datatype_vector ::= HALF4.
+datatype_vector ::= FLOAT1.
+datatype_vector ::= FLOAT2.
+datatype_vector ::= FLOAT3.
+datatype_vector ::= FLOAT4.
+datatype_vector ::= DOUBLE1.
+datatype_vector ::= DOUBLE2.
+datatype_vector ::= DOUBLE3.
+datatype_vector ::= DOUBLE4.
+
+datatype_matrix ::= MATRIX LT datatype_scalar COMMA INT_CONSTANT COMMA INT_CONSTANT GT.
+datatype_matrix ::= BOOL1X1.
+datatype_matrix ::= BOOL1X2.
+datatype_matrix ::= BOOL1X3.
+datatype_matrix ::= BOOL1X4.
+datatype_matrix ::= BOOL2X1.
+datatype_matrix ::= BOOL2X2.
+datatype_matrix ::= BOOL2X3.
+datatype_matrix ::= BOOL2X4.
+datatype_matrix ::= BOOL3X1.
+datatype_matrix ::= BOOL3X2.
+datatype_matrix ::= BOOL3X3.
+datatype_matrix ::= BOOL3X4.
+datatype_matrix ::= BOOL4X1.
+datatype_matrix ::= BOOL4X2.
+datatype_matrix ::= BOOL4X3.
+datatype_matrix ::= BOOL4X4.
+datatype_matrix ::= INT1X1.
+datatype_matrix ::= INT1X2.
+datatype_matrix ::= INT1X3.
+datatype_matrix ::= INT1X4.
+datatype_matrix ::= INT2X1.
+datatype_matrix ::= INT2X2.
+datatype_matrix ::= INT2X3.
+datatype_matrix ::= INT2X4.
+datatype_matrix ::= INT3X1.
+datatype_matrix ::= INT3X2.
+datatype_matrix ::= INT3X3.
+datatype_matrix ::= INT3X4.
+datatype_matrix ::= INT4X1.
+datatype_matrix ::= INT4X2.
+datatype_matrix ::= INT4X3.
+datatype_matrix ::= INT4X4.
+datatype_matrix ::= UINT1X1.
+datatype_matrix ::= UINT1X2.
+datatype_matrix ::= UINT1X3.
+datatype_matrix ::= UINT1X4.
+datatype_matrix ::= UINT2X1.
+datatype_matrix ::= UINT2X2.
+datatype_matrix ::= UINT2X3.
+datatype_matrix ::= UINT2X4.
+datatype_matrix ::= UINT3X1.
+datatype_matrix ::= UINT3X2.
+datatype_matrix ::= UINT3X3.
+datatype_matrix ::= UINT3X4.
+datatype_matrix ::= UINT4X1.
+datatype_matrix ::= UINT4X2.
+datatype_matrix ::= UINT4X3.
+datatype_matrix ::= UINT4X4.
+datatype_matrix ::= HALF1X1.
+datatype_matrix ::= HALF1X2.
+datatype_matrix ::= HALF1X3.
+datatype_matrix ::= HALF1X4.
+datatype_matrix ::= HALF2X1.
+datatype_matrix ::= HALF2X2.
+datatype_matrix ::= HALF2X3.
+datatype_matrix ::= HALF2X4.
+datatype_matrix ::= HALF3X1.
+datatype_matrix ::= HALF3X2.
+datatype_matrix ::= HALF3X3.
+datatype_matrix ::= HALF3X4.
+datatype_matrix ::= HALF4X1.
+datatype_matrix ::= HALF4X2.
+datatype_matrix ::= HALF4X3.
+datatype_matrix ::= HALF4X4.
+datatype_matrix ::= FLOAT1X1.
+datatype_matrix ::= FLOAT1X2.
+datatype_matrix ::= FLOAT1X3.
+datatype_matrix ::= FLOAT1X4.
+datatype_matrix ::= FLOAT2X1.
+datatype_matrix ::= FLOAT2X2.
+datatype_matrix ::= FLOAT2X3.
+datatype_matrix ::= FLOAT2X4.
+datatype_matrix ::= FLOAT3X1.
+datatype_matrix ::= FLOAT3X2.
+datatype_matrix ::= FLOAT3X3.
+datatype_matrix ::= FLOAT3X4.
+datatype_matrix ::= FLOAT4X1.
+datatype_matrix ::= FLOAT4X2.
+datatype_matrix ::= FLOAT4X3.
+datatype_matrix ::= FLOAT4X4.
+datatype_matrix ::= DOUBLE1X1.
+datatype_matrix ::= DOUBLE1X2.
+datatype_matrix ::= DOUBLE1X3.
+datatype_matrix ::= DOUBLE1X4.
+datatype_matrix ::= DOUBLE2X1.
+datatype_matrix ::= DOUBLE2X2.
+datatype_matrix ::= DOUBLE2X3.
+datatype_matrix ::= DOUBLE2X4.
+datatype_matrix ::= DOUBLE3X1.
+datatype_matrix ::= DOUBLE3X2.
+datatype_matrix ::= DOUBLE3X3.
+datatype_matrix ::= DOUBLE3X4.
+datatype_matrix ::= DOUBLE4X1.
+datatype_matrix ::= DOUBLE4X2.
+datatype_matrix ::= DOUBLE4X3.
+datatype_matrix ::= DOUBLE4X4.
+
+statement_block ::= LBRACE RBRACE.
+statement_block ::= LBRACE statement_list RBRACE.
+
+statement_list ::= statement.
+statement_list ::= statement_list statement.
+
+statement ::= return_statement.
+statement ::= BREAK SEMICOLON.
+statement ::= CONTINUE SEMICOLON.
+statement ::= DISCARD SEMICOLON.
+statement ::= statement_block.
+statement ::= for_statement.
+statement ::= do_statement.
+statement ::= while_statement.
+statement ::= if_statement.
+statement ::= switch_statement.
+statement ::= variable_declaration.
+statement ::= typedef_statement.
+statement ::= expression_statement.
+statement ::= struct_statement.
+
+struct_statement ::= struct_declaration SEMICOLON.
+
+expression_statement ::= SEMICOLON.
+expression_statement ::= expression SEMICOLON.
+
+return_statement ::= RETURN SEMICOLON.
+return_statement ::= RETURN expression SEMICOLON.
+
+while_statement ::= loop_attribute while_details.
+while_statement ::= while_details.
+
+while_details ::= WHILE LPAREN expression RPAREN statement.
+
+for_statement ::= loop_attribute for_details.
+for_statement ::= for_details.
+
+for_details ::= FOR LPAREN expression SEMICOLON expression SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN SEMICOLON SEMICOLON RPAREN statement.
+for_details ::= FOR LPAREN SEMICOLON SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN SEMICOLON expression SEMICOLON RPAREN statement.
+for_details ::= FOR LPAREN SEMICOLON expression SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON RPAREN statement.
+for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN expression SEMICOLON expression SEMICOLON RPAREN statement.
+
+loop_attribute ::= UNROLL LPAREN INT_CONSTANT RPAREN.
+loop_attribute ::= UNROLL.
+loop_attribute ::= LOOP.
+
+do_statement ::= DO statement WHILE LPAREN expression RPAREN SEMICOLON.
+
+if_statement ::= if_attribute IF LPAREN expression RPAREN statement.
+if_statement ::= IF LPAREN expression RPAREN statement.
+if_statement ::= if_attribute IF LPAREN expression RPAREN statement ELSE statement.
+if_statement ::= IF LPAREN expression RPAREN statement ELSE statement.
+
+if_attribute ::= BRANCH.
+if_attribute ::= FLATTEN.
+
+switch_statement ::= switch_attribute switch_details.
+switch_statement ::= switch_details.
+
+switch_details ::= SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE.
+
+switch_attribute ::= FLATTEN.
+switch_attribute ::= BRANCH.
+switch_attribute ::= FORCECASE.
+switch_attribute ::= CALL.
+
+switch_case_list ::= switch_case.
+switch_case_list ::= switch_case_list switch_case.
+
+// You can do math here, apparently, as long as it produces an int constant.
+//  ...so "case 3+2:" works.
+switch_case ::= CASE expression COLON statement_list.
+switch_case ::= CASE expression COLON.
+switch_case ::= DEFAULT COLON statement_list.
+switch_case ::= DEFAULT COLON.
+
+// I may want to do more with this at some point.
+identifier ::= IDENTIFIER.
+
+
+// the expression stuff is based on Jeff Lee's ANSI C grammar.
 primary_expr ::= identifier.
-primary_expr ::= CONSTANT.
+primary_expr ::= INT_CONSTANT.
+primary_expr ::= FLOAT_CONSTANT.
 primary_expr ::= STRING_LITERAL.
-primary_expr ::= LPAREN expr RPAREN.
+primary_expr ::= LPAREN expression RPAREN.
 
 postfix_expr ::= primary_expr.
-postfix_expr ::= postfix_expr LBRACKET expr RBRACKET.
+postfix_expr ::= postfix_expr LBRACKET expression RBRACKET.
 postfix_expr ::= postfix_expr LPAREN RPAREN.
 postfix_expr ::= postfix_expr LPAREN argument_expr_list RPAREN.
 postfix_expr ::= postfix_expr DOT identifier.
-postfix_expr ::= postfix_expr PTR_OP identifier.
 postfix_expr ::= postfix_expr PLUSPLUS.
 postfix_expr ::= postfix_expr MINUSMINUS.
 
@@ -87,18 +470,14 @@ unary_expr ::= postfix_expr.
 unary_expr ::= PLUSPLUS unary_expr.
 unary_expr ::= MINUSMINUS unary_expr.
 unary_expr ::= unary_operator cast_expr.
-unary_expr ::= SIZEOF unary_expr.
-unary_expr ::= SIZEOF LPAREN type_name RPAREN.
 
-unary_operator ::= AND.
-unary_operator ::= STAR.
 unary_operator ::= PLUS.
 unary_operator ::= MINUS.
 unary_operator ::= COMPLEMENT.
 unary_operator ::= EXCLAMATION.
 
 cast_expr ::= unary_expr.
-cast_expr ::= LPAREN type_name RPAREN cast_expr.
+cast_expr ::= LPAREN datatype RPAREN cast_expr.
 
 multiplicative_expr ::= cast_expr.
 multiplicative_expr ::= multiplicative_expr STAR cast_expr.
@@ -156,173 +535,8 @@ assignment_operator ::= ANDASSIGN.
 assignment_operator ::= XORASSIGN.
 assignment_operator ::= ORASSIGN.
 
-expr ::= assignment_expr.
-expr ::= expr COMMA assignment_expr.
-
-constant_expr ::= conditional_expr.
-
-declaration ::= declaration_specifiers SEMICOLON.
-declaration ::= declaration_specifiers init_declarator_list SEMICOLON.
-
-declaration_specifiers ::= storage_class_specifier.
-declaration_specifiers ::= storage_class_specifier declaration_specifiers.
-declaration_specifiers ::= type_specifier.
-declaration_specifiers ::= type_specifier declaration_specifiers.
-
-init_declarator_list ::= init_declarator.
-init_declarator_list ::= init_declarator_list COMMA init_declarator.
-
-init_declarator ::= declarator.
-init_declarator ::= declarator ASSIGN initializer.
-
-storage_class_specifier ::= TYPEDEF.
-storage_class_specifier ::= EXTERN.
-storage_class_specifier ::= STATIC.
-storage_class_specifier ::= AUTO.
-storage_class_specifier ::= REGISTER.
-
-type_specifier ::= CHAR.
-type_specifier ::= SHORT.
-type_specifier ::= INT.
-type_specifier ::= LONG.
-type_specifier ::= SIGNED.
-type_specifier ::= UNSIGNED.
-type_specifier ::= FLOAT.
-type_specifier ::= DOUBLE.
-type_specifier ::= CONST.
-type_specifier ::= VOLATILE.
-type_specifier ::= VOID.
-type_specifier ::= struct_or_union_specifier.
-type_specifier ::= TYPE_NAME.
-
-struct_or_union_specifier ::= struct_or_union identifier LBRACE
-                              struct_declaration_list RBRACE.
-struct_or_union_specifier ::= struct_or_union LBRACE struct_declaration_list
-                              RBRACE.
-struct_or_union_specifier ::= struct_or_union identifier.
-
-struct_or_union ::= STRUCT.
-struct_or_union ::= UNION.
-
-struct_declaration_list ::= struct_declaration.
-struct_declaration_list ::= struct_declaration_list struct_declaration.
-
-struct_declaration ::= type_specifier_list struct_declarator_list SEMICOLON.
-
-struct_declarator_list ::= struct_declarator.
-struct_declarator_list ::= struct_declarator_list COMMA struct_declarator.
-
-struct_declarator ::= declarator.
-struct_declarator ::= COLON constant_expr.
-struct_declarator ::= declarator COLON constant_expr.
-
-declarator ::= declarator2.
-
-declarator2 ::= identifier.
-declarator2 ::= LPAREN declarator RPAREN.
-declarator2 ::= declarator2 LBRACKET RBRACKET.
-declarator2 ::= declarator2 LBRACKET constant_expr RBRACKET.
-declarator2 ::= declarator2 LPAREN RPAREN.
-declarator2 ::= declarator2 LPAREN parameter_type_list RPAREN.
-declarator2 ::= declarator2 LPAREN parameter_identifier_list RPAREN.
-
-type_specifier_list ::= type_specifier.
-type_specifier_list ::= type_specifier_list type_specifier.
-
-parameter_identifier_list ::= identifier_list.
-
-identifier_list ::= identifier.
-identifier_list ::= identifier_list COMMA identifier.
-
-parameter_type_list ::= parameter_list.
-
-parameter_list ::= parameter_declaration.
-parameter_list ::= parameter_list COMMA parameter_declaration.
-
-parameter_declaration ::= type_specifier_list declarator.
-parameter_declaration ::= type_name.
-
-type_name ::= type_specifier_list.
-type_name ::= type_specifier_list abstract_declarator.
-
-abstract_declarator ::= abstract_declarator2.
-
-abstract_declarator2 ::= LPAREN abstract_declarator RPAREN.
-abstract_declarator2 ::= LBRACKET RBRACKET.
-abstract_declarator2 ::= LBRACKET constant_expr RBRACKET.
-abstract_declarator2 ::= abstract_declarator2 LBRACKET RBRACKET.
-abstract_declarator2 ::= abstract_declarator2 LBRACKET constant_expr RBRACKET.
-abstract_declarator2 ::= LPAREN RPAREN.
-abstract_declarator2 ::= LPAREN parameter_type_list RPAREN.
-abstract_declarator2 ::= abstract_declarator2 LPAREN RPAREN.
-abstract_declarator2 ::= abstract_declarator2 LPAREN parameter_type_list RPAREN.
-
-initializer ::= assignment_expr.
-initializer ::= LBRACE initializer_list RBRACE.
-initializer ::= LBRACE initializer_list COMMA RBRACE.
-
-initializer_list ::= initializer.
-initializer_list ::= initializer_list COMMA initializer.
-
-statement ::= labeled_statement.
-statement ::= compound_statement.
-statement ::= expression_statement.
-statement ::= selection_statement.
-statement ::= iteration_statement.
-statement ::= jump_statement.
-
-labeled_statement ::= identifier COLON statement.
-labeled_statement ::= CASE constant_expr COLON statement.
-labeled_statement ::= DEFAULT COLON statement.
-
-compound_statement ::= LBRACE RBRACE.
-compound_statement ::= LBRACE statement_list RBRACE.
-compound_statement ::= LBRACE declaration_list RBRACE.
-compound_statement ::= LBRACE declaration_list statement_list RBRACE.
-
-declaration_list ::= declaration.
-declaration_list ::= declaration_list declaration.
-
-statement_list ::= statement.
-statement_list ::= statement_list statement.
-
-expression_statement ::= SEMICOLON.
-expression_statement ::= expr SEMICOLON.
-
-selection_statement ::= IF LPAREN expr RPAREN statement.
-selection_statement ::= IF LPAREN expr RPAREN statement ELSE statement.
-selection_statement ::= SWITCH LPAREN expr RPAREN statement.
-
-iteration_statement ::= WHILE LPAREN expr RPAREN statement.
-iteration_statement ::= DO statement WHILE LPAREN expr RPAREN SEMICOLON.
-iteration_statement ::= FOR LPAREN SEMICOLON SEMICOLON RPAREN statement.
-iteration_statement ::= FOR LPAREN SEMICOLON SEMICOLON expr RPAREN statement.
-iteration_statement ::= FOR LPAREN SEMICOLON expr SEMICOLON RPAREN statement.
-iteration_statement ::= FOR LPAREN SEMICOLON expr SEMICOLON expr RPAREN statement.
-iteration_statement ::= FOR LPAREN expr SEMICOLON SEMICOLON RPAREN statement.
-iteration_statement ::= FOR LPAREN expr SEMICOLON SEMICOLON expr RPAREN statement.
-iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON RPAREN statement.
-iteration_statement ::= FOR LPAREN expr SEMICOLON expr SEMICOLON expr RPAREN statement.
-
-jump_statement ::= CONTINUE SEMICOLON.
-jump_statement ::= BREAK SEMICOLON.
-jump_statement ::= DISCARD SEMICOLON.
-jump_statement ::= RETURN SEMICOLON.
-jump_statement ::= RETURN expr SEMICOLON.
-
-file ::= external_definition.
-file ::= file external_definition.
-
-external_definition ::= function_definition.
-external_definition ::= declaration.
-
-function_definition ::= declarator function_body.
-function_definition ::= declaration_specifiers declarator function_body.
-
-function_body ::= compound_statement.
-function_body ::= declaration_list compound_statement.
-
-identifier ::= IDENTIFIER.
+expression ::= assignment_expr.
+expression ::= expression COMMA assignment_expr.
 
 // end of mojoshader_parser_hlsl.lemon ...
 
