@@ -136,39 +136,29 @@ interpolation_mod ::= SAMPLE.
 
 global_variable ::= variable_declaration.
 
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations initializer SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic annotations SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic initializer SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array semantic SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations initializer SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array initializer SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array annotations SEMICOLON.
-variable_declaration ::= variable_attribute_list datatype scalar_or_array SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic annotations initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic annotations initializer SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic annotations variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic annotations SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic initializer SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array semantic SEMICOLON.
-variable_declaration ::= datatype scalar_or_array annotations initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array annotations initializer SEMICOLON.
-variable_declaration ::= datatype scalar_or_array annotations variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array annotations SEMICOLON.
-variable_declaration ::= datatype scalar_or_array initializer variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array initializer SEMICOLON.
-variable_declaration ::= datatype scalar_or_array variable_lowlevel SEMICOLON.
-variable_declaration ::= datatype scalar_or_array SEMICOLON.
+variable_declaration ::= variable_attribute_list datatype variable_declaration_details_list SEMICOLON.
+variable_declaration ::= datatype variable_declaration_details_list SEMICOLON.
 variable_declaration ::= struct_declaration scalar_or_array SEMICOLON.
+
+variable_declaration_details_list ::= variable_declaration_details.
+variable_declaration_details_list ::= variable_declaration_details_list COMMA variable_declaration_details.
+
+variable_declaration_details ::= scalar_or_array semantic annotations initializer variable_lowlevel.
+variable_declaration_details ::= scalar_or_array semantic annotations initializer.
+variable_declaration_details ::= scalar_or_array semantic annotations variable_lowlevel.
+variable_declaration_details ::= scalar_or_array semantic annotations.
+variable_declaration_details ::= scalar_or_array semantic initializer variable_lowlevel.
+variable_declaration_details ::= scalar_or_array semantic initializer.
+variable_declaration_details ::= scalar_or_array semantic variable_lowlevel.
+variable_declaration_details ::= scalar_or_array semantic.
+variable_declaration_details ::= scalar_or_array annotations initializer variable_lowlevel.
+variable_declaration_details ::= scalar_or_array annotations initializer.
+variable_declaration_details ::= scalar_or_array annotations variable_lowlevel.
+variable_declaration_details ::= scalar_or_array annotations.
+variable_declaration_details ::= scalar_or_array initializer variable_lowlevel.
+variable_declaration_details ::= scalar_or_array initializer.
+variable_declaration_details ::= scalar_or_array variable_lowlevel.
+variable_declaration_details ::= scalar_or_array.
 
 // !!! FIXME: we don't handle full sampler declarations at the moment.
 
