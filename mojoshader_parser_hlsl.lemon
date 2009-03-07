@@ -170,7 +170,10 @@ struct_member_list ::= struct_member_list struct_member.
 struct_member ::= interpolation_mod struct_member_details.
 struct_member ::= struct_member_details.
 
-struct_member_details ::= scalar_or_array identifier SEMICOLON.
+struct_member_details ::= datatype struct_member_item_list SEMICOLON.
+
+struct_member_item_list ::= identifier.
+struct_member_item_list ::= struct_member_item_list COMMA identifier.
 
 typedef_statement ::= TYPEDEF CONST datatype scalar_or_array.
 typedef_statement ::= TYPEDEF datatype scalar_or_array.
