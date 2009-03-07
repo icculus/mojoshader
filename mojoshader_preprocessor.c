@@ -27,6 +27,16 @@ static Token debug_preprocessor_lexer(IncludeState *s)
 #define preprocessor_lexer(s) debug_preprocessor_lexer(s)
 #endif
 
+#if DEBUG_TOKENIZER
+static void print_debug_lexing_position(IncludeState *s)
+{
+    printf("NOW LEXING %s:%d ...\n", s->filename, s->line);
+} // print_debug_lexing_position
+#else
+#define print_debug_lexing_position(s)
+#endif
+
+
 
 // Simple linked list to cache source filenames, so we don't have to copy
 //  the same string over and over for each opcode.
@@ -569,6 +579,8 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->next = ctx->include_stack;
     state->asm_comments = ctx->asm_comments;
 
+    print_debug_lexing_position(state);
+
     ctx->include_stack = state;
 
     return 1;
@@ -609,6 +621,9 @@ static void pop_source(Context *ctx)
     } // while
 
     ctx->include_stack = state->next;
+
+    print_debug_lexing_position(ctx->include_stack);
+
     put_include(ctx, state);
 } // pop_source
 
@@ -1835,6 +1850,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
 
         else if (token == ((Token) '\n'))
         {
+            print_debug_lexing_position(state);
             // preprocessor is line-oriented, nothing else gets newlines.
             continue;  // get the next thing.
         } // else if
