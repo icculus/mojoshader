@@ -245,6 +245,15 @@ static int ConvertToLemonToken(const Context *ctx)
             if (tokencmp("call")) return TOKEN_HLSL_CALL;
             if (tokencmp("case")) return TOKEN_HLSL_CASE;
             if (tokencmp("default")) return TOKEN_HLSL_DEFAULT;
+            if (tokencmp("sampler")) return TOKEN_HLSL_SAMPLER;
+            if (tokencmp("sampler1D")) return TOKEN_HLSL_SAMPLER1D;
+            if (tokencmp("sampler2D")) return TOKEN_HLSL_SAMPLER2D;
+            if (tokencmp("sampler3D")) return TOKEN_HLSL_SAMPLER3D;
+            if (tokencmp("samplerCUBE")) return TOKEN_HLSL_SAMPLERCUBE;
+            if (tokencmp("sampler_state")) return TOKEN_HLSL_SAMPLER_STATE;
+            if (tokencmp("SamplerState")) return TOKEN_HLSL_SAMPLERSTATE;
+            if (tokencmp("SamplerComparisonState")) return TOKEN_HLSL_SAMPLERCOMPARISONSTATE;
+
             #undef tokencmp
             return TOKEN_HLSL_IDENTIFIER;
 

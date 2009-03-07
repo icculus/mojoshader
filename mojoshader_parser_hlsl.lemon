@@ -170,6 +170,8 @@ variable_declaration ::= datatype scalar_or_array variable_lowlevel SEMICOLON.
 variable_declaration ::= datatype scalar_or_array SEMICOLON.
 variable_declaration ::= struct_declaration scalar_or_array SEMICOLON.
 
+// !!! FIXME: we don't handle full sampler declarations at the moment.
+
 struct_declaration ::= STRUCT identifier LBRACE struct_member_list RBRACE.
 
 struct_member_list ::= struct_member.
@@ -220,9 +222,19 @@ initializer ::= ASSIGN expression.
 intrinsic_datatype ::= datatype_vector.
 intrinsic_datatype ::= datatype_matrix.
 intrinsic_datatype ::= datatype_scalar.
+intrinsic_datatype ::= datatype_sampler.
 
 datatype ::= intrinsic_datatype.
 datatype ::= USERTYPE.
+
+datatype_sampler ::= SAMPLER.
+datatype_sampler ::= SAMPLER1D.
+datatype_sampler ::= SAMPLER2D.
+datatype_sampler ::= SAMPLER3D.
+datatype_sampler ::= SAMPLERCUBE.
+datatype_sampler ::= SAMPLER_STATE.
+datatype_sampler ::= SAMPLERSTATE.
+datatype_sampler ::= SAMPLERCOMPARISONSTATE.
 
 datatype_scalar ::= BOOL.
 datatype_scalar ::= INT.
