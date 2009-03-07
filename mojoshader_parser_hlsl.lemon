@@ -459,6 +459,7 @@ postfix_expr ::= primary_expr.
 postfix_expr ::= postfix_expr LBRACKET expression RBRACKET.
 postfix_expr ::= postfix_expr LPAREN RPAREN.
 postfix_expr ::= postfix_expr LPAREN argument_expr_list RPAREN.
+postfix_expr ::= datatype LPAREN argument_expr_list RPAREN.  // HLSL constructor
 postfix_expr ::= postfix_expr DOT identifier.
 postfix_expr ::= postfix_expr PLUSPLUS.
 postfix_expr ::= postfix_expr MINUSMINUS.
