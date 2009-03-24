@@ -684,7 +684,7 @@ typedef struct MOJOSHADER_preprocessData
  * This callback allows an app to handle #include statements for the
  *  preprocessor. When the preprocessor sees an #include, it will call this
  *  function to obtain the contents of the requested file. This is optional;
- *  the preprocessor will open files directly if no calback is supplied, but
+ *  the preprocessor will open files directly if no callback is supplied, but
  *  this allows an app to retrieve data from something other than the
  *  traditional filesystem (for example, headers packed in a .zip file or
  *  headers generated on-the-fly).
