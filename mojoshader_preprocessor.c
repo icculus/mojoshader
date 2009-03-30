@@ -383,19 +383,25 @@ IMPLEMENT_POOL(Define, define)
 
 // Preprocessor define hashtable stuff...
 
-static unsigned char hash_define(const char *sym)
+// this is djb's xor hashing function.
+static inline uint32 hash_string_djbxor(const char *sym)
 {
-    unsigned char retval = 0;
+    register uint32 hash = 5381;
     while (*sym)
-        retval += *(sym++);
-    return retval;
+        hash = ((hash << 5) + hash) ^ *(sym++);
+    return hash;
+} // hash_string_djbxor
+
+static inline uint8 hash_define(const char *sym)
+{
+    return (uint8) hash_string_djbxor(sym);
 } // hash_define
 
 
 static int add_define(Context *ctx, const char *sym, const char *val,
                       char **parameters, unsigned int paramcount)
 {
-    const unsigned char hash = hash_define(sym);
+    const uint8 hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
@@ -435,7 +441,7 @@ static void free_define(Context *ctx, Define *def)
 
 static int remove_define(Context *ctx, const char *sym)
 {
-    const unsigned char hash = hash_define(sym);
+    const uint8 hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     Define *prev = NULL;
     while (bucket)
@@ -459,7 +465,7 @@ static int remove_define(Context *ctx, const char *sym)
 
 static const Define *find_define(Context *ctx, const char *sym)
 {
-    const unsigned char hash = hash_define(sym);
+    const uint8 hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
     {
