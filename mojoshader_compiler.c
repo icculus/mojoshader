@@ -50,7 +50,7 @@ static int is_semantic(const Context *ctx)
 } // is_semantic
 
 
-static int ConvertToLemonToken(const Context *ctx)
+static int convert_to_lemon_token(const Context *ctx)
 {
     switch (ctx->tokenval)
     {
@@ -302,7 +302,7 @@ static int ConvertToLemonToken(const Context *ctx)
     } // switch
 
     return 0;
-}
+} // convert_to_lemon_token
 
 
 void MOJOSHADER_compile(const char *filename,
@@ -331,7 +331,7 @@ void MOJOSHADER_compile(const char *filename,
         ctx.token = preprocessor_nexttoken(ctx.preprocessor,
                                                 &ctx.tokenlen,
                                                 &ctx.tokenval);
-        ParseHLSL(pParser, ConvertToLemonToken(&ctx), 0, 0);
+        ParseHLSL(pParser, convert_to_lemon_token(&ctx), 0, 0);
     } while (ctx.tokenval != TOKEN_EOI);
     ParseHLSLFree(pParser, f, d);
 }
