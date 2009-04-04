@@ -16,6 +16,40 @@ typedef struct Context
 #define __MOJOSHADER_HLSL_COMPILER__ 1
 #include "mojoshader_parser_hlsl.h"
 
+// This does not check correctness (POSITIONT993842 passes, etc).
+static int is_semantic(const Context *ctx)
+{
+    static const char *names[] = {
+        "BINORMAL", "BLENDINDICES", "BLENDWEIGHT",
+        "COLOR", "NORMAL", "POSITION", "POSITIONT", "PSIZE", "TANGENT",
+        "TEXCOORD", "FOG", "TESSFACTOR", "TEXCOORD", "VFACE", "VPOS", NULL
+    };
+
+    // !!! FIXME: DX10 has SV_* ("System Value Semantics").
+    const char **i;
+    for (i = names; *i; i++)
+    {
+        const char *name = *i;
+        const size_t namelen = strlen(name);
+        if (ctx->tokenlen < namelen)
+            continue;
+        else if (memcmp(ctx->token, name, namelen) != 0)
+            continue;
+
+        for (name += namelen; *name; name++)
+        {
+            if ((*name < '0') || (*name > '9'))
+                break;
+        } // for
+
+        if (*name == '\0')
+            return 1;
+    } // for
+
+    return 0;
+} // is_semantic
+
+
 static int ConvertToLemonToken(const Context *ctx)
 {
     switch (ctx->tokenval)
@@ -255,6 +289,10 @@ static int ConvertToLemonToken(const Context *ctx)
             if (tokencmp("SamplerComparisonState")) return TOKEN_HLSL_SAMPLERCOMPARISONSTATE;
 
             #undef tokencmp
+
+            if (is_semantic(ctx))
+                return TOKEN_HLSL_SEMANTIC;
+
             return TOKEN_HLSL_IDENTIFIER;
 
         case TOKEN_EOI: return 0;

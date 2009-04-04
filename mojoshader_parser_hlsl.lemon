@@ -124,8 +124,7 @@ input_modifier ::= INOUT.
 input_modifier ::= OUT.
 input_modifier ::= UNIFORM.
 
-semantic ::= COLON semantic_name.
-semantic_name ::= identifier.  // !!! FIXME: list these here
+semantic ::= COLON SEMANTIC.
 
 // DX10 only?
 interpolation_mod ::= LINEAR.
