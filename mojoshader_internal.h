@@ -143,6 +143,8 @@ int hash_insert(HashTable *table, const void *key, const void *value);
 int hash_remove(HashTable *table, const void *key);
 int hash_find(const HashTable *table, const void *key, const void **_value);
 
+uint32 hash_hash_string(const void *sym);
+int hash_keymatch_string(const void *a, const void *b);
 
 // This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.
 #define CTAB_ID 0x42415443  // 0x42415443 == 'CTAB'

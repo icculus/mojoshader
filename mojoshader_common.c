@@ -134,5 +134,21 @@ int hash_remove(HashTable *table, const void *key)
     return 0;
 } // hash_remove
 
+
+// this is djb's xor hashing function.
+uint32 hash_hash_string(const void *_sym)
+{
+    register const char *sym = (const char *) _sym;
+    register uint32 hash = 5381;
+    while (*sym)
+        hash = ((hash << 5) + hash) ^ *(sym++);
+    return hash;
+} // hash_hash_string
+
+int hash_keymatch_string(const void *a, const void *b)
+{
+    return (strcmp((const char *) a, (const char *) b) == 0);
+} // hash_keymatch_string
+
 // end of mojoshader_common.c ...
 
