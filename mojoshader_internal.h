@@ -132,13 +132,13 @@ typedef uint32 (*HashTable_HashFn)(const void *key);
 typedef int (*HashTable_KeyMatchFn)(const void *a, const void *b);
 typedef void (*HashTable_NukeFn)(const void *key, const void *value);
 
-int hash_init(HashTable *table, const uint32 initial_table_size,
+HashTable *hash_create(const uint32 initial_table_size,
               const HashTable_HashFn hashfn,
               const HashTable_KeyMatchFn keymatchfn,
               const HashTable_NukeFn nukefn,
               const int stackable,
               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
-void hash_deinit(HashTable *table);
+void hash_destroy(HashTable *table);
 int hash_insert(HashTable *table, const void *key, const void *value);
 int hash_remove(HashTable *table, const void *key);
 int hash_find(const HashTable *table, const void *key, const void **_value);

@@ -58,7 +58,7 @@ int hash_insert(HashTable *table, const void *key, const void *value)
     return 1;
 } // hash_insert
 
-int hash_init(HashTable *table, const uint32 initial_table_size,
+HashTable *hash_create(const uint32 initial_table_size,
               const HashTable_HashFn hashfn,
               const HashTable_KeyMatchFn keymatchfn,
               const HashTable_NukeFn nukefn,
@@ -66,11 +66,17 @@ int hash_init(HashTable *table, const uint32 initial_table_size,
               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     const uint32 alloc_len = sizeof (HashItem *) * initial_table_size;
-
+    HashTable *table = (HashTable *) m(sizeof (HashTable));
+    if (table == NULL)
+        return 0;
     memset(table, '\0', sizeof (HashTable));
+
     table->table = (HashItem **) m(alloc_len, d);
     if (table->table == NULL)
+    {
+        f(table, d);
         return 0;
+    } // if
 
     memset(table->table, '\0', alloc_len);
     table->table_len = initial_table_size;
@@ -82,9 +88,9 @@ int hash_init(HashTable *table, const uint32 initial_table_size,
     table->free = f;
     table->malloc_data = d;
     return 1;
-} // hash_init
+} // hash_create
 
-void hash_deinit(HashTable *table)
+void hash_destroy(HashTable *table)
 {
     uint32 i;
     for (i = 0; i < table->table_len; i++)
@@ -100,8 +106,8 @@ void hash_deinit(HashTable *table)
     } // for
 
     table->free(table->table, table->malloc_data);
-    memset(table, '\0', sizeof (HashTable));
-} // hash_deinit
+    table->free(table, table->malloc_data);
+} // hash_destroy
 
 int hash_remove(HashTable *table, const void *key)
 {
