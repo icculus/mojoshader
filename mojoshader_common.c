@@ -66,16 +66,16 @@ HashTable *hash_create(const uint32 initial_table_size,
               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     const uint32 alloc_len = sizeof (HashItem *) * initial_table_size;
-    HashTable *table = (HashTable *) m(sizeof (HashTable));
+    HashTable *table = (HashTable *) m(sizeof (HashTable), d);
     if (table == NULL)
-        return 0;
+        return NULL;
     memset(table, '\0', sizeof (HashTable));
 
     table->table = (HashItem **) m(alloc_len, d);
     if (table->table == NULL)
     {
         f(table, d);
-        return 0;
+        return NULL;
     } // if
 
     memset(table->table, '\0', alloc_len);
@@ -87,7 +87,7 @@ HashTable *hash_create(const uint32 initial_table_size,
     table->malloc = m;
     table->free = f;
     table->malloc_data = d;
-    return 1;
+    return table;
 } // hash_create
 
 void hash_destroy(HashTable *table)
