@@ -9,6 +9,9 @@ my $testdir = $Bin;
 undef $Bin;
 #print("testdir is $testdir\n");
 
+
+my $GPrintCmds = 0;
+
 my @modules = qw( preprocessor assembler compiler parser );
 
 
@@ -59,7 +62,9 @@ $tests{'output'} = sub {
     } else {
         return (0, "Don't know how to do this module type");
     }
-    $cmd .= '2>/dev/null 1>/dev/null';
+    $cmd .= ' 2>/dev/null 1>/dev/null';
+
+    print("$cmd\n") if ($GPrintCmds);
 
     if (system($cmd) != 0) {
         unlink($output) if (-f $output);
