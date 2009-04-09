@@ -136,7 +136,8 @@ static int preprocess(const char *fname, const char *buf, int len,
     {
         if (pd->output != NULL)
         {
-            if (fwrite(pd->output, pd->output_len, 1, io) != 1)
+            const int len = pd->output_len;
+            if ((len) && (fwrite(pd->output, len, 1, io) != 1))
                 printf(" ... fwrite('%s') failed.\n", outfile);
             else if ((outfile != NULL) && (fclose(io) == EOF))
                 printf(" ... fclose('%s') failed.\n", outfile);
@@ -177,7 +178,8 @@ static int assemble(const char *fname, const char *buf, int len,
     {
         if (pd->output != NULL)
         {
-            if (fwrite(pd->output, pd->output_len, 1, io) != 1)
+            const int len = pd->output_len;
+            if ((len) && (fwrite(pd->output, len, 1, io) != 1))
                 printf(" ... fwrite('%s') failed.\n", outfile);
             else if ((outfile != NULL) && (fclose(io) == EOF))
                 printf(" ... fclose('%s') failed.\n", outfile);
