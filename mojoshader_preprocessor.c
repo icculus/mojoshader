@@ -950,7 +950,7 @@ static void handle_pp_define(Context *ctx)
 
     if (lexer(state) != TOKEN_IDENTIFIER)
     {
-        fail(ctx, "Macro names must be indentifiers");
+        fail(ctx, "Macro names must be identifiers");
         return;
     } // if
 
