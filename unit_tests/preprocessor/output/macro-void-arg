@@ -1,0 +1,3 @@
+/* This should not trigger a preprocessor error. */
+#define x() RIGHT
+x()
