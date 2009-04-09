@@ -9,12 +9,7 @@ my $testdir = $Bin;
 undef $Bin;
 #print("testdir is $testdir\n");
 
-my @modules = qw(
-    preprocessor
-    assembler
-    compiler
-    parser
-);
+my @modules = qw( preprocessor assembler compiler parser );
 
 
 sub compare_files {
