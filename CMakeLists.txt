@@ -116,5 +116,13 @@ TARGET_LINK_LIBRARIES(testoutput mojoshader)
 ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
 TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader)
 
+# Unit tests...
+ADD_CUSTOM_TARGET(
+    test
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/run_tests.pl"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMENT "Running unit tests..."
+)
+
 # End of CMakeLists.txt ...
 
