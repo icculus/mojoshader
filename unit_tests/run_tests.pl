@@ -59,6 +59,7 @@ $tests{'output'} = sub {
     } else {
         return (0, "Don't know how to do this module type");
     }
+    $cmd .= '2>/dev/null 1>/dev/null';
 
     if (system($cmd) != 0) {
         unlink($output) if (-f $output);
