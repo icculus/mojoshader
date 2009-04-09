@@ -997,9 +997,12 @@ static void handle_pp_define(Context *ctx)
             goto handle_pp_define_failed;
         } // if
 
-        idents = (char **) Malloc(ctx, sizeof (char *) * params);
-        if (idents == NULL)
-            goto handle_pp_define_failed;
+        if (params > 0)
+        {
+            idents = (char **) Malloc(ctx, sizeof (char *) * params);
+            if (idents == NULL)
+                goto handle_pp_define_failed;
+        } // if
 
         // roll all the way back, do it again.
         memcpy(state, &saved, sizeof (IncludeState));
@@ -1018,8 +1021,11 @@ static void handle_pp_define(Context *ctx)
             dst[state->tokenlen] = '\0';
             idents[i] = dst;
 
-            lexer(state);
-            assert( (state->tokenval == ((Token) ')')) || (state->tokenval == ((Token) ',')) );
+            if (i < (params-1))
+            {
+                lexer(state);
+                assert(state->tokenval == ((Token) ','));
+            } // if
         } // for
 
         if (i != params)
@@ -1028,6 +1034,7 @@ static void handle_pp_define(Context *ctx)
             goto handle_pp_define_failed;
         } // if
 
+        lexer(state);
         assert(state->tokenval == ((Token) ')'));
         lexer(state);
     } // else if
@@ -1082,6 +1089,7 @@ static void handle_pp_define(Context *ctx)
         goto handle_pp_define_failed;
 
     assert(done);
+
     if (!add_define(ctx, sym, definition, idents, params))
         goto handle_pp_define_failed;
 
