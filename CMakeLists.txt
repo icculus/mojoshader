@@ -121,7 +121,9 @@ ADD_CUSTOM_TARGET(
     test
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/run_tests.pl"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    DEPENDS mojoshader-compiler
     COMMENT "Running unit tests..."
+    VERBATIM
 )
 
 # End of CMakeLists.txt ...
