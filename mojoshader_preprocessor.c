@@ -399,7 +399,7 @@ static inline uint8 hash_define(const char *sym)
 
 
 static int add_define(Context *ctx, const char *sym, const char *val,
-                      char **parameters, unsigned int paramcount)
+                      char **parameters, int paramcount)
 {
     const uint8 hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
@@ -429,7 +429,7 @@ static int add_define(Context *ctx, const char *sym, const char *val,
 
 static void free_define(Context *ctx, Define *def)
 {
-    unsigned int i;
+    int i;
     for (i = 0; i < def->paramcount; i++)
         Free(ctx, (void *) def->parameters[i]);
     Free(ctx, (void *) def->parameters);
@@ -946,7 +946,6 @@ static void handle_pp_error(Context *ctx)
 static void handle_pp_define(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
-    unsigned int i;
 
     if (lexer(state) != TOKEN_IDENTIFIER)
     {
@@ -973,7 +972,7 @@ static void handle_pp_define(Context *ctx)
     lexer(state);
     state->report_whitespace = 0;
 
-    unsigned int params = 0;
+    int params = 0;
     char **idents = NULL;
 
     if (state->tokenval == ((Token) ' '))
@@ -997,45 +996,49 @@ static void handle_pp_define(Context *ctx)
             goto handle_pp_define_failed;
         } // if
 
-        if (params > 0)
+        if (params == 0)  // special case for void args: "#define a() b"
+            params = -1;
+        else
         {
             idents = (char **) Malloc(ctx, sizeof (char *) * params);
             if (idents == NULL)
                 goto handle_pp_define_failed;
-        } // if
 
-        // roll all the way back, do it again.
-        memcpy(state, &saved, sizeof (IncludeState));
-        memset(idents, '\0', sizeof (char *) * params);
-        
-        for (i = 0; i < params; i++)
-        {
-            lexer(state);
-            assert(state->tokenval == TOKEN_IDENTIFIER);
+            // roll all the way back, do it again.
+            memcpy(state, &saved, sizeof (IncludeState));
+            memset(idents, '\0', sizeof (char *) * params);
 
-            char *dst = (char *) Malloc(ctx, state->tokenlen+1);
-            if (dst == NULL)
-                break;
-
-            memcpy(dst, state->token, state->tokenlen);
-            dst[state->tokenlen] = '\0';
-            idents[i] = dst;
-
-            if (i < (params-1))
+            int i;
+            for (i = 0; i < params; i++)
             {
                 lexer(state);
-                assert(state->tokenval == ((Token) ','));
+                assert(state->tokenval == TOKEN_IDENTIFIER);
+
+                char *dst = (char *) Malloc(ctx, state->tokenlen+1);
+                if (dst == NULL)
+                    break;
+
+                memcpy(dst, state->token, state->tokenlen);
+                dst[state->tokenlen] = '\0';
+                idents[i] = dst;
+
+                if (i < (params-1))
+                {
+                    lexer(state);
+                    assert(state->tokenval == ((Token) ','));
+                } // if
+            } // for
+
+            if (i != params)
+            {
+                assert(ctx->out_of_memory);
+                goto handle_pp_define_failed;
             } // if
-        } // for
 
-        if (i != params)
-        {
-            assert(ctx->out_of_memory);
-            goto handle_pp_define_failed;
-        } // if
+            lexer(state);
+            assert(state->tokenval == ((Token) ')'));
+        } // else
 
-        lexer(state);
-        assert(state->tokenval == ((Token) ')'));
         lexer(state);
     } // else if
 
@@ -1098,8 +1101,8 @@ static void handle_pp_define(Context *ctx)
 handle_pp_define_failed:
     Free(ctx, sym);
     Free(ctx, definition);
-    for (i = 0; i < params; i++)
-        Free(ctx, idents[i]);
+    while (params--)
+        Free(ctx, idents[params]);
     Free(ctx, idents);
 } // handle_pp_define
 
@@ -1216,8 +1219,10 @@ static int handle_pp_identifier(Context *ctx)
         if (def == NULL)
             return 0;   // just send the token through unchanged.
 
-        if (def->paramcount > 0)
+        if (def->paramcount != 0)
         {
+            const int expected = (def->paramcount < 0) ? 0 : def->paramcount;
+            int saw_params = 0;
             IncludeState saved;  // can't pushback, we need the original token.
             memcpy(&saved, state, sizeof (IncludeState));
             if (lexer(state) != ((Token) '('))
@@ -1226,12 +1231,13 @@ static int handle_pp_identifier(Context *ctx)
                 return 0;  // gcc abandons replacement in this case, too.
             } // if
 
-            unsigned int i;
-            for (i = 0; i < def->paramcount; i++)
+            int void_call = 0;
+            int paren = 1;
+            while (paren > 0)
             {
-                const char *expr = state->source;
+                const char *expr = NULL;
                 const char *exprend = NULL;
-                int paren = 0;
+                assert(!void_call);
                 while (1)
                 {
                     exprend = state->source;
@@ -1240,22 +1246,13 @@ static int handle_pp_identifier(Context *ctx)
                         paren++;
                     else if (t == ')')
                     {
-                        assert(paren >= 0);
-                        if (paren == 0)
-                        {
-                            if (i != def->paramcount-1)
-                            {
-                                fail(ctx, "Too few macro arguments");
-                                goto handle_pp_identifier_failed;
-                            } // if
-                            break;
-                        } // if
-
                         paren--;
+                        if (paren < 1)  // end of macro?
+                            break;
                     } // else if
                     else if (t == ',')
                     {
-                        if (paren == 0)
+                        if (paren == 1)  // new macro arg?
                             break;
                     } // else if
                     else if ((t == TOKEN_INCOMPLETE_COMMENT) || (t == TOKEN_EOI))
@@ -1264,24 +1261,53 @@ static int handle_pp_identifier(Context *ctx)
                         fail(ctx, "Unterminated macro list");
                         goto handle_pp_identifier_failed;
                     } // else if
+
+                    if (expr == NULL)
+                        expr = state->token;
                 } // while
 
-                Define *p = get_define(ctx);
-                if (p == NULL)
-                    goto handle_pp_identifier_failed;
+                if (expr == NULL)
+                {
+                    expr = exprend = "";
+                    void_call = ((saw_params == 0) && (paren == 0));
+                } // if
 
-                p->next = params;
-                params = p;
+                if (saw_params < expected)
+                {
+                    Define *p = get_define(ctx);
+                    if (p == NULL)
+                        goto handle_pp_identifier_failed;
 
-                const unsigned int exprlen = (unsigned int) (exprend - expr);
-                char *definition = (char *) Malloc(ctx, exprlen + 1);
-                if (definition == NULL)
-                    goto handle_pp_identifier_failed;
-                memcpy(definition, expr, exprlen);
-                definition[exprlen] = '\0';
-                p->identifier = def->parameters[i];
-                p->definition = definition;
-            } // for
+                    p->next = params;
+                    params = p;
+
+                    const unsigned int exprlen = (unsigned int) (exprend - expr);
+                    char *definition = (char *) Malloc(ctx, exprlen + 1);
+                    if (definition == NULL)
+                        goto handle_pp_identifier_failed;
+                    memcpy(definition, expr, exprlen);
+                    definition[exprlen] = '\0';
+                    p->identifier = def->parameters[saw_params];
+                    p->definition = definition;
+                } // if
+
+                saw_params++;
+            } // while
+            assert(paren == 0);  // make sure it's not negative.
+
+            // "a()" should match "#define a()" ...
+            if ((expected == 0) && (saw_params == 1) && (void_call))
+            {
+                assert(params == NULL);
+                saw_params = 0;
+            } // if
+
+            if (saw_params != expected)
+            {
+                failf(ctx, "macro '%s' passed %d arguments, but requires %d",
+                      sym, saw_params, expected);
+                goto handle_pp_identifier_failed;
+            } // if
         } // if
     } // if
 

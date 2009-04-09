@@ -414,7 +414,7 @@ typedef struct Define
     const char *identifier;
     const char *definition;
     const char **parameters;
-    unsigned int paramcount;
+    int paramcount;
     struct Define *next;
 } Define;
 
