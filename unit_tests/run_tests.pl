@@ -78,6 +78,9 @@ $tests{'output'} = sub {
     return @retval;
 };
 
+$tests{'errors'} = sub {
+    return (-1, 'Unimplemented');  # !!! FIXME
+};
 
 my $totaltests = 0;
 my $pass = 0;
