@@ -1232,14 +1232,16 @@ static int handle_pp_identifier(Context *ctx)
                         paren++;
                     else if (t == ')')
                     {
-                        if (i != def->paramcount-1)
-                        {
-                            fail(ctx, "Too few macro arguments");
-                            goto handle_pp_identifier_failed;
-                        } // if
-
+                        assert(paren >= 0);
                         if (paren == 0)
+                        {
+                            if (i != def->paramcount-1)
+                            {
+                                fail(ctx, "Too few macro arguments");
+                                goto handle_pp_identifier_failed;
+                            } // if
                             break;
+                        } // if
 
                         paren--;
                     } // else if
