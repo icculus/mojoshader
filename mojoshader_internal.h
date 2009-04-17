@@ -82,6 +82,10 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 #endif
 
+#ifdef sun
+#include <alloca.h>
+#endif
+
 #ifdef __GNUC__
 #define ISPRINTF(x,y) __attribute__((format (printf, x, y)))
 #else
