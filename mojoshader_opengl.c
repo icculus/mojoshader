@@ -82,6 +82,7 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
     GLuint handle;
+    int must_set_samplers;
     uint32 uniform_count;
     UniformMap *uniforms;
     uint32 sampler_count;
@@ -1330,6 +1331,10 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     retval->fragment = pshader;
     retval->refcount = 1;
 
+    // we set the samplers on first call to MOJOSHADER_glProgramReady(), even
+    //  though it's only done once, so we don't have to bind the program here.
+    retval->must_set_samplers = 1;
+
     if (vshader != NULL)
     {
         if (vshader->parseData->attribute_count > 0)
@@ -1662,21 +1667,23 @@ void MOJOSHADER_glProgramReady(void)
         } // if
     } // for
 
-    // push Samplers to the program from our register files...
-    // !!! FIXME: just push these once at link time...they never change, since
-    // !!! FIXME:  they are meant to be constant texture unit ids and not
-    // !!! FIXME:  textures.
-    count = ctx->bound_program->sampler_count;
-    for (i = 0; i < count; i++)
+    // Link up the Samplers. These never change after link time, since they
+    //  are meant to be constant texture unit ids and not textures.
+    if (ctx->bound_program->must_set_samplers)
     {
-        SamplerMap *map = &ctx->bound_program->samplers[i];
-        const MOJOSHADER_sampler *s = map->sampler;
-        if (s->index != map->value)
+        count = ctx->bound_program->sampler_count;
+        for (i = 0; i < count; i++)
         {
-            map->value = s->index;
-            ctx->profileSetSampler(map->location, s->index);
-        } // if
-    } // for
+            SamplerMap *map = &ctx->bound_program->samplers[i];
+            const MOJOSHADER_sampler *s = map->sampler;
+            if (s->index != map->value)
+            {
+                map->value = s->index;
+                ctx->profileSetSampler(map->location, s->index);
+            } // if
+        } // for
+        ctx->bound_program->must_set_samplers = 0;  // it's done!
+    } // if
 } // MOJOSHADER_glProgramReady
 
 
