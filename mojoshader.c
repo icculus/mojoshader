@@ -6918,6 +6918,15 @@ static char *alloc_varname(Context *ctx, const RegisterList *reg)
 } // alloc_varname
 
 
+// !!! FIXME: this code is sort of hard to follow:
+// !!! FIXME:  "var->used" only applies to arrays (at the moment, at least,
+// !!! FIXME:  but this might be buggy at a later time?), and this code
+// !!! FIXME:  relies on that.
+// !!! FIXME: "variables" means "things we found in a CTAB" but it's not
+// !!! FIXME:  all registers, etc.
+// !!! FIXME: "const_array" means an array for d3d "const" registers (c0, c1,
+// !!! FIXME:  etc), but not a constant array, although they _can_ be.
+// !!! FIXME: It's just a mess.  :/
 static MOJOSHADER_uniform *build_uniforms(Context *ctx)
 {
     const size_t len = sizeof (MOJOSHADER_uniform) * ctx->uniform_count;
@@ -6956,6 +6965,7 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
         {
             int skip = 0;
 
+            // !!! FIXME: does this fail if written > ctx->uniform_count?
             if (item == NULL)
             {
                 fail(ctx, "BUG: mismatched uniform list and count");
