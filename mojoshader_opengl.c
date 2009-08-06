@@ -65,14 +65,6 @@ typedef struct
 
 typedef struct
 {
-    MOJOSHADER_shaderType shader_type;
-    const MOJOSHADER_sampler *sampler;
-    GLuint location;
-    GLint value;
-} SamplerMap;
-
-typedef struct
-{
     const MOJOSHADER_attribute *attribute;
     GLuint location;
 } AttributeMap;
@@ -82,11 +74,8 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
     GLuint handle;
-    int must_set_samplers;
     uint32 uniform_count;
     UniformMap *uniforms;
-    uint32 sampler_count;
-    SamplerMap *samplers;
     uint32 attribute_count;
     AttributeMap *attributes;
     uint32 refcount;
@@ -190,6 +179,7 @@ struct MOJOSHADER_glContext
     void (*profileUniform1i)(const MOJOSHADER_parseData *, GLint, GLint);
     void (*profileSetSampler)(GLint loc, GLuint sampler);
     int (*profileMustLoadConstantArrays)(void);
+    int (*profileMustLoadSamplers)(void);
 };
 
 
@@ -288,6 +278,7 @@ static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
 
 
 static int impl_GLSL_MustLoadConstantArrays(void) { return 1; }
+static int impl_GLSL_MustLoadSamplers(void) { return 1; }
 
 static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -438,6 +429,7 @@ static inline GLenum arb1_shader_type(const MOJOSHADER_shaderType t)
 } // arb1_shader_type
 
 static int impl_ARB1_MustLoadConstantArrays(void) { return 0; }
+static int impl_ARB1_MustLoadSamplers(void) { return 0; }
 
 static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -983,6 +975,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform1i = impl_GLSL_Uniform1i;
         ctx->profileSetSampler = impl_GLSL_SetSampler;
         ctx->profileMustLoadConstantArrays = impl_GLSL_MustLoadConstantArrays;
+        ctx->profileMustLoadSamplers = impl_GLSL_MustLoadSamplers;
     } // if
 #endif
 
@@ -1006,6 +999,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform1i = impl_ARB1_Uniform1i;
         ctx->profileSetSampler = impl_ARB1_SetSampler;
         ctx->profileMustLoadConstantArrays = impl_ARB1_MustLoadConstantArrays;
+        ctx->profileMustLoadSamplers = impl_ARB1_MustLoadSamplers;
 
         // GL_NV_gpu_program4 has integer uniform loading support.
         if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
@@ -1031,6 +1025,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileUniform1i != NULL);
     assert(ctx->profileSetSampler != NULL);
     assert(ctx->profileMustLoadConstantArrays != NULL);
+    assert(ctx->profileMustLoadSamplers != NULL);
 
     retval = ctx;
     ctx = current_ctx;
@@ -1136,7 +1131,6 @@ static void program_unref(MOJOSHADER_glProgram *program)
             shader_unref(program->fragment);
             for (i = 0; i < program->uniform_count; i++)
                 Free(program->uniforms[i].uniform_array_buffer);
-            Free(program->samplers);
             Free(program->uniforms);
             Free(program->attributes);
             Free(program);
@@ -1211,24 +1205,26 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
 static void lookup_samplers(MOJOSHADER_glProgram *program,
                             MOJOSHADER_glShader *shader)
 {
-    int i;
     const MOJOSHADER_parseData *pd = shader->parseData;
     const MOJOSHADER_sampler *s = pd->samplers;
-    const MOJOSHADER_shaderType shader_type = pd->shader_type;
+    int i;
+
+    if ((pd->sampler_count == 0) || (!ctx->profileMustLoadSamplers()))
+        return;   // nothing to do here, so don't bother binding, etc.
+
+    // Link up the Samplers. These never change after link time, since they
+    //  are meant to be constant texture unit ids and not textures.
+
+    ctx->profileUseProgramObject(program);
 
     for (i = 0; i < pd->sampler_count; i++)
     {
         const GLint loc = ctx->profileGetSamplerLocation(program, shader, i);
         if (loc != -1)  // maybe the Sampler was optimized out?
-        {
-            SamplerMap *map = &program->samplers[program->sampler_count];
-            map->shader_type = shader_type;
-            map->sampler = &s[i];
-            map->location = (GLuint) loc;
-            map->value = -1;  // hopefully not a valid texture unit.
-            program->sampler_count++;
-        } // if
+            ctx->profileSetSampler(loc, s[i].index);
     } // for
+
+    ctx->profileUseProgramObject(ctx->bound_program);
 } // lookup_samplers
 
 
@@ -1314,26 +1310,10 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         memset(retval->uniforms, '\0', len);
     } // if
 
-    numregs = 0;
-    if (vshader != NULL) numregs += vshader->parseData->sampler_count;
-    if (pshader != NULL) numregs += pshader->parseData->sampler_count;
-    if (numregs > 0)
-    {
-        const size_t len = sizeof (SamplerMap) * numregs;
-        retval->samplers = (SamplerMap *) Malloc(len);
-        if (retval->samplers == NULL)
-            goto link_program_fail;
-        memset(retval->samplers, '\0', len);
-    } // if
-
     retval->handle = program;
     retval->vertex = vshader;
     retval->fragment = pshader;
     retval->refcount = 1;
-
-    // we set the samplers on first call to MOJOSHADER_glProgramReady(), even
-    //  though it's only done once, so we don't have to bind the program here.
-    retval->must_set_samplers = 1;
 
     if (vshader != NULL)
     {
@@ -1372,7 +1352,6 @@ link_program_fail:
         uint32 i;
         for (i = 0; i < retval->uniform_count; i++)
             Free(retval->uniforms[i].uniform_array_buffer);
-        Free(retval->samplers);
         Free(retval->uniforms);
         Free(retval->attributes);
         Free(retval);
@@ -1666,24 +1645,6 @@ void MOJOSHADER_glProgramReady(void)
             } // else if
         } // if
     } // for
-
-    // Link up the Samplers. These never change after link time, since they
-    //  are meant to be constant texture unit ids and not textures.
-    if (ctx->bound_program->must_set_samplers)
-    {
-        count = ctx->bound_program->sampler_count;
-        for (i = 0; i < count; i++)
-        {
-            SamplerMap *map = &ctx->bound_program->samplers[i];
-            const MOJOSHADER_sampler *s = map->sampler;
-            if (s->index != map->value)
-            {
-                map->value = s->index;
-                ctx->profileSetSampler(map->location, s->index);
-            } // if
-        } // for
-        ctx->bound_program->must_set_samplers = 0;  // it's done!
-    } // if
 } // MOJOSHADER_glProgramReady
 
 
