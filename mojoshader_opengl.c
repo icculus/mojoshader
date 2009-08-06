@@ -178,8 +178,8 @@ struct MOJOSHADER_glContext
     void (*profileUniform4iv)(const MOJOSHADER_parseData *, GLint, GLsizei, GLint *);
     void (*profileUniform1i)(const MOJOSHADER_parseData *, GLint, GLint);
     void (*profileSetSampler)(GLint loc, GLuint sampler);
-    int (*profileMustLoadConstantArrays)(void);
-    int (*profileMustLoadSamplers)(void);
+    int (*profileMustPushConstantArrays)(void);
+    int (*profileMustPushSamplers)(void);
 };
 
 
@@ -277,8 +277,8 @@ static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
 } // glsl_shader_type
 
 
-static int impl_GLSL_MustLoadConstantArrays(void) { return 1; }
-static int impl_GLSL_MustLoadSamplers(void) { return 1; }
+static int impl_GLSL_MustPushConstantArrays(void) { return 1; }
+static int impl_GLSL_MustPushSamplers(void) { return 1; }
 
 static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -428,8 +428,8 @@ static inline GLenum arb1_shader_type(const MOJOSHADER_shaderType t)
     return GL_NONE;
 } // arb1_shader_type
 
-static int impl_ARB1_MustLoadConstantArrays(void) { return 0; }
-static int impl_ARB1_MustLoadSamplers(void) { return 0; }
+static int impl_ARB1_MustPushConstantArrays(void) { return 0; }
+static int impl_ARB1_MustPushSamplers(void) { return 0; }
 
 static int impl_ARB1_MaxUniforms(MOJOSHADER_shaderType shader_type)
 {
@@ -974,8 +974,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform4iv = impl_GLSL_Uniform4iv;
         ctx->profileUniform1i = impl_GLSL_Uniform1i;
         ctx->profileSetSampler = impl_GLSL_SetSampler;
-        ctx->profileMustLoadConstantArrays = impl_GLSL_MustLoadConstantArrays;
-        ctx->profileMustLoadSamplers = impl_GLSL_MustLoadSamplers;
+        ctx->profileMustPushConstantArrays = impl_GLSL_MustPushConstantArrays;
+        ctx->profileMustPushSamplers = impl_GLSL_MustPushSamplers;
     } // if
 #endif
 
@@ -998,8 +998,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileUniform4iv = impl_ARB1_Uniform4iv;
         ctx->profileUniform1i = impl_ARB1_Uniform1i;
         ctx->profileSetSampler = impl_ARB1_SetSampler;
-        ctx->profileMustLoadConstantArrays = impl_ARB1_MustLoadConstantArrays;
-        ctx->profileMustLoadSamplers = impl_ARB1_MustLoadSamplers;
+        ctx->profileMustPushConstantArrays = impl_ARB1_MustPushConstantArrays;
+        ctx->profileMustPushSamplers = impl_ARB1_MustPushSamplers;
 
         // GL_NV_gpu_program4 has integer uniform loading support.
         if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
@@ -1024,8 +1024,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileUniform4iv != NULL);
     assert(ctx->profileUniform1i != NULL);
     assert(ctx->profileSetSampler != NULL);
-    assert(ctx->profileMustLoadConstantArrays != NULL);
-    assert(ctx->profileMustLoadSamplers != NULL);
+    assert(ctx->profileMustPushConstantArrays != NULL);
+    assert(ctx->profileMustPushSamplers != NULL);
 
     retval = ctx;
     ctx = current_ctx;
@@ -1177,7 +1177,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
             // only do constants once, at link time. These aren't changed ever.
             if (u->constant)
             {
-                if (ctx->profileMustLoadConstantArrays())
+                if (ctx->profileMustPushConstantArrays())
                 {
                     const int base = u->index;
                     const int size = u->array_count;
@@ -1209,7 +1209,7 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
     const MOJOSHADER_sampler *s = pd->samplers;
     int i;
 
-    if ((pd->sampler_count == 0) || (!ctx->profileMustLoadSamplers()))
+    if ((pd->sampler_count == 0) || (!ctx->profileMustPushSamplers()))
         return;   // nothing to do here, so don't bother binding, etc.
 
     // Link up the Samplers. These never change after link time, since they
