@@ -1162,7 +1162,7 @@ static void fill_constant_array(GLfloat *f, const int base, const int size,
 
 
 static void lookup_uniforms(MOJOSHADER_glProgram *program,
-                            MOJOSHADER_glShader *shader)
+                            MOJOSHADER_glShader *shader, int *bound)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
     const MOJOSHADER_shaderType shader_type = pd->shader_type;
@@ -1183,9 +1183,12 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
                     const int size = u->array_count;
                     GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat)*(size*4));
                     fill_constant_array(f, base, size, pd);
-                    ctx->profileUseProgramObject(program);
+                    if (!(*bound))
+                    {
+                        ctx->profileUseProgramObject(program);
+                        *bound = 1;
+                    } // if
                     ctx->profileUniform4fv(pd, loc, size, f);
-                    ctx->profileUseProgramObject(ctx->bound_program);
                 } // if
             } // if
 
@@ -1203,7 +1206,7 @@ static void lookup_uniforms(MOJOSHADER_glProgram *program,
 
 
 static void lookup_samplers(MOJOSHADER_glProgram *program,
-                            MOJOSHADER_glShader *shader)
+                            MOJOSHADER_glShader *shader, int *bound)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
     const MOJOSHADER_sampler *s = pd->samplers;
@@ -1215,7 +1218,11 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
     // Link up the Samplers. These never change after link time, since they
     //  are meant to be constant texture unit ids and not textures.
 
-    ctx->profileUseProgramObject(program);
+    if (!(*bound))
+    {
+        ctx->profileUseProgramObject(program);
+        *bound = 1;
+    } // if
 
     for (i = 0; i < pd->sampler_count; i++)
     {
@@ -1223,8 +1230,6 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
         if (loc != -1)  // maybe the Sampler was optimized out?
             ctx->profileSetSampler(loc, s[i].index);
     } // for
-
-    ctx->profileUseProgramObject(ctx->bound_program);
 } // lookup_samplers
 
 
@@ -1284,6 +1289,8 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
 MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                                                MOJOSHADER_glShader *pshader)
 {
+    int bound = 0;
+
     if ((vshader == NULL) && (pshader == NULL))
         return NULL;
 
@@ -1329,20 +1336,23 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
             lookup_attributes(retval);
         } // if
 
-        lookup_uniforms(retval, vshader);
-        lookup_samplers(retval, vshader);
+        lookup_uniforms(retval, vshader, &bound);
+        lookup_samplers(retval, vshader, &bound);
         vshader->refcount++;
     } // if
 
     if (pshader != NULL)
     {
-        lookup_uniforms(retval, pshader);
-        lookup_samplers(retval, pshader);
+        lookup_uniforms(retval, pshader, &bound);
+        lookup_samplers(retval, pshader, &bound);
         pshader->refcount++;
     } // if
 
     if (!build_constants_lists(retval))
         goto link_program_fail;
+
+    if (bound)  // reset the old binding.
+        ctx->profileUseProgramObject(ctx->bound_program);
 
     return retval;
 
@@ -1359,6 +1369,9 @@ link_program_fail:
 
     if (program != 0)
         ctx->profileDeleteProgram(program);
+
+    if (bound)
+        ctx->profileUseProgramObject(ctx->bound_program);
 
     return NULL;
 } // MOJOSHADER_glLinkProgram
