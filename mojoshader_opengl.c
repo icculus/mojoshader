@@ -55,12 +55,6 @@ typedef struct
     MOJOSHADER_shaderType shader_type;
     const MOJOSHADER_uniform *uniform;
     GLuint location;
-    union {
-        GLint b;
-        GLint i[4];
-        GLfloat f[4];
-    } value;
-    GLfloat *uniform_array_buffer;
 } UniformMap;
 
 typedef struct
@@ -78,7 +72,26 @@ struct MOJOSHADER_glProgram
     UniformMap *uniforms;
     uint32 attribute_count;
     AttributeMap *attributes;
+    size_t vs_uniforms_float4_count;
+    GLfloat *vs_uniforms_float4;
+    size_t vs_uniforms_int4_count;
+    GLint *vs_uniforms_int4;
+    size_t vs_uniforms_bool_count;
+    GLint *vs_uniforms_bool;
+    size_t ps_uniforms_float4_count;
+    GLfloat *ps_uniforms_float4;
+    size_t ps_uniforms_int4_count;
+    GLint *ps_uniforms_int4;
+    size_t ps_uniforms_bool_count;
+    GLint *ps_uniforms_bool;
     uint32 refcount;
+    // GLSL uses these...location of uniform arrays.
+    GLuint vs_float4_loc;
+    GLuint vs_int4_loc;
+    GLuint vs_bool_loc;
+    GLuint ps_float4_loc;
+    GLuint ps_int4_loc;
+    GLuint ps_bool_loc;
 };
 
 #ifndef WINGDIAPI
@@ -150,7 +163,8 @@ struct MOJOSHADER_glContext
     PFNGLGETUNIFORMLOCATIONARBPROC glGetUniformLocation;
     PFNGLLINKPROGRAMARBPROC glLinkProgram;
     PFNGLSHADERSOURCEARBPROC glShaderSource;
-    PFNGLUNIFORM1IARBPROC glUniform1i;
+    PFNGLUNIFORM1IPROC glUniform1i;
+    PFNGLUNIFORM1IVPROC glUniform1iv;
     PFNGLUNIFORM4FVARBPROC glUniform4fv;
     PFNGLUNIFORM4IVARBPROC glUniform4iv;
     PFNGLUSEPROGRAMOBJECTARBPROC glUseProgramObject;
@@ -170,14 +184,14 @@ struct MOJOSHADER_glContext
     void (*profileDeleteShader)(const GLuint shader);
     void (*profileDeleteProgram)(const GLuint program);
     GLint (*profileGetAttribLocation)(MOJOSHADER_glProgram *program, int idx);
-    GLint (*profileGetUniformLocation)(MOJOSHADER_glProgram *, MOJOSHADER_glShader *, int);
+    GLint (*profileGetUniformLocation)(MOJOSHADER_glProgram *program, MOJOSHADER_glShader *shader, int idx);
     GLint (*profileGetSamplerLocation)(MOJOSHADER_glProgram *, MOJOSHADER_glShader *, int);
     GLuint (*profileLinkProgram)(MOJOSHADER_glShader *, MOJOSHADER_glShader *);
+    void (*profileInitProgram)(MOJOSHADER_glProgram *program);
     void (*profileUseProgramObject)(MOJOSHADER_glProgram *program);
-    void (*profileUniform4fv)(const MOJOSHADER_parseData *, GLint, GLsizei, GLfloat *);
-    void (*profileUniform4iv)(const MOJOSHADER_parseData *, GLint, GLsizei, GLint *);
-    void (*profileUniform1i)(const MOJOSHADER_parseData *, GLint, GLint);
-    void (*profileSetSampler)(GLint loc, GLuint sampler);
+    void (*profilePushConstantArray)(MOJOSHADER_glProgram *, const MOJOSHADER_uniform *, const GLfloat *);
+    void (*profilePushUniforms)(void);
+    void (*profilePushSampler)(GLint loc, GLuint sampler);
     int (*profileMustPushConstantArrays)(void);
     int (*profileMustPushSamplers)(void);
 };
@@ -336,8 +350,7 @@ static void impl_GLSL_DeleteProgram(const GLuint program)
 static GLint impl_GLSL_GetUniformLocation(MOJOSHADER_glProgram *program,
                                           MOJOSHADER_glShader *shader, int idx)
 {
-    return ctx->glGetUniformLocation(program->handle,
-                                     shader->parseData->uniforms[idx].name);
+    return 0;  // no-op, we push this as one big-ass array now.
 } // impl_GLSL_GetUniformLocation
 
 
@@ -381,37 +394,91 @@ static GLuint impl_GLSL_LinkProgram(MOJOSHADER_glShader *vshader,
 } // impl_GLSL_LinkProgram
 
 
+static void impl_GLSL_InitProgram(MOJOSHADER_glProgram *program)
+{
+    program->vs_float4_loc =
+        ctx->glGetUniformLocation(program->handle, "vs_uniforms_vec4");
+    program->vs_int4_loc =
+        ctx->glGetUniformLocation(program->handle, "vs_uniforms_ivec4");
+    program->vs_bool_loc =
+        ctx->glGetUniformLocation(program->handle, "vs_uniforms_bool");
+    program->ps_float4_loc =
+        ctx->glGetUniformLocation(program->handle, "ps_uniforms_vec4");
+    program->ps_int4_loc =
+        ctx->glGetUniformLocation(program->handle, "ps_uniforms_ivec4");
+    program->ps_bool_loc =
+        ctx->glGetUniformLocation(program->handle, "ps_uniforms_bool");
+} // impl_GLSL_InitProgram
+
+
 static void impl_GLSL_UseProgramObject(MOJOSHADER_glProgram *program)
 {
     ctx->glUseProgramObject((program != NULL) ? program->handle : 0);
 } // impl_GLSL_UseProgramObject
 
 
-static void impl_GLSL_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
-                                 GLsizei siz, GLfloat *v)
+static void impl_GLSL_PushConstantArray(MOJOSHADER_glProgram *program,
+                                        const MOJOSHADER_uniform *u,
+                                        const GLfloat *f)
 {
-    ctx->glUniform4fv(loc, siz, v);
-} // impl_GLSL_Uniform4fv
+    const GLint loc = ctx->glGetUniformLocation(program->handle, u->name);
+    if (loc != -1)   // not optimized out?
+        ctx->glUniform4fv(loc, u->array_count, f);
+} // impl_GLSL_PushConstantArray
 
 
-static void impl_GLSL_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
-                                 GLsizei siz, GLint *v)
+static void impl_GLSL_PushUniforms(void)
 {
-    ctx->glUniform4iv(loc, siz, v);
-} // impl_GLSL_Uniform4iv
+    const MOJOSHADER_glProgram *program = ctx->bound_program;
+
+    if (program->vs_float4_loc != -1)
+    {
+        ctx->glUniform4fv(program->vs_float4_loc,
+                          program->vs_uniforms_float4_count,
+                          program->vs_uniforms_float4);
+    } // if
+
+    if (program->vs_int4_loc != -1)
+    {
+        ctx->glUniform4iv(program->vs_int4_loc,
+                          program->vs_uniforms_int4_count,
+                          program->vs_uniforms_int4);
+    } // if
+
+    if (program->vs_bool_loc != -1)
+    {
+        ctx->glUniform1iv(program->vs_bool_loc,
+                          program->vs_uniforms_bool_count,
+                          program->vs_uniforms_bool);
+    } // if
+
+    if (program->ps_float4_loc != -1)
+    {
+        ctx->glUniform4fv(program->ps_float4_loc,
+                          program->ps_uniforms_float4_count,
+                          program->ps_uniforms_float4);
+    } // if
+
+    if (program->ps_int4_loc != -1)
+    {
+        ctx->glUniform4iv(program->ps_int4_loc,
+                          program->ps_uniforms_int4_count,
+                          program->ps_uniforms_int4);
+    } // if
+
+    if (program->ps_bool_loc != -1)
+    {
+        ctx->glUniform1iv(program->ps_bool_loc,
+                          program->ps_uniforms_bool_count,
+                          program->ps_uniforms_bool);
+    } // if
+} // impl_GLSL_PushUniforms
 
 
-static void impl_GLSL_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
-                                GLint v)
-{
-    ctx->glUniform1i(loc, v);
-} // impl_GLSL_Uniform1i
-
-
-static void impl_GLSL_SetSampler(GLint loc, GLuint sampler)
+static void impl_GLSL_PushSampler(GLint loc, GLuint sampler)
 {
     ctx->glUniform1i(loc, sampler);
-} // impl_GLSL_SetSampler
+} // impl_GLSL_PushSampler
 
 #endif  // SUPPORT_PROFILE_GLSL
 
@@ -486,14 +553,11 @@ static void impl_ARB1_DeleteProgram(const GLuint program)
     // no-op. ARB1 doesn't have real linked programs.
 } // impl_GLSL_DeleteProgram
 
-
 static GLint impl_ARB1_GetUniformLocation(MOJOSHADER_glProgram *program,
                                           MOJOSHADER_glShader *shader, int idx)
 {
-    assert(shader->parseData->uniforms[idx].type == MOJOSHADER_UNIFORM_FLOAT);
-    return shader->parseData->uniforms[idx].index;  // !!! FIXME: doesn't work if there are int or bool uniforms!
+    return 0;  // no-op, we push this as one big-ass array now.
 } // impl_ARB1_GetUniformLocation
-
 
 static GLint impl_ARB1_GetSamplerLocation(MOJOSHADER_glProgram *program,
                                           MOJOSHADER_glShader *shader, int idx)
@@ -517,6 +581,12 @@ static GLuint impl_ARB1_LinkProgram(MOJOSHADER_glShader *vshader,
 } // impl_ARB1_LinkProgram
 
 
+static void impl_ARB1_InitProgram(MOJOSHADER_glProgram *program)
+{
+    // no-op.
+} // impl_ARB1_InitProgram
+
+
 static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program)
 {
     GLuint vhandle = 0;
@@ -537,65 +607,116 @@ static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program)
 } // impl_ARB1_UseProgramObject
 
 
-static void impl_ARB1_Uniform4fv(const MOJOSHADER_parseData *pd, GLint loc,
-                                 GLsizei siz, GLfloat *v)
+static void impl_ARB1_PushConstantArray(MOJOSHADER_glProgram *program,
+                                        const MOJOSHADER_uniform *u,
+                                        const GLfloat *f)
 {
-    int i;
-    const GLenum shader_type = arb1_shader_type(pd->shader_type);
-    for (i = 0; i < siz; i++, v += 4)
-        ctx->glProgramLocalParameter4fvARB(shader_type, loc + i, v);
-} // impl_ARB1_Uniform4fv
+    // no-op. Constant arrays are defined in source code for arb1.
+} // impl_ARB1_PushConstantArray
 
 
-static void impl_ARB1_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
-                                 GLsizei siz, GLint *v)
+static void impl_ARB1_PushUniforms(void)
 {
-    int i;
-    const GLenum shader_type = arb1_shader_type(pd->shader_type);
-    for (i = 0; i < siz; i++, v += 4)
+    const MOJOSHADER_glProgram *program = ctx->bound_program;
+    const uint32 count = ctx->bound_program->uniform_count;
+    GLfloat *dst_vs_f = program->vs_uniforms_float4;
+    GLint *dst_vs_i = program->vs_uniforms_int4;
+    GLint *dst_vs_b = program->vs_uniforms_bool;
+    GLfloat *dst_ps_f = program->ps_uniforms_float4;
+    GLint *dst_ps_i = program->ps_uniforms_int4;
+    GLint *dst_ps_b = program->ps_uniforms_bool;
+    GLint loc = 0;
+    uint32 i;
+
+    for (i = 0; i < count; i++)
     {
-        GLfloat f[4] = {
-            (GLfloat) v[0], (GLfloat) v[1], (GLfloat) v[2], (GLfloat) v[3]
-        };
-        ctx->glProgramLocalParameter4fvARB(shader_type, loc + i, f);
+        UniformMap *map = &ctx->bound_program->uniforms[i];
+        const MOJOSHADER_uniform *u = map->uniform;
+        const MOJOSHADER_uniformType type = u->type;
+        const MOJOSHADER_shaderType shader_type = map->shader_type;
+        const GLenum arb_shader_type = arb1_shader_type(shader_type);
+        const int size = u->array_count ? u->array_count : 1;
+        GLfloat **dstf = NULL;
+        GLint **dsti = NULL;
+        GLint **dstb = NULL;
+
+        assert(!u->constant);
+
+        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        {
+            dstf = &dst_vs_f;
+            dsti = &dst_vs_i;
+            dstb = &dst_vs_b;
+        } // if
+
+        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+        {
+            dstf = &dst_ps_f;
+            dsti = &dst_ps_i;
+            dstb = &dst_ps_b;
+        } // else if
+
+        else
+        {
+            assert(0);  // !!! FIXME: geometry shaders?
+        } // else
+
+        if (type == MOJOSHADER_UNIFORM_FLOAT)
+        {
+            int i;
+            for (i = 0; i < size; i++, *dstf += 4, loc++)
+                ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, *dstf);
+        } // if
+        else if (type == MOJOSHADER_UNIFORM_INT)
+        {
+            int i;
+            if (ctx->glProgramLocalParameterI4ivNV != NULL)
+            {
+                // GL_NV_gpu_program4 has integer uniform loading support.
+                for (i = 0; i < size; i++, *dsti += 4, loc++)
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, *dsti);
+            } // if
+            else
+            {
+                for (i = 0; i < size; i++, *dsti += 4, loc++)
+                {
+                    const GLint *p = *dsti;
+                    const GLfloat fv[4] = { (GLfloat) p[0], (GLfloat) p[1], (GLfloat) p[2], (GLfloat) p[3] };
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
+                } // for
+            } // else
+        } // else if
+        else if (type == MOJOSHADER_UNIFORM_BOOL)
+        {
+            int i;
+            if (ctx->glProgramLocalParameterI4ivNV != NULL)
+            {
+                // GL_NV_gpu_program4 has integer uniform loading support.
+                for (i = 0; i < size; i++, (*dstb)++, loc++)
+                {
+                    const GLint ib = (GLint) *(*dstb) ? 1 : 0;
+                    const GLint iv[4] = { ib, ib, ib, ib };
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, iv);
+                } // for
+            } // if
+            else
+            {
+                for (i = 0; i < size; i++, (*dstb)++, loc++)
+                {
+                    const GLfloat fb = *(*dstb) ? 1.0f : 0.0f;
+                    const GLfloat fv[4] = { fb, fb, fb, fb };
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
+                } // for
+            } // else
+        } // else if
     } // for
-} // impl_ARB1_Uniform4iv
+} // impl_ARB1_PushUniforms
 
-
-static void impl_ARB1_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
-                                GLint _v)
-{
-    const GLenum shader_type = arb1_shader_type(pd->shader_type);
-    const GLfloat v = (GLfloat) _v;
-    GLfloat f[4] = { v, v, v, v };
-    ctx->glProgramLocalParameter4fvARB(shader_type, loc, f);
-} // impl_ARB1_Uniform1i
-
-
-static void impl_NV4_Uniform4iv(const MOJOSHADER_parseData *pd, GLint loc,
-                                 GLsizei siz, GLint *v)
-{
-    int i;
-    const GLenum shader_type = arb1_shader_type(pd->shader_type);
-    for (i = 0; i < siz; i++, v += 4)
-        ctx->glProgramLocalParameterI4ivNV(shader_type, loc + i, v);
-} // impl_NV4_Uniform4iv
-
-
-static void impl_NV4_Uniform1i(const MOJOSHADER_parseData *pd, GLint loc,
-                                GLint _v)
-{
-    const GLenum shader_type = arb1_shader_type(pd->shader_type);
-    GLint v[4] = { _v, _v, _v, _v };
-    ctx->glProgramLocalParameterI4ivNV(shader_type, loc, v);
-} // impl_NV4_Uniform1i
-
-
-static void impl_ARB1_SetSampler(GLint loc, GLuint sampler)
+static void impl_ARB1_PushSampler(GLint loc, GLuint sampler)
 {
     // no-op in this profile...arb1 uses the texture units as-is.
     assert(loc == (GLint) sampler);
-} // impl_ARB1_SetSampler
+} // impl_ARB1_PushSampler
 
 #endif  // SUPPORT_PROFILE_ARB1
 
@@ -650,6 +771,7 @@ static void lookup_entry_points(void *(*lookup)(const char *fnname))
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLLINKPROGRAMARBPROC, glLinkProgram);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLSHADERSOURCEARBPROC, glShaderSource);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM1IARBPROC, glUniform1i);
+    DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM1IVARBPROC, glUniform1iv);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM4FVARBPROC, glUniform4fv);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLUNIFORM4IVARBPROC, glUniform4iv);
     DO_LOOKUP(GL_ARB_shader_objects, PFNGLUSEPROGRAMOBJECTARBPROC, glUseProgramObject);
@@ -969,11 +1091,11 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileGetUniformLocation = impl_GLSL_GetUniformLocation;
         ctx->profileGetSamplerLocation = impl_GLSL_GetSamplerLocation;
         ctx->profileLinkProgram = impl_GLSL_LinkProgram;
+        ctx->profileInitProgram = impl_GLSL_InitProgram;
         ctx->profileUseProgramObject = impl_GLSL_UseProgramObject;
-        ctx->profileUniform4fv = impl_GLSL_Uniform4fv;
-        ctx->profileUniform4iv = impl_GLSL_Uniform4iv;
-        ctx->profileUniform1i = impl_GLSL_Uniform1i;
-        ctx->profileSetSampler = impl_GLSL_SetSampler;
+        ctx->profilePushConstantArray = impl_GLSL_PushConstantArray;
+        ctx->profilePushUniforms = impl_GLSL_PushUniforms;
+        ctx->profilePushSampler = impl_GLSL_PushSampler;
         ctx->profileMustPushConstantArrays = impl_GLSL_MustPushConstantArrays;
         ctx->profileMustPushSamplers = impl_GLSL_MustPushSamplers;
     } // if
@@ -993,20 +1115,13 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileGetUniformLocation = impl_ARB1_GetUniformLocation;
         ctx->profileGetSamplerLocation = impl_ARB1_GetSamplerLocation;
         ctx->profileLinkProgram = impl_ARB1_LinkProgram;
+        ctx->profileInitProgram = impl_ARB1_InitProgram;
         ctx->profileUseProgramObject = impl_ARB1_UseProgramObject;
-        ctx->profileUniform4fv = impl_ARB1_Uniform4fv;
-        ctx->profileUniform4iv = impl_ARB1_Uniform4iv;
-        ctx->profileUniform1i = impl_ARB1_Uniform1i;
-        ctx->profileSetSampler = impl_ARB1_SetSampler;
+        ctx->profilePushConstantArray = impl_ARB1_PushConstantArray;
+        ctx->profilePushUniforms = impl_ARB1_PushUniforms;
+        ctx->profilePushSampler = impl_ARB1_PushSampler;
         ctx->profileMustPushConstantArrays = impl_ARB1_MustPushConstantArrays;
         ctx->profileMustPushSamplers = impl_ARB1_MustPushSamplers;
-
-        // GL_NV_gpu_program4 has integer uniform loading support.
-        if (strcmp(profile, MOJOSHADER_PROFILE_NV4) == 0)
-        {
-            ctx->profileUniform4iv = impl_NV4_Uniform4iv;
-            ctx->profileUniform1i = impl_NV4_Uniform1i;
-        } // if
     } // if
 #endif
 
@@ -1019,11 +1134,11 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileGetUniformLocation != NULL);
     assert(ctx->profileGetSamplerLocation != NULL);
     assert(ctx->profileLinkProgram != NULL);
+    assert(ctx->profileInitProgram != NULL);
     assert(ctx->profileUseProgramObject != NULL);
-    assert(ctx->profileUniform4fv != NULL);
-    assert(ctx->profileUniform4iv != NULL);
-    assert(ctx->profileUniform1i != NULL);
-    assert(ctx->profileSetSampler != NULL);
+    assert(ctx->profilePushConstantArray != NULL);
+    assert(ctx->profilePushUniforms != NULL);
+    assert(ctx->profilePushSampler != NULL);
     assert(ctx->profileMustPushConstantArrays != NULL);
     assert(ctx->profileMustPushSamplers != NULL);
 
@@ -1120,7 +1235,6 @@ static void program_unref(MOJOSHADER_glProgram *program)
 {
     if (program != NULL)
     {
-        uint32 i;
         const uint32 refcount = program->refcount;
         if (refcount > 1)
             program->refcount--;
@@ -1129,8 +1243,12 @@ static void program_unref(MOJOSHADER_glProgram *program)
             ctx->profileDeleteProgram(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
-            for (i = 0; i < program->uniform_count; i++)
-                Free(program->uniforms[i].uniform_array_buffer);
+            Free(program->vs_uniforms_float4);
+            Free(program->vs_uniforms_int4);
+            Free(program->vs_uniforms_bool);
+            Free(program->ps_uniforms_float4);
+            Free(program->ps_uniforms_int4);
+            Free(program->ps_uniforms_bool);
             Free(program->uniforms);
             Free(program->attributes);
             Free(program);
@@ -1161,47 +1279,87 @@ static void fill_constant_array(GLfloat *f, const int base, const int size,
 } // fill_constant_array
 
 
-static void lookup_uniforms(MOJOSHADER_glProgram *program,
-                            MOJOSHADER_glShader *shader, int *bound)
+static int lookup_uniforms(MOJOSHADER_glProgram *program,
+                           MOJOSHADER_glShader *shader, int *bound)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
     const MOJOSHADER_shaderType shader_type = pd->shader_type;
+    uint32 float4_count = 0;
+    uint32 int4_count = 0;
+    uint32 bool_count = 0;
     int i;
 
     for (i = 0; i < pd->uniform_count; i++)
     {
         const MOJOSHADER_uniform *u = &pd->uniforms[i];
-        const GLint loc = ctx->profileGetUniformLocation(program, shader, i);
-        if (loc != -1)  // maybe the Uniform was optimized out?
+
+        if (u->constant)
         {
             // only do constants once, at link time. These aren't changed ever.
-            if (u->constant)
+            if (ctx->profileMustPushConstantArrays())
             {
-                if (ctx->profileMustPushConstantArrays())
+                const int base = u->index;
+                const int size = u->array_count;
+                GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat) * (size * 4));
+                fill_constant_array(f, base, size, pd);
+                if (!(*bound))
                 {
-                    const int base = u->index;
-                    const int size = u->array_count;
-                    GLfloat *f = (GLfloat *) alloca(sizeof (GLfloat)*(size*4));
-                    fill_constant_array(f, base, size, pd);
-                    if (!(*bound))
-                    {
-                        ctx->profileUseProgramObject(program);
-                        *bound = 1;
-                    } // if
-                    ctx->profileUniform4fv(pd, loc, size, f);
+                    ctx->profileUseProgramObject(program);
+                    *bound = 1;
                 } // if
+                ctx->profilePushConstantArray(program, u, f);
             } // if
+        } // if
 
-            else
+        else
+        {
+            const GLint loc = ctx->profileGetUniformLocation(program, shader, i);
+            if (loc != -1)  // -1 means it was optimized out, or failure.
             {
+                const int regcount = u->array_count;
                 UniformMap *map = &program->uniforms[program->uniform_count];
                 map->shader_type = shader_type;
                 map->uniform = u;
                 map->location = (GLuint) loc;
                 program->uniform_count++;
-            } // else
-        } // if
+
+                if (u->type == MOJOSHADER_UNIFORM_FLOAT)
+                    float4_count += regcount ? regcount : 1;
+                else if (u->type == MOJOSHADER_UNIFORM_INT)
+                    int4_count += regcount ? regcount : 1;
+                else if (u->type == MOJOSHADER_UNIFORM_BOOL)
+                    bool_count += regcount ? regcount : 1;
+                else
+                    assert(0 && "Unexpected register type");
+            } // if
+        } // else
     } // for
+
+    #define MAKE_ARRAY(typ, gltyp, siz, count) \
+        if (count) { \
+            const size_t buflen = sizeof (gltyp) * siz * count; \
+            gltyp *ptr = (gltyp *) Malloc(buflen); \
+            if (ptr == NULL) { \
+                return 0; \
+            } else if (shader_type == MOJOSHADER_TYPE_PIXEL) { \
+                program->vs_uniforms_##typ = ptr; \
+                program->vs_uniforms_##typ##_count = count; \
+            } else if (shader_type == MOJOSHADER_TYPE_PIXEL) { \
+                program->ps_uniforms_##typ = ptr; \
+                program->ps_uniforms_##typ##_count = count; \
+            } else { \
+                assert(0 && "unsupported shader type"); \
+            } \
+            memset(ptr, '\0', buflen); \
+        }
+
+    MAKE_ARRAY(float4, GLfloat, 4, float4_count);
+    MAKE_ARRAY(int4, GLint, 4, int4_count);
+    MAKE_ARRAY(bool, GLint, 1, bool_count);
+
+    #undef MAKE_ARRAY
+
+    return 1;
 } // lookup_uniforms
 
 
@@ -1228,7 +1386,7 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
     {
         const GLint loc = ctx->profileGetSamplerLocation(program, shader, i);
         if (loc != -1)  // maybe the Sampler was optimized out?
-            ctx->profileSetSampler(loc, s[i].index);
+            ctx->profilePushSampler(loc, s[i].index);
     } // for
 } // lookup_samplers
 
@@ -1275,11 +1433,7 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
         const MOJOSHADER_uniformType type = u->type;
         assert(type == MOJOSHADER_UNIFORM_FLOAT);
 
-        const size_t len = size * sizeof (GLfloat) * 4;
-        map->uniform_array_buffer = (GLfloat *) Malloc(len);
-        if (map->uniform_array_buffer == NULL)
-            return 0;
-        memset(map->uniform_array_buffer, 0, len);
+        // !!! FIXME: deal with this.
     } // for
 
     return 1;
@@ -1304,6 +1458,8 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     if (retval == NULL)
         goto link_program_fail;
     memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
+
+    ctx->profileInitProgram(retval);
 
     numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->uniform_count;
@@ -1336,14 +1492,16 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
             lookup_attributes(retval);
         } // if
 
-        lookup_uniforms(retval, vshader, &bound);
+        if (!lookup_uniforms(retval, vshader, &bound))
+            goto link_program_fail;
         lookup_samplers(retval, vshader, &bound);
         vshader->refcount++;
     } // if
 
     if (pshader != NULL)
     {
-        lookup_uniforms(retval, pshader, &bound);
+        if (!lookup_uniforms(retval, pshader, &bound))
+            goto link_program_fail;
         lookup_samplers(retval, pshader, &bound);
         pshader->refcount++;
     } // if
@@ -1359,9 +1517,12 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 link_program_fail:
     if (retval != NULL)
     {
-        uint32 i;
-        for (i = 0; i < retval->uniform_count; i++)
-            Free(retval->uniforms[i].uniform_array_buffer);
+        Free(retval->vs_uniforms_float4);
+        Free(retval->vs_uniforms_int4);
+        Free(retval->vs_uniforms_bool);
+        Free(retval->ps_uniforms_float4);
+        Free(retval->ps_uniforms_int4);
+        Free(retval->ps_uniforms_bool);
         Free(retval->uniforms);
         Free(retval->attributes);
         Free(retval);
@@ -1567,97 +1728,92 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 
 void MOJOSHADER_glProgramReady(void)
 {
-    int i;
-    int count;
+    const MOJOSHADER_glProgram *program = ctx->bound_program;
 
-    if (ctx->bound_program == NULL)
+    if (program == NULL)
         return;  // nothing to do.
 
     // push Uniforms to the program from our register files...
-    count = ctx->bound_program->uniform_count;
-    for (i = 0; i < count; i++)
+    if (program->uniform_count > 0)
     {
-        UniformMap *map = &ctx->bound_program->uniforms[i];
-        const MOJOSHADER_uniform *u = map->uniform;
-        const MOJOSHADER_uniformType type = u->type;
-        const MOJOSHADER_shaderType shader_type = map->shader_type;
-        const int index = u->index;
-        const int size = u->array_count;
-        const GLint location = map->location;
-        const MOJOSHADER_parseData *pd;
-        GLfloat *regf;
-        GLint *regi;
-        GLint *regb;
+        const uint32 count = program->uniform_count;
+        GLfloat *dst_vs_f = program->vs_uniforms_float4;
+        GLint *dst_vs_i = program->vs_uniforms_int4;
+        GLint *dst_vs_b = program->vs_uniforms_bool;
+        GLfloat *dst_ps_f = program->ps_uniforms_float4;
+        GLint *dst_ps_i = program->ps_uniforms_int4;
+        GLint *dst_ps_b = program->ps_uniforms_bool;
+        uint32 i;
 
-        assert(!u->constant);
-
-        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        for (i = 0; i < count; i++)
         {
-            pd = ctx->bound_program->vertex->parseData;
-            regf = ctx->vs_reg_file_f;
-            regi = ctx->vs_reg_file_i;
-            regb = ctx->vs_reg_file_b;
-        } // if
+            UniformMap *map = &program->uniforms[i];
+            const MOJOSHADER_uniform *u = map->uniform;
+            const MOJOSHADER_uniformType type = u->type;
+            const MOJOSHADER_shaderType shader_type = map->shader_type;
+            const int index = u->index;
+            const int size = u->array_count ? u->array_count : 1;
+            GLfloat *srcf = NULL;
+            GLint *srci = NULL;
+            GLint *srcb = NULL;
+            GLfloat **dstf = NULL;
+            GLint **dsti = NULL;
+            GLint **dstb = NULL;
 
-        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
-        {
-            pd = ctx->bound_program->fragment->parseData;
-            regf = ctx->ps_reg_file_f;
-            regi = ctx->ps_reg_file_i;
-            regb = ctx->ps_reg_file_b;
-        } // else if
+            assert(!u->constant);
 
-        else
-        {
-            assert(0);  // !!! FIXME: geometry shaders?
-        } // else
-
-
-        if (size != 0)  // uniform array?
-        {
-            GLfloat *f = &regf[index * 4];
-            const size_t len = size * sizeof (GLfloat) * 4;
-
-            GLfloat *current = map->uniform_array_buffer;
-            //if (memcmp(current, f, len) != 0)
+            if (shader_type == MOJOSHADER_TYPE_VERTEX)
             {
-                // array has changed, upload it.
-                ctx->profileUniform4fv(pd, location, size, f);
-                memcpy(current, f, len);
+                srcf = ctx->vs_reg_file_f;
+                srci = ctx->vs_reg_file_i;
+                srcb = ctx->vs_reg_file_b;
+                dstf = &dst_vs_f;
+                dsti = &dst_vs_i;
+                dstb = &dst_vs_b;
             } // if
-        } // if
 
-        else
-        {
+            else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            {
+                srcf = ctx->ps_reg_file_f;
+                srci = ctx->ps_reg_file_i;
+                srcb = ctx->ps_reg_file_b;
+                dstf = &dst_ps_f;
+                dsti = &dst_ps_i;
+                dstb = &dst_ps_b;
+            } // else if
+
+            else
+            {
+                assert(0);  // !!! FIXME: geometry shaders?
+            } // else
+
             if (type == MOJOSHADER_UNIFORM_FLOAT)
             {
-                GLfloat *f = &regf[index * 4];
-                //if (memcmp(map->value.f, f, sizeof (map->value.f)) != 0)
-                {
-                    memcpy(map->value.f, f, sizeof (map->value.f));
-                    ctx->profileUniform4fv(pd, location, 1, f);
-                } // if
+                const size_t count = 4 * size;
+                const GLfloat *f = &srcf[index * 4];
+                memcpy(*dstf, f, sizeof (GLfloat) * count);
+                *dstf += count;
             } // if
             else if (type == MOJOSHADER_UNIFORM_INT)
             {
-                GLint *i = &regi[index * 4];
-                //if (memcmp(map->value.i, i, sizeof (map->value.i)) != 0)
-                {
-                    memcpy(map->value.i, i, sizeof (map->value.i));
-                    ctx->profileUniform4iv(pd, location, 1, i);
-                } // if
+                const size_t count = 4 * size;
+                const GLint *i = &srci[index * 4];
+                memcpy(*dsti, i, sizeof (GLint) * count);
+                *dsti += count;
             } // else if
             else if (type == MOJOSHADER_UNIFORM_BOOL)
             {
-                const GLint b = regb[index];
-                //if (b != map->value.b)
-                {
-                    map->value.b = b;
-                    ctx->profileUniform1i(pd, location, b);
-                } // if
+                const size_t count = size;
+                const GLint *b = &srcb[index];
+                memcpy(*dstb, &b, sizeof (GLint) * count);
+                *dstb += count;
             } // else if
-        } // if
-    } // for
+
+            // !!! FIXME: set constants that overlap the array.
+        } // for
+
+        ctx->profilePushUniforms();
+    } // if
 } // MOJOSHADER_glProgramReady
 
 
