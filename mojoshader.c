@@ -1678,7 +1678,7 @@ static const char *get_GLSL_uniform_type(Context *ctx, const RegisterType rtype)
     {
         case REG_TYPE_CONST: return "vec4";
         case REG_TYPE_CONSTINT: return "ivec4";
-        case REG_TYPE_CONSTBOOL: return "bvec4";
+        case REG_TYPE_CONSTBOOL: return "bool";
         default: fail(ctx, "BUG: used a uniform we don't know how to define.");
     } // switch
 
