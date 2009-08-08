@@ -619,41 +619,48 @@ static void impl_ARB1_PushUniforms(void)
 {
     const MOJOSHADER_glProgram *program = ctx->bound_program;
     const uint32 count = ctx->bound_program->uniform_count;
-    GLfloat *dst_vs_f = program->vs_uniforms_float4;
-    GLint *dst_vs_i = program->vs_uniforms_int4;
-    GLint *dst_vs_b = program->vs_uniforms_bool;
-    GLfloat *dst_ps_f = program->ps_uniforms_float4;
-    GLint *dst_ps_i = program->ps_uniforms_int4;
-    GLint *dst_ps_b = program->ps_uniforms_bool;
-    GLint loc = 0;
+    const GLfloat *src_vs_f = program->vs_uniforms_float4;
+    const GLint *src_vs_i = program->vs_uniforms_int4;
+    const GLint *src_vs_b = program->vs_uniforms_bool;
+    const GLfloat *src_ps_f = program->ps_uniforms_float4;
+    const GLint *src_ps_i = program->ps_uniforms_int4;
+    const GLint *src_ps_b = program->ps_uniforms_bool;
+    GLint vsloc = 0;
+    GLint psloc = 0;
     uint32 i;
 
     for (i = 0; i < count; i++)
     {
-        UniformMap *map = &ctx->bound_program->uniforms[i];
+        UniformMap *map = &program->uniforms[i];
         const MOJOSHADER_uniform *u = map->uniform;
         const MOJOSHADER_uniformType type = u->type;
         const MOJOSHADER_shaderType shader_type = map->shader_type;
         const GLenum arb_shader_type = arb1_shader_type(shader_type);
         const int size = u->array_count ? u->array_count : 1;
-        GLfloat **dstf = NULL;
-        GLint **dsti = NULL;
-        GLint **dstb = NULL;
+        const GLfloat **srcf = NULL;
+        const GLint **srci = NULL;
+        const GLint **srcb = NULL;
+        GLint *loc = NULL;
 
         assert(!u->constant);
 
+        // !!! FIXME: just make sure all the vertex uniforms are in the map
+        // !!! FIXME:  before the fragment uniforms, and then we don't have
+        // !!! FIXME:  to do all this tapdancing.
         if (shader_type == MOJOSHADER_TYPE_VERTEX)
         {
-            dstf = &dst_vs_f;
-            dsti = &dst_vs_i;
-            dstb = &dst_vs_b;
+            srcf = &src_vs_f;
+            srci = &src_vs_i;
+            srcb = &src_vs_b;
+            loc = &vsloc;
         } // if
 
         else if (shader_type == MOJOSHADER_TYPE_PIXEL)
         {
-            dstf = &dst_ps_f;
-            dsti = &dst_ps_i;
-            dstb = &dst_ps_b;
+            srcf = &src_ps_f;
+            srci = &src_ps_i;
+            srcb = &src_ps_b;
+            loc = &psloc;
         } // else if
 
         else
@@ -664,8 +671,8 @@ static void impl_ARB1_PushUniforms(void)
         if (type == MOJOSHADER_UNIFORM_FLOAT)
         {
             int i;
-            for (i = 0; i < size; i++, *dstf += 4, loc++)
-                ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, *dstf);
+            for (i = 0; i < size; i++, *srcf += 4, (*loc)++)
+                ctx->glProgramLocalParameter4fvARB(arb_shader_type, *loc, *srcf);
         } // if
         else if (type == MOJOSHADER_UNIFORM_INT)
         {
@@ -673,16 +680,16 @@ static void impl_ARB1_PushUniforms(void)
             if (ctx->glProgramLocalParameterI4ivNV != NULL)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
-                for (i = 0; i < size; i++, *dsti += 4, loc++)
-                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, *dsti);
+                for (i = 0; i < size; i++, *srci += 4, (*loc)++)
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, *loc, *srci);
             } // if
             else
             {
-                for (i = 0; i < size; i++, *dsti += 4, loc++)
+                for (i = 0; i < size; i++, *srci += 4, (*loc)++)
                 {
-                    const GLint *p = *dsti;
+                    const GLint *p = *srci;
                     const GLfloat fv[4] = { (GLfloat) p[0], (GLfloat) p[1], (GLfloat) p[2], (GLfloat) p[3] };
-                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, *loc, fv);
                 } // for
             } // else
         } // else if
@@ -692,20 +699,20 @@ static void impl_ARB1_PushUniforms(void)
             if (ctx->glProgramLocalParameterI4ivNV != NULL)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
-                for (i = 0; i < size; i++, (*dstb)++, loc++)
+                for (i = 0; i < size; i++, (*srcb)++, (*loc)++)
                 {
-                    const GLint ib = (GLint) *(*dstb) ? 1 : 0;
+                    const GLint ib = (GLint) *(*srcb) ? 1 : 0;
                     const GLint iv[4] = { ib, ib, ib, ib };
-                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, iv);
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, (*loc), iv);
                 } // for
             } // if
             else
             {
-                for (i = 0; i < size; i++, (*dstb)++, loc++)
+                for (i = 0; i < size; i++, (*srcb)++, (*loc)++)
                 {
-                    const GLfloat fb = *(*dstb) ? 1.0f : 0.0f;
+                    const GLfloat fb = *(*srcb) ? 1.0f : 0.0f;
                     const GLfloat fv[4] = { fb, fb, fb, fb };
-                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, (*loc), fv);
                 } // for
             } // else
         } // else if
@@ -1762,6 +1769,9 @@ void MOJOSHADER_glProgramReady(void)
 
             assert(!u->constant);
 
+            // !!! FIXME: just make sure all the vertex uniforms are in the map
+            // !!! FIXME:  before the fragment uniforms, and then we don't have
+            // !!! FIXME:  to do all this tapdancing.
             if (shader_type == MOJOSHADER_TYPE_VERTEX)
             {
                 srcf = ctx->vs_reg_file_f;
