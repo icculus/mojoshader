@@ -1341,7 +1341,7 @@ static int lookup_uniforms(MOJOSHADER_glProgram *program,
             gltyp *ptr = (gltyp *) Malloc(buflen); \
             if (ptr == NULL) { \
                 return 0; \
-            } else if (shader_type == MOJOSHADER_TYPE_PIXEL) { \
+            } else if (shader_type == MOJOSHADER_TYPE_VERTEX) { \
                 program->vs_uniforms_##typ = ptr; \
                 program->vs_uniforms_##typ##_count = count; \
             } else if (shader_type == MOJOSHADER_TYPE_PIXEL) { \
