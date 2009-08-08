@@ -187,7 +187,7 @@ struct MOJOSHADER_glContext
     GLint (*profileGetUniformLocation)(MOJOSHADER_glProgram *program, MOJOSHADER_glShader *shader, int idx);
     GLint (*profileGetSamplerLocation)(MOJOSHADER_glProgram *, MOJOSHADER_glShader *, int);
     GLuint (*profileLinkProgram)(MOJOSHADER_glShader *, MOJOSHADER_glShader *);
-    void (*profileInitProgram)(MOJOSHADER_glProgram *program);
+    void (*profileFinalInitProgram)(MOJOSHADER_glProgram *program);
     void (*profileUseProgramObject)(MOJOSHADER_glProgram *program);
     void (*profilePushConstantArray)(MOJOSHADER_glProgram *, const MOJOSHADER_uniform *, const GLfloat *);
     void (*profilePushUniforms)(void);
@@ -394,7 +394,7 @@ static GLuint impl_GLSL_LinkProgram(MOJOSHADER_glShader *vshader,
 } // impl_GLSL_LinkProgram
 
 
-static void impl_GLSL_InitProgram(MOJOSHADER_glProgram *program)
+static void impl_GLSL_FinalInitProgram(MOJOSHADER_glProgram *program)
 {
     program->vs_float4_loc =
         ctx->glGetUniformLocation(program->handle, "vs_uniforms_vec4");
@@ -408,7 +408,7 @@ static void impl_GLSL_InitProgram(MOJOSHADER_glProgram *program)
         ctx->glGetUniformLocation(program->handle, "ps_uniforms_ivec4");
     program->ps_bool_loc =
         ctx->glGetUniformLocation(program->handle, "ps_uniforms_bool");
-} // impl_GLSL_InitProgram
+} // impl_GLSL_FinalInitProgram
 
 
 static void impl_GLSL_UseProgramObject(MOJOSHADER_glProgram *program)
@@ -581,10 +581,10 @@ static GLuint impl_ARB1_LinkProgram(MOJOSHADER_glShader *vshader,
 } // impl_ARB1_LinkProgram
 
 
-static void impl_ARB1_InitProgram(MOJOSHADER_glProgram *program)
+static void impl_ARB1_FinalInitProgram(MOJOSHADER_glProgram *program)
 {
     // no-op.
-} // impl_ARB1_InitProgram
+} // impl_ARB1_FinalInitProgram
 
 
 static void impl_ARB1_UseProgramObject(MOJOSHADER_glProgram *program)
@@ -1091,7 +1091,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileGetUniformLocation = impl_GLSL_GetUniformLocation;
         ctx->profileGetSamplerLocation = impl_GLSL_GetSamplerLocation;
         ctx->profileLinkProgram = impl_GLSL_LinkProgram;
-        ctx->profileInitProgram = impl_GLSL_InitProgram;
+        ctx->profileFinalInitProgram = impl_GLSL_FinalInitProgram;
         ctx->profileUseProgramObject = impl_GLSL_UseProgramObject;
         ctx->profilePushConstantArray = impl_GLSL_PushConstantArray;
         ctx->profilePushUniforms = impl_GLSL_PushUniforms;
@@ -1115,7 +1115,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profileGetUniformLocation = impl_ARB1_GetUniformLocation;
         ctx->profileGetSamplerLocation = impl_ARB1_GetSamplerLocation;
         ctx->profileLinkProgram = impl_ARB1_LinkProgram;
-        ctx->profileInitProgram = impl_ARB1_InitProgram;
+        ctx->profileFinalInitProgram = impl_ARB1_FinalInitProgram;
         ctx->profileUseProgramObject = impl_ARB1_UseProgramObject;
         ctx->profilePushConstantArray = impl_ARB1_PushConstantArray;
         ctx->profilePushUniforms = impl_ARB1_PushUniforms;
@@ -1134,7 +1134,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profileGetUniformLocation != NULL);
     assert(ctx->profileGetSamplerLocation != NULL);
     assert(ctx->profileLinkProgram != NULL);
-    assert(ctx->profileInitProgram != NULL);
+    assert(ctx->profileFinalInitProgram != NULL);
     assert(ctx->profileUseProgramObject != NULL);
     assert(ctx->profilePushConstantArray != NULL);
     assert(ctx->profilePushUniforms != NULL);
@@ -1459,8 +1459,6 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         goto link_program_fail;
     memset(retval, '\0', sizeof (MOJOSHADER_glProgram));
 
-    ctx->profileInitProgram(retval);
-
     numregs = 0;
     if (vshader != NULL) numregs += vshader->parseData->uniform_count;
     if (pshader != NULL) numregs += pshader->parseData->uniform_count;
@@ -1511,6 +1509,8 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
 
     if (bound)  // reset the old binding.
         ctx->profileUseProgramObject(ctx->bound_program);
+
+    ctx->profileFinalInitProgram(retval);
 
     return retval;
 
