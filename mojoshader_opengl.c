@@ -632,9 +632,6 @@ static void impl_ARB1_PushUniforms(void)
 
     assert(count > 0);  // shouldn't call this with nothing to do!
 
-    // These should be ordered vertex, then pixel, then geometry.
-    assert(program->uniforms[0].uniform->type == MOJOSHADER_TYPE_VERTEX);
-
     for (i = 0; i < count; i++)
     {
         UniformMap *map = &program->uniforms[i];
@@ -658,6 +655,7 @@ static void impl_ARB1_PushUniforms(void)
             } // if
             else
             {
+                // These should be ordered vertex, then pixel, then geometry.
                 assert(0 && "Unexpected shader type");
             } // else
 
@@ -1753,9 +1751,6 @@ void MOJOSHADER_glProgramReady(void)
         GLint *dstb = program->vs_uniforms_bool;
         uint32 i;
 
-        // These should be ordered vertex, then pixel, then geometry.
-        assert(program->uniforms[0].uniform->type == MOJOSHADER_TYPE_VERTEX);
-
         for (i = 0; i < count; i++)
         {
             UniformMap *map = &program->uniforms[i];
@@ -1782,6 +1777,7 @@ void MOJOSHADER_glProgramReady(void)
                 } // if
                 else
                 {
+                    // Should be ordered vertex, then pixel, then geometry.
                     assert(0 && "Unexpected shader type");
                 } // else
 
