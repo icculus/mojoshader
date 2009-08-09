@@ -431,6 +431,8 @@ static void impl_GLSL_PushUniforms(void)
 {
     const MOJOSHADER_glProgram *program = ctx->bound_program;
 
+    assert(program->uniform_count > 0);  // don't call with nothing to do!
+
     if (program->vs_float4_loc != -1)
     {
         ctx->glUniform4fv(program->vs_float4_loc,
@@ -617,62 +619,57 @@ static void impl_ARB1_PushConstantArray(MOJOSHADER_glProgram *program,
 
 static void impl_ARB1_PushUniforms(void)
 {
+    // vertex shader uniforms come first in program->uniforms array.
+    MOJOSHADER_shaderType shader_type = MOJOSHADER_TYPE_VERTEX;
+    GLenum arb_shader_type = arb1_shader_type(shader_type);
     const MOJOSHADER_glProgram *program = ctx->bound_program;
-    const uint32 count = ctx->bound_program->uniform_count;
-    const GLfloat *src_vs_f = program->vs_uniforms_float4;
-    const GLint *src_vs_i = program->vs_uniforms_int4;
-    const GLint *src_vs_b = program->vs_uniforms_bool;
-    const GLfloat *src_ps_f = program->ps_uniforms_float4;
-    const GLint *src_ps_i = program->ps_uniforms_int4;
-    const GLint *src_ps_b = program->ps_uniforms_bool;
-    GLint vsloc = 0;
-    GLint psloc = 0;
+    const uint32 count = program->uniform_count;
+    const GLfloat *srcf = program->vs_uniforms_float4;
+    const GLint *srci = program->vs_uniforms_int4;
+    const GLint *srcb = program->vs_uniforms_bool;
+    GLint loc = 0;
     uint32 i;
+
+    assert(count > 0);  // shouldn't call this with nothing to do!
+
+    // These should be ordered vertex, then pixel, then geometry.
+    assert(program->uniforms[0].uniform->type == MOJOSHADER_TYPE_VERTEX);
 
     for (i = 0; i < count; i++)
     {
         UniformMap *map = &program->uniforms[i];
         const MOJOSHADER_uniform *u = map->uniform;
         const MOJOSHADER_uniformType type = u->type;
-        const MOJOSHADER_shaderType shader_type = map->shader_type;
-        const GLenum arb_shader_type = arb1_shader_type(shader_type);
         const int size = u->array_count ? u->array_count : 1;
-        const GLfloat **srcf = NULL;
-        const GLint **srci = NULL;
-        const GLint **srcb = NULL;
-        GLint *loc = NULL;
 
         assert(!u->constant);
 
-        // !!! FIXME: just make sure all the vertex uniforms are in the map
-        // !!! FIXME:  before the fragment uniforms, and then we don't have
-        // !!! FIXME:  to do all this tapdancing.
-        if (shader_type == MOJOSHADER_TYPE_VERTEX)
+        // Did we switch from vertex to pixel (to geometry, etc)?
+        if (shader_type != map->shader_type)
         {
-            srcf = &src_vs_f;
-            srci = &src_vs_i;
-            srcb = &src_vs_b;
-            loc = &vsloc;
+            // we start with vertex, move to pixel, then to geometry, etc.
+            //  The array should always be sorted as such.
+            if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            {
+                srcf = program->ps_uniforms_float4;
+                srci = program->ps_uniforms_int4;
+                srcb = program->ps_uniforms_bool;
+                loc = 0;
+            } // if
+            else
+            {
+                assert(0 && "Unexpected shader type");
+            } // else
+
+            shader_type = map->shader_type;
+            arb_shader_type = arb1_shader_type(shader_type);
         } // if
-
-        else if (shader_type == MOJOSHADER_TYPE_PIXEL)
-        {
-            srcf = &src_ps_f;
-            srci = &src_ps_i;
-            srcb = &src_ps_b;
-            loc = &psloc;
-        } // else if
-
-        else
-        {
-            assert(0);  // !!! FIXME: geometry shaders?
-        } // else
 
         if (type == MOJOSHADER_UNIFORM_FLOAT)
         {
             int i;
-            for (i = 0; i < size; i++, *srcf += 4, (*loc)++)
-                ctx->glProgramLocalParameter4fvARB(arb_shader_type, *loc, *srcf);
+            for (i = 0; i < size; i++, srcf += 4, loc++)
+                ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, srcf);
         } // if
         else if (type == MOJOSHADER_UNIFORM_INT)
         {
@@ -680,16 +677,18 @@ static void impl_ARB1_PushUniforms(void)
             if (ctx->glProgramLocalParameterI4ivNV != NULL)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
-                for (i = 0; i < size; i++, *srci += 4, (*loc)++)
-                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, *loc, *srci);
+                for (i = 0; i < size; i++, srci += 4, loc++)
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, srci);
             } // if
             else
             {
-                for (i = 0; i < size; i++, *srci += 4, (*loc)++)
+                for (i = 0; i < size; i++, srci += 4, loc++)
                 {
-                    const GLint *p = *srci;
-                    const GLfloat fv[4] = { (GLfloat) p[0], (GLfloat) p[1], (GLfloat) p[2], (GLfloat) p[3] };
-                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, *loc, fv);
+                    const GLfloat fv[4] = {
+                        (GLfloat) srci[0], (GLfloat) srci[1],
+                        (GLfloat) srci[2], (GLfloat) srci[3]
+                    };
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
                 } // for
             } // else
         } // else if
@@ -699,20 +698,20 @@ static void impl_ARB1_PushUniforms(void)
             if (ctx->glProgramLocalParameterI4ivNV != NULL)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
-                for (i = 0; i < size; i++, (*srcb)++, (*loc)++)
+                for (i = 0; i < size; i++, srcb++, loc++)
                 {
-                    const GLint ib = (GLint) *(*srcb) ? 1 : 0;
+                    const GLint ib = (GLint) ((*srcb) ? 1 : 0);
                     const GLint iv[4] = { ib, ib, ib, ib };
-                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, (*loc), iv);
+                    ctx->glProgramLocalParameterI4ivNV(arb_shader_type, loc, iv);
                 } // for
             } // if
             else
             {
-                for (i = 0; i < size; i++, (*srcb)++, (*loc)++)
+                for (i = 0; i < size; i++, srcb++, loc++)
                 {
-                    const GLfloat fb = *(*srcb) ? 1.0f : 0.0f;
+                    const GLfloat fb = (GLfloat) ((*srcb) ? 1.0f : 0.0f);
                     const GLfloat fv[4] = { fb, fb, fb, fb };
-                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, (*loc), fv);
+                    ctx->glProgramLocalParameter4fvARB(arb_shader_type, loc, fv);
                 } // for
             } // else
         } // else if
@@ -1743,80 +1742,72 @@ void MOJOSHADER_glProgramReady(void)
     // push Uniforms to the program from our register files...
     if (program->uniform_count > 0)
     {
+        // vertex shader uniforms come first in program->uniforms array.
         const uint32 count = program->uniform_count;
-        GLfloat *dst_vs_f = program->vs_uniforms_float4;
-        GLint *dst_vs_i = program->vs_uniforms_int4;
-        GLint *dst_vs_b = program->vs_uniforms_bool;
-        GLfloat *dst_ps_f = program->ps_uniforms_float4;
-        GLint *dst_ps_i = program->ps_uniforms_int4;
-        GLint *dst_ps_b = program->ps_uniforms_bool;
+        const GLfloat *srcf = ctx->vs_reg_file_f;
+        const GLint *srci = ctx->vs_reg_file_i;
+        const GLint *srcb = ctx->vs_reg_file_b;
+        MOJOSHADER_shaderType shader_type = MOJOSHADER_TYPE_VERTEX;
+        GLfloat *dstf = program->vs_uniforms_float4;
+        GLint *dsti = program->vs_uniforms_int4;
+        GLint *dstb = program->vs_uniforms_bool;
         uint32 i;
+
+        // These should be ordered vertex, then pixel, then geometry.
+        assert(program->uniforms[0].uniform->type == MOJOSHADER_TYPE_VERTEX);
 
         for (i = 0; i < count; i++)
         {
             UniformMap *map = &program->uniforms[i];
             const MOJOSHADER_uniform *u = map->uniform;
             const MOJOSHADER_uniformType type = u->type;
-            const MOJOSHADER_shaderType shader_type = map->shader_type;
             const int index = u->index;
             const int size = u->array_count ? u->array_count : 1;
-            GLfloat *srcf = NULL;
-            GLint *srci = NULL;
-            GLint *srcb = NULL;
-            GLfloat **dstf = NULL;
-            GLint **dsti = NULL;
-            GLint **dstb = NULL;
 
             assert(!u->constant);
 
-            // !!! FIXME: just make sure all the vertex uniforms are in the map
-            // !!! FIXME:  before the fragment uniforms, and then we don't have
-            // !!! FIXME:  to do all this tapdancing.
-            if (shader_type == MOJOSHADER_TYPE_VERTEX)
+            // Did we switch from vertex to pixel (to geometry, etc)?
+            if (shader_type != map->shader_type)
             {
-                srcf = ctx->vs_reg_file_f;
-                srci = ctx->vs_reg_file_i;
-                srcb = ctx->vs_reg_file_b;
-                dstf = &dst_vs_f;
-                dsti = &dst_vs_i;
-                dstb = &dst_vs_b;
+                // we start with vertex, move to pixel, then to geometry, etc.
+                //  The array should always be sorted as such.
+                if (shader_type == MOJOSHADER_TYPE_PIXEL)
+                {
+                    srcf = ctx->ps_reg_file_f;
+                    srci = ctx->ps_reg_file_i;
+                    srcb = ctx->ps_reg_file_b;
+                    dstf = program->ps_uniforms_float4;
+                    dsti = program->ps_uniforms_int4;
+                    dstb = program->ps_uniforms_bool;
+                } // if
+                else
+                {
+                    assert(0 && "Unexpected shader type");
+                } // else
+
+                shader_type = map->shader_type;
             } // if
-
-            else if (shader_type == MOJOSHADER_TYPE_PIXEL)
-            {
-                srcf = ctx->ps_reg_file_f;
-                srci = ctx->ps_reg_file_i;
-                srcb = ctx->ps_reg_file_b;
-                dstf = &dst_ps_f;
-                dsti = &dst_ps_i;
-                dstb = &dst_ps_b;
-            } // else if
-
-            else
-            {
-                assert(0);  // !!! FIXME: geometry shaders?
-            } // else
 
             if (type == MOJOSHADER_UNIFORM_FLOAT)
             {
                 const size_t count = 4 * size;
                 const GLfloat *f = &srcf[index * 4];
-                memcpy(*dstf, f, sizeof (GLfloat) * count);
-                *dstf += count;
+                memcpy(dstf, f, sizeof (GLfloat) * count);
+                dstf += count;
             } // if
             else if (type == MOJOSHADER_UNIFORM_INT)
             {
                 const size_t count = 4 * size;
                 const GLint *i = &srci[index * 4];
-                memcpy(*dsti, i, sizeof (GLint) * count);
-                *dsti += count;
+                memcpy(dsti, i, sizeof (GLint) * count);
+                dsti += count;
             } // else if
             else if (type == MOJOSHADER_UNIFORM_BOOL)
             {
                 const size_t count = size;
                 const GLint *b = &srcb[index];
-                memcpy(*dstb, &b, sizeof (GLint) * count);
-                *dstb += count;
+                memcpy(dstb, &b, sizeof (GLint) * count);
+                dstb += count;
             } // else if
 
             // !!! FIXME: set constants that overlap the array.
