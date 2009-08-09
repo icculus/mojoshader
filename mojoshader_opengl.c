@@ -635,6 +635,7 @@ static void impl_ARB1_PushUniforms(void)
     for (i = 0; i < count; i++)
     {
         UniformMap *map = &program->uniforms[i];
+        const MOJOSHADER_shaderType uniform_shader_type = map->shader_type;
         const MOJOSHADER_uniform *u = map->uniform;
         const MOJOSHADER_uniformType type = u->type;
         const int size = u->array_count ? u->array_count : 1;
@@ -642,12 +643,13 @@ static void impl_ARB1_PushUniforms(void)
         assert(!u->constant);
 
         // Did we switch from vertex to pixel (to geometry, etc)?
-        if (shader_type != map->shader_type)
+        if (shader_type != uniform_shader_type)
         {
             // we start with vertex, move to pixel, then to geometry, etc.
             //  The array should always be sorted as such.
-            if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            if (uniform_shader_type == MOJOSHADER_TYPE_PIXEL)
             {
+                assert(shader_type == MOJOSHADER_TYPE_VERTEX);
                 srcf = program->ps_uniforms_float4;
                 srci = program->ps_uniforms_int4;
                 srcb = program->ps_uniforms_bool;
@@ -659,8 +661,8 @@ static void impl_ARB1_PushUniforms(void)
                 assert(0 && "Unexpected shader type");
             } // else
 
-            shader_type = map->shader_type;
-            arb_shader_type = arb1_shader_type(shader_type);
+            shader_type = uniform_shader_type;
+            arb_shader_type = arb1_shader_type(uniform_shader_type);
         } // if
 
         if (type == MOJOSHADER_UNIFORM_FLOAT)
@@ -1754,6 +1756,7 @@ void MOJOSHADER_glProgramReady(void)
         for (i = 0; i < count; i++)
         {
             UniformMap *map = &program->uniforms[i];
+            const MOJOSHADER_shaderType uniform_shader_type = map->shader_type;
             const MOJOSHADER_uniform *u = map->uniform;
             const MOJOSHADER_uniformType type = u->type;
             const int index = u->index;
@@ -1762,12 +1765,13 @@ void MOJOSHADER_glProgramReady(void)
             assert(!u->constant);
 
             // Did we switch from vertex to pixel (to geometry, etc)?
-            if (shader_type != map->shader_type)
+            if (shader_type != uniform_shader_type)
             {
                 // we start with vertex, move to pixel, then to geometry, etc.
                 //  The array should always be sorted as such.
-                if (shader_type == MOJOSHADER_TYPE_PIXEL)
+                if (uniform_shader_type == MOJOSHADER_TYPE_PIXEL)
                 {
+                    assert(shader_type == MOJOSHADER_TYPE_VERTEX);
                     srcf = ctx->ps_reg_file_f;
                     srci = ctx->ps_reg_file_i;
                     srcb = ctx->ps_reg_file_b;
@@ -1781,7 +1785,7 @@ void MOJOSHADER_glProgramReady(void)
                     assert(0 && "Unexpected shader type");
                 } // else
 
-                shader_type = map->shader_type;
+                shader_type = uniform_shader_type;
             } // if
 
             if (type == MOJOSHADER_UNIFORM_FLOAT)
