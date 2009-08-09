@@ -1806,7 +1806,7 @@ void MOJOSHADER_glProgramReady(void)
             {
                 const size_t count = size;
                 const GLint *b = &srcb[index];
-                memcpy(dstb, &b, sizeof (GLint) * count);
+                memcpy(dstb, b, sizeof (GLint) * count);
                 dstb += count;
             } // else if
 
