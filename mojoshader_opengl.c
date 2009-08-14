@@ -68,6 +68,7 @@ struct MOJOSHADER_glProgram
     MOJOSHADER_glShader *vertex;
     MOJOSHADER_glShader *fragment;
     GLuint handle;
+    uint32 generation;
     uint32 uniform_count;
     UniformMap *uniforms;
     uint32 attribute_count;
@@ -126,6 +127,9 @@ struct MOJOSHADER_glContext
     GLint ps_reg_file_i[MAX_REG_FILE_I * 4];
     uint8 ps_reg_file_b[MAX_REG_FILE_B];
     GLuint sampler_reg_file[16];
+
+    // This increments every time we change the register files.
+    uint32 generation;
 
     // GL stuff...
     int opengl_major;
@@ -1485,6 +1489,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
     retval->handle = program;
     retval->vertex = vshader;
     retval->fragment = pshader;
+    retval->generation = ctx->generation - 1;
     retval->refcount = 1;
 
     if (vshader != NULL)
@@ -1597,6 +1602,7 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
         assert(sizeof (GLfloat) == sizeof (float));
         const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_f + (idx * 4), data, cpy);
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformF
 
@@ -1610,6 +1616,7 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
         assert(sizeof (GLint) == sizeof (int));
         const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->vs_reg_file_i + (idx * 4), data, cpy);
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformI
 
@@ -1624,6 +1631,7 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
         uint8 *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformB
 
@@ -1637,6 +1645,7 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
         assert(sizeof (GLfloat) == sizeof (float));
         const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_f + (idx * 4), data, cpy);
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformF
 
@@ -1650,6 +1659,7 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
         assert(sizeof (GLint) == sizeof (int));
         const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
         memcpy(ctx->ps_reg_file_i + (idx * 4), data, cpy);
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformI
 
@@ -1664,6 +1674,7 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
         uint8 *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
+        ctx->generation++;
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformB
 
@@ -1739,13 +1750,13 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 
 void MOJOSHADER_glProgramReady(void)
 {
-    const MOJOSHADER_glProgram *program = ctx->bound_program;
+    MOJOSHADER_glProgram *program = ctx->bound_program;
 
     if (program == NULL)
         return;  // nothing to do.
 
     // push Uniforms to the program from our register files...
-    if (program->uniform_count > 0)
+    if ((program->uniform_count) && (program->generation != ctx->generation))
     {
         // vertex shader uniforms come first in program->uniforms array.
         const uint32 count = program->uniform_count;
@@ -1757,6 +1768,8 @@ void MOJOSHADER_glProgramReady(void)
         GLint *dsti = program->vs_uniforms_int4;
         GLint *dstb = program->vs_uniforms_bool;
         uint32 i;
+
+        program->generation = ctx->generation;
 
         for (i = 0; i < count; i++)
         {
