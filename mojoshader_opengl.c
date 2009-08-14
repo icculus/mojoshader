@@ -116,10 +116,10 @@ struct MOJOSHADER_glContext
     // Man, it kills me how much memory this takes...
     GLfloat vs_reg_file_f[8192 * 4];
     GLint vs_reg_file_i[2047 * 4];
-    GLint vs_reg_file_b[2047];
+    uint8 vs_reg_file_b[2047];
     GLfloat ps_reg_file_f[8192 * 4];
     GLint ps_reg_file_i[2047 * 4];
-    GLint ps_reg_file_b[2047];
+    uint8 ps_reg_file_b[2047];
     GLuint sampler_reg_file[16];
 
     // GL stuff...
@@ -1615,8 +1615,8 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_f) / 4;
     if (idx < maxregs)
     {
-        GLint *wptr = ctx->vs_reg_file_b + idx;
-        GLint *endptr = wptr + minuint(maxregs - idx, bcount);
+        uint8 *wptr = ctx->vs_reg_file_b + idx;
+        uint8 *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
@@ -1655,8 +1655,8 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
     const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_f) / 4;
     if (idx < maxregs)
     {
-        GLint *wptr = ctx->ps_reg_file_b + idx;
-        GLint *endptr = wptr + minuint(maxregs - idx, bcount);
+        uint8 *wptr = ctx->ps_reg_file_b + idx;
+        uint8 *endptr = wptr + minuint(maxregs - idx, bcount);
         while (wptr != endptr)
             *(wptr++) = *(data++) ? 1 : 0;
     } // if
@@ -1746,7 +1746,7 @@ void MOJOSHADER_glProgramReady(void)
         const uint32 count = program->uniform_count;
         const GLfloat *srcf = ctx->vs_reg_file_f;
         const GLint *srci = ctx->vs_reg_file_i;
-        const GLint *srcb = ctx->vs_reg_file_b;
+        const uint8 *srcb = ctx->vs_reg_file_b;
         MOJOSHADER_shaderType shader_type = MOJOSHADER_TYPE_VERTEX;
         GLfloat *dstf = program->vs_uniforms_float4;
         GLint *dsti = program->vs_uniforms_int4;
@@ -1805,8 +1805,10 @@ void MOJOSHADER_glProgramReady(void)
             else if (type == MOJOSHADER_UNIFORM_BOOL)
             {
                 const size_t count = size;
-                const GLint *b = &srcb[index];
-                memcpy(dstb, b, sizeof (GLint) * count);
+                const uint8 *b = &srcb[index];
+                int i;
+                for (i = 0; i < count; i++)
+                    dstb[i] = (GLint) b[i];
                 dstb += count;
             } // else if
 
