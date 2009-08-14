@@ -105,6 +105,11 @@ typedef WINGDIAPI GLenum (APIENTRYP PFNGLGETERRORPROC) (void);
 typedef WINGDIAPI void (APIENTRYP PFNGLENABLEPROC) (GLenum cap);
 typedef WINGDIAPI void (APIENTRYP PFNGLDISABLEPROC) (GLenum cap);
 
+// Max entries for each register file type...
+#define MAX_REG_FILE_F 8192
+#define MAX_REG_FILE_I 2047
+#define MAX_REG_FILE_B 2047
+
 struct MOJOSHADER_glContext
 {
     // Allocators...
@@ -114,12 +119,12 @@ struct MOJOSHADER_glContext
 
     // The constant register files...
     // Man, it kills me how much memory this takes...
-    GLfloat vs_reg_file_f[8192 * 4];
-    GLint vs_reg_file_i[2047 * 4];
-    uint8 vs_reg_file_b[2047];
-    GLfloat ps_reg_file_f[8192 * 4];
-    GLint ps_reg_file_i[2047 * 4];
-    uint8 ps_reg_file_b[2047];
+    GLfloat vs_reg_file_f[MAX_REG_FILE_F * 4];
+    GLint vs_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 vs_reg_file_b[MAX_REG_FILE_B];
+    GLfloat ps_reg_file_f[MAX_REG_FILE_F * 4];
+    GLint ps_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 ps_reg_file_b[MAX_REG_FILE_B];
     GLuint sampler_reg_file[16];
 
     // GL stuff...
