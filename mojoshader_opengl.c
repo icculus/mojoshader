@@ -131,6 +131,11 @@ struct MOJOSHADER_glContext
     // This increments every time we change the register files.
     uint32 generation;
 
+    // This tells us which vertex attribute arrays we have enabled.
+    int max_attrs;
+    uint8 want_attr[32];
+    uint8 have_attr[32];
+
     // GL stuff...
     int opengl_major;
     int opengl_minor;
@@ -1067,6 +1072,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 {
     MOJOSHADER_glContext *retval = NULL;
     MOJOSHADER_glContext *current_ctx = ctx;
+
     ctx = NULL;
 
     if (m == NULL) m = MOJOSHADER_internal_malloc;
@@ -1406,7 +1412,7 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
 } // lookup_samplers
 
 
-static void lookup_attributes(MOJOSHADER_glProgram *program)
+static int lookup_attributes(MOJOSHADER_glProgram *program)
 {
     int i;
     const MOJOSHADER_parseData *pd = program->vertex->parseData;
@@ -1421,8 +1427,16 @@ static void lookup_attributes(MOJOSHADER_glProgram *program)
             map->attribute = &a[i];
             map->location = (GLuint) loc;
             program->attribute_count++;
+
+            if (loc > STATICARRAYLEN(ctx->want_attr))
+            {
+                assert(0 && "Static array is too small.");  // laziness fail.
+                return 0;
+            } // if
         } // if
     } // for
+
+    return 1;
 } // lookup_attributes
 
 
@@ -1503,7 +1517,8 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
                 goto link_program_fail;
 
             memset(retval->attributes, '\0', len);
-            lookup_attributes(retval);
+            if (!lookup_attributes(retval))
+                goto link_program_fail;
         } // if
 
         if (!lookup_uniforms(retval, vshader, &bound))
@@ -1557,29 +1572,17 @@ link_program_fail:
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
     GLuint handle = 0;
-    int i;
 
     if (program == ctx->bound_program)
         return;  // nothing to do.
-
-    // Disable any client-side arrays the current program could have used.
-    // !!! FIXME: don't disable yet...see which ones get reused, and disable
-    // !!! FIXME:  only what we don't need in MOJOSHADER_glProgramReady().
-    if (ctx->bound_program != NULL)
-    {
-        const int count = ctx->bound_program->attribute_count;
-        for (i = 0; i < count; i++)
-        {
-            const AttributeMap *map = &ctx->bound_program->attributes[i];
-            ctx->glDisableVertexAttribArray(map->location);
-        } // if
-    } // for
 
     if (program != NULL)
     {
         handle = program->handle;
         program->refcount++;
     } // if
+
+    memset(ctx->want_attr, '\0', sizeof (ctx->want_attr[0]) * ctx->max_attrs);
 
     ctx->profileUseProgramObject(program);
     program_unref(ctx->bound_program);
@@ -1741,11 +1744,44 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     if (i == count)
         return;  // nothing to do, this shader doesn't use this stream.
 
-    // these happen to work in both ARB1 and GLSL, but if something alien
+    // this happens to work in both ARB1 and GLSL, but if something alien
     //  shows up, we'll have to split these into profile*() functions.
     ctx->glVertexAttribPointer(gl_index, size, gl_type, norm, stride, ptr);
-    ctx->glEnableVertexAttribArray(gl_index);
+
+    // flag this array as in use, so we can enable it later.
+    ctx->want_attr[gl_index] = 1;
+    if (ctx->max_attrs < gl_index)
+        ctx->max_attrs = gl_index;
 } // MOJOSHADER_glSetVertexAttribute
+
+
+static void update_enabled_arrays(void)
+{
+    int highest_enabled = 0;
+    int i;
+
+    // Enable/disable vertex arrays to match our needs.
+    // this happens to work in both ARB1 and GLSL, but if something alien
+    //  shows up, we'll have to split these into profile*() functions.
+    for (i = 0; i <= ctx->max_attrs; i++)
+    {
+        const int want = (const int) ctx->want_attr[i];
+        const int have = (const int) ctx->have_attr[i];
+        if (want != have)
+        {
+            if (want)
+                ctx->glEnableVertexAttribArray(i);
+            else
+                ctx->glDisableVertexAttribArray(i);
+            ctx->have_attr[i] = ctx->want_attr[i];
+        } // if
+
+        if (want)
+            highest_enabled = i;
+    } // for
+
+    ctx->max_attrs = highest_enabled;  // trim unneeded iterations next time.
+} // update_enabled_arrays
 
 
 void MOJOSHADER_glProgramReady(void)
@@ -1754,6 +1790,9 @@ void MOJOSHADER_glProgramReady(void)
 
     if (program == NULL)
         return;  // nothing to do.
+
+    // Toggle vertex attribute arrays on/off, based on our needs.
+    update_enabled_arrays();
 
     // push Uniforms to the program from our register files...
     if ((program->uniform_count) && (program->generation != ctx->generation))
@@ -1855,6 +1894,7 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
+    update_enabled_arrays();  // disables all vertex arrays.
     lookup_entry_points(NULL);
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
