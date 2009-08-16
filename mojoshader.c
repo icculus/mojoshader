@@ -2106,7 +2106,7 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    ctx->output = &ctx->globals;
+    ctx->output = &ctx->preflight;
 
     if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
         /* no-op. */ ;
