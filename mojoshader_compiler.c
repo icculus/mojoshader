@@ -1,18 +1,64 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-typedef struct Context
-{
-    Preprocessor *preprocessor;
-    const char *token;      // assembler token!
-    unsigned int tokenlen;  // assembler token!
-    Token tokenval;         // assembler token!
-} Context;
-
 #if DEBUG_COMPILER_PARSER
 #define LEMON_SUPPORT_TRACING 1
 #endif
 
+typedef struct TokenData
+{
+    const char *token;
+    unsigned int tokenlen;
+} TokenData;
+
+typedef struct Context
+{
+    Preprocessor *preprocessor;
+    const char *token;
+    unsigned int tokenlen;
+    Token tokenval;
+    unsigned int parse_errors;
+    TokenData usertypes[512];  // !!! FIXME: dynamic allocation
+    int usertype_count;  // !!! FIXME: dynamic allocation
+} Context;
+
+
+static void add_usertype(Context *ctx, const char *token, unsigned int len)
+{
+    // !!! FIXME: error if this is a reserved keyword.
+    // !!! FIXME: dynamic allocation
+    assert(ctx->usertype_count < STATICARRAYLEN(ctx->usertypes));
+    ctx->usertypes[ctx->usertype_count].token = token;
+    ctx->usertypes[ctx->usertype_count].tokenlen = len;
+    ctx->usertype_count++;
+} // add_usertype
+
+static int is_usertype(const Context *ctx)
+{
+    // !!! FIXME: dynamic allocation
+    // !!! FIXME: should probably redesign this anyhow.
+    int i;
+    for (i = 0; i < ctx->usertype_count; i++)
+    {
+
+printf(" xxx check '");
+fwrite(ctx->token, ctx->tokenlen, 1, stdout);
+printf("' vs '");
+fwrite(ctx->usertypes[i].token, ctx->usertypes[i].tokenlen, 1, stdout);
+printf("'\n");
+
+        if (ctx->usertypes[i].tokenlen == ctx->tokenlen)
+        {
+            if (memcmp(ctx->usertypes[i].token, ctx->token, ctx->tokenlen)==0)
+                return 1;
+        } // if
+    } // for
+
+    return 0;
+} // is_usertype
+
+
+// This is where the actual parsing happens. It's Lemon-generated!
 #define __MOJOSHADER_HLSL_COMPILER__ 1
 #include "mojoshader_parser_hlsl.h"
 
@@ -292,7 +338,8 @@ static int convert_to_lemon_token(const Context *ctx)
 
             if (is_semantic(ctx))
                 return TOKEN_HLSL_SEMANTIC;
-
+            else if (is_usertype(ctx))
+                return TOKEN_HLSL_USERTYPE;
             return TOKEN_HLSL_IDENTIFIER;
 
         case TOKEN_EOI: return 0;
@@ -316,7 +363,8 @@ void MOJOSHADER_compile(const char *filename,
     Context ctx;
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
-    
+
+    memset(&ctx, '\0', sizeof (Context));
     ctx.preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
                                            defines, define_count, 0, m, f, d);
@@ -331,8 +379,12 @@ void MOJOSHADER_compile(const char *filename,
         ctx.token = preprocessor_nexttoken(ctx.preprocessor,
                                                 &ctx.tokenlen,
                                                 &ctx.tokenval);
-        ParseHLSL(pParser, convert_to_lemon_token(&ctx), 0, 0);
+
+        TokenData token = { ctx.token, ctx.tokenlen };
+        ParseHLSL(pParser, convert_to_lemon_token(&ctx), token, &ctx);
     } while (ctx.tokenval != TOKEN_EOI);
     ParseHLSLFree(pParser, f, d);
 }
+
+// end of mojoshader_compiler.c ...
 

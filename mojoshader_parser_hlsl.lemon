@@ -21,7 +21,7 @@
 
 %start_symbol shader
 %token_prefix TOKEN_HLSL_
-%token_type { IncludeState * }
+%token_type { TokenData }
 %extra_argument { Context *ctx }
 
 %include {
@@ -161,7 +161,10 @@ variable_declaration_details ::= scalar_or_array.
 
 // !!! FIXME: we don't handle full sampler declarations at the moment.
 
-struct_declaration ::= STRUCT identifier LBRACE struct_member_list RBRACE.
+struct_declaration ::= STRUCT identifier(A) LBRACE struct_member_list RBRACE.
+{
+    add_usertype(ctx, A.token, A.tokenlen);
+}
 
 struct_member_list ::= struct_member.
 struct_member_list ::= struct_member_list struct_member.
@@ -448,9 +451,12 @@ switch_case ::= CASE expression COLON.
 switch_case ::= DEFAULT COLON statement_list.
 switch_case ::= DEFAULT COLON.
 
-// I may want to do more with this at some point.
-identifier ::= IDENTIFIER.
-
+%type identifier { TokenData }
+identifier(A) ::= IDENTIFIER(B).
+{
+    A.token = B.token;
+    A.tokenlen = B.tokenlen;
+}
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
 primary_expr ::= identifier.
