@@ -123,6 +123,8 @@ function_argument ::= datatype identifier.
 input_modifier ::= IN.
 input_modifier ::= INOUT.
 input_modifier ::= OUT.
+input_modifier ::= IN OUT.
+input_modifier ::= OUT IN.
 input_modifier ::= UNIFORM.
 
 semantic ::= COLON SEMANTIC.
