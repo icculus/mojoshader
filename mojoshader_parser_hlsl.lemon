@@ -30,6 +30,10 @@
 #endif
 }
 
+%syntax_error {
+    fprintf(stderr,"Syntax error\n");
+}
+
 %parse_failure {
     fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
 }
