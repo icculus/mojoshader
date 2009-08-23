@@ -85,6 +85,7 @@ function_signature ::= function_details semantic.
 function_signature ::= function_details.
 
 function_details ::= datatype identifier LPAREN function_arguments RPAREN.
+function_details ::= VOID identifier LPAREN function_arguments RPAREN.
 
 // !!! FIXME: there is a "target" storage class that is the name of the
 // !!! FIXME:  platform that this function is meant for...but I don't know
