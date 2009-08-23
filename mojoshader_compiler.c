@@ -40,13 +40,6 @@ static int is_usertype(const Context *ctx)
     int i;
     for (i = 0; i < ctx->usertype_count; i++)
     {
-
-printf(" xxx check '");
-fwrite(ctx->token, ctx->tokenlen, 1, stdout);
-printf("' vs '");
-fwrite(ctx->usertypes[i].token, ctx->usertypes[i].tokenlen, 1, stdout);
-printf("'\n");
-
         if (ctx->usertypes[i].tokenlen == ctx->tokenlen)
         {
             if (memcmp(ctx->usertypes[i].token, ctx->token, ctx->tokenlen)==0)
