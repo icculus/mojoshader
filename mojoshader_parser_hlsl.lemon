@@ -420,6 +420,10 @@ for_details ::= FOR LPAREN SEMICOLON expression SEMICOLON expression RPAREN stat
 for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON RPAREN statement.
 for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON expression RPAREN statement.
 for_details ::= FOR LPAREN expression SEMICOLON expression SEMICOLON RPAREN statement.
+for_details ::= FOR LPAREN variable_declaration expression SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN variable_declaration SEMICOLON RPAREN statement.
+for_details ::= FOR LPAREN variable_declaration SEMICOLON expression RPAREN statement.
+for_details ::= FOR LPAREN variable_declaration expression SEMICOLON RPAREN statement.
 
 loop_attribute ::= UNROLL LPAREN INT_CONSTANT RPAREN.
 loop_attribute ::= UNROLL.
