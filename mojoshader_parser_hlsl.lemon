@@ -19,6 +19,10 @@
 
 %name ParseHLSL
 
+// Some shift-reduce conflicts are basically unavoidable, but if the final
+//  conflict count matches this value, we consider it known and acceptable.
+%expect 1
+
 %start_symbol shader
 %token_prefix TOKEN_HLSL_
 %token_type { TokenData }
@@ -385,10 +389,21 @@ statement_block ::= LBRACE statement_list RBRACE.
 statement_list ::= statement.
 statement_list ::= statement_list statement.
 
+// These are for Shader Model 4 and Xbox 360 only, apparently.
+statement_attribute_details ::= ISOLATE.
+statement_attribute_details ::= MAXINSTRUCTIONCOUNT LPAREN INT_CONSTANT RPAREN.
+statement_attribute_details ::= NOEXPRESSIONOPTIMIZATIONS.
+statement_attribute_details ::= REMOVEUNUSEDINPUTS.
+statement_attribute_details ::= UNUSED.
+statement_attribute_details ::= XPS.
+
+statement_attribute ::= LBRACKET statement_attribute_details RBRACKET.
+
 statement ::= return_statement.
 statement ::= BREAK SEMICOLON.
 statement ::= CONTINUE SEMICOLON.
 statement ::= DISCARD SEMICOLON.
+statement ::= statement_attribute statement_block.
 statement ::= statement_block.
 statement ::= for_statement.
 statement ::= do_statement.

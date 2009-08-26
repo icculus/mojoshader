@@ -326,6 +326,11 @@ static int convert_to_lemon_token(const Context *ctx)
             if (tokencmp("sampler_state")) return TOKEN_HLSL_SAMPLER_STATE;
             if (tokencmp("SamplerState")) return TOKEN_HLSL_SAMPLERSTATE;
             if (tokencmp("SamplerComparisonState")) return TOKEN_HLSL_SAMPLERCOMPARISONSTATE;
+            if (tokencmp("isolate")) return TOKEN_HLSL_ISOLATE;
+            if (tokencmp("maxInstructionCount")) return TOKEN_HLSL_MAXINSTRUCTIONCOUNT;
+            if (tokencmp("noExpressionOptimizations")) return TOKEN_HLSL_NOEXPRESSIONOPTIMIZATIONS;
+            if (tokencmp("unused")) return TOKEN_HLSL_UNUSED;
+            if (tokencmp("xps")) return TOKEN_HLSL_XPS;
 
             #undef tokencmp
 
