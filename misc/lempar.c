@@ -273,9 +273,9 @@ static void yyGrowStack(yyParser *p){
 ** to Parse and ParseFree.
 */
 #if __MOJOSHADER__
-static void *ParseAlloc(void *(*mallocProc)(size_t,void *), void *malloc_data){
+static void *ParseAlloc(void *(*mallocProc)(int,void *), void *malloc_data){
   yyParser *pParser;
-  pParser = (yyParser*)(*mallocProc)( (size_t)sizeof(yyParser), malloc_data );
+  pParser = (yyParser*)(*mallocProc)( (int)sizeof(yyParser), malloc_data );
 #else
 void *ParseAlloc(void *(*mallocProc)(size_t)){
   yyParser *pParser;
