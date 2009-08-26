@@ -226,7 +226,8 @@ variable_attribute ::= ROWMAJOR.
 variable_attribute ::= COLUMNMAJOR.
 
 initializer_block_list ::= expression.
-initializer_block_list ::= initializer_block_list COMMA expression.
+initializer_block_list ::= LBRACE initializer_block_list RBRACE.
+initializer_block_list ::= initializer_block_list COMMA initializer_block_list.
 initializer_block ::= LBRACE initializer_block_list RBRACE.
 
 initializer ::= ASSIGN initializer_block.
