@@ -196,6 +196,7 @@ variable_lowlevel ::= packoffset register.
 variable_lowlevel ::= packoffset.
 variable_lowlevel ::= register.
 
+scalar_or_array ::= identifier LBRACKET RBRACKET.
 scalar_or_array ::= identifier LBRACKET expression RBRACKET.
 scalar_or_array ::= identifier.
 
