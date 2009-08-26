@@ -61,7 +61,8 @@ static int is_semantic(const Context *ctx)
     static const char *names[] = {
         "BINORMAL", "BLENDINDICES", "BLENDWEIGHT",
         "COLOR", "NORMAL", "POSITION", "POSITIONT", "PSIZE", "TANGENT",
-        "TEXCOORD", "FOG", "TESSFACTOR", "TEXCOORD", "VFACE", "VPOS", NULL
+        "TEXCOORD", "FOG", "TESSFACTOR", "TEXCOORD", "VFACE", "VPOS",
+        "DEPTH", NULL
     };
 
     // !!! FIXME: DX10 has SV_* ("System Value Semantics").
