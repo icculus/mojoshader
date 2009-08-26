@@ -205,8 +205,9 @@ static int compile(const char *fname, const char *buf, int len,
                     const MOJOSHADER_preprocessorDefine *defs,
                     unsigned int defcount, FILE *io)
 {
-    const MOJOSHADER_parseData *pd;
-    int retval = 0;
+    // !!! FIXME: write me.
+    //const MOJOSHADER_parseData *pd;
+    //int retval = 0;
 
     MOJOSHADER_compile(fname, buf, len, defs, defcount,
                              open_include, close_include,
