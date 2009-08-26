@@ -486,6 +486,7 @@ switch_case ::= DEFAULT COLON statement_list.
 switch_case ::= DEFAULT COLON.
 
 %type identifier { TokenData }
+%destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.
 identifier(A) ::= IDENTIFIER(B).
 {
     A.token = B.token;
