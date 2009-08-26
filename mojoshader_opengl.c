@@ -1459,8 +1459,7 @@ static int build_constants_lists(MOJOSHADER_glProgram *program)
             continue;  // nothing to see here.
 
         // only use arrays for 'c' registers.
-        const MOJOSHADER_uniformType type = u->type;
-        assert(type == MOJOSHADER_UNIFORM_FLOAT);
+        assert(u->type == MOJOSHADER_UNIFORM_FLOAT);
 
         // !!! FIXME: deal with this.
     } // for
