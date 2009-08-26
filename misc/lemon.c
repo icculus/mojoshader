@@ -274,6 +274,7 @@ struct lemon {
   char *outname;           /* Name of the current output file */
   char *tokenprefix;       /* A prefix added to token names in the .h file */
   int nconflict;           /* Number of parsing conflicts */
+  int nexpected;           /* Number of expected parsing conflicts */
   int tablesize;           /* Size of the parse tables */
   int basisflag;           /* Print only basis configurations */
   int has_fallback;        /* True if any %fallback is seen in the grammar */
@@ -1454,6 +1455,10 @@ char **argv;
   memset(&lem, 0, sizeof(lem));
   lem.errorcnt = 0;
 
+#if __MOJOSHADER__
+  lem.nexpected = -1;
+#endif
+
   /* Initialize the machine */
   Strsafe_init();
   Symbol_init();
@@ -1540,12 +1545,31 @@ char **argv;
     printf("                   %d states, %d parser table entries, %d conflicts\n",
       lem.nstate, lem.tablesize, lem.nconflict);
   }
+#if __MOJOSHADER__
+  if (lem.nexpected < 0) {
+    lem.nexpected = 0;  /* grammar didn't have a %expect declaration. */
+  }
+
+  if( lem.nconflict != lem.nexpected){
+    fprintf(stderr,"%d parsing conflicts (%d expected).\n",lem.nconflict,lem.nexpected);
+  }
+#else
   if( lem.nconflict ){
     fprintf(stderr,"%d parsing conflicts.\n",lem.nconflict);
   }
+#endif
 
+#if __MOJOSHADER__
+{
+  // return 0 on success, 1 on failure.
+  const int rc = ((lem.errorcnt > 0) || (lem.nconflict != lem.nexpected)) ? 1 : 0;
+  exit(rc);
+  return (rc);
+}
+#else
   exit(lem.errorcnt + lem.nconflict);
   return (lem.errorcnt + lem.nconflict);
+#endif
 }
 /******************** From the file "msort.c" *******************************/
 /*
@@ -1987,6 +2011,9 @@ struct pstate {
     WAITING_FOR_DESTRUCTOR_SYMBOL,
     WAITING_FOR_DATATYPE_SYMBOL,
     WAITING_FOR_FALLBACK_ID,
+#if __MOJOSHADER__
+    WAITING_FOR_EXPECT_VALUE,
+#endif
     WAITING_FOR_WILDCARD_ID
   } state;                   /* The state of the parser */
   struct symbol *fallback;   /* The fallback token */
@@ -2294,6 +2321,16 @@ to follow the previous rule.");
           psp->state = WAITING_FOR_FALLBACK_ID;
         }else if( strcmp(x,"wildcard")==0 ){
           psp->state = WAITING_FOR_WILDCARD_ID;
+#if __MOJOSHADER__
+        }else if( strcmp(x,"expect")==0 ){
+          if (psp->gp->nexpected >= 0) {
+            ErrorMsg(psp->filename,psp->tokenlineno, "Multiple %expect declarations.");
+            psp->errorcnt++;
+            psp->state = RESYNC_AFTER_DECL_ERROR;
+          } else {
+            psp->state = WAITING_FOR_EXPECT_VALUE;
+          }
+#endif
         }else{
           ErrorMsg(psp->filename,psp->tokenlineno,
             "Unknown declaration keyword: \"%%%s\".",x);
@@ -2321,6 +2358,24 @@ to follow the previous rule.");
         psp->state = WAITING_FOR_DECL_ARG;
       }
       break;
+#if __MOJOSHADER__
+    case WAITING_FOR_EXPECT_VALUE:
+    {
+        char *endptr = NULL;
+        psp->gp->nexpected = (int) strtol(x, &endptr, 10);
+        if ((*endptr != '\0') || (endptr == x)) {
+          ErrorMsg(psp->filename,psp->tokenlineno,
+            "Integer expected after %%expect keyword");
+          psp->errorcnt++;
+        } else if (psp->gp->nexpected < 0) {
+          ErrorMsg(psp->filename,psp->tokenlineno,
+            "Integer can't be negative after %%expect keyword");
+          psp->errorcnt++;
+        }
+        psp->state = WAITING_FOR_DECL_OR_RULE;
+        break;
+    }
+#endif
     case WAITING_FOR_DATATYPE_SYMBOL:
       if( !isalpha(x[0]) ){
         ErrorMsg(psp->filename,psp->tokenlineno,
