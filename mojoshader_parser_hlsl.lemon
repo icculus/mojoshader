@@ -21,7 +21,7 @@
 
 // Some shift-reduce conflicts are basically unavoidable, but if the final
 //  conflict count matches this value, we consider it known and acceptable.
-%expect 1
+%expect 2
 
 %start_symbol shader
 %token_prefix TOKEN_HLSL_
@@ -224,6 +224,11 @@ variable_attribute ::= CONST.
 variable_attribute ::= ROWMAJOR.
 variable_attribute ::= COLUMNMAJOR.
 
+initializer_block_list ::= expression.
+initializer_block_list ::= initializer_block_list COMMA expression.
+initializer_block ::= LBRACE initializer_block_list RBRACE.
+
+initializer ::= ASSIGN initializer_block.
 initializer ::= ASSIGN expression.
 
 intrinsic_datatype ::= datatype_vector.
