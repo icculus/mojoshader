@@ -487,11 +487,7 @@ switch_case ::= DEFAULT COLON.
 
 %type identifier { TokenData }
 %destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.
-identifier(A) ::= IDENTIFIER(B).
-{
-    A.token = B.token;
-    A.tokenlen = B.tokenlen;
-}
+identifier(A) ::= IDENTIFIER(B). { A = B; }
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
 primary_expr ::= identifier.
