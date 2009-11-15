@@ -87,12 +87,12 @@ struct MOJOSHADER_glProgram
     GLint *ps_uniforms_bool;
     uint32 refcount;
     // GLSL uses these...location of uniform arrays.
-    GLuint vs_float4_loc;
-    GLuint vs_int4_loc;
-    GLuint vs_bool_loc;
-    GLuint ps_float4_loc;
-    GLuint ps_int4_loc;
-    GLuint ps_bool_loc;
+    GLint vs_float4_loc;
+    GLint vs_int4_loc;
+    GLint vs_bool_loc;
+    GLint ps_float4_loc;
+    GLint ps_int4_loc;
+    GLint ps_bool_loc;
 };
 
 #ifndef WINGDIAPI
