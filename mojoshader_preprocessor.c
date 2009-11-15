@@ -306,7 +306,7 @@ static int add_to_buffer(Buffer *buffer, const char *data,
 
 static char *flatten_buffer(Buffer *buffer, MOJOSHADER_malloc m, void *d)
 {
-    char *retval = m(buffer->total_bytes + 1, d);
+    char *retval = (char *) m(buffer->total_bytes + 1, d);
     if (retval == NULL)
         return NULL;
     BufferList *item = &buffer->head;
@@ -490,7 +490,7 @@ static const Define *find_define_by_token(Context *ctx)
 
 static void put_all_defines(Context *ctx)
 {
-    int i;
+    size_t i;
     for (i = 0; i < STATICARRAYLEN(ctx->define_hashtable); i++)
     {
         Define *bucket = ctx->define_hashtable[i];
@@ -651,7 +651,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     int okay = 1;
-    int i = 0;
+    unsigned int i = 0;
 
     // the preprocessor is internal-only, so we verify all these are != NULL.
     assert(m != NULL);
@@ -946,6 +946,7 @@ static void handle_pp_error(Context *ctx)
 static void handle_pp_define(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
+    int done = 0;
 
     if (lexer(state) != TOKEN_IDENTIFIER)
     {
@@ -974,6 +975,9 @@ static void handle_pp_define(Context *ctx)
 
     int params = 0;
     char **idents = NULL;
+    MOJOSHADER_malloc m = ctx->malloc;
+    void *d = ctx->malloc_data;
+    static const char space = ' ';
 
     if (state->tokenval == ((Token) ' '))
         lexer(state);  // skip it.
@@ -1047,12 +1051,7 @@ static void handle_pp_define(Context *ctx)
     Buffer buffer;
     init_buffer(&buffer);
 
-    MOJOSHADER_malloc m = ctx->malloc;
-    void *d = ctx->malloc_data;
-    static const char space = ' ';
-
     state->report_whitespace = 1;
-    int done = 0;
     while ((!done) && (!ctx->out_of_memory))
     {
         const Token token = lexer(state);
@@ -1196,6 +1195,10 @@ static int handle_pp_identifier(Context *ctx)
         return 0;
     } // if
 
+    const char *fname = NULL;
+    const char *val = NULL;
+    size_t vallen = 0;
+
     IncludeState *state = ctx->include_stack;
     char *sym = (char *) alloca(state->tokenlen+1);
     memcpy(sym, state->token, state->tokenlen);
@@ -1311,9 +1314,9 @@ static int handle_pp_identifier(Context *ctx)
         } // if
     } // if
 
-    const char *val = def->definition;
-    const size_t vallen = strlen(val);
-    const char *fname = state->filename;
+    val = def->definition;
+    vallen = strlen(val);
+    fname = state->filename;
     if (!push_source(ctx, fname, val, vallen, state->line, NULL, params))
     {
         assert(ctx->out_of_memory);
@@ -1349,7 +1352,7 @@ static int find_precedence(const Token token)
         { 11, ((Token) '!') }, { 11, ((Token) '~') },
     };
 
-    int i;
+    size_t i;
     for (i = 0; i < STATICARRAYLEN(ops); i++)
     {
         if (ops[i].token == token)
@@ -1369,7 +1372,7 @@ typedef struct RpnTokens
 static long interpret_rpn(const RpnTokens *tokens, int tokencount, int *error)
 {
     long stack[128];
-    int stacksize = 0;
+    size_t stacksize = 0;
 
     *error = 1;
 
@@ -1449,8 +1452,8 @@ static int reduce_pp_expression(Context *ctx)
     RpnTokens output[128];
     Token stack[64];
     Token previous_token = TOKEN_UNKNOWN;
-    int outputsize = 0;
-    int stacksize = 0;
+    size_t outputsize = 0;
+    size_t stacksize = 0;
     int matched = 0;
     int done = 0;
 

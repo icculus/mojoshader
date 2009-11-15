@@ -357,7 +357,7 @@ static int check_token(Context *ctx, const char *str)
 
 static int ui32fromtoken(Context *ctx, uint32 *_val)
 {
-    int i;
+    unsigned int i;
     for (i = 0; i < ctx->tokenlen; i++)
     {
         if ((ctx->token[i] < '0') || (ctx->token[i] > '9'))
@@ -370,7 +370,7 @@ static int ui32fromtoken(Context *ctx, uint32 *_val)
         return 0;
     } // if
 
-    const int len = i;
+    const unsigned int len = i;
     uint32 val = 0;
     uint32 mult = 1;
     while (i--)
@@ -540,6 +540,18 @@ static void set_result_shift(Context *ctx, DestArgInfo *info, const int val)
 } // set_result_shift
 
 
+static inline int tokenbuf_overflow(Context *ctx)
+{
+    if ( ctx->tokenbufpos >= ((int) (STATICARRAYLEN(ctx->tokenbuf))) )
+    {
+        fail(ctx, "Too many tokens");
+        return 1;
+    } // if
+
+    return 0;
+} // tokenbuf_overflow
+
+
 static int parse_destination_token(Context *ctx)
 {
     DestArgInfo *info = &ctx->dest_arg;
@@ -641,11 +653,8 @@ static int parse_destination_token(Context *ctx)
 
     info->orig_writemask = info->writemask;
 
-    if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
-    {
-        fail(ctx, "Too many tokens");
+    if (tokenbuf_overflow(ctx))
         return 1;
-    } // if
 
     ctx->tokenbuf[ctx->tokenbufpos++] =
             ( ((((uint32) 1)) << 31) |
@@ -676,11 +685,8 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 {
     int retval = 1;
 
-    if (ctx->tokenbufpos >= STATICARRAYLEN(ctx->tokenbuf))
-    {
-        fail(ctx, "Too many tokens");
+    if (tokenbuf_overflow(ctx))
         return 0;
-    } // if
 
     // mark this now, so optional relative addressing token is placed second.
     uint32 *outtoken = &ctx->tokenbuf[ctx->tokenbufpos++];
@@ -943,7 +949,7 @@ static int parse_args_DEFB(Context *ctx)
 
 static int parse_dcl_usage(Context *ctx, uint32 *val, int *issampler)
 {
-    int i;
+    size_t i;
     static const char *samplerusagestrs[] = { "_2d", "_cube", "_volume" };
     static const char *usagestrs[] = {
         "_position", "_blendweight", "_blendindices", "_normal", "_psize",
@@ -1147,7 +1153,7 @@ static const Instruction instructions[] =
 static int parse_condition(Context *ctx, uint32 *controls)
 {
     static const char *comps[] = { "_gt", "_eq", "_ge", "_lt", "_ne", "_le" };
-    int i;
+    size_t i;
 
     if (ctx->tokenlen >= 3)
     {
@@ -1155,7 +1161,7 @@ static int parse_condition(Context *ctx, uint32 *controls)
         {
             if (check_token_segment(ctx, comps[i]))
             {
-                *controls = i + 1;
+                *controls = (uint32) (i + 1);
                 return 1;
             } // if
         } // for
@@ -1197,7 +1203,7 @@ static int parse_instruction_token(Context *ctx, Token token)
 
     else  // find the instruction.
     {
-        int i;
+        size_t i;
         for (i = 0; i < STATICARRAYLEN(instructions); i++)
         {
             const char *opcode_string = instructions[i].opcode_string;
@@ -1558,18 +1564,18 @@ static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
     const size_t extra = CTAB_SIZE + sizeof (uint32);
     if (len <= (ctx->ctab_len - extra))
     {
-        void *ptr = ctx->ctab + extra;
+        uint8 *ptr = ctx->ctab + extra;
         if (len == 0)
-            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
-        else if ((len == 1) && ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
-            return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
+            return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
+        else if ((len == 1) && ((ptr = (uint8 *) memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
+            return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
         else  // search for the string of bytes...
         {
-            while ((ptr = memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
+            while ((ptr = (uint8 *) memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
             {
                 if (memcmp(ptr, bytes, len) == 0)  // this is it?
-                    return ( (uint32) (((uint8 *) ptr) - ctx->ctab) ) - sizeof (uint32);
-                ptr++;
+                    return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
+                ptr++;  // !!! FIXME: should this be "ptr += len;"  ?
             } // while
         } // else
     } // if
@@ -1721,7 +1727,7 @@ static void output_comments(Context *ctx, const char **comments,
     else
         output_comment_string(ctx, creator);
 
-    int i;
+    unsigned int i;
     for (i = 0; i < comment_count; i++)
         output_comment_string(ctx, comments[i]);
 
@@ -1791,7 +1797,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
                 assert(retval != &MOJOSHADER_out_of_mem_data);
                 assert((error->error_position % sizeof (uint32)) == 0);
 
-                const int pos = error->error_position / sizeof (uint32);
+                const size_t pos = error->error_position / sizeof (uint32);
                 if (pos >= ctx->output_len)
                     error->error_position = -1;  // oh well.
                 else

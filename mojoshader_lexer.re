@@ -25,7 +25,7 @@
 typedef unsigned char uchar;
 
 /*!max:re2c */
-#define RET(t) do { return update_state(s, eoi, cursor, token, t); } while (0)
+#define RET(t) return update_state(s, eoi, cursor, token, (Token) t)
 #define YYCTYPE uchar
 #define YYCURSOR cursor
 #define YYLIMIT limit

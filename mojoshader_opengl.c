@@ -54,13 +54,13 @@ typedef struct
 {
     MOJOSHADER_shaderType shader_type;
     const MOJOSHADER_uniform *uniform;
-    GLuint location;
+    GLint location;
 } UniformMap;
 
 typedef struct
 {
     const MOJOSHADER_attribute *attribute;
-    GLuint location;
+    GLint location;
 } AttributeMap;
 
 struct MOJOSHADER_glProgram
@@ -132,7 +132,7 @@ struct MOJOSHADER_glContext
     uint32 generation;
 
     // This tells us which vertex attribute arrays we have enabled.
-    int max_attrs;
+    GLint max_attrs;
     uint8 want_attr[32];
     uint8 have_attr[32];
 
@@ -436,7 +436,7 @@ static void impl_GLSL_PushConstantArray(MOJOSHADER_glProgram *program,
                                         const GLfloat *f)
 {
     const GLint loc = ctx->glGetUniformLocation(program->handle, u->name);
-    if (loc != -1)   // not optimized out?
+    if (loc >= 0)   // not optimized out?
         ctx->glUniform4fv(loc, u->array_count, f);
 } // impl_GLSL_PushConstantArray
 
@@ -1034,7 +1034,7 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
 
     if (ctx->have_base_opengl)
     {
-        int i;
+        size_t i;
         for (i = 0; i < STATICARRAYLEN(profile_priorities); i++)
         {
             const char *profile = profile_priorities[i];
@@ -1406,7 +1406,7 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
     for (i = 0; i < pd->sampler_count; i++)
     {
         const GLint loc = ctx->profileGetSamplerLocation(program, shader, i);
-        if (loc != -1)  // maybe the Sampler was optimized out?
+        if (loc >= 0)  // maybe the Sampler was optimized out?
             ctx->profilePushSampler(loc, s[i].index);
     } // for
 } // lookup_samplers
@@ -1421,14 +1421,14 @@ static int lookup_attributes(MOJOSHADER_glProgram *program)
     for (i = 0; i < pd->attribute_count; i++)
     {
         const GLint loc = ctx->profileGetAttribLocation(program, i);
-        if (loc != -1)  // maybe the Attribute was optimized out?
+        if (loc >= 0)  // maybe the Attribute was optimized out?
         {
             AttributeMap *map = &program->attributes[program->attribute_count];
             map->attribute = &a[i];
-            map->location = (GLuint) loc;
+            map->location = loc;
             program->attribute_count++;
 
-            if (loc > STATICARRAYLEN(ctx->want_attr))
+            if (((size_t)loc) > STATICARRAYLEN(ctx->want_attr))
             {
                 assert(0 && "Static array is too small.");  // laziness fail.
                 return 0;
@@ -1722,7 +1722,7 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
     const GLenum gl_type = opengl_attr_type(type);
     const GLboolean norm = (normalized) ? GL_TRUE : GL_FALSE;
     const int count = ctx->bound_program->attribute_count;
-    GLuint gl_index = 0;
+    GLint gl_index = 0;
     int i;
 
     for (i = 0; i < count; i++)
@@ -1862,7 +1862,7 @@ void MOJOSHADER_glProgramReady(void)
             {
                 const size_t count = size;
                 const uint8 *b = &srcb[index];
-                int i;
+                size_t i;
                 for (i = 0; i < count; i++)
                     dstb[i] = (GLint) b[i];
                 dstb += count;

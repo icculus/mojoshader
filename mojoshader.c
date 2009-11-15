@@ -50,7 +50,7 @@ typedef struct RegisterList
     RegisterType regtype;
     int regnum;
     MOJOSHADER_usage usage;
-    int index;
+    unsigned int index;
     int writemask;
     int misc;
     const VariableList *array;
@@ -283,7 +283,7 @@ static inline void Free(Context *ctx, void *ptr)
 
 static inline void push_output(Context *ctx, OutputList *section)
 {
-    assert(ctx->output_stack_len < STATICARRAYLEN(ctx->output_stack));
+    assert(ctx->output_stack_len < (int) (STATICARRAYLEN(ctx->output_stack)));
     ctx->output_stack[ctx->output_stack_len] = ctx->output;
     ctx->indent_stack[ctx->output_stack_len] = ctx->indent;
     ctx->output_stack_len++;
@@ -938,7 +938,7 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
     } // if
 
     char swizzle_str[6];
-    int i = 0;
+    size_t i = 0;
     const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !no_swizzle(arg->swizzle))
     {
@@ -995,7 +995,7 @@ static const char *make_D3D_destarg_string(Context *ctx)
     } // if
 
     char writemask_str[6];
-    int i = 0;
+    size_t i = 0;
     const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
@@ -1030,7 +1030,7 @@ static const char *make_D3D_destarg_string(Context *ctx)
 } // make_D3D_destarg_string
 
 
-static const char *make_D3D_srcarg_string(Context *ctx, const int idx)
+static const char *make_D3D_srcarg_string(Context *ctx, const size_t idx)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -1730,7 +1730,7 @@ static const char *get_GLSL_destarg_varname(Context *ctx)
     return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
 } // get_GLSL_destarg_varname
 
-static const char *get_GLSL_srcarg_varname(Context *ctx, int idx)
+static const char *get_GLSL_srcarg_varname(Context *ctx, const size_t idx)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -1808,7 +1808,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
                                                        arg->regnum, regnum_str,
                                                        sizeof (regnum_str));
     char writemask_str[6];
-    int i = 0;
+    size_t i = 0;
     const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
@@ -1862,8 +1862,8 @@ static char *make_GLSL_swizzle_string(char *swiz_str, const size_t strsize,
 } // make_GLSL_swizzle_string
 
 
-static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
-                                     const int writemask)
+static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
+                                           const int writemask)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -2020,47 +2020,47 @@ static char *make_GLSL_srcarg_string(Context *ctx, const int idx,
     return retval;
 } // make_GLSL_srcarg_string
 
-static inline char *make_GLSL_srcarg_string_x(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_x(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, (1 << 0));
 } // make_GLSL_srcarg_string_x
 
-static inline char *make_GLSL_srcarg_string_y(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_y(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, (1 << 1));
 } // make_GLSL_srcarg_string_y
 
-static inline char *make_GLSL_srcarg_string_z(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_z(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, (1 << 2));
 } // make_GLSL_srcarg_string_z
 
-static inline char *make_GLSL_srcarg_string_w(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_w(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, (1 << 3));
 } // make_GLSL_srcarg_string_w
 
-static inline char *make_GLSL_srcarg_string_scalar(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_scalar(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string_x(ctx, idx);
 } // make_GLSL_srcarg_string_scalar
 
-static inline char *make_GLSL_srcarg_string_full(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_full(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, 0xF);
 } // make_GLSL_srcarg_string_full
 
-static inline char *make_GLSL_srcarg_string_masked(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_masked(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, ctx->dest_arg.writemask);
 } // make_GLSL_srcarg_string_masked
 
-static inline char *make_GLSL_srcarg_string_vec3(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_vec3(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, 0x7);
 } // make_GLSL_srcarg_string_vec3
 
-static inline char *make_GLSL_srcarg_string_vec2(Context *ctx, const int idx)
+static inline const char *make_GLSL_srcarg_string_vec2(Context *ctx, const size_t idx)
 {
     return make_GLSL_srcarg_string(ctx, idx, 0x3);
 } // make_GLSL_srcarg_string_vec2
@@ -3565,7 +3565,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     } // switch
 
     char swizzle_str[6];
-    int i = 0;
+    size_t i = 0;
 
     if (ctx->support_nv4)  // vFace must be output as "vFace.x" in nv4.
     {
@@ -3612,7 +3612,7 @@ static const char *get_ARB1_destarg_varname(Context *ctx)
     return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
 } // get_ARB1_destarg_varname
 
-static const char *get_ARB1_srcarg_varname(Context *ctx, int idx)
+static const char *get_ARB1_srcarg_varname(Context *ctx, const size_t idx)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -3666,7 +3666,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     } // if
 
     char writemask_str[6];
-    int i = 0;
+    size_t i = 0;
     const int scalar = scalar_register(ctx->shader_type, arg->regtype, arg->regnum);
     if (!scalar && !writemask_xyzw(arg->writemask))
     {
@@ -3738,7 +3738,7 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
 } // emit_ARB1_dest_modifiers
 
 
-static const char *make_ARB1_srcarg_string(Context *ctx, const int idx)
+static const char *make_ARB1_srcarg_string(Context *ctx, const size_t idx)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -4641,7 +4641,9 @@ static void emit_ARB1_REP(Context *ctx)
         const char *topbranch = get_ARB1_branch_label_name(ctx, toplabel);
         const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
 
-        assert(ctx->branch_labels_stack_index < STATICARRAYLEN(ctx->branch_labels_stack)-1);
+        assert(((size_t) ctx->branch_labels_stack_index) <
+                STATICARRAYLEN(ctx->branch_labels_stack)-1);
+
         ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = toplabel;
         ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = faillabel;
 
@@ -4701,7 +4703,9 @@ static void nv2_if(Context *ctx)
         const int label = allocate_branch_label(ctx);
         const char *failbranch = get_ARB1_branch_label_name(ctx, label);
 
-        assert(ctx->branch_labels_stack_index < STATICARRAYLEN(ctx->branch_labels_stack));
+        assert(((size_t) ctx->branch_labels_stack_index)
+                 < STATICARRAYLEN(ctx->branch_labels_stack));
+
         ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = label;
 
         output_line(ctx, "BRA %s (EQ.x);", failbranch);
@@ -5368,10 +5372,10 @@ static int adjust_swizzle(const Context *ctx, const RegisterType regtype,
     if (reg == NULL)
         return swizzle;
 
-    int i;
-    const MOJOSHADER_swizzle *swiz = ctx->swizzles;
-    for (i = 0; i < ctx->swizzles_count; i++, swiz++)
+    size_t i;
+    for (i = 0; i < ctx->swizzles_count; i++)
     {
+        const MOJOSHADER_swizzle *swiz = &ctx->swizzles[i];
         if ((swiz->usage == reg->usage) && (swiz->index == reg->index))
         {
             return ( (((int)(swiz->swizzles[((swizzle >> 0) & 0x3)])) << 0) |
@@ -6635,7 +6639,7 @@ static int parse_instruction_token(Context *ctx)
     } // if
     else
     {
-        if (retval != (insttoks+1))
+        if (((uint32)retval) != (insttoks+1))
         {
             failf(ctx, "wrong token count (%u, not %u) for opcode '%s'.",
                     (uint) retval, (uint) (insttoks+1),
@@ -6849,7 +6853,7 @@ static int parse_token(Context *ctx)
 
 static int find_profile_id(const char *profile)
 {
-    int i;
+    size_t i;
     for (i = 0; i < STATICARRAYLEN(profileMap); i++)
     {
         const char *name = profileMap[i].from;
@@ -7596,11 +7600,11 @@ static void process_definitions(Context *ctx)
 
 static void verify_swizzles(Context *ctx)
 {
-    int i;
+    size_t i;
     const char *failmsg = "invalid swizzle";
-    const MOJOSHADER_swizzle *swiz = ctx->swizzles;
-    for (i = 0; i < ctx->swizzles_count; i++, swiz++)
+    for (i = 0; i < ctx->swizzles_count; i++)
     {
+        const MOJOSHADER_swizzle *swiz = &ctx->swizzles[i];
         if (swiz->swizzles[0] > 3) { fail(ctx, failmsg); return; }
         if (swiz->swizzles[1] > 3) { fail(ctx, failmsg); return; }
         if (swiz->swizzles[2] > 3) { fail(ctx, failmsg); return; }
