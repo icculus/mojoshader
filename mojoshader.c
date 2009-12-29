@@ -7634,6 +7634,13 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     ctx = build_context(profile, tokenbuf, bufsize, swiz, swizcount, m, f, d);
     if (ctx == NULL)
         return &MOJOSHADER_out_of_mem_data;
+	
+    if (isfail(ctx))
+    {
+        retval = build_parsedata(ctx);
+        destroy_context(ctx);
+        return retval;
+    }
 
     verify_swizzles(ctx);
 
