@@ -13,6 +13,10 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
+#if !SUPPORT_PROFILE_BYTECODE
+#error Shader assembler needs bytecode profile. Fix your build.
+#endif
+
 #if DEBUG_ASSEMBLER_PARSER
     #define print_debug_token(token, len, val) \
         MOJOSHADER_print_debug_token("ASSEMBLER", token, len, val)
