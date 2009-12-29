@@ -5803,7 +5803,7 @@ static int parse_args_DCL(Context *ctx)
         } // else
     } // else if
 
-    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 2, 0)) )
+    else if ( (shader_is_vertex(ctx)) && (shader_version_atleast(ctx, 1, 1)) )
     {
         if (regtype == REG_TYPE_INPUT)
         {
