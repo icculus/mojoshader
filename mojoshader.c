@@ -7640,7 +7640,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         retval = build_parsedata(ctx);
         destroy_context(ctx);
         return retval;
-    }
+    } // if
 
     verify_swizzles(ctx);
 
