@@ -230,7 +230,7 @@ static inline int macosx_version_atleast(int x, int y, int z)
 
     if (!checked)
     {
-        long ver, major, minor, patch;
+        SInt32 ver, major, minor, patch;
         int convert = 0;
 
         if (Gestalt(gestaltSystemVersion, &ver) != noErr)
