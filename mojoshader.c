@@ -1071,8 +1071,8 @@ static void emit_D3D_start(Context *ctx, const char *profilestr)
 
     if (minor == 0xFF)
         strcpy(minor_str, "sw");
-    else if (minor == 0x1)  // apparently this is "vs_2_x". Weird.
-        strcpy(minor_str, "x");
+    else if ((major > 1) && (minor == 1))
+        strcpy(minor_str, "x");  // for >= SM2, apparently this is "x". Weird.
     else
         snprintf(minor_str, sizeof (minor_str), "%u", (uint) minor);
 
