@@ -162,12 +162,36 @@ typedef struct Context
     int have_relative_input_registers;
     int determined_constants_arrays;
     int predicated;
-    int support_nv2;
-    int support_nv3;
-    int support_nv4;
-    int support_glsl120;
     int glsl_generated_lit_opcode;
+
+#if SUPPORT_PROFILE_ARB1_NV
+    int profile_supports_nv2;
+    int profile_supports_nv3;
+    int profile_supports_nv4;
+#endif
+#if SUPPORT_PROFILE_GLSL120
+    int profile_supports_glsl120;
+#endif
 } Context;
+
+
+// Use these macros so we can remove all bits of these profiles from the build.
+#if SUPPORT_PROFILE_ARB1_NV
+#define support_nv2(ctx) ((ctx)->profile_supports_nv2)
+#define support_nv3(ctx) ((ctx)->profile_supports_nv3)
+#define support_nv4(ctx) ((ctx)->profile_supports_nv4)
+#else
+#define support_nv2(ctx) (0)
+#define support_nv3(ctx) (0)
+#define support_nv4(ctx) (0)
+#endif
+
+#if SUPPORT_PROFILE_GLSL120
+#define support_glsl120(ctx) ((ctx)->profile_supports_glsl120)
+#else
+#define support_glsl120(ctx) (0)
+#endif
+
 
 // Profile entry points...
 
@@ -2111,11 +2135,13 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
     if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
         /* no-op. */ ;
 
+    #if SUPPORT_PROFILE_GLSL120
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL120) == 0)
     {
-        ctx->support_glsl120 = 1;
+        ctx->profile_supports_glsl120 = 1;
         output_line(ctx, "#version 120");
     } // else if
+    #endif
 
     else
     {
@@ -2225,7 +2251,7 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
 #if 0
     // !!! FIXME: fails on Nvidia's and Apple's GL, even with #version 120.
     // !!! FIXME:  (the 1.20 spec says it should work, though, I think...)
-    if (ctx->support_glsl120)
+    if (support_glsl120(ctx))
     {
         // GLSL 1.20 can do constant arrays.
         const char *cstr = NULL;
@@ -3441,7 +3467,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
         rel_swizzle[2] = '\0';
 
-        if (!ctx->support_nv2)
+        if (!support_nv2(ctx))
         {
             // The address register in ARB1 only allows the '.x' component, so
             //  we need to load the component we need from a temp vector
@@ -3536,7 +3562,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            if (ctx->support_nv2)  // GL_NV_vertex_program2_option adds this.
+            if (support_nv2(ctx))  // GL_NV_vertex_program2_option adds this.
             {
                 premod_str = (arg->src_mod == SRCMOD_ABSNEGATE) ? "-|" : "|";
                 postmod_str = "|";
@@ -3567,7 +3593,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     char swizzle_str[6];
     size_t i = 0;
 
-    if (ctx->support_nv4)  // vFace must be output as "vFace.x" in nv4.
+    if (support_nv4(ctx))  // vFace must be output as "vFace.x" in nv4.
     {
         if (arg->regtype == REG_TYPE_MISCTYPE)
         {
@@ -3636,7 +3662,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
         // For less than nv4, the "_SAT" modifier is only available in
         //  fragment shaders. Every thing else will fake it later in
         //  emit_ARB1_dest_modifiers() ...
-        if (ctx->support_nv4)
+        if (support_nv4(ctx))
             sat_str = ".SAT";
         else if (shader_is_pixel(ctx))
             sat_str = "_SAT";
@@ -3648,7 +3674,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
         // Most ARB1 profiles can't do partial precision (MOD_PP), but that's
         //  okay. The spec says lots of Direct3D implementations ignore the
         //  flag anyhow.
-        if (ctx->support_nv4)
+        if (support_nv4(ctx))
             pp_str = "H";
     } // if
 
@@ -3727,7 +3753,7 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
     if (arg->result_mod & MOD_SATURATE)
     {
         // nv4 and/or pixel shaders just used the "SAT" modifier, instead.
-        if ( (!ctx->support_nv4) && (!shader_is_pixel(ctx)) )
+        if ( (!support_nv4(ctx)) && (!shader_is_pixel(ctx)) )
         {
             const char *varname = get_ARB1_destarg_varname(ctx);
             const char *dst = make_ARB1_destarg_string(ctx);
@@ -3843,9 +3869,10 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
     if (strcmp(profilestr, MOJOSHADER_PROFILE_ARB1) == 0)
         output_line(ctx, "!!ARB%s1.0", shader_str);
 
+    #if SUPPORT_PROFILE_ARB1_NV
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV2) == 0)
     {
-        ctx->support_nv2 = 1;
+        ctx->profile_supports_nv2 = 1;
         output_line(ctx, "!!ARB%s1.0", shader_str);
         output_line(ctx, "OPTION NV_%s_program2;", shader_full_str);
     } // else if
@@ -3854,19 +3881,20 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
     {
         // there's no NV_fragment_program3, so just use 2.
         const int ver = shader_is_pixel(ctx) ? 2 : 3;
-        ctx->support_nv2 = 1;
-        ctx->support_nv3 = 1;
+        ctx->profile_supports_nv2 = 1;
+        ctx->profile_supports_nv3 = 1;
         output_line(ctx, "!!ARB%s1.0", shader_str);
         output_line(ctx, "OPTION NV_%s_program%d;", shader_full_str, ver);
     } // else if
 
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_NV4) == 0)
     {
-        ctx->support_nv2 = 1;
-        ctx->support_nv3 = 1;
-        ctx->support_nv4 = 1;
+        ctx->profile_supports_nv2 = 1;
+        ctx->profile_supports_nv3 = 1;
+        ctx->profile_supports_nv4 = 1;
         output_line(ctx, "!!NV%s4.0", shader_str);
     } // else if
+    #endif
 
     else
     {
@@ -3889,7 +3917,7 @@ static void emit_ARB1_phase(Context *ctx)
 static inline const char *arb1_float_temp(const Context *ctx)
 {
     // nv4 lets you specify data type.
-    return (ctx->support_nv4) ? "FLOAT TEMP" : "TEMP";
+    return (support_nv4(ctx)) ? "FLOAT TEMP" : "TEMP";
 } // arb1_float_temp
 
 static void emit_ARB1_finalize(Context *ctx)
@@ -3903,7 +3931,7 @@ static void emit_ARB1_finalize(Context *ctx)
         output_line(ctx, "%s %s;", tmpstr, allocate_ARB1_scratch_reg_name(ctx));
 
     // nv2 fragment programs (and anything nv4) have a real REP/ENDREP.
-    if ( (ctx->support_nv2) && (!shader_is_pixel(ctx)) && (!ctx->support_nv4) )
+    if ( (support_nv2(ctx)) && (!shader_is_pixel(ctx)) && (!support_nv4(ctx)) )
     {
         // set up temps for nv2 REP/ENDREP emulation through branching.
         for (i = 0; i < ctx->max_reps; i++)
@@ -3924,7 +3952,7 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     {
         case REG_TYPE_ADDRESS:
             // nv4 replaced address registers with generic int registers.
-            if (ctx->support_nv4)
+            if (support_nv4(ctx))
                 output_line(ctx, "INT TEMP %s;", varname);
             else
             {
@@ -3932,7 +3960,7 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
                 //  to emulate it in a temporary, and move components to the
                 //  scalar ADDRESS register on demand.
                 output_line(ctx, "ADDRESS %s;", varname);
-                if (!ctx->support_nv2)
+                if (!support_nv2(ctx))
                     output_line(ctx, "TEMP addr%d;", regnum);
             } // else
             break;
@@ -4191,7 +4219,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         if (flags & MOD_CENTROID)
         {
-            if (!ctx->support_nv4)  // GL_NV_fragment_program4 adds centroid.
+            if (!support_nv4(ctx))  // GL_NV_fragment_program4 adds centroid.
             {
                 // !!! FIXME: should we just wing it without centroid here?
                 failf(ctx, "centroid unsupported in %s profile",
@@ -4242,7 +4270,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
             const MiscTypeType mt = (MiscTypeType) regnum;
             if (mt == MISCTYPE_TYPE_FACE)
             {
-                if (ctx->support_nv4)  // FINALLY, a vFace equivalent in nv4!
+                if (support_nv4(ctx))  // FINALLY, a vFace equivalent in nv4!
                 {
                     index_str[0] = '\0';  // no explicit number.
                     usage_str = "fragment.facing";
@@ -4302,7 +4330,7 @@ static void emit_ARB1_RSQ(Context *ctx)
 {
     // nv4 doesn't force abs() on this, so negative values will generate NaN.
     // The spec says you should force the abs() yourself.
-    if (!ctx->support_nv4)
+    if (!support_nv4(ctx))
     {
         emit_ARB1_opcode_ds(ctx, "RSQ");  // pre-nv4 implies ABS.
         return;
@@ -4405,7 +4433,7 @@ static void emit_ARB1_CALL(Context *ctx)
 {
     const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
 
-    if (!ctx->support_nv2)  // no branching in stock ARB1.
+    if (!support_nv2(ctx))  // no branching in stock ARB1.
     {
         failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
         return;
@@ -4422,7 +4450,7 @@ static void emit_ARB1_CALLNZ(Context *ctx)
     const char *src1 = make_ARB1_srcarg_string(ctx, 1);
     const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
-    if (!ctx->support_nv2)  // no branching in stock ARB1.
+    if (!support_nv2(ctx))  // no branching in stock ARB1.
         failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     else
     {
@@ -4441,7 +4469,7 @@ static void emit_ARB1_RET(Context *ctx)
     //  if we're ending a LABEL that had no CALL, this would all be written
     //  to ctx->ignore anyhow, so this should be "safe" ... arb1 profile will
     //  just end up throwing all this code out.
-    if (ctx->support_nv2)  // no branching in stock ARB1.
+    if (support_nv2(ctx))  // no branching in stock ARB1.
         output_line(ctx, "RET;");
     ctx->output = &ctx->mainline;  // in case we were ignoring this function.
 } // emit_ARB1_RET
@@ -4451,7 +4479,7 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(ENDLOOP)
 
 static void emit_ARB1_LABEL(Context *ctx)
 {
-    if (!ctx->support_nv2)  // no branching in stock ARB1.
+    if (!support_nv2(ctx))  // no branching in stock ARB1.
         return;  // don't fail()...maybe we never use it, but do fail in CALL.
 
     const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
@@ -4498,7 +4526,7 @@ static void emit_ARB1_CRS(Context *ctx) { emit_ARB1_opcode_dss(ctx, "XPD"); }
 
 static void emit_ARB1_SGN(Context *ctx)
 {
-    if (ctx->support_nv2)
+    if (support_nv2(ctx))
         emit_ARB1_opcode_ds(ctx, "SSG");
     else
     {
@@ -4518,7 +4546,7 @@ EMIT_ARB1_OPCODE_DS_FUNC(ABS)
 static void emit_ARB1_NRM(Context *ctx)
 {
     // nv2 fragment programs (and anything nv4) have a real NRM.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         emit_ARB1_opcode_ds(ctx, "NRM");
     else
     {
@@ -4539,7 +4567,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
     const int mask = ctx->dest_arg.writemask;
 
     // arb1 fragment programs and everything nv4 have sin/cos/sincos opcodes.
-    if ((shader_is_pixel(ctx)) || (ctx->support_nv4))
+    if ((shader_is_pixel(ctx)) || (support_nv4(ctx)))
     {
         const char *dst = make_ARB1_destarg_string(ctx);
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
@@ -4552,7 +4580,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
     } // if
 
     // nv2+ profiles have sin and cos opcodes.
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         const char *dst = get_ARB1_destarg_varname(ctx);
         const char *src0 = make_ARB1_srcarg_string(ctx, 0);
@@ -4630,10 +4658,10 @@ static void emit_ARB1_REP(Context *ctx)
     const char *src0 = make_ARB1_srcarg_string(ctx, 0);
 
     // nv2 fragment programs (and everything nv4) have a real REP.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         output_line(ctx, "REP %s;", src0);
 
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         // no REP, but we can use branches.
         const int toplabel = allocate_branch_label(ctx);
@@ -4664,10 +4692,10 @@ static void emit_ARB1_REP(Context *ctx)
 static void emit_ARB1_ENDREP(Context *ctx)
 {
     // nv2 fragment programs (and everything nv4) have a real ENDREP.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ENDREP;");
 
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         // no ENDREP, but we can use branches.
         assert(ctx->branch_labels_stack_index >= 2);
@@ -4695,7 +4723,7 @@ static void nv2_if(Context *ctx)
 {
     // The condition code register MUST be set up before this!
     // nv2 fragment programs (and everything nv4) have a real IF.
-    if ( (ctx->support_nv4) || (shader_is_pixel(ctx)) )
+    if ( (support_nv4(ctx)) || (shader_is_pixel(ctx)) )
         output_line(ctx, "IF EQ.x;");
     else
     {
@@ -4715,7 +4743,7 @@ static void nv2_if(Context *ctx)
 
 static void emit_ARB1_IF(Context *ctx)
 {
-    if (ctx->support_nv2)
+    if (support_nv2(ctx))
     {
         const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
         const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
@@ -4733,10 +4761,10 @@ static void emit_ARB1_IF(Context *ctx)
 static void emit_ARB1_ELSE(Context *ctx)
 {
     // nv2 fragment programs (and everything nv4) have a real ELSE.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ELSE;");
 
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         // there's no ELSE construct, but we can use a branch to a label.
         assert(ctx->branch_labels_stack_index > 0);
@@ -4763,10 +4791,10 @@ static void emit_ARB1_ELSE(Context *ctx)
 static void emit_ARB1_ENDIF(Context *ctx)
 {
     // nv2 fragment programs (and everything nv4) have a real ENDIF.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         output_line(ctx, "ENDIF;");
 
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         // there's no ENDIF construct, but we can use a branch to a label.
         assert(ctx->branch_labels_stack_index > 0);
@@ -4784,10 +4812,10 @@ static void emit_ARB1_ENDIF(Context *ctx)
 static void emit_ARB1_BREAK(Context *ctx)
 {
     // nv2 fragment programs (and everything nv4) have a real BREAK.
-    if ( (ctx->support_nv4) || ((ctx->support_nv2) && (shader_is_pixel(ctx))) )
+    if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
         output_line(ctx, "BRK;");
 
-    else if (ctx->support_nv2)
+    else if (support_nv2(ctx))
     {
         // no BREAK, but we can use branches.
         assert(ctx->branch_labels_stack_index >= 2);
@@ -4807,9 +4835,9 @@ static void emit_ARB1_MOVA(Context *ctx)
 {
     // nv2 and nv3 can use the ARR opcode.
     // But nv4 removed ARR (and ADDRESS registers!). Just ROUND to an INT.
-    if (ctx->support_nv4)
+    if (support_nv4(ctx))
         emit_ARB1_opcode_ds(ctx, "ROUND.S");  // !!! FIXME: don't use a modifier here.
-    else if ((ctx->support_nv2) || (ctx->support_nv3))
+    else if ((support_nv2(ctx)) || (support_nv3(ctx)))
         emit_ARB1_opcode_ds(ctx, "ARR");
     else
     {
@@ -4894,7 +4922,7 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BEM)
 
 static void emit_ARB1_DP2ADD(Context *ctx)
 {
-    if (ctx->support_nv4)  // nv4 has a built-in equivalent to DP2ADD.
+    if (support_nv4(ctx))  // nv4 has a built-in equivalent to DP2ADD.
         emit_ARB1_opcode_dsss(ctx, "DP2A");
     else
     {
@@ -4916,7 +4944,7 @@ static void emit_ARB1_DP2ADD(Context *ctx)
 
 static void emit_ARB1_DSX(Context *ctx)
 {
-    if (ctx->support_nv2)  // nv2 has a built-in equivalent to DSX.
+    if (support_nv2(ctx))  // nv2 has a built-in equivalent to DSX.
         emit_ARB1_opcode_ds(ctx, "DDX");
     else
         failf(ctx, "DSX unsupported in %s profile", ctx->profile->name);
@@ -4925,7 +4953,7 @@ static void emit_ARB1_DSX(Context *ctx)
 
 static void emit_ARB1_DSY(Context *ctx)
 {
-    if (ctx->support_nv2)  // nv2 has a built-in equivalent to DSY.
+    if (support_nv2(ctx))  // nv2 has a built-in equivalent to DSY.
         emit_ARB1_opcode_ds(ctx, "DDY");
     else
         failf(ctx, "DSY unsupported in %s profile", ctx->profile->name);
@@ -4937,7 +4965,7 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
 static void arb1_texld(Context *ctx, const char *opcode)
 {
     // !!! FIXME: Hack: "TEXH" is invalid in nv4. Fix this more cleanly.
-    if ((ctx->dest_arg.result_mod & MOD_PP) && (ctx->support_nv4))
+    if ((ctx->dest_arg.result_mod & MOD_PP) && (support_nv4(ctx)))
         ctx->dest_arg.result_mod &= ~MOD_PP;
 
     // !!! FIXME: do non-RGBA textures map to same default values as D3D?
@@ -4977,14 +5005,14 @@ static void arb1_texld(Context *ctx, const char *opcode)
 
 static void emit_ARB1_TEXLDL(Context *ctx)
 {
-    if ((shader_is_vertex(ctx)) && (!ctx->support_nv3))
+    if ((shader_is_vertex(ctx)) && (!support_nv3(ctx)))
     {
         failf(ctx, "Vertex shader TEXLDL unsupported in %s profile",
               ctx->profile->name);
         return;
     } // if
 
-    else if ((shader_is_pixel(ctx)) && (!ctx->support_nv2))
+    else if ((shader_is_pixel(ctx)) && (!support_nv2(ctx)))
     {
         failf(ctx, "Pixel shader TEXLDL unsupported in %s profile",
               ctx->profile->name);
@@ -5001,7 +5029,7 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(BREAKC)
 
 static void emit_ARB1_IFC(Context *ctx)
 {
-    if (ctx->support_nv2)
+    if (support_nv2(ctx))
     {
         static const char *comps[] = {
             "", "SGTC", "SEQC", "SGEC", "SGTC", "SNEC", "SLEC"

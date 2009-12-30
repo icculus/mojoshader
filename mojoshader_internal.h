@@ -48,9 +48,27 @@
 #define SUPPORT_PROFILE_GLSL 1
 #endif
 
+#ifndef SUPPORT_PROFILE_GLSL120
+#define SUPPORT_PROFILE_GLSL120 1
+#endif
+
 #ifndef SUPPORT_PROFILE_ARB1
 #define SUPPORT_PROFILE_ARB1 1
 #endif
+
+#ifndef SUPPORT_PROFILE_ARB1_NV
+#define SUPPORT_PROFILE_ARB1_NV 1
+#endif
+
+
+#if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
+#error nv profiles require arb1 profile. Fix your build.
+#endif
+
+#if SUPPORT_PROFILE_GLSL120 && !SUPPORT_PROFILE_GLSL
+#error glsl120 profile requires glsl profile. Fix your build.
+#endif
+
 
 
 // Get basic wankery out of the way here...

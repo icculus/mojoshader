@@ -859,6 +859,7 @@ static inline void parse_opengl_version(const char *verstr)
 } // parse_opengl_version
 
 
+#if SUPPORT_PROFILE_GLSL
 static int glsl_version_atleast(int maj, int min)
 {
     int glslmin = 0;
@@ -871,6 +872,7 @@ static int glsl_version_atleast(int maj, int min)
     parse_opengl_version_str(str, &glslmaj, &glslmin);
     return ( (glslmaj > maj) || ((glslmaj == maj) && (glslmin >= min)) );
 } // glsl_version_atleast
+#endif
 
 
 static void load_extensions(void *(*lookup)(const char *fnname))
@@ -927,6 +929,7 @@ static void load_extensions(void *(*lookup)(const char *fnname))
 
 static int valid_profile(const char *profile)
 {
+#if SUPPORT_PROFILE_GLSL
     // If running on Mac OS X <= 10.4, don't ever pick GLSL, even if
     //  the system claims it is available.
     #if PLATFORM_MACOSX
@@ -934,6 +937,7 @@ static int valid_profile(const char *profile)
     #else
     const int allow_glsl = 1;
     #endif
+#endif
 
     if (!ctx->have_base_opengl)
         return 0;
@@ -953,7 +957,9 @@ static int valid_profile(const char *profile)
         MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_vertex_program);
         MUST_HAVE(MOJOSHADER_PROFILE_ARB1, GL_ARB_fragment_program);
     } // else if
+    #endif
 
+    #if SUPPORT_PROFILE_ARB1_NV
     else if (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0)
     {
         MUST_HAVE(MOJOSHADER_PROFILE_NV2, GL_ARB_vertex_program);
@@ -976,7 +982,7 @@ static int valid_profile(const char *profile)
     } // else if
     #endif
 
-    #if SUPPORT_PROFILE_GLSL
+    #if SUPPORT_PROFILE_GLSL120
     else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0))
     {
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
@@ -987,7 +993,9 @@ static int valid_profile(const char *profile)
         if (!glsl_version_atleast(1, 20))
             return 0;
     } // else if
+    #endif
 
+    #if SUPPORT_PROFILE_GLSL
     else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0))
     {
         MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
@@ -1010,14 +1018,18 @@ static int valid_profile(const char *profile)
 
 
 static const char *profile_priorities[] = {
-#if SUPPORT_PROFILE_GLSL
+#if SUPPORT_PROFILE_GLSL120
     MOJOSHADER_PROFILE_GLSL120,
+#endif
+#if SUPPORT_PROFILE_GLSL
     MOJOSHADER_PROFILE_GLSL,
 #endif
-#if SUPPORT_PROFILE_ARB1
+#if SUPPORT_PROFILE_ARB1_NV
     MOJOSHADER_PROFILE_NV4,
     MOJOSHADER_PROFILE_NV3,
     MOJOSHADER_PROFILE_NV2,
+#endif
+#if SUPPORT_PROFILE_ARB1
     MOJOSHADER_PROFILE_ARB1,
 #endif
 };
@@ -1101,6 +1113,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     // !!! FIXME: generalize this part.
     if (profile == NULL) {}
 
+    // We don't check SUPPORT_PROFILE_GLSL120 here, since valid_profile() does.
 #if SUPPORT_PROFILE_GLSL
     else if ( (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0) ||
               (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0) )
@@ -1123,6 +1136,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     } // if
 #endif
 
+    // We don't check SUPPORT_PROFILE_ARB1_NV here, since valid_profile() does.
 #if SUPPORT_PROFILE_ARB1
     else if ( (strcmp(profile, MOJOSHADER_PROFILE_ARB1) == 0) ||
               (strcmp(profile, MOJOSHADER_PROFILE_NV2) == 0) ||
