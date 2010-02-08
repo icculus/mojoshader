@@ -422,7 +422,6 @@ static void print_expr(const Expression *expr, const int depth)
 
 static void parse_complete(const Expression *expr)
 {
-    printf("parse complete!\n");
     print_expr(expr, 0);
 } // parse_complete
 
