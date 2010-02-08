@@ -414,6 +414,8 @@ int main(int argc, char **argv)
     {
         if ((len == 5) && (memcmp(ln, "quit\n", 5) == 0))
             break;
+        else if ((len == 2) && (memcmp(ln, "q\n", 2) == 0))
+            break;
 
         MOJOSHADER_compile(filename, ln, (unsigned int) len,
                            NULL, 0, NULL, NULL, NULL, NULL, NULL);
