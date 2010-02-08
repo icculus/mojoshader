@@ -69,8 +69,7 @@
 
 // The rules...
 
-%type calculator { Expression * }
-calculator(A) ::= expression(B). { A = B; }
+calculator ::= expression(B). { parse_complete(B); }
 
 %type identifier { const char * }
 %destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.

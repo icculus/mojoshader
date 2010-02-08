@@ -53,7 +53,7 @@ static inline void Free(Context *ctx, void *ptr)
 
 typedef enum Operator
 {
-    OP_START_RANGE_UNARY_OPERATORS,
+    OP_START_RANGE_UNARY,
     OP_POSTINCREMENT,
     OP_POSTDECREMENT,
     OP_PREINCREMENT,
@@ -61,9 +61,9 @@ typedef enum Operator
     OP_NEGATE,
     OP_COMPLEMENT,
     OP_NOT,
-    OP_END_RANGE_UNARY_OPERATORS,
+    OP_END_RANGE_UNARY,
 
-    OP_START_RANGE_BINARY_OPERATORS,
+    OP_START_RANGE_BINARY,
     OP_DEREF_ARRAY,
     OP_CALLFUNC,
     OP_DEREF_STRUCT,
@@ -97,11 +97,11 @@ typedef enum Operator
     OP_ANDASSIGN,
     OP_XORASSIGN,
     OP_ORASSIGN,
-    OP_END_RANGE_BINARY_OPERATORS,
+    OP_END_RANGE_BINARY,
 
-    OP_START_RANGE_TERNARY_OPERATORS,
+    OP_START_RANGE_TERNARY,
     OP_CONDITIONAL,
-    OP_END_RANGE_TERNARY_OPERATORS,
+    OP_END_RANGE_TERNARY,
 
     OP_START_RANGE_DATA,
     OP_IDENTIFIER,
@@ -110,6 +110,22 @@ typedef enum Operator
     OP_STRING_LITERAL,
     OP_END_RANGE_DATA,
 } Operator;
+
+static inline int operator_is_unary(const Operator op)
+{
+    return ((op > OP_START_RANGE_UNARY) && (op < OP_END_RANGE_UNARY));
+} // operator_is_unary
+
+static inline int operator_is_binary(const Operator op)
+{
+    return ((op > OP_START_RANGE_BINARY) && (op < OP_END_RANGE_BINARY));
+} // operator_is_binary
+
+static inline int operator_is_ternary(const Operator op)
+{
+    return ((op > OP_START_RANGE_TERNARY) && (op < OP_END_RANGE_TERNARY));
+} // operator_is_ternary
+
 
 typedef struct Expression
 {
@@ -147,43 +163,23 @@ typedef struct ExpressionIdentifier
     const char *identifier;
 } ExpressionIdentifier;
 
-typedef struct ExpressionLiteralInt
+typedef struct ExpressionIntLiteral
 {
     Operator op;  // Always OP_INT_LITERAL
     int64 value;
-} ExpressionLiteralInt;
+} ExpressionIntLiteral;
 
-typedef struct ExpressionLiteralFloat
+typedef struct ExpressionFloatLiteral
 {
     Operator op;  // Always OP_FLOAT_LITERAL
     double value;
-} ExpressionLiteralFloat;
+} ExpressionFloatLiteral;
 
-typedef struct ExpressionLiteralString
+typedef struct ExpressionStringLiteral
 {
     Operator op;  // Always OP_STRING_LITERAL
     const char *string;
-} ExpressionLiteralString;
-
-static const char *new_identifier(Context *);
-static Expression *new_unary_expr(Context *, const Operator, Expression *);
-static Expression *new_binary_expr(Context *, const Operator, Expression *, Expression *);
-static Expression *new_ternary_expr(Context *, const Operator, Expression *, Expression *, Expression *);
-static Expression *new_identifier_expr(Context *, const char *);
-static Expression *new_literal_int_expr(Context *);
-static Expression *new_literal_float_expr(Context *);
-static Expression *new_literal_string_expr(Context *);
-
-static void parse_complete(const Expression *expr)
-{
-    printf("parse complete!\n");
-    
-} // parse_complete
-
-
-// This is where the actual parsing happens. It's Lemon-generated!
-#define __MOJOSHADER_CALC_COMPILER__ 1
-#include "calculator.h"
+} ExpressionStringLiteral;
 
 static const char *new_identifier(Context *ctx)
 {
@@ -201,6 +197,7 @@ static Expression *new_unary_expr(Context *ctx, const Operator op,
                                   Expression *operand)
 {
     NEW_EXPR(ExpressionUnary);
+    assert(operator_is_unary(op));
     retval->op = op;
     retval->operand = operand;
     return (Expression *) retval;
@@ -210,6 +207,7 @@ static Expression *new_binary_expr(Context *ctx, const Operator op,
                                    Expression *left, Expression *right)
 {
     NEW_EXPR(ExpressionBinary);
+    assert(operator_is_binary(op));
     retval->op = op;
     retval->left = left;
     retval->right = right;
@@ -221,6 +219,7 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
                                     Expression *right)
 {
     NEW_EXPR(ExpressionTernary);
+    assert(operator_is_ternary(op));
     retval->op = op;
     retval->left = left;
     retval->center = center;
@@ -231,7 +230,7 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
 static Expression *new_identifier_expr(Context *ctx, const char *identifier)
 {
     NEW_EXPR(ExpressionIdentifier);
-    retval->op = TOKEN_CALC_IDENTIFIER;
+    retval->op = OP_IDENTIFIER;
     retval->identifier = identifier;
     return (Expression *) retval;
 } // new_identifier_expr
@@ -275,8 +274,8 @@ static inline int64 strtoi64(const char *str, unsigned int len)
 
 static Expression *new_literal_int_expr(Context *ctx)
 {
-    NEW_EXPR(ExpressionLiteralInt);
-    retval->op = TOKEN_CALC_INT_CONSTANT;
+    NEW_EXPR(ExpressionIntLiteral);
+    retval->op = OP_INT_LITERAL;
     retval->value = strtoi64(ctx->token, ctx->tokenlen);
     return (Expression *) retval;
 } // new_literal_int_expr
@@ -292,20 +291,139 @@ static inline double strtodouble(const char *_str, unsigned int len)
 
 static Expression *new_literal_float_expr(Context *ctx)
 {
-    NEW_EXPR(ExpressionLiteralFloat);
-    retval->op = TOKEN_CALC_FLOAT_CONSTANT;
+    NEW_EXPR(ExpressionFloatLiteral);
+    retval->op = OP_FLOAT_LITERAL;
     retval->value = strtodouble(ctx->token, ctx->tokenlen);
     return (Expression *) retval;
 } // new_literal_float_expr
 
 static Expression *new_literal_string_expr(Context *ctx)
 {
-    NEW_EXPR(ExpressionLiteralString);
-    retval->op = TOKEN_CALC_STRING_LITERAL;
+    NEW_EXPR(ExpressionStringLiteral);
+    retval->op = OP_STRING_LITERAL;
     retval->string = new_identifier(ctx);
     return (Expression *) retval;
 } // new_string_literal_expr
 
+static void print_expr(const Expression *expr, const int depth)
+{
+    int i;
+    for (i = 0; i < depth; i++)
+        printf("    ");
+
+    printf("Expression ");
+    switch (expr->op)
+    {
+        #define PRINT_OP(op) case op: printf("%s\n", #op); break;
+        PRINT_OP(OP_DEREF_ARRAY);
+        PRINT_OP(OP_CALLFUNC);
+        PRINT_OP(OP_DEREF_STRUCT);
+        PRINT_OP(OP_POSTINCREMENT);
+        PRINT_OP(OP_POSTDECREMENT);
+        PRINT_OP(OP_COMMA);
+        PRINT_OP(OP_PREINCREMENT);
+        PRINT_OP(OP_PREDECREMENT);
+        PRINT_OP(OP_NEGATE);
+        PRINT_OP(OP_COMPLEMENT);
+        PRINT_OP(OP_NOT);
+        PRINT_OP(OP_MULTIPLY);
+        PRINT_OP(OP_DIVIDE);
+        PRINT_OP(OP_MODULO);
+        PRINT_OP(OP_ADD);
+        PRINT_OP(OP_SUBTRACT);
+        PRINT_OP(OP_LSHIFT);
+        PRINT_OP(OP_RSHIFT);
+        PRINT_OP(OP_LESSTHAN);
+        PRINT_OP(OP_GREATERTHAN);
+        PRINT_OP(OP_LESSTHANOREQUAL);
+        PRINT_OP(OP_GREATERTHANOREQUAL);
+        PRINT_OP(OP_EQUAL);
+        PRINT_OP(OP_NOTEQUAL);
+        PRINT_OP(OP_BINARYAND);
+        PRINT_OP(OP_BINARYXOR);
+        PRINT_OP(OP_BINARYOR);
+        PRINT_OP(OP_LOGICALAND);
+        PRINT_OP(OP_LOGICALOR);
+        PRINT_OP(OP_CONDITIONAL);
+        PRINT_OP(OP_ASSIGN);
+        PRINT_OP(OP_MULASSIGN);
+        PRINT_OP(OP_DIVASSIGN);
+        PRINT_OP(OP_MODASSIGN);
+        PRINT_OP(OP_ADDASSIGN);
+        PRINT_OP(OP_SUBASSIGN);
+        PRINT_OP(OP_LSHIFTASSIGN);
+        PRINT_OP(OP_RSHIFTASSIGN);
+        PRINT_OP(OP_ANDASSIGN);
+        PRINT_OP(OP_XORASSIGN);
+        PRINT_OP(OP_ORASSIGN);
+        PRINT_OP(OP_INT_LITERAL);
+        PRINT_OP(OP_FLOAT_LITERAL);
+        PRINT_OP(OP_STRING_LITERAL);
+        PRINT_OP(OP_IDENTIFIER);
+        default: printf("---UNKNOWN!---\n"); return;
+    } // switch
+
+    if (operator_is_unary(expr->op))
+    {
+        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
+        print_expr(unary->operand, depth + 1);
+    } // if
+    else if (operator_is_binary(expr->op))
+    {
+        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
+        print_expr(binary->left, depth + 1);
+        print_expr(binary->right, depth + 1);
+    } // else if
+    else if (operator_is_ternary(expr->op))
+    {
+        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
+        print_expr(ternary->left, depth + 1);
+        print_expr(ternary->center, depth + 1);
+        print_expr(ternary->right, depth + 1);
+    } // else if
+
+    else
+    {
+        for (i = 0; i < (depth + 1); i++)
+            printf("    ");
+
+        if (expr->op == OP_IDENTIFIER)
+        {
+            const ExpressionIdentifier *ident = (const ExpressionIdentifier *) expr;
+            printf("(%s)\n", ident->identifier);
+        } // if
+        else if (expr->op == OP_INT_LITERAL)
+        {
+            const ExpressionIntLiteral *lit = (const ExpressionIntLiteral *) expr;
+            printf("(%lld)\n", (long long) lit->value);
+        } // if
+        else if (expr->op == OP_FLOAT_LITERAL)
+        {
+            const ExpressionFloatLiteral *lit = (const ExpressionFloatLiteral *) expr;
+            printf("(%lf)\n", lit->value);
+        } // if
+        else if (expr->op == OP_STRING_LITERAL)
+        {
+            const ExpressionStringLiteral *lit = (const ExpressionStringLiteral *) expr;
+            printf("(\"%s\")\n", lit->string);
+        } // if
+        else
+        {
+            assert(0 && "Shouldn't hit this.");
+        } // else
+    } // else
+} // print_expr
+
+static void parse_complete(const Expression *expr)
+{
+    printf("parse complete!\n");
+    print_expr(expr, 0);
+} // parse_complete
+
+
+// This is where the actual parsing happens. It's Lemon-generated!
+#define __MOJOSHADER_CALC_COMPILER__ 1
+#include "calculator.h"
 
 static int convert_to_lemon_token(const Context *ctx)
 {
