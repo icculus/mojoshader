@@ -58,7 +58,7 @@ ADD_CUSTOM_COMMAND(
     MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
     DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
     COMMAND "${LEMON}"
-    ARGS -l -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
+    ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
 )
 
 ADD_LIBRARY(mojoshader STATIC
