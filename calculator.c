@@ -53,17 +53,21 @@ static inline void Free(Context *ctx, void *ptr)
 
 typedef enum Operator
 {
-    OP_DEREF_ARRAY,
-    OP_CALLFUNC,
-    OP_DEREF_STRUCT,
+    OP_START_RANGE_UNARY_OPERATORS,
     OP_POSTINCREMENT,
     OP_POSTDECREMENT,
-    OP_COMMA,
     OP_PREINCREMENT,
     OP_PREDECREMENT,
     OP_NEGATE,
     OP_COMPLEMENT,
     OP_NOT,
+    OP_END_RANGE_UNARY_OPERATORS,
+
+    OP_START_RANGE_BINARY_OPERATORS,
+    OP_DEREF_ARRAY,
+    OP_CALLFUNC,
+    OP_DEREF_STRUCT,
+    OP_COMMA,
     OP_MULTIPLY,
     OP_DIVIDE,
     OP_MODULO,
@@ -82,7 +86,6 @@ typedef enum Operator
     OP_BINARYOR,
     OP_LOGICALAND,
     OP_LOGICALOR,
-    OP_CONDITIONAL,
     OP_ASSIGN,
     OP_MULASSIGN,
     OP_DIVASSIGN,
@@ -94,6 +97,18 @@ typedef enum Operator
     OP_ANDASSIGN,
     OP_XORASSIGN,
     OP_ORASSIGN,
+    OP_END_RANGE_BINARY_OPERATORS,
+
+    OP_START_RANGE_TERNARY_OPERATORS,
+    OP_CONDITIONAL,
+    OP_END_RANGE_TERNARY_OPERATORS,
+
+    OP_START_RANGE_DATA,
+    OP_IDENTIFIER,
+    OP_INT_LITERAL,
+    OP_FLOAT_LITERAL,
+    OP_STRING_LITERAL,
+    OP_END_RANGE_DATA,
 } Operator;
 
 typedef struct Expression
@@ -128,25 +143,25 @@ typedef struct ExpressionTernary
 
 typedef struct ExpressionIdentifier
 {
-    Operator op;  // Always TOKEN_CALC_IDENTIFIER
+    Operator op;  // Always OP_IDENTIFIER
     const char *identifier;
 } ExpressionIdentifier;
 
 typedef struct ExpressionLiteralInt
 {
-    Operator op;  // Always TOKEN_CALC_INT_CONSTANT
+    Operator op;  // Always OP_INT_LITERAL
     int64 value;
 } ExpressionLiteralInt;
 
 typedef struct ExpressionLiteralFloat
 {
-    Operator op;  // Always TOKEN_CALC_FLOAT_CONSTANT
+    Operator op;  // Always OP_FLOAT_LITERAL
     double value;
 } ExpressionLiteralFloat;
 
 typedef struct ExpressionLiteralString
 {
-    Operator op;  // Always TOKEN_CALC_STRING_LITERAL
+    Operator op;  // Always OP_STRING_LITERAL
     const char *string;
 } ExpressionLiteralString;
 
