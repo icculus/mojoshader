@@ -5,6 +5,12 @@
 #define LEMON_SUPPORT_TRACING 1
 #endif
 
+typedef struct TokenData
+{
+    const char *token;
+    unsigned int tokenlen;
+} TokenData;
+
 typedef struct Context
 {
     int isfail;
@@ -181,14 +187,14 @@ typedef struct ExpressionStringLiteral
     const char *string;
 } ExpressionStringLiteral;
 
-static const char *new_identifier(Context *ctx)
+static const char *new_identifier(Context *ctx, const TokenData *data)
 {
     // !!! FIXME: this needs to cache strings.
-    const unsigned int len = ctx->tokenlen;
+    const unsigned int len = data->tokenlen;
     char *retval = Malloc(ctx, len + 1);
     if (retval == NULL)
         return NULL;
-    memcpy(retval, ctx->token, len);
+    memcpy(retval, data->token, len);
     retval[len] = '\0';
     return retval;
 } // new_identifier
@@ -272,11 +278,11 @@ static inline int64 strtoi64(const char *str, unsigned int len)
     return retval;
 } // strtoi64
 
-static Expression *new_literal_int_expr(Context *ctx)
+static Expression *new_literal_int_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionIntLiteral);
     retval->op = OP_INT_LITERAL;
-    retval->value = strtoi64(ctx->token, ctx->tokenlen);
+    retval->value = strtoi64(data->token, data->tokenlen);
     return (Expression *) retval;
 } // new_literal_int_expr
 
@@ -289,19 +295,19 @@ static inline double strtodouble(const char *_str, unsigned int len)
     return strtod(str, NULL);
 } // strtodouble
 
-static Expression *new_literal_float_expr(Context *ctx)
+static Expression *new_literal_float_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionFloatLiteral);
     retval->op = OP_FLOAT_LITERAL;
-    retval->value = strtodouble(ctx->token, ctx->tokenlen);
+    retval->value = strtodouble(data->token, data->tokenlen);
     return (Expression *) retval;
 } // new_literal_float_expr
 
-static Expression *new_literal_string_expr(Context *ctx)
+static Expression *new_literal_string_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionStringLiteral);
     retval->op = OP_STRING_LITERAL;
-    retval->string = new_identifier(ctx);
+    retval->string = new_identifier(ctx, data);
     return (Expression *) retval;
 } // new_string_literal_expr
 
@@ -516,7 +522,11 @@ static void MOJOSHADER_compile(const char *filename,
         ctx.token = preprocessor_nexttoken(ctx.preprocessor,
                                                 &ctx.tokenlen,
                                                 &ctx.tokenval);
-        ParseCalculator(pParser, convert_to_lemon_token(&ctx), 0, &ctx);
+        // !!! FIXME: this can't refer directly to pointers in the stream,
+        // !!! FIXME:  as they can be free()'d before we actually use them
+        // !!! FIXME:  when a rule reduces down later.
+        TokenData token = { ctx.token, ctx.tokenlen };
+        ParseCalculator(pParser, convert_to_lemon_token(&ctx), token, &ctx);
     } while (ctx.tokenval != TOKEN_EOI);
     ParseCalculatorFree(pParser, f, d);
 }
