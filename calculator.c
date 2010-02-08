@@ -526,7 +526,7 @@ static void MOJOSHADER_compile(const char *filename,
         // !!! FIXME:  when a rule reduces down later.
         TokenData token = { ctx.token, ctx.tokenlen };
         ParseCalculator(pParser, convert_to_lemon_token(&ctx), token, &ctx);
-    } while (ctx.tokenval != TOKEN_EOI);
+    } while ((!ctx.isfail) && (ctx.tokenval != TOKEN_EOI));
     ParseCalculatorFree(pParser, f, d);
 }
 

@@ -36,11 +36,14 @@
 }
 
 %parse_failure {
-    fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
+    ctx->isfail = 1;
+    fprintf(stderr, "Giving up. Parser is hopelessly lost...\n");
+
 }
 
 %stack_overflow {
-    fprintf(stderr,"Giving up.  Parser stack overflow\n");
+    ctx->isfail = 1;
+    fprintf(stderr, "Giving up. Parser stack overflow\n");
 }
 
 // operator precedence (matches C spec)...
