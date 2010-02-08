@@ -72,7 +72,7 @@
 
 // The rules...
 
-calculator ::= expression(B). { parse_complete(B); }
+calculator ::= expression(B). { parse_complete(ctx, B); }
 
 %type identifier { const char * }
 %destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.

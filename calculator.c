@@ -497,10 +497,42 @@ static double run_expr(const Expression *expr)
     return 0.0;  // oh well.
 } // run_expr
 
-static void parse_complete(const Expression *expr)
+static void free_expr(Context *ctx, Expression *expr)
+{
+    if (operator_is_unary(expr->op))
+    {
+        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
+        free_expr(ctx, unary->operand);
+    } // if
+    else if (operator_is_binary(expr->op))
+    {
+        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
+        free_expr(ctx, binary->left);
+        free_expr(ctx, binary->right);
+    } // else if
+    else if (operator_is_ternary(expr->op))
+    {
+        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
+        free_expr(ctx, ternary->left);
+        free_expr(ctx, ternary->center);
+        free_expr(ctx, ternary->right);
+    } // else if
+    else if (expr->op == OP_STRING_LITERAL)
+    {
+        Free(ctx, (void *) ((ExpressionStringLiteral *)expr)->string);
+    } // else if
+    else if (expr->op == OP_IDENTIFIER)
+    {
+        Free(ctx, (void *) ((ExpressionIdentifier *)expr)->identifier);
+    } // else if
+    Free(ctx, expr);
+} // free_expr
+
+static void parse_complete(Context *ctx, Expression *expr)
 {
     print_expr(expr, 0);
     printf("Result: %lf\n\n", run_expr(expr));
+    free_expr(ctx, expr);
 } // parse_complete
 
 
