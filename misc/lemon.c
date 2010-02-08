@@ -274,7 +274,9 @@ struct lemon {
   char *outname;           /* Name of the current output file */
   char *tokenprefix;       /* A prefix added to token names in the .h file */
   int nconflict;           /* Number of parsing conflicts */
+#if __MOJOSHADER__
   int nexpected;           /* Number of expected parsing conflicts */
+#endif
   int tablesize;           /* Size of the parse tables */
   int basisflag;           /* Print only basis configurations */
   int has_fallback;        /* True if any %fallback is seen in the grammar */
