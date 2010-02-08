@@ -1,0 +1,185 @@
+/**
+ * MojoShader; generate shader programs from bytecode of compiled
+ *  Direct3D shaders.
+ *
+ * Please see the file LICENSE.txt in the source's root directory.
+ *
+ *  This file written by Ryan C. Gordon.
+ */
+
+// This is a Lemon Parser grammar for HLSL. It is based on an ANSI C YACC
+//  grammar by Jeff Lee: http://www.lysator.liu.se/c/ANSI-C-grammar-y.html
+
+// Lemon is here: http://www.hwaci.com/sw/lemon/  ...  the source is included
+//  with MojoShader, and built with the library, so you don't have to track
+//  down the dependency.
+
+%name ParseCalculator
+
+// Some shift-reduce conflicts are basically unavoidable, but if the final
+//  conflict count matches this value, we consider it known and acceptable.
+%expect 0
+
+%start_symbol calculator
+%token_prefix TOKEN_CALC_
+%token_type { int }
+%extra_argument { Context *ctx }
+
+%include {
+#ifndef __MOJOSHADER_CALC_COMPILER__
+#error Do not compile this file directly.
+#endif
+}
+
+%syntax_error {
+    fprintf(stderr,"Syntax error\n");
+}
+
+%parse_failure {
+    fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
+}
+
+%stack_overflow {
+    fprintf(stderr,"Giving up.  Parser stack overflow\n");
+}
+
+// operator precedence (matches C spec)...
+
+%left COMMA.
+%right ASSIGN ADDASSIGN SUBASSIGN MULASSIGN DIVASSIGN MODASSIGN LSHIFTASSIGN
+       RSHIFTASSIGN ANDASSIGN ORASSIGN XORASSIGN.
+%right QUESTION.
+%left OROR.
+%left ANDAND.
+%left OR.
+%left XOR.
+%left AND.
+%left EQL NEQ.
+%left LT LEQ GT GEQ.
+%left LSHIFT RSHIFT.
+%left PLUS MINUS.
+%left STAR SLASH PERCENT.
+%right TYPECAST EXCLAMATION COMPLEMENT MINUSMINUS PLUSPLUS.
+%left DOT LBRACKET RBRACKET LPAREN RPAREN.
+
+// bump up the precedence of ELSE, to avoid shift/reduce conflict on the
+//  usual "dangling else ambiguity" ...
+%right ELSE.
+
+
+// The rules...
+
+%type calculator { Expression * }
+calculator(A) ::= expression(B). { A = B; }
+
+%type identifier { const char * }
+%destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.
+identifier(A) ::= IDENTIFIER. { A = new_identifier(ctx); }
+
+// the expression stuff is based on Jeff Lee's ANSI C grammar.
+%type primary_expr { Expression * }
+primary_expr(A) ::= identifier(B). { A = new_identifier_expr(ctx, B); }
+primary_expr(A) ::= INT_CONSTANT. { A = new_literal_int_expr(ctx); }
+primary_expr(A) ::= FLOAT_CONSTANT. { A = new_literal_float_expr(ctx); }
+primary_expr(A) ::= STRING_LITERAL. { A = new_literal_string_expr(ctx); }
+primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
+
+%type postfix_expr { Expression * }
+postfix_expr(A) ::= primary_expr(B). { A = B; }
+postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, OP_DEREF_ARRAY, B, C); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
+//postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
+postfix_expr(A) ::= postfix_expr(B) DOT identifier(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C)); }
+postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
+postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
+
+%type argument_expr_list { Expression * }
+argument_expr_list(A) ::= assignment_expr(B). { A = B; }
+argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
+
+%type unary_expr { Expression * }
+unary_expr(A) ::= postfix_expr(B).  { A = B; }
+unary_expr(A) ::= PLUSPLUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREINCREMENT, B); }
+unary_expr(A) ::= MINUSMINUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREDECREMENT, B); }
+unary_expr(A) ::= PLUS cast_expr(B). { A = B; }  // unary "+x" is always a no-op, so throw it away here.
+unary_expr(A) ::= MINUS cast_expr(B). { A = new_unary_expr(ctx, OP_NEGATE, B); }
+unary_expr(A) ::= COMPLEMENT cast_expr(B). { A = new_unary_expr(ctx, OP_COMPLEMENT, B); }
+unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, OP_NOT, B); }
+
+%type cast_expr { Expression * }
+cast_expr(A) ::= unary_expr(B). { A = B; }
+//cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx, B, C); }
+
+%type multiplicative_expr { Expression * }
+multiplicative_expr(A) ::= cast_expr(B). { A = B; }
+multiplicative_expr(A) ::= multiplicative_expr(B) STAR cast_expr(C). { A = new_binary_expr(ctx, OP_MULTIPLY, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) SLASH cast_expr(C). { A = new_binary_expr(ctx, OP_DIVIDE, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) PERCENT cast_expr(C). { A = new_binary_expr(ctx, OP_MODULO, B, C); }
+
+%type additive_expr { Expression * }
+additive_expr(A) ::= multiplicative_expr(B). { A = B; }
+additive_expr(A) ::= additive_expr(B) PLUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_ADD, B, C); }
+additive_expr(A) ::= additive_expr(B) MINUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_SUBTRACT, B, C); }
+
+%type shift_expr { Expression * }
+shift_expr(A) ::= additive_expr(B). { A = B; }
+shift_expr(A) ::= shift_expr(B) LSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_LSHIFT, B, C); }
+shift_expr(A) ::= shift_expr(B) RSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_RSHIFT, B, C); }
+
+%type relational_expr { Expression * }
+relational_expr(A) ::= shift_expr(B). { A = B; }
+relational_expr(A) ::= relational_expr(B) LT shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) GT shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) LEQ shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHANOREQUAL, B, C); }
+relational_expr(A) ::= relational_expr(B) GEQ shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHANOREQUAL, B, C); }
+
+%type equality_expr { Expression * }
+equality_expr(A) ::= relational_expr(B). { A = B; }
+equality_expr(A) ::= equality_expr(B) EQL relational_expr(C). { A = new_binary_expr(ctx, OP_EQUAL, B, C); }
+equality_expr(A) ::= equality_expr(B) NEQ relational_expr(C). { A = new_binary_expr(ctx, OP_NOTEQUAL, B, C); }
+
+%type and_expr { Expression * }
+and_expr(A) ::= equality_expr(B). { A = B; }
+and_expr(A) ::= and_expr(B) AND equality_expr(C). { A = new_binary_expr(ctx, OP_BINARYAND, B, C); }
+
+%type exclusive_or_expr { Expression * }
+exclusive_or_expr(A) ::= and_expr(B). { A = B; }
+exclusive_or_expr(A) ::= exclusive_or_expr(B) XOR and_expr(C). { A = new_binary_expr(ctx, OP_BINARYXOR, B, C); }
+
+%type inclusive_or_expr { Expression * }
+inclusive_or_expr(A) ::= exclusive_or_expr(B). { A = B; }
+inclusive_or_expr(A) ::= inclusive_or_expr(B) OR exclusive_or_expr(C). { A = new_binary_expr(ctx, OP_BINARYOR, B, C); }
+
+%type logical_and_expr { Expression * }
+logical_and_expr(A) ::= inclusive_or_expr(B). { A = B; }
+logical_and_expr(A) ::= logical_and_expr(B) ANDAND inclusive_or_expr(C). { A = new_binary_expr(ctx, OP_LOGICALAND, B, C); }
+
+%type logical_or_expr { Expression * }
+logical_or_expr(A) ::= logical_and_expr(B). { A = B; }
+logical_or_expr(A) ::= logical_or_expr(B) OROR logical_and_expr(C). { A = new_binary_expr(ctx, OP_LOGICALOR, B, C); }
+
+%type conditional_expr { Expression * }
+conditional_expr(A) ::= logical_or_expr(B). { A = B; }
+conditional_expr(A) ::= logical_or_expr(B) QUESTION logical_or_expr(C) COLON conditional_expr(D). { A = new_ternary_expr(ctx, OP_CONDITIONAL, B, C, D); }
+
+%type assignment_expr { Expression * }
+assignment_expr(A) ::= conditional_expr(B). { A = B; }
+assignment_expr(A) ::= unary_expr(B) ASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MULASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MULASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) DIVASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_DIVASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MODASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MODASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ADDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ADDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) SUBASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_SUBASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) LSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_LSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) RSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_RSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ANDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ANDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) XORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_XORASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ORASSIGN, B, C); }
+
+%type expression { Expression * }
+expression(A) ::= assignment_expr(B). { A = B; }
+expression(A) ::= expression(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
+
+// end of calculator.lemon ...
+

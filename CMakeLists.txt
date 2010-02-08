@@ -76,6 +76,21 @@ SET_SOURCE_FILES_PROPERTIES(
     PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
 )
 
+# Calculator test stuff...
+ADD_CUSTOM_COMMAND(
+    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/calculator.h"
+    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/calculator.lemon"
+    DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
+    COMMAND "${LEMON}"
+    ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/calculator.lemon"
+)
+SET_SOURCE_FILES_PROPERTIES(
+    calculator.c
+    PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/calculator.h"
+)
+ADD_EXECUTABLE(calculator calculator.c)
+TARGET_LINK_LIBRARIES(calculator mojoshader)
+
 FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
 IF(NOT RE2C)
     MESSAGE(STATUS "re2c missing. You can go on, but can't rebuild the lexer.")

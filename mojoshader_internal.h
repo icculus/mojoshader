@@ -88,7 +88,9 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 typedef unsigned __int8 uint8;
 typedef unsigned __int16 uint16;
 typedef unsigned __int32 uint32;
+typedef unsigned __int64 uint64;
 typedef __int32 int32;
+typedef __int64 int64;
 // Warning Level 4 considered harmful.  :)
 #pragma warning(disable: 4100)  // "unreferenced formal parameter"
 #pragma warning(disable: 4389)  // "signed/unsigned mismatch"
@@ -98,6 +100,8 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef int32_t int32;
+typedef int64_t int64;
+typedef uint64_t uint64;
 #endif
 
 #ifdef sun
