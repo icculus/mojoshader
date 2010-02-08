@@ -420,9 +420,87 @@ static void print_expr(const Expression *expr, const int depth)
     } // else
 } // print_expr
 
+static double run_expr(const Expression *expr)
+{
+    if (operator_is_unary(expr->op))
+    {
+        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
+        if (expr->op == OP_NEGATE)
+            return -run_expr(unary->operand);
+        else if (expr->op == OP_COMPLEMENT)
+            return (double) (~((int64)run_expr(unary->operand)));
+        else if (expr->op == OP_NOT)
+            return (run_expr(unary->operand) == 0.0) ? 1.0 : 0.0;
+    } // if
+    else if (operator_is_binary(expr->op))
+    {
+        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
+        if (expr->op == OP_MULTIPLY)
+            return run_expr(binary->left) * run_expr(binary->right);
+        else if (expr->op == OP_DIVIDE)
+            return run_expr(binary->left) / run_expr(binary->right);
+        else if (expr->op == OP_ADD)
+            return run_expr(binary->left) + run_expr(binary->right);
+        else if (expr->op == OP_SUBTRACT)
+            return run_expr(binary->left) - run_expr(binary->right);
+        else if (expr->op == OP_LESSTHAN)
+            return (run_expr(binary->left) < run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_GREATERTHAN)
+            return (run_expr(binary->left) > run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_LESSTHANOREQUAL)
+            return (run_expr(binary->left) <= run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_GREATERTHANOREQUAL)
+            return (run_expr(binary->left) >= run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_EQUAL)
+            return (run_expr(binary->left) == run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_NOTEQUAL)
+            return (run_expr(binary->left) == run_expr(binary->right)) ? 1.0 : 0.0;
+        else if (expr->op == OP_LOGICALAND)
+            return (((int64)run_expr(binary->left)) && ((int64)run_expr(binary->right))) ? 1.0 : 0.0;
+        else if (expr->op == OP_LOGICALOR)
+            return (((int64)run_expr(binary->left)) || ((int64)run_expr(binary->right))) ? 1.0 : 0.0;
+        else if (expr->op == OP_BINARYAND)
+            return (double)(((int64)run_expr(binary->left)) & ((int64)run_expr(binary->right)));
+        else if (expr->op == OP_BINARYOR)
+            return (double)(((int64)run_expr(binary->left)) | ((int64)run_expr(binary->right)));
+        else if (expr->op == OP_BINARYXOR)
+            return (double)(((int64)run_expr(binary->left)) ^ ((int64)run_expr(binary->right)));
+        else if (expr->op == OP_LSHIFT)
+            return (double)(((int64)run_expr(binary->left)) << ((int64)run_expr(binary->right)));
+        else if (expr->op == OP_RSHIFT)
+            return (double)(((int64)run_expr(binary->left)) >> ((int64)run_expr(binary->right)));
+        else if (expr->op == OP_MODULO)
+            return (double)(((int64)run_expr(binary->left)) % ((int64)run_expr(binary->right)));
+    } // else if
+
+    else if (operator_is_ternary(expr->op))
+    {
+        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
+        if (expr->op == OP_CONDITIONAL)
+            return (run_expr(ternary->left) != 0.0) ? run_expr(ternary->center) : run_expr(ternary->right);
+    } // else if
+
+    else
+    {
+        if (expr->op == OP_INT_LITERAL)
+        {
+            const ExpressionIntLiteral *lit = (const ExpressionIntLiteral *) expr;
+            return ((double) lit->value);
+        } // if
+        else if (expr->op == OP_FLOAT_LITERAL)
+        {
+            const ExpressionFloatLiteral *lit = (const ExpressionFloatLiteral *) expr;
+            return lit->value;
+        } // if
+    } // else
+
+    return 0.0;  // oh well.
+} // run_expr
+
 static void parse_complete(const Expression *expr)
 {
     print_expr(expr, 0);
+    printf("Result: %lf\n\n", run_expr(expr));
 } // parse_complete
 
 
