@@ -72,16 +72,13 @@
 
 // The rules...
 
+%type calculator { int }                // !!! FIXME: remove this later.
+%destructor calculator { (void) ctx; }  // !!! FIXME: remove this later.
 calculator ::= expression(B). { parse_complete(ctx, B); }
-
-// !!! FIXME: why is this a non-terminal?
-%type identifier { TokenData }
-%destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.
-identifier(A) ::= IDENTIFIER(B). { A = B; }
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
 %type primary_expr { Expression * }
-primary_expr(A) ::= identifier(B). { A = new_identifier_expr(ctx, &B); }
+primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, &B); }
 primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, &B); }
 primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, &B); }
 primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, &B); }
@@ -93,7 +90,7 @@ postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_b
 postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
 postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
 //postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
-postfix_expr(A) ::= postfix_expr(B) DOT identifier(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, &C)); }
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, &C)); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
 
