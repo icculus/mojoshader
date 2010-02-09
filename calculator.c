@@ -5,11 +5,18 @@
 #define LEMON_SUPPORT_TRACING 1
 #endif
 
-typedef struct TokenData
+typedef union TokenData
 {
-    const char *token;
-    unsigned int tokenlen;
+    int64 i64;
+    double dbl;
+    const char *string;
 } TokenData;
+
+typedef struct StringBucket
+{
+    char *string;
+    struct StringBucket *next;
+} StringBucket;
 
 typedef struct Context
 {
@@ -21,6 +28,8 @@ typedef struct Context
     int error_count;
     ErrorList *errors;
     Preprocessor *preprocessor;
+    StringBucket *string_hashtable[256];
+    // !!! FIXME: do these really need to be in here?
     const char *token;
     unsigned int tokenlen;
     Token tokenval;
@@ -187,18 +196,6 @@ typedef struct ExpressionStringLiteral
     const char *string;
 } ExpressionStringLiteral;
 
-static const char *new_identifier(Context *ctx, const TokenData *data)
-{
-    // !!! FIXME: this needs to cache strings.
-    const unsigned int len = data->tokenlen;
-    char *retval = Malloc(ctx, len + 1);
-    if (retval == NULL)
-        return NULL;
-    memcpy(retval, data->token, len);
-    retval[len] = '\0';
-    return retval;
-} // new_identifier
-
 static Expression *new_unary_expr(Context *ctx, const Operator op,
                                   Expression *operand)
 {
@@ -233,11 +230,11 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
     return (Expression *) retval;
 } // new_ternary_expr
 
-static Expression *new_identifier_expr(Context *ctx, const char *identifier)
+static Expression *new_identifier_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionIdentifier);
     retval->op = OP_IDENTIFIER;
-    retval->identifier = identifier;
+    retval->identifier = data->string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_identifier_expr
 
@@ -282,7 +279,7 @@ static Expression *new_literal_int_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionIntLiteral);
     retval->op = OP_INT_LITERAL;
-    retval->value = strtoi64(data->token, data->tokenlen);
+    retval->value = data->i64;
     return (Expression *) retval;
 } // new_literal_int_expr
 
@@ -299,7 +296,7 @@ static Expression *new_literal_float_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionFloatLiteral);
     retval->op = OP_FLOAT_LITERAL;
-    retval->value = strtodouble(data->token, data->tokenlen);
+    retval->value = data->dbl;
     return (Expression *) retval;
 } // new_literal_float_expr
 
@@ -307,7 +304,7 @@ static Expression *new_literal_string_expr(Context *ctx, const TokenData *data)
 {
     NEW_EXPR(ExpressionStringLiteral);
     retval->op = OP_STRING_LITERAL;
-    retval->string = new_identifier(ctx, data);
+    retval->string = data->string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_string_literal_expr
 
@@ -517,14 +514,9 @@ static void free_expr(Context *ctx, Expression *expr)
         free_expr(ctx, ternary->center);
         free_expr(ctx, ternary->right);
     } // else if
-    else if (expr->op == OP_STRING_LITERAL)
-    {
-        Free(ctx, (void *) ((ExpressionStringLiteral *)expr)->string);
-    } // else if
-    else if (expr->op == OP_IDENTIFIER)
-    {
-        Free(ctx, (void *) ((ExpressionIdentifier *)expr)->identifier);
-    } // else if
+
+    // don't need to free extra fields in other types at the moment.
+
     Free(ctx, expr);
 } // free_expr
 
@@ -534,6 +526,82 @@ static void parse_complete(Context *ctx, Expression *expr)
     printf("Result: %lf\n\n", run_expr(expr));
     free_expr(ctx, expr);
 } // parse_complete
+
+
+// !!! FIXME: sort of cut-and-paste from the preprocessor...
+
+// this is djb's xor hashing function.
+static inline uint32 hash_string_djbxor(const char *str, unsigned int len)
+{
+    register uint32 hash = 5381;
+    while (len--)
+        hash = ((hash << 5) + hash) ^ *(str++);
+    return hash;
+} // hash_string_djbxor
+
+static inline uint8 hash_string(const char *str, const unsigned int len)
+{
+    return (uint8) hash_string_djbxor(str, len);
+} // hash_string
+
+static const char *cache_string(Context *ctx, const char *str,
+                                const unsigned int len)
+{
+    const uint8 hash = hash_string(str, len);
+    StringBucket *bucket = ctx->string_hashtable[hash];
+    StringBucket *prev = NULL;
+    while (bucket)
+    {
+        const char *bstr = bucket->string;
+        if ((strncmp(bstr, str, len) == 0) && (bstr[len] == 0))
+        {
+            // Matched! Move this to the front of the list.
+            if (prev != NULL)
+            {
+                assert(prev->next == bucket);
+                prev->next = bucket->next;
+                bucket->next = ctx->string_hashtable[hash];
+                ctx->string_hashtable[hash] = bucket;
+            } // if
+            return bstr; // already cached
+        } // if
+        prev = bucket;
+        bucket = bucket->next;
+    } // while
+
+    // no match, add to the table.
+    bucket = (StringBucket *) Malloc(ctx, sizeof (StringBucket));
+    if (bucket == NULL)
+        return NULL;
+    bucket->string = (char *) Malloc(ctx, len + 1);
+    if (bucket->string == NULL)
+    {
+        Free(ctx, bucket);
+        return NULL;
+    } // if
+    memcpy(bucket->string, str, len);
+    bucket->string[len] = '\0';
+    bucket->next = ctx->string_hashtable[hash];
+    ctx->string_hashtable[hash] = bucket;
+    return bucket->string;
+} // cache_string
+
+static void free_string_cache(Context *ctx)
+{
+    size_t i;
+    for (i = 0; i < STATICARRAYLEN(ctx->string_hashtable); i++)
+    {
+        StringBucket *bucket = ctx->string_hashtable[i];
+        ctx->string_hashtable[i] = NULL;
+        while (bucket)
+        {
+            StringBucket *next = bucket->next;
+            Free(ctx, bucket->string);
+            Free(ctx, bucket);
+            bucket = next;
+        } // while
+    } // for
+} // free_string_cache
 
 
 // This is where the actual parsing happens. It's Lemon-generated!
@@ -610,6 +678,8 @@ static void MOJOSHADER_compile(const char *filename,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     Context ctx;
+    TokenData data;
+
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
 
@@ -628,17 +698,37 @@ static void MOJOSHADER_compile(const char *filename,
     #endif
 
     do {
-        ctx.token = preprocessor_nexttoken(ctx.preprocessor,
-                                                &ctx.tokenlen,
-                                                &ctx.tokenval);
-        // !!! FIXME: this can't refer directly to pointers in the stream,
-        // !!! FIXME:  as they can be free()'d before we actually use them
-        // !!! FIXME:  when a rule reduces down later.
-        TokenData token = { ctx.token, ctx.tokenlen };
-        ParseCalculator(pParser, convert_to_lemon_token(&ctx), token, &ctx);
+        ctx.token = preprocessor_nexttoken(ctx.preprocessor, &ctx.tokenlen,
+                                           &ctx.tokenval);
+
+        const int lemon_token = convert_to_lemon_token(&ctx);
+        switch (lemon_token)
+        {
+            case TOKEN_CALC_INT_CONSTANT:
+                data.i64 = strtoi64(ctx.token, ctx.tokenlen);
+                break;
+
+            case TOKEN_CALC_FLOAT_CONSTANT:
+                data.dbl = strtodouble(ctx.token, ctx.tokenlen);
+                break;
+
+            case TOKEN_CALC_STRING_LITERAL:
+            case TOKEN_CALC_IDENTIFIER:
+                data.string = cache_string(&ctx, ctx.token, ctx.tokenlen);
+                break;
+
+            default:
+                data.i64 = 0;
+                break;
+        } // switch
+
+        ParseCalculator(pParser, lemon_token, data, &ctx);
     } while ((!ctx.isfail) && (ctx.tokenval != TOKEN_EOI));
+
     ParseCalculatorFree(pParser, f, d);
-}
+    // !!! FIXME: destruct (ctx) here.
+    free_string_cache(&ctx);
+} // MOJOSHADER_compile
 
 int main(int argc, char **argv)
 {
