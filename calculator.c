@@ -225,11 +225,11 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
     return (Expression *) retval;
 } // new_ternary_expr
 
-static Expression *new_identifier_expr(Context *ctx, const TokenData *data)
+static Expression *new_identifier_expr(Context *ctx, const char *string)
 {
     NEW_EXPR(ExpressionIdentifier);
     retval->op = OP_IDENTIFIER;
-    retval->identifier = data->string;  // cached; don't copy string.
+    retval->identifier = string;  // cached; don't copy string!
     return (Expression *) retval;
 } // new_identifier_expr
 
@@ -270,11 +270,11 @@ static inline int64 strtoi64(const char *str, unsigned int len)
     return retval;
 } // strtoi64
 
-static Expression *new_literal_int_expr(Context *ctx, const TokenData *data)
+static Expression *new_literal_int_expr(Context *ctx, const int64 value)
 {
     NEW_EXPR(ExpressionIntLiteral);
     retval->op = OP_INT_LITERAL;
-    retval->value = data->i64;
+    retval->value = value;
     return (Expression *) retval;
 } // new_literal_int_expr
 
@@ -287,19 +287,19 @@ static inline double strtodouble(const char *_str, unsigned int len)
     return strtod(str, NULL);
 } // strtodouble
 
-static Expression *new_literal_float_expr(Context *ctx, const TokenData *data)
+static Expression *new_literal_float_expr(Context *ctx, const double value)
 {
     NEW_EXPR(ExpressionFloatLiteral);
     retval->op = OP_FLOAT_LITERAL;
-    retval->value = data->dbl;
+    retval->value = value;
     return (Expression *) retval;
 } // new_literal_float_expr
 
-static Expression *new_literal_string_expr(Context *ctx, const TokenData *data)
+static Expression *new_literal_string_expr(Context *ctx, const char *string)
 {
     NEW_EXPR(ExpressionStringLiteral);
     retval->op = OP_STRING_LITERAL;
-    retval->string = data->string;  // cached; don't copy string.
+    retval->string = string;  // cached; don't copy string!
     return (Expression *) retval;
 } // new_string_literal_expr
 

@@ -78,10 +78,10 @@ calculator ::= expression(B). { parse_complete(ctx, B); }
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
 %type primary_expr { Expression * }
-primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, &B); }
-primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, &B); }
-primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, &B); }
-primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, &B); }
+primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, B.string); }
+primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, B.i64); }
+primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, B.dbl); }
+primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, B.string); }
 primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 
 %type postfix_expr { Expression * }
@@ -90,7 +90,7 @@ postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_b
 postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
 postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
 //postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
-postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, &C)); }
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
 
