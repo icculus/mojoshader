@@ -29,11 +29,6 @@ typedef struct Context
     ErrorList *errors;
     Preprocessor *preprocessor;
     StringBucket *string_hashtable[256];
-    // !!! FIXME: do these really need to be in here?
-    const char *token;
-    unsigned int tokenlen;
-    Token tokenval;
-    unsigned int parse_errors;
 } Context;
 
 
@@ -608,9 +603,9 @@ static void free_string_cache(Context *ctx)
 #define __MOJOSHADER_CALC_COMPILER__ 1
 #include "calculator.h"
 
-static int convert_to_lemon_token(const Context *ctx)
+static int convert_to_lemon_token(const Context *ctx, const Token tokenval)
 {
-    switch (ctx->tokenval)
+    switch (tokenval)
     {
         case ((Token) ','): return TOKEN_CALC_COMMA;
         case ((Token) '='): return TOKEN_CALC_ASSIGN;
@@ -679,6 +674,10 @@ static void MOJOSHADER_compile(const char *filename,
 {
     Context ctx;
     TokenData data;
+    unsigned int tokenlen;
+    Token tokenval;
+    const char *token;
+    int lemon_token;
 
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
@@ -698,23 +697,21 @@ static void MOJOSHADER_compile(const char *filename,
     #endif
 
     do {
-        ctx.token = preprocessor_nexttoken(ctx.preprocessor, &ctx.tokenlen,
-                                           &ctx.tokenval);
-
-        const int lemon_token = convert_to_lemon_token(&ctx);
+        token = preprocessor_nexttoken(ctx.preprocessor, &tokenlen, &tokenval);
+        lemon_token = convert_to_lemon_token(&ctx, tokenval);
         switch (lemon_token)
         {
             case TOKEN_CALC_INT_CONSTANT:
-                data.i64 = strtoi64(ctx.token, ctx.tokenlen);
+                data.i64 = strtoi64(token, tokenlen);
                 break;
 
             case TOKEN_CALC_FLOAT_CONSTANT:
-                data.dbl = strtodouble(ctx.token, ctx.tokenlen);
+                data.dbl = strtodouble(token, tokenlen);
                 break;
 
             case TOKEN_CALC_STRING_LITERAL:
             case TOKEN_CALC_IDENTIFIER:
-                data.string = cache_string(&ctx, ctx.token, ctx.tokenlen);
+                data.string = cache_string(&ctx, token, tokenlen);
                 break;
 
             default:
@@ -723,7 +720,7 @@ static void MOJOSHADER_compile(const char *filename,
         } // switch
 
         ParseCalculator(pParser, lemon_token, data, &ctx);
-    } while ((!ctx.isfail) && (ctx.tokenval != TOKEN_EOI));
+    } while ((!ctx.isfail) && (tokenval != TOKEN_EOI));
 
     ParseCalculatorFree(pParser, f, d);
     // !!! FIXME: destruct (ctx) here.
