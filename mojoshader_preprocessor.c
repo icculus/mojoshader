@@ -656,8 +656,6 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     // the preprocessor is internal-only, so we verify all these are != NULL.
     assert(m != NULL);
     assert(f != NULL);
-    assert(open_callback != NULL);
-    assert(close_callback != NULL);
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
@@ -837,6 +835,12 @@ static void handle_pp_include(Context *ctx)
 
     const char *newdata = NULL;
     unsigned int newbytes = 0;
+    if ((ctx->open_callback == NULL) || (ctx->close_callback == NULL))
+    {
+        fail(ctx, "Saw #include, but no include callbacks defined");
+        return;
+    } // if
+
     if (!ctx->open_callback(incltype, filename, state->source_base,
                             &newdata, &newbytes, ctx->malloc,
                             ctx->free, ctx->malloc_data))

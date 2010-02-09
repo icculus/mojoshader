@@ -39,10 +39,14 @@
 }
 
 %parse_failure {
+    // !!! FIXME: make this a proper fail() function.
+    ctx->isfail = 1;
     fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
 }
 
 %stack_overflow {
+    // !!! FIXME: make this a proper fail() function.
+    ctx->isfail = 1;
     fprintf(stderr,"Giving up.  Parser stack overflow\n");
 }
 
@@ -72,6 +76,8 @@
 
 // The rules...
 
+%type shader { int }                // !!! FIXME: remove this later.
+%destructor shader { (void) ctx; }  // !!! FIXME: remove this later.
 shader ::= compilation_units.
 
 compilation_units ::= compilation_unit.
@@ -92,8 +98,8 @@ function_signature ::= function_storageclass function_details.
 function_signature ::= function_details semantic.
 function_signature ::= function_details.
 
-function_details ::= datatype identifier LPAREN function_arguments RPAREN.
-function_details ::= VOID identifier LPAREN function_arguments RPAREN.
+function_details ::= datatype IDENTIFIER LPAREN function_arguments RPAREN.
+function_details ::= VOID IDENTIFIER LPAREN function_arguments RPAREN.
 
 // !!! FIXME: there is a "target" storage class that is the name of the
 // !!! FIXME:  platform that this function is meant for...but I don't know
@@ -111,22 +117,22 @@ function_arguments ::= .
 function_argument_list ::= function_argument.
 function_argument_list ::= function_argument_list COMMA function_argument.
 
-function_argument ::= input_modifier datatype identifier semantic interpolation_mod initializer.
-function_argument ::= input_modifier datatype identifier semantic interpolation_mod.
-function_argument ::= input_modifier datatype identifier semantic initializer.
-function_argument ::= input_modifier datatype identifier semantic.
-function_argument ::= input_modifier datatype identifier interpolation_mod initializer.
-function_argument ::= input_modifier datatype identifier interpolation_mod.
-function_argument ::= input_modifier datatype identifier initializer.
-function_argument ::= input_modifier datatype identifier.
-function_argument ::= datatype identifier semantic interpolation_mod initializer.
-function_argument ::= datatype identifier semantic interpolation_mod.
-function_argument ::= datatype identifier semantic initializer.
-function_argument ::= datatype identifier semantic.
-function_argument ::= datatype identifier interpolation_mod initializer.
-function_argument ::= datatype identifier interpolation_mod.
-function_argument ::= datatype identifier initializer.
-function_argument ::= datatype identifier.
+function_argument ::= input_modifier datatype IDENTIFIER semantic interpolation_mod initializer.
+function_argument ::= input_modifier datatype IDENTIFIER semantic interpolation_mod.
+function_argument ::= input_modifier datatype IDENTIFIER semantic initializer.
+function_argument ::= input_modifier datatype IDENTIFIER semantic.
+function_argument ::= input_modifier datatype IDENTIFIER interpolation_mod initializer.
+function_argument ::= input_modifier datatype IDENTIFIER interpolation_mod.
+function_argument ::= input_modifier datatype IDENTIFIER initializer.
+function_argument ::= input_modifier datatype IDENTIFIER.
+function_argument ::= datatype IDENTIFIER semantic interpolation_mod initializer.
+function_argument ::= datatype IDENTIFIER semantic interpolation_mod.
+function_argument ::= datatype IDENTIFIER semantic initializer.
+function_argument ::= datatype IDENTIFIER semantic.
+function_argument ::= datatype IDENTIFIER interpolation_mod initializer.
+function_argument ::= datatype IDENTIFIER interpolation_mod.
+function_argument ::= datatype IDENTIFIER initializer.
+function_argument ::= datatype IDENTIFIER.
 
 input_modifier ::= IN.
 input_modifier ::= INOUT.
@@ -172,9 +178,9 @@ variable_declaration_details ::= scalar_or_array.
 
 // !!! FIXME: we don't handle full sampler declarations at the moment.
 
-struct_declaration ::= STRUCT identifier(A) LBRACE struct_member_list RBRACE.
+struct_declaration ::= STRUCT IDENTIFIER(A) LBRACE struct_member_list RBRACE.
 {
-    add_usertype(ctx, A.token, A.tokenlen);
+    add_usertype(ctx, A.string);
 }
 
 struct_member_list ::= struct_member.
@@ -187,7 +193,7 @@ struct_member_details ::= datatype struct_member_item_list SEMICOLON.
 
 struct_member_item_list ::= scalar_or_array.
 struct_member_item_list ::= scalar_or_array semantic.
-struct_member_item_list ::= struct_member_item_list COMMA identifier.
+struct_member_item_list ::= struct_member_item_list COMMA IDENTIFIER.
 
 typedef_statement ::= TYPEDEF CONST datatype scalar_or_array.
 typedef_statement ::= TYPEDEF datatype scalar_or_array.
@@ -196,14 +202,14 @@ variable_lowlevel ::= packoffset register.
 variable_lowlevel ::= packoffset.
 variable_lowlevel ::= register.
 
-scalar_or_array ::= identifier LBRACKET RBRACKET.
-scalar_or_array ::= identifier LBRACKET expression RBRACKET.
-scalar_or_array ::= identifier.
+scalar_or_array ::= IDENTIFIER LBRACKET RBRACKET.
+scalar_or_array ::= IDENTIFIER LBRACKET expression RBRACKET.
+scalar_or_array ::= IDENTIFIER.
 
-packoffset ::= PACKOFFSET LPAREN identifier identifier RPAREN.
-packoffset ::= PACKOFFSET LPAREN identifier RPAREN.
+packoffset ::= PACKOFFSET LPAREN IDENTIFIER IDENTIFIER RPAREN.
+packoffset ::= PACKOFFSET LPAREN IDENTIFIER RPAREN.
 
-register ::= COLON REGISTER LPAREN identifier RPAREN.
+register ::= COLON REGISTER LPAREN IDENTIFIER RPAREN.
 
 annotations ::= LT annotation_list GT.
 
@@ -485,100 +491,110 @@ switch_case ::= CASE expression COLON.
 switch_case ::= DEFAULT COLON statement_list.
 switch_case ::= DEFAULT COLON.
 
-%type identifier { TokenData }
-%destructor identifier { (void) ctx; }  // !!! FIXME: remove this later, it's just to shut up the compiler for now.
-identifier(A) ::= IDENTIFIER(B). { A = B; }
-
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
-primary_expr ::= identifier.
-primary_expr ::= INT_CONSTANT.
-primary_expr ::= FLOAT_CONSTANT.
-primary_expr ::= STRING_LITERAL.
-primary_expr ::= LPAREN expression RPAREN.
+%type primary_expr { Expression * }
+primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, B.string); }
+primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, B.i64); }
+primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, B.dbl); }
+primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, B.string); }
+primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 
-postfix_expr ::= primary_expr.
-postfix_expr ::= postfix_expr LBRACKET expression RBRACKET.
-postfix_expr ::= postfix_expr LPAREN RPAREN.
-postfix_expr ::= postfix_expr LPAREN argument_expr_list RPAREN.
-postfix_expr ::= datatype LPAREN argument_expr_list RPAREN.  // HLSL constructor
-postfix_expr ::= postfix_expr DOT identifier.
-postfix_expr ::= postfix_expr PLUSPLUS.
-postfix_expr ::= postfix_expr MINUSMINUS.
+%type postfix_expr { Expression * }
+postfix_expr(A) ::= primary_expr(B). { A = B; }
+postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, OP_DEREF_ARRAY, B, C); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
+//postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
+postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
+postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
 
-argument_expr_list ::= assignment_expr.
-argument_expr_list ::= argument_expr_list COMMA assignment_expr.
+%type argument_expr_list { Expression * }
+argument_expr_list(A) ::= assignment_expr(B). { A = B; }
+argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
 
-unary_expr ::= postfix_expr.
-unary_expr ::= PLUSPLUS unary_expr.
-unary_expr ::= MINUSMINUS unary_expr.
-unary_expr ::= unary_operator cast_expr.
+%type unary_expr { Expression * }
+unary_expr(A) ::= postfix_expr(B).  { A = B; }
+unary_expr(A) ::= PLUSPLUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREINCREMENT, B); }
+unary_expr(A) ::= MINUSMINUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREDECREMENT, B); }
+unary_expr(A) ::= PLUS cast_expr(B). { A = B; }  // unary "+x" is always a no-op, so throw it away here.
+unary_expr(A) ::= MINUS cast_expr(B). { A = new_unary_expr(ctx, OP_NEGATE, B); }
+unary_expr(A) ::= COMPLEMENT cast_expr(B). { A = new_unary_expr(ctx, OP_COMPLEMENT, B); }
+unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, OP_NOT, B); }
 
-unary_operator ::= PLUS.
-unary_operator ::= MINUS.
-unary_operator ::= COMPLEMENT.
-unary_operator ::= EXCLAMATION.
+%type cast_expr { Expression * }
+cast_expr(A) ::= unary_expr(B). { A = B; }
+//cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx, B, C); }
 
-cast_expr ::= unary_expr.
-cast_expr ::= LPAREN datatype RPAREN cast_expr.
+%type multiplicative_expr { Expression * }
+multiplicative_expr(A) ::= cast_expr(B). { A = B; }
+multiplicative_expr(A) ::= multiplicative_expr(B) STAR cast_expr(C). { A = new_binary_expr(ctx, OP_MULTIPLY, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) SLASH cast_expr(C). { A = new_binary_expr(ctx, OP_DIVIDE, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) PERCENT cast_expr(C). { A = new_binary_expr(ctx, OP_MODULO, B, C); }
 
-multiplicative_expr ::= cast_expr.
-multiplicative_expr ::= multiplicative_expr STAR cast_expr.
-multiplicative_expr ::= multiplicative_expr SLASH cast_expr.
-multiplicative_expr ::= multiplicative_expr PERCENT cast_expr.
+%type additive_expr { Expression * }
+additive_expr(A) ::= multiplicative_expr(B). { A = B; }
+additive_expr(A) ::= additive_expr(B) PLUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_ADD, B, C); }
+additive_expr(A) ::= additive_expr(B) MINUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_SUBTRACT, B, C); }
 
-additive_expr ::= multiplicative_expr.
-additive_expr ::= additive_expr PLUS multiplicative_expr.
-additive_expr ::= additive_expr MINUS multiplicative_expr.
+%type shift_expr { Expression * }
+shift_expr(A) ::= additive_expr(B). { A = B; }
+shift_expr(A) ::= shift_expr(B) LSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_LSHIFT, B, C); }
+shift_expr(A) ::= shift_expr(B) RSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_RSHIFT, B, C); }
 
-shift_expr ::= additive_expr.
-shift_expr ::= shift_expr LSHIFT additive_expr.
-shift_expr ::= shift_expr RSHIFT additive_expr.
+%type relational_expr { Expression * }
+relational_expr(A) ::= shift_expr(B). { A = B; }
+relational_expr(A) ::= relational_expr(B) LT shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) GT shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) LEQ shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHANOREQUAL, B, C); }
+relational_expr(A) ::= relational_expr(B) GEQ shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHANOREQUAL, B, C); }
 
-relational_expr ::= shift_expr.
-relational_expr ::= relational_expr LT shift_expr.
-relational_expr ::= relational_expr GT shift_expr.
-relational_expr ::= relational_expr LEQ shift_expr.
-relational_expr ::= relational_expr GEQ shift_expr.
+%type equality_expr { Expression * }
+equality_expr(A) ::= relational_expr(B). { A = B; }
+equality_expr(A) ::= equality_expr(B) EQL relational_expr(C). { A = new_binary_expr(ctx, OP_EQUAL, B, C); }
+equality_expr(A) ::= equality_expr(B) NEQ relational_expr(C). { A = new_binary_expr(ctx, OP_NOTEQUAL, B, C); }
 
-equality_expr ::= relational_expr.
-equality_expr ::= equality_expr EQL relational_expr.
-equality_expr ::= equality_expr NEQ relational_expr.
+%type and_expr { Expression * }
+and_expr(A) ::= equality_expr(B). { A = B; }
+and_expr(A) ::= and_expr(B) AND equality_expr(C). { A = new_binary_expr(ctx, OP_BINARYAND, B, C); }
 
-and_expr ::= equality_expr.
-and_expr ::= and_expr AND equality_expr.
+%type exclusive_or_expr { Expression * }
+exclusive_or_expr(A) ::= and_expr(B). { A = B; }
+exclusive_or_expr(A) ::= exclusive_or_expr(B) XOR and_expr(C). { A = new_binary_expr(ctx, OP_BINARYXOR, B, C); }
 
-exclusive_or_expr ::= and_expr.
-exclusive_or_expr ::= exclusive_or_expr XOR and_expr.
+%type inclusive_or_expr { Expression * }
+inclusive_or_expr(A) ::= exclusive_or_expr(B). { A = B; }
+inclusive_or_expr(A) ::= inclusive_or_expr(B) OR exclusive_or_expr(C). { A = new_binary_expr(ctx, OP_BINARYOR, B, C); }
 
-inclusive_or_expr ::= exclusive_or_expr.
-inclusive_or_expr ::= inclusive_or_expr OR exclusive_or_expr.
+%type logical_and_expr { Expression * }
+logical_and_expr(A) ::= inclusive_or_expr(B). { A = B; }
+logical_and_expr(A) ::= logical_and_expr(B) ANDAND inclusive_or_expr(C). { A = new_binary_expr(ctx, OP_LOGICALAND, B, C); }
 
-logical_and_expr ::= inclusive_or_expr.
-logical_and_expr ::= logical_and_expr ANDAND inclusive_or_expr.
+%type logical_or_expr { Expression * }
+logical_or_expr(A) ::= logical_and_expr(B). { A = B; }
+logical_or_expr(A) ::= logical_or_expr(B) OROR logical_and_expr(C). { A = new_binary_expr(ctx, OP_LOGICALOR, B, C); }
 
-logical_or_expr ::= logical_and_expr.
-logical_or_expr ::= logical_or_expr OROR logical_and_expr.
+%type conditional_expr { Expression * }
+conditional_expr(A) ::= logical_or_expr(B). { A = B; }
+conditional_expr(A) ::= logical_or_expr(B) QUESTION logical_or_expr(C) COLON conditional_expr(D). { A = new_ternary_expr(ctx, OP_CONDITIONAL, B, C, D); }
 
-conditional_expr ::= logical_or_expr.
-conditional_expr ::= logical_or_expr QUESTION logical_or_expr COLON conditional_expr.
+%type assignment_expr { Expression * }
+assignment_expr(A) ::= conditional_expr(B). { A = B; }
+assignment_expr(A) ::= unary_expr(B) ASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MULASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MULASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) DIVASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_DIVASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MODASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MODASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ADDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ADDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) SUBASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_SUBASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) LSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_LSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) RSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_RSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ANDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ANDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) XORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_XORASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ORASSIGN, B, C); }
 
-assignment_expr ::= conditional_expr.
-assignment_expr ::= unary_expr assignment_operator assignment_expr.
-
-assignment_operator ::= ASSIGN.
-assignment_operator ::= MULASSIGN.
-assignment_operator ::= DIVASSIGN.
-assignment_operator ::= MODASSIGN.
-assignment_operator ::= ADDASSIGN.
-assignment_operator ::= SUBASSIGN.
-assignment_operator ::= LSHIFTASSIGN.
-assignment_operator ::= RSHIFTASSIGN.
-assignment_operator ::= ANDASSIGN.
-assignment_operator ::= XORASSIGN.
-assignment_operator ::= ORASSIGN.
-
-expression ::= assignment_expr.
-expression ::= expression COMMA assignment_expr.
+%type expression { Expression * }
+expression(A) ::= assignment_expr(B). { A = B; }
+expression(A) ::= expression(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
 
 // end of mojoshader_parser_hlsl.lemon ...
 
