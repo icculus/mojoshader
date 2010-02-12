@@ -40,6 +40,27 @@ extern int access();
 #define MAXRHS 1000
 #endif
 
+#if __MOJOSHADER__
+static const char **made_files = NULL;
+static int made_files_count = 0;
+static void lemon_exit(const int status)
+{
+    /* if we failed, delete (most) files we made, to unconfuse build tools. */
+    int i;
+    for (i = 0; i < made_files_count; i++) {
+        if (status != 0) {
+            remove(made_files[i]);
+        }
+        free((void *) made_files[i]);
+    }
+    free(made_files);
+    made_files_count = 0;
+    made_files = NULL;
+    exit(status);
+}
+#define exit(x) lemon_exit(x)
+#endif
+
 static char *msort(char*,char**,int(*)(const char*,const char*));
 
 /*
@@ -2833,6 +2854,22 @@ char *mode;
     lemp->errorcnt++;
     return 0;
   }
+#if __MOJOSHADER__
+  /* don't include .out files: this is debug information, and you don't want
+     it deleted if there was an error you need to track down. */
+  if(( *mode=='w' ) && (strcmp(suffix, ".out") != 0)){
+    const char **ptr = (const char **)
+        realloc(made_files, sizeof (const char **) * (made_files_count + 1));
+    char *fname = strdup(lemp->outname);
+    if ((ptr == NULL) || (fname == NULL)) {
+        free(ptr);
+        free(fname);
+        memory_error();
+    }
+    made_files = ptr;
+    made_files[made_files_count++] = fname;
+  }
+#endif
   return fp;
 }
 
