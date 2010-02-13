@@ -1344,6 +1344,15 @@ int max;
 #define LINEWIDTH      79 /* Max width of any output line */
 #define PREFIXLIMIT    30 /* Max width of the prefix on each line */
 void ErrorMsg(const char *filename, int lineno, const char *format, ...){
+#if __MOJOSHADER__
+  va_list ap;
+  fprintf(stderr, "%s:%d: ", filename, lineno);
+  va_start(ap, format);
+  vfprintf(stderr,format,ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+  fflush(stderr);
+#else
   char errmsg[ERRMSGSIZE];
   char prefix[PREFIXLIMIT+10];
   int errmsgsize;
@@ -1380,6 +1389,7 @@ void ErrorMsg(const char *filename, int lineno, const char *format, ...){
     fprintf(stdout,"%s%.*s\n",prefix,end,&errmsg[base]);
     base = restart;
   }
+#endif
 }
 /**************** From the file "main.c" ************************************/
 /*
