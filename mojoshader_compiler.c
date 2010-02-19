@@ -27,50 +27,8 @@ typedef struct StringBucket
     struct StringBucket *next;
 } StringBucket;
 
-typedef struct Context
-{
-    int isfail;
-    int out_of_memory;
-    MOJOSHADER_malloc malloc;
-    MOJOSHADER_free free;
-    void *malloc_data;
-    int error_count;
-    ErrorList *errors;
-    Preprocessor *preprocessor;
-    StringBucket *string_hashtable[256];
-    const char *usertypes[512];  // !!! FIXME: dynamic allocation
-    int usertype_count;
-} Context;
 
-
-// Convenience functions for allocators...
-
-static inline void out_of_memory(Context *ctx)
-{
-    ctx->isfail = ctx->out_of_memory = 1;
-} // out_of_memory
-
-static inline void *Malloc(Context *ctx, const size_t len)
-{
-    void *retval = ctx->malloc((int) len, ctx->malloc_data);
-    if (retval == NULL)
-        out_of_memory(ctx);
-    return retval;
-} // Malloc
-
-static inline char *StrDup(Context *ctx, const char *str)
-{
-    char *retval = (char *) Malloc(ctx, strlen(str) + 1);
-    if (retval != NULL)
-        strcpy(retval, str);
-    return retval;
-} // StrDup
-
-static inline void Free(Context *ctx, void *ptr)
-{
-    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
-        ctx->free(ptr, ctx->malloc_data);
-} // Free
+// Structures that make up the parse tree...
 
 typedef enum Operator
 {
@@ -132,6 +90,39 @@ typedef enum Operator
     OP_END_RANGE_DATA,
 } Operator;
 
+typedef enum VariableAttributes
+{
+    VARATTR_EXTERN = (1 << 0),
+    VARATTR_NOINTERPOLATION = (1 << 1),
+    VARATTR_SHARED = (1 << 2),
+    VARATTR_STATIC = (1 << 3),
+    VARATTR_UNIFORM = (1 << 4),
+    VARATTR_VOLATILE = (1 << 5),
+    VARATTR_CONST = (1 << 6),
+    VARATTR_ROWMAJOR = (1 << 7),
+    VARATTR_COLUMNMAJOR = (1 << 8)
+} VariableAttributes;
+
+typedef enum IfAttributes
+{
+    IFATTR_NONE,
+    IFATTR_BRANCH,
+    IFATTR_FLATTEN,
+    IFATTR_IFALL,
+    IFATTR_IFANY,
+    IFATTR_PREDICATE,
+    IFATTR_PREDICATEBLOCK,
+} IfAttributes;
+
+typedef enum SwitchAttributes
+{
+    SWITCHATTR_NONE,
+    SWITCHATTR_FLATTEN,
+    SWITCHATTR_BRANCH,
+    SWITCHATTR_FORCECASE,
+    SWITCHATTR_CALL
+} SwitchAttributes;
+
 static inline int operator_is_unary(const Operator op)
 {
     return ((op > OP_START_RANGE_UNARY) && (op < OP_END_RANGE_UNARY));
@@ -152,10 +143,6 @@ typedef struct Expression
 {
     Operator op;  // operator
 } Expression;
-
-#define NEW_EXPR(cls) \
-    cls *retval = Malloc(ctx, sizeof (cls)); \
-    if (retval == NULL) { return NULL; }
 
 typedef struct ExpressionUnary
 {
@@ -202,10 +189,338 @@ typedef struct ExpressionStringLiteral
     const char *string;
 } ExpressionStringLiteral;
 
+typedef enum CompilationUnitType
+{
+    COMPUNITTYPE_FUNCTION,  // function declaration or definition
+    COMPUNITTYPE_TYPEDEF,   // typedef or struct
+    COMPUNITTYPE_STRUCT,    // global struct
+    COMPUNITTYPE_VARIABLE   // global variable
+} CompilationUnitType;
+
+typedef struct CompilationUnit
+{
+    CompilationUnitType type;
+    struct CompilationUnit *next;
+} CompilationUnit;
+
+typedef enum FunctionStorageClass
+{
+    FNSTORECLS_NONE,
+    FNSTORECLS_INLINE
+} FunctionStorageClass;
+
+typedef enum InputModifier
+{
+    INPUTMOD_NONE,
+    INPUTMOD_IN,
+    INPUTMOD_OUT,
+    INPUTMOD_INOUT,
+    INPUTMOD_UNIFORM
+} InputModifier;
+
+typedef enum InterpolationModifier
+{
+    INTERPMOD_NONE,
+    INTERPMOD_LINEAR,
+    INTERPMOD_CENTROID,
+    INTERPMOD_NOINTERPOLATION,
+    INTERPMOD_NOPERSPECTIVE,
+    INTERPMOD_SAMPLE
+} InterpolationModifier;
+
+typedef struct FunctionArguments
+{
+    InputModifier input_modifier;
+    const char *datatype;
+    const char *identifier;
+    const char *semantic;
+    InterpolationModifier interpolation_modifier;
+    Expression *initializer;
+    struct FunctionArguments *next;
+} FunctionArguments;
+
+typedef struct FunctionSignature
+{
+    const char *datatype;
+    const char *identifier;
+    FunctionArguments *args;
+    FunctionStorageClass storage_class;
+    const char *semantic;
+} FunctionSignature;
+
+typedef struct ScalarOrArray
+{
+    const char *identifier;
+    int isarray;
+    Expression *dimension;
+} ScalarOrArray;
+
+typedef struct Annotations
+{
+    const char *datatype;
+    Expression *initializer;
+    struct Annotations *next;
+} Annotations;
+
+typedef struct PackOffset
+{
+    const char *ident1;   // !!! FIXME: rename this.
+    const char *ident2;
+} PackOffset;
+
+typedef struct VariableLowLevel
+{
+    PackOffset *packoffset;
+    const char *register_name;
+} VariableLowLevel;
+
+typedef struct StructMembers
+{
+    const char *datatype;
+    const char *semantic;
+    ScalarOrArray *details;
+    InterpolationModifier interpolation_mod;
+    struct StructMembers *next;
+} StructMembers;
+
+typedef struct StructDeclaration
+{
+    const char *name;
+    StructMembers *members;
+} StructDeclaration;
+
+typedef struct VariableDeclaration
+{
+    int attributes;
+    const char *datatype;
+    StructDeclaration *anonymous_datatype;
+    ScalarOrArray *details;
+    const char *semantic;
+    Annotations *annotations;
+    Expression *initializer;
+    VariableLowLevel *lowlevel;
+    struct VariableDeclaration *next;
+} VariableDeclaration;
+
+typedef enum StatementType
+{
+    STATEMENTTYPE_EMPTY,
+    STATEMENTTYPE_EXPRESSION,
+    STATEMENTTYPE_IF,
+    STATEMENTTYPE_SWITCH,
+    STATEMENTTYPE_FOR,
+    STATEMENTTYPE_DO,
+    STATEMENTTYPE_WHILE,
+    STATEMENTTYPE_RETURN,
+    STATEMENTTYPE_BREAK,
+    STATEMENTTYPE_CONTINUE,
+    STATEMENTTYPE_DISCARD,
+    STATEMENTTYPE_TYPEDEF,
+    STATEMENTTYPE_STRUCT,
+    STATEMENTTYPE_VARDECL,
+} StatementType;
+
+typedef struct Statement
+{
+    StatementType type;
+    struct Statement *next;
+} Statement;
+
+typedef Statement EmptyStatement;
+typedef Statement BreakStatement;
+typedef Statement ContinueStatement;
+typedef Statement DiscardStatement;
+
+typedef struct ReturnStatement
+{
+    StatementType type;
+    struct Statement *next;
+    Expression *expr;
+} ReturnStatement;
+
+typedef struct ExpressionStatement
+{
+    StatementType type;
+    struct Statement *next;
+    Expression *expr;
+} ExpressionStatement;
+
+typedef struct IfStatement
+{
+    StatementType type;
+    struct Statement *next;
+    int attributes;
+    Expression *expr;
+    Statement *statement;
+    Statement *else_statement;
+} IfStatement;
+
+typedef struct SwitchCases
+{
+    Expression *expr;
+    Statement *statement;
+    struct SwitchCases *next;
+} SwitchCases;
+
+typedef struct SwitchStatement
+{
+    StatementType type;
+    struct Statement *next;
+    int attributes;
+    Expression *expr;
+    SwitchCases *cases;
+} SwitchStatement;
+
+typedef struct WhileStatement
+{
+    StatementType type;
+    struct Statement *next;
+    int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
+    Expression *expr;
+    Statement *statement;
+} WhileStatement;
+
+typedef WhileStatement DoStatement;
+
+typedef struct ForStatement
+{
+    StatementType type;
+    struct Statement *next;
+    int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
+    VariableDeclaration *var_decl;
+    Expression *initializer;
+    Expression *looptest;
+    Expression *counter;
+    Statement *statement;
+} ForStatement;
+
+typedef struct Typedef
+{
+    int isconst;
+    const char *datatype;
+    ScalarOrArray *details;
+} Typedef;
+
+typedef struct TypedefStatement
+{
+    StatementType type;
+    struct Statement *next;
+    Typedef *type_info;
+} TypedefStatement;
+
+typedef struct VarDeclStatement
+{
+    StatementType type;
+    struct Statement *next;
+    VariableDeclaration *decl;
+} VarDeclStatement;
+
+typedef struct StructStatement
+{
+    StatementType type;
+    struct Statement *next;
+    StructDeclaration *struct_info;
+} StructStatement;
+
+typedef struct CompilationUnitFunction
+{
+    CompilationUnitType type;
+    struct CompilationUnit *next;
+    FunctionSignature *declaration;
+    Statement *definition;
+} CompilationUnitFunction;
+
+typedef struct CompilationUnitTypedef
+{
+    CompilationUnitType type;
+    struct CompilationUnit *next;
+    Typedef *type_info;
+} CompilationUnitTypedef;
+
+typedef struct CompilationUnitStruct
+{
+    CompilationUnitType type;
+    struct CompilationUnit *next;
+    StructDeclaration *struct_info;
+} CompilationUnitStruct;
+
+typedef struct CompilationUnitVariable
+{
+    CompilationUnitType type;
+    struct CompilationUnit *next;
+    VariableDeclaration *declaration;
+} CompilationUnitVariable;
+
+
+// Compile state, passed around all over the place.
+
+typedef struct Context
+{
+    int isfail;
+    int out_of_memory;
+    MOJOSHADER_malloc malloc;
+    MOJOSHADER_free free;
+    void *malloc_data;
+    int error_count;
+    ErrorList *errors;
+    Preprocessor *preprocessor;
+    StringBucket *string_hashtable[256];
+    const char *usertypes[512];  // !!! FIXME: dynamic allocation
+    int usertype_count;
+    CompilationUnit *ast;  // Abstract Syntax Tree
+} Context;
+
+
+// Convenience functions for allocators...
+
+static inline void out_of_memory(Context *ctx)
+{
+    ctx->isfail = ctx->out_of_memory = 1;
+} // out_of_memory
+
+static inline void *Malloc(Context *ctx, const size_t len)
+{
+    void *retval = ctx->malloc((int) len, ctx->malloc_data);
+    if (retval == NULL)
+        out_of_memory(ctx);
+    return retval;
+} // Malloc
+
+static inline char *StrDup(Context *ctx, const char *str)
+{
+    char *retval = (char *) Malloc(ctx, strlen(str) + 1);
+    if (retval != NULL)
+        strcpy(retval, str);
+    return retval;
+} // StrDup
+
+static inline void Free(Context *ctx, void *ptr)
+{
+    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
+        ctx->free(ptr, ctx->malloc_data);
+} // Free
+
+
+// These functions are mostly for construction and cleanup of nodes in the
+//  parse tree. Mostly this is simple allocation and initialization, so we
+//  can do as little in the lemon code as possible, and then sort it all out
+//  afterwards.
+
+#define NEW_AST_NODE(cls) \
+    cls *retval = Malloc(ctx, sizeof (cls)); \
+    if (retval == NULL) { return NULL; } \
+
+#define DELETE_AST_NODE(cls) do {\
+    if (!cls) return; \
+} while (0)
+
+static void delete_compilation_unit(Context *ctx, CompilationUnit *unit);
+static void delete_statement(Context *ctx, Statement *stmt);
+
 static Expression *new_unary_expr(Context *ctx, const Operator op,
                                   Expression *operand)
 {
-    NEW_EXPR(ExpressionUnary);
+    NEW_AST_NODE(ExpressionUnary);
     assert(operator_is_unary(op));
     retval->op = op;
     retval->operand = operand;
@@ -215,7 +530,7 @@ static Expression *new_unary_expr(Context *ctx, const Operator op,
 static Expression *new_binary_expr(Context *ctx, const Operator op,
                                    Expression *left, Expression *right)
 {
-    NEW_EXPR(ExpressionBinary);
+    NEW_AST_NODE(ExpressionBinary);
     assert(operator_is_binary(op));
     retval->op = op;
     retval->left = left;
@@ -227,7 +542,7 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
                                     Expression *left, Expression *center,
                                     Expression *right)
 {
-    NEW_EXPR(ExpressionTernary);
+    NEW_AST_NODE(ExpressionTernary);
     assert(operator_is_ternary(op));
     retval->op = op;
     retval->left = left;
@@ -238,69 +553,23 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
 
 static Expression *new_identifier_expr(Context *ctx, const char *string)
 {
-    NEW_EXPR(ExpressionIdentifier);
+    NEW_AST_NODE(ExpressionIdentifier);
     retval->op = OP_IDENTIFIER;
     retval->identifier = string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_identifier_expr
 
-static inline int64 strtoi64(const char *str, unsigned int len)
-{
-    int64 retval = 0;
-    int64 mult = 1;
-    int i = 0;
-
-    while ((len) && (*str == ' '))
-    {
-        str++;
-        len--;
-    } // while
-
-    if ((len) && (*str == '-'))
-    {
-        mult = -1;
-        str++;
-        len--;
-    } // if
-
-    while (i < len)
-    {
-        const char ch = str[i];
-        if ((ch < '0') || (ch > '9'))
-            break;
-        i++;
-    } // while
-
-    while (--i >= 0)
-    {
-        const char ch = str[i];
-        retval += ((int64) (ch - '0')) * mult;
-        mult *= 10;
-    } // while
-
-    return retval;
-} // strtoi64
-
 static Expression *new_literal_int_expr(Context *ctx, const int64 value)
 {
-    NEW_EXPR(ExpressionIntLiteral);
+    NEW_AST_NODE(ExpressionIntLiteral);
     retval->op = OP_INT_LITERAL;
     retval->value = value;
     return (Expression *) retval;
 } // new_literal_int_expr
 
-static inline double strtodouble(const char *_str, unsigned int len)
-{
-    // !!! FIXME: laziness prevails.
-    char *str = (char *) alloca(len+1);
-    memcpy(str, _str, len);
-    str[len] = '\0';
-    return strtod(str, NULL);
-} // strtodouble
-
 static Expression *new_literal_float_expr(Context *ctx, const double dbl)
 {
-    NEW_EXPR(ExpressionFloatLiteral);
+    NEW_AST_NODE(ExpressionFloatLiteral);
     retval->op = OP_FLOAT_LITERAL;
     retval->value = dbl;
     return (Expression *) retval;
@@ -308,12 +577,667 @@ static Expression *new_literal_float_expr(Context *ctx, const double dbl)
 
 static Expression *new_literal_string_expr(Context *ctx, const char *string)
 {
-    NEW_EXPR(ExpressionStringLiteral);
+    NEW_AST_NODE(ExpressionStringLiteral);
     retval->op = OP_STRING_LITERAL;
     retval->string = string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_string_literal_expr
 
+static void delete_expr(Context *ctx, Expression *expr)
+{
+    DELETE_AST_NODE(expr);
+    if (operator_is_unary(expr->op))
+    {
+        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
+        delete_expr(ctx, unary->operand);
+    } // if
+    else if (operator_is_binary(expr->op))
+    {
+        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
+        delete_expr(ctx, binary->left);
+        delete_expr(ctx, binary->right);
+    } // else if
+    else if (operator_is_ternary(expr->op))
+    {
+        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
+        delete_expr(ctx, ternary->left);
+        delete_expr(ctx, ternary->center);
+        delete_expr(ctx, ternary->right);
+    } // else if
+
+    // don't need to free extra fields in other types at the moment.
+
+    Free(ctx, expr);
+} // delete_expr
+
+static FunctionArguments *new_function_arg(Context *ctx,
+                                        const InputModifier inputmod,
+                                        const char *datatype,
+                                        const char *identifier,
+                                        const char *semantic,
+                                        const InterpolationModifier interpmod,
+                                        Expression *initializer)
+{
+    NEW_AST_NODE(FunctionArguments);
+    retval->input_modifier = inputmod;
+    retval->datatype = datatype;
+    retval->identifier = identifier;
+    retval->semantic = semantic;
+    retval->interpolation_modifier = interpmod;
+    retval->initializer = initializer;
+    retval->next = NULL;
+    return retval;
+} // new_function_arg
+
+static void delete_function_args(Context *ctx, FunctionArguments *args)
+{
+    DELETE_AST_NODE(args);
+    delete_function_args(ctx, args->next);
+    delete_expr(ctx, args->initializer);
+    Free(ctx, args);
+} // delete_function_args
+
+static FunctionSignature *new_function_signature(Context *ctx,
+                                                 const char *datatype,
+                                                 const char *identifier,
+                                                 FunctionArguments *args)
+{
+    NEW_AST_NODE(FunctionSignature);
+    retval->datatype = datatype;
+    retval->identifier = identifier;
+    retval->args = args;
+    retval->storage_class = FNSTORECLS_NONE;
+    retval->semantic = NULL;
+    return retval;
+} // new_function_signature
+
+static void delete_function_signature(Context *ctx, FunctionSignature *sig)
+{
+    DELETE_AST_NODE(sig);
+    delete_function_args(ctx, sig->args);
+    Free(ctx, sig);
+} // delete_function_signature
+
+static CompilationUnit *new_function(Context *ctx,
+                                     FunctionSignature *declaration,
+                                     Statement *definition)
+{
+    NEW_AST_NODE(CompilationUnitFunction);
+    retval->type = COMPUNITTYPE_FUNCTION;
+    retval->next = NULL;
+    retval->declaration = declaration;
+    retval->definition = definition;
+    return (CompilationUnit *) retval;
+} // new_function
+
+static void delete_function(Context *ctx, CompilationUnitFunction *unitfn)
+{
+    DELETE_AST_NODE(unitfn);
+    delete_compilation_unit(ctx, unitfn->next);
+    delete_function_signature(ctx, unitfn->declaration);
+    delete_statement(ctx, unitfn->definition);
+    Free(ctx, unitfn);
+} // delete_function
+
+static ScalarOrArray *new_scalar_or_array(Context *ctx, const char *ident,
+                                          const int isvec, Expression *dim)
+{
+    NEW_AST_NODE(ScalarOrArray);
+    retval->identifier = ident;
+    retval->isarray = isvec;
+    retval->dimension = dim;
+    return retval;
+} // new_scalar_or_array
+
+static void delete_scalar_or_array(Context *ctx, ScalarOrArray *soa)
+{
+    DELETE_AST_NODE(soa);
+    delete_expr(ctx, soa->dimension);
+    Free(ctx, soa);
+} // delete_scalar_or_array
+
+static Typedef *new_typedef(Context *ctx, int isconst, const char *datatype,
+                            ScalarOrArray *soa)
+{
+    NEW_AST_NODE(Typedef);
+    retval->isconst = isconst;
+    retval->datatype = datatype;
+    retval->details = soa;
+    return retval;
+} // new_typedef
+
+static void delete_typedef(Context *ctx, Typedef *td)
+{
+    DELETE_AST_NODE(td);
+    delete_scalar_or_array(ctx, td->details);
+    Free(ctx, td);
+} // delete_typedef
+
+static PackOffset *new_pack_offset(Context *ctx, const char *a, const char *b)
+{
+    NEW_AST_NODE(PackOffset);
+    retval->ident1 = a;
+    retval->ident2 = b;
+    return retval;
+} // new_pack_offset
+
+static void delete_pack_offset(Context *ctx, PackOffset *o)
+{
+    DELETE_AST_NODE(o);
+    Free(ctx, o);
+} // delete_pack_offset
+
+static VariableLowLevel *new_variable_lowlevel(Context *ctx, PackOffset *po,
+                                               const char *reg)
+{
+    NEW_AST_NODE(VariableLowLevel);
+    retval->packoffset = po;
+    retval->register_name = reg;
+    return retval;
+} // new_variable_lowlevel
+
+static void delete_variable_lowlevel(Context *ctx, VariableLowLevel *vll)
+{
+    DELETE_AST_NODE(vll);
+    delete_pack_offset(ctx, vll->packoffset);
+    Free(ctx, vll);
+} // delete_variable_lowlevel
+
+static Annotations *new_annotation(Context *ctx, const char *datatype,
+                                   Expression *initializer)
+{
+    NEW_AST_NODE(Annotations);
+    retval->datatype = datatype;
+    retval->initializer = initializer;
+    retval->next = NULL;
+    return retval;
+} // new_annotation
+
+static void delete_annotation(Context *ctx, Annotations *annotations)
+{
+    DELETE_AST_NODE(annotations);
+    delete_annotation(ctx, annotations->next);
+    delete_expr(ctx, annotations->initializer);
+    Free(ctx, annotations);
+} // delete_annotation
+
+static VariableDeclaration *new_variable_declaration(Context *ctx,
+                                    ScalarOrArray *soa, const char *semantic,
+                                    Annotations *annotations, Expression *init,
+                                    VariableLowLevel *vll)
+{
+    NEW_AST_NODE(VariableDeclaration)
+    retval->attributes = 0;
+    retval->datatype = NULL;
+    retval->anonymous_datatype = NULL;
+    retval->details = soa;
+    retval->semantic = semantic;
+    retval->annotations = annotations;
+    retval->initializer = init;
+    retval->lowlevel = vll;
+    retval->next = NULL;
+    return retval;
+} // new_variable_declaration
+
+static void delete_variable_declaration(Context *ctx, VariableDeclaration *dcl)
+{
+    DELETE_AST_NODE(dcl);
+    delete_variable_declaration(ctx, dcl->next);
+    delete_scalar_or_array(ctx, dcl->details);
+    delete_annotation(ctx, dcl->annotations);
+    delete_expr(ctx, dcl->initializer);
+    delete_variable_lowlevel(ctx, dcl->lowlevel);
+    Free(ctx, dcl);
+} // delete_variable_declaration
+
+static CompilationUnit *new_global_variable(Context *ctx,
+                                            VariableDeclaration *decl)
+{
+    NEW_AST_NODE(CompilationUnitVariable);
+    retval->type = COMPUNITTYPE_FUNCTION;
+    retval->next = NULL;
+    retval->declaration = decl;
+    return (CompilationUnit *) retval;
+} // new_global_variable
+
+static void delete_global_variable(Context *ctx, CompilationUnitVariable *var)
+{
+    DELETE_AST_NODE(var);
+    delete_compilation_unit(ctx, var->next);
+    delete_variable_declaration(ctx, var->declaration);
+    Free(ctx, var);
+} // delete_global_variable
+
+static CompilationUnit *new_global_typedef(Context *ctx, Typedef *td)
+{
+    NEW_AST_NODE(CompilationUnitTypedef)
+    retval->type = COMPUNITTYPE_TYPEDEF;
+    retval->next = NULL;
+    retval->type_info = td;
+    return (CompilationUnit *) retval;
+} // new_global_typedef
+
+static void delete_global_typedef(Context *ctx, CompilationUnitTypedef *unit)
+{
+    DELETE_AST_NODE(unit);
+    delete_compilation_unit(ctx, unit->next);
+    delete_typedef(ctx, unit->type_info);
+    Free(ctx, unit);
+} // delete_global_typedef
+
+static StructMembers *new_struct_member(Context *ctx, ScalarOrArray *soa,
+                                        const char *semantic)
+{
+    NEW_AST_NODE(StructMembers);
+    retval->datatype = NULL;
+    retval->semantic = semantic;
+    retval->details = soa;
+    retval->interpolation_mod = INTERPMOD_NONE;
+    retval->next = NULL;
+    return retval;
+} // new_struct_member
+
+static void delete_struct_member(Context *ctx, StructMembers *member)
+{
+    DELETE_AST_NODE(member);
+    delete_struct_member(ctx, member->next);
+    delete_scalar_or_array(ctx, member->details);
+    Free(ctx, member);
+} // delete_struct_member
+
+static StructDeclaration *new_struct_declaration(Context *ctx,
+                                    const char *name, StructMembers *members)
+{
+    NEW_AST_NODE(StructDeclaration);
+    retval->name = name;
+    retval->members = members;
+    return retval;
+} // new_struct_declaration
+
+static void delete_struct_declaration(Context *ctx, StructDeclaration *decl)
+{
+    DELETE_AST_NODE(decl);
+    delete_struct_member(ctx, decl->members);
+    Free(ctx, decl);
+} // delete_struct_declaration
+
+static CompilationUnit *new_global_struct(Context *ctx, StructDeclaration *sd)
+{
+    NEW_AST_NODE(CompilationUnitStruct)
+    retval->type = COMPUNITTYPE_STRUCT;
+    retval->next = NULL;
+    retval->struct_info = sd;
+    return (CompilationUnit *) retval;
+} // new_global_struct
+
+static void delete_global_struct(Context *ctx, CompilationUnitStruct *unit)
+{
+    DELETE_AST_NODE(unit);
+    delete_compilation_unit(ctx, unit->next);
+    delete_struct_declaration(ctx, unit->struct_info);
+    Free(ctx, unit);
+} // delete_global_struct
+
+static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
+{
+    if (!unit) return;
+
+    // it's important to not recurse too deeply here, since you may have
+    //  thousands of items in this linked list (each line of a massive
+    //  function, for example). To avoid this, we iterate the list here,
+    //  deleting all children and making them think they have no reason
+    //  to recurse in their own delete methods.
+    // Please note that everyone should _try_ to delete their "next" member,
+    //  just in case, but hopefully this cleaned it out.
+
+    CompilationUnit *i = unit->next;
+    unit->next = NULL;
+    while (i)
+    {
+        CompilationUnit *next = i->next;
+        i->next = NULL;
+        delete_compilation_unit(ctx, i);
+        i = next;
+    } // while
+
+    switch (unit->type)
+    {
+        #define DELETE_UNIT(typ, cls, fn) \
+            case COMPUNITTYPE_##typ: delete_##fn(ctx, (cls *) unit); break;
+        DELETE_UNIT(FUNCTION, CompilationUnitFunction, function);
+        DELETE_UNIT(TYPEDEF, CompilationUnitTypedef, global_typedef);
+        DELETE_UNIT(VARIABLE, CompilationUnitVariable, global_variable);
+        DELETE_UNIT(STRUCT, CompilationUnitStruct, global_struct);
+        #undef DELETE_UNIT
+        default: assert(0 && "missing cleanup code"); break;
+    } // switch
+
+    // don't free (unit) here, the class-specific functions do it.
+} // delete_compilation_unit
+
+static Statement *new_typedef_statement(Context *ctx, Typedef *td)
+{
+    NEW_AST_NODE(TypedefStatement)
+    retval->type = STATEMENTTYPE_TYPEDEF;
+    retval->next = NULL;
+    retval->type_info = td;
+    return (Statement *) retval;
+} // new_typedef_statement
+
+static void delete_typedef_statement(Context *ctx, TypedefStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_typedef(ctx, stmt->type_info);
+    Free(ctx, stmt);
+} // delete_typedef_statement
+
+static Statement *new_return_statement(Context *ctx, Expression *expr)
+{
+    NEW_AST_NODE(ReturnStatement);
+    retval->type = STATEMENTTYPE_RETURN;
+    retval->next = NULL;
+    retval->expr = expr;
+    return (Statement *) retval;
+} // new_return_statement
+
+static void delete_return_statement(Context *ctx, ReturnStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_expr(ctx, stmt->expr);
+    Free(ctx, stmt);
+} // delete_return_statement
+
+static Statement *new_for_statement(Context *ctx, VariableDeclaration *decl,
+                                    Expression *initializer,
+                                    Expression *looptest, Expression *counter,
+                                    Statement *statement)
+{
+    NEW_AST_NODE(ForStatement);
+    retval->type = STATEMENTTYPE_FOR;
+    retval->next = NULL;
+    retval->unroll = -1;
+    retval->var_decl = decl;
+    retval->initializer = initializer;
+    retval->looptest = looptest;
+    retval->counter = counter;
+    retval->statement = statement;
+    return (Statement *) retval;
+} // new_for_statement
+
+static void delete_for_statement(Context *ctx, ForStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_variable_declaration(ctx, stmt->var_decl);
+    delete_expr(ctx, stmt->initializer);
+    delete_expr(ctx, stmt->looptest);
+    delete_expr(ctx, stmt->counter);
+    delete_statement(ctx, stmt->statement);
+    Free(ctx, stmt);
+} // delete_for_statement
+
+static Statement *new_do_statement(Context *ctx, int64 unroll,
+                                   Statement *stmt, Expression *expr)
+{
+    NEW_AST_NODE(DoStatement);
+    retval->type = STATEMENTTYPE_DO;
+    retval->next = NULL;
+    retval->unroll = unroll;
+    retval->expr = expr;
+    retval->statement = stmt;
+    return (Statement *) retval;
+} // new_do_statement
+
+static void delete_do_statement(Context *ctx, DoStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_statement(ctx, stmt->statement);
+    delete_expr(ctx, stmt->expr);
+    Free(ctx, stmt);
+} // delete_do_statement
+
+static Statement *new_while_statement(Context *ctx, int64 unroll,
+                                      Expression *expr, Statement *stmt)
+{
+    NEW_AST_NODE(WhileStatement);
+    retval->type = STATEMENTTYPE_WHILE;
+    retval->next = NULL;
+    retval->unroll = unroll;
+    retval->expr = expr;
+    retval->statement = stmt;
+    return (Statement *) retval;
+} // new_while_statement
+
+static void delete_while_statement(Context *ctx, WhileStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_statement(ctx, stmt->statement);
+    delete_expr(ctx, stmt->expr);
+    Free(ctx, stmt);
+} // delete_while_statement
+
+static Statement *new_if_statement(Context *ctx, int attr, Expression *expr,
+                                   Statement *stmt, Statement *elsestmt)
+{
+    NEW_AST_NODE(IfStatement);
+    retval->type = STATEMENTTYPE_IF;
+    retval->next = NULL;
+    retval->attributes = attr;
+    retval->expr = expr;
+    retval->statement = stmt;
+    retval->else_statement = elsestmt;
+    return (Statement *) retval;
+} // new_if_statement
+
+static void delete_if_statement(Context *ctx, IfStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_expr(ctx, stmt->expr);
+    delete_statement(ctx, stmt->statement);
+    delete_statement(ctx, stmt->else_statement);
+    Free(ctx, stmt);
+} // delete_if_statement
+
+static SwitchCases *new_switch_case(Context *ctx, Expression *expr,
+                                    Statement *stmt)
+{
+    NEW_AST_NODE(SwitchCases);
+    retval->expr = expr;
+    retval->statement = stmt;
+    retval->next = NULL;
+    return retval;
+} // new_switch_case
+
+static void delete_switch_case(Context *ctx, SwitchCases *sc)
+{
+    DELETE_AST_NODE(sc);
+    delete_switch_case(ctx, sc->next);
+    delete_expr(ctx, sc->expr);
+    delete_statement(ctx, sc->statement);
+    Free(ctx, sc);
+} // delete_switch_case
+
+static Statement *new_empty_statement(Context *ctx)
+{
+    NEW_AST_NODE(EmptyStatement);
+    retval->type = STATEMENTTYPE_EMPTY;
+    retval->next = NULL;
+    return (Statement *) retval;
+} // new_empty_statement
+
+static void delete_empty_statement(Context *ctx, EmptyStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    Free(ctx, stmt);
+} // delete_empty_statement
+
+static Statement *new_break_statement(Context *ctx)
+{
+    NEW_AST_NODE(BreakStatement);
+    retval->type = STATEMENTTYPE_BREAK;
+    retval->next = NULL;
+    return (Statement *) retval;
+} // new_break_statement
+
+static void delete_break_statement(Context *ctx, BreakStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    Free(ctx, stmt);
+} // delete_break_statement
+
+static Statement *new_continue_statement(Context *ctx)
+{
+    NEW_AST_NODE(ContinueStatement);
+    retval->type = STATEMENTTYPE_CONTINUE;
+    retval->next = NULL;
+    return (Statement *) retval;
+} // new_continue_statement
+
+static void delete_continue_statement(Context *ctx, ContinueStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    Free(ctx, stmt);
+} // delete_continue_statement
+
+static Statement *new_discard_statement(Context *ctx)
+{
+    NEW_AST_NODE(DiscardStatement);
+    retval->type = STATEMENTTYPE_DISCARD;
+    retval->next = NULL;
+    return (Statement *) retval;
+} // new_discard_statement
+
+static void delete_discard_statement(Context *ctx, DiscardStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    Free(ctx, stmt);
+} // delete_discard_statement
+
+static Statement *new_expr_statement(Context *ctx, Expression *expr)
+{
+    NEW_AST_NODE(ExpressionStatement);
+    retval->type = STATEMENTTYPE_EXPRESSION;
+    retval->next = NULL;
+    retval->expr = expr;
+    return (Statement *) retval;
+} // new_expr_statement
+
+static void delete_expr_statement(Context *ctx, ExpressionStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_expr(ctx, stmt->expr);
+    Free(ctx, stmt);
+} // delete_expr_statement
+
+static Statement *new_switch_statement(Context *ctx, int attr,
+                                       Expression *expr, SwitchCases *cases)
+{
+    NEW_AST_NODE(SwitchStatement);
+    retval->type = STATEMENTTYPE_SWITCH;
+    retval->next = NULL;
+    retval->attributes = attr;
+    retval->expr = expr;
+    retval->cases = cases;
+    return (Statement *) retval;
+} // new_switch_statement
+
+static void delete_switch_statement(Context *ctx, SwitchStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_expr(ctx, stmt->expr);
+    delete_switch_case(ctx, stmt->cases);
+    Free(ctx, stmt);
+} // delete_switch_statement
+
+static Statement *new_struct_statement(Context *ctx, StructDeclaration *sd)
+{
+    NEW_AST_NODE(StructStatement);
+    retval->type = STATEMENTTYPE_STRUCT;
+    retval->next = NULL;
+    retval->struct_info = sd;
+    return (Statement *) retval;
+} // new_struct_statement
+
+static void delete_struct_statement(Context *ctx, StructStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_struct_declaration(ctx, stmt->struct_info);
+    Free(ctx, stmt);
+} // delete_struct_statement
+
+static Statement *new_vardecl_statement(Context *ctx, VariableDeclaration *vd)
+{
+    NEW_AST_NODE(VarDeclStatement);
+    retval->type = STATEMENTTYPE_VARDECL;
+    retval->next = NULL;
+    retval->decl = vd;
+    return (Statement *) retval;
+} // new_vardecl_statement
+
+static void delete_vardecl_statement(Context *ctx, VarDeclStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->next);
+    delete_variable_declaration(ctx, stmt->decl);
+    Free(ctx, stmt);
+} // delete_vardecl_statement
+
+static void delete_statement(Context *ctx, Statement *stmt)
+{
+    if (!stmt) return;
+
+    // it's important to not recurse too deeply here, since you may have
+    //  thousands of items in this linked list (each line of a massive
+    //  function, for example). To avoid this, we iterate the list here,
+    //  deleting all children and making them think they have no reason
+    //  to recurse in their own delete methods.
+    // Please note that everyone should _try_ to delete their "next" member,
+    //  just in case, but hopefully this cleaned it out.
+
+    Statement *i = stmt->next;
+    stmt->next = NULL;
+    while (i)
+    {
+        Statement *next = i->next;
+        i->next = NULL;
+        delete_statement(ctx, i);
+        i = next;
+    } // while
+
+    switch (stmt->type)
+    {
+        #define DELETE_STATEMENT(typ, cls, fn) \
+            case typ: delete_##fn##_statement(ctx, (cls *) stmt); break;
+        DELETE_STATEMENT(STATEMENTTYPE_EMPTY, EmptyStatement, empty);
+        DELETE_STATEMENT(STATEMENTTYPE_IF, IfStatement, if);
+        DELETE_STATEMENT(STATEMENTTYPE_SWITCH, SwitchStatement, switch);
+        DELETE_STATEMENT(STATEMENTTYPE_EXPRESSION, ExpressionStatement, expr);
+        DELETE_STATEMENT(STATEMENTTYPE_FOR, ForStatement, for);
+        DELETE_STATEMENT(STATEMENTTYPE_DO, DoStatement, do);
+        DELETE_STATEMENT(STATEMENTTYPE_WHILE, WhileStatement, while);
+        DELETE_STATEMENT(STATEMENTTYPE_RETURN, ReturnStatement, return);
+        DELETE_STATEMENT(STATEMENTTYPE_BREAK, BreakStatement, break);
+        DELETE_STATEMENT(STATEMENTTYPE_CONTINUE, ContinueStatement, continue);
+        DELETE_STATEMENT(STATEMENTTYPE_DISCARD, DiscardStatement, discard);
+        DELETE_STATEMENT(STATEMENTTYPE_TYPEDEF, TypedefStatement, typedef);
+        DELETE_STATEMENT(STATEMENTTYPE_STRUCT, StructStatement, struct);
+        DELETE_STATEMENT(STATEMENTTYPE_VARDECL, VarDeclStatement, vardecl);
+        #undef DELETE_STATEMENT
+        default: assert(0 && "missing cleanup code"); break;
+    } // switch
+    // don't free (stmt) here, the class-specific functions do it.
+} // delete_statement
 
 static void add_usertype(Context *ctx, const char *sym)
 {
@@ -340,37 +1264,6 @@ static int is_usertype(const Context *ctx, const char *token,
     return 0;
 } // is_usertype
 
-
-// This is where the actual parsing happens. It's Lemon-generated!
-#define __MOJOSHADER_HLSL_COMPILER__ 1
-#include "mojoshader_parser_hlsl.h"
-
-
-static void free_expr(Context *ctx, Expression *expr)
-{
-    if (operator_is_unary(expr->op))
-    {
-        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
-        free_expr(ctx, unary->operand);
-    } // if
-    else if (operator_is_binary(expr->op))
-    {
-        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
-        free_expr(ctx, binary->left);
-        free_expr(ctx, binary->right);
-    } // else if
-    else if (operator_is_ternary(expr->op))
-    {
-        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
-        free_expr(ctx, ternary->left);
-        free_expr(ctx, ternary->center);
-        free_expr(ctx, ternary->right);
-    } // else if
-
-    // don't need to free extra fields in other types at the moment.
-
-    Free(ctx, expr);
-} // free_expr
 
 // !!! FIXME: sort of cut-and-paste from the preprocessor...
 
@@ -430,6 +1323,40 @@ static const char *cache_string(Context *ctx, const char *str,
     return bucket->string;
 } // cache_string
 
+static const char *cache_string_fmt(Context *ctx, const char *fmt, ...)
+{
+    char buf[128];  // use the stack if reasonable.
+    char *ptr = NULL;
+    int len = 0;  // number of chars, NOT counting null-terminator!
+    va_list ap;
+
+    va_start(ap, fmt);
+    len = vsnprintf(buf, sizeof (buf), fmt, ap);
+    va_end(ap);
+
+    if (len > sizeof (buf))
+    {
+        ptr = (char *) Malloc(ctx, len);
+        if (ptr == NULL)
+            return NULL;
+
+        va_start(ap, fmt);
+        vsnprintf(ptr, len, fmt, ap);
+        va_end(ap);
+    } // if
+
+    const char *retval = cache_string(ctx, ptr ? ptr : buf, len);
+    if (ptr != NULL)
+        Free(ctx, ptr);
+
+    return retval;
+} // cache_string_fmt
+
+// This is where the actual parsing happens. It's Lemon-generated!
+#define __MOJOSHADER_HLSL_COMPILER__ 1
+#include "mojoshader_parser_hlsl.h"
+
+
 static void free_string_cache(Context *ctx)
 {
     size_t i;
@@ -446,6 +1373,53 @@ static void free_string_cache(Context *ctx)
         } // while
     } // for
 } // free_string_cache
+
+static inline int64 strtoi64(const char *str, unsigned int len)
+{
+    int64 retval = 0;
+    int64 mult = 1;
+    int i = 0;
+
+    while ((len) && (*str == ' '))
+    {
+        str++;
+        len--;
+    } // while
+
+    if ((len) && (*str == '-'))
+    {
+        mult = -1;
+        str++;
+        len--;
+    } // if
+
+    while (i < len)
+    {
+        const char ch = str[i];
+        if ((ch < '0') || (ch > '9'))
+            break;
+        i++;
+    } // while
+
+    while (--i >= 0)
+    {
+        const char ch = str[i];
+        retval += ((int64) (ch - '0')) * mult;
+        mult *= 10;
+    } // while
+
+    return retval;
+} // strtoi64
+
+static inline double strtodouble(const char *_str, unsigned int len)
+{
+    // !!! FIXME: laziness prevails.
+    char *str = (char *) alloca(len+1);
+    memcpy(str, _str, len);
+    str[len] = '\0';
+    return strtod(str, NULL);
+} // strtodouble
+
 
 
 // This does not check correctness (POSITIONT993842 passes, etc).
@@ -737,7 +1711,13 @@ static int convert_to_lemon_token(const Context *ctx, const char *token,
             return TOKEN_HLSL_IDENTIFIER;
 
         case TOKEN_EOI: return 0;
+        // !!! FIXME: just fail() with the error info and keep lexing until we
+        // !!! FIXME:  get a non-bad_chars result. Only report bad chars once
+        // !!! FIXME:  in a row, so a block of line noise doesn't give us
+        // !!! FIXME:  dozens of errors.
         case TOKEN_BAD_CHARS: printf("bad chars from lexer\n"); return 0;
+        // !!! FIXME: don't return 0 here, check this elsewhere, and handle it properly.
+        // !!! FIXME: just fail() with the error info and continue on.
         case TOKEN_PREPROCESSING_ERROR: printf("error from lexer\n"); return 0;
         default: assert(0 && "unexpected token from lexer\n"); return 0;
     } // switch

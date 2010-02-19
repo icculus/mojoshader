@@ -35,6 +35,8 @@
 }
 
 %syntax_error {
+    // !!! FIXME: make this a proper fail() function.
+    ctx->isfail = 1;
     fprintf(stderr,"Syntax error\n");
 }
 
@@ -76,30 +78,39 @@
 
 // The rules...
 
-%type shader { int }                // !!! FIXME: remove this later.
-%destructor shader { (void) ctx; }  // !!! FIXME: remove this later.
-shader ::= compilation_units.
+shader ::= compilation_units(B). { assert(ctx->ast == NULL); ctx->ast = B; }
 
-compilation_units ::= compilation_unit.
-compilation_units ::= compilation_units compilation_unit.
+%type compilation_units { CompilationUnit * }
+%destructor compilation_units { delete_compilation_unit(ctx, $$); }
+compilation_units(A) ::= compilation_unit(B). { A = B; }
+compilation_units(A) ::= compilation_units(B) compilation_unit(C). { if (C) { C->next = B; A = C; } }
 
-compilation_unit ::= function_declaration.
-compilation_unit ::= function_definition.
-compilation_unit ::= global_variable.
-compilation_unit ::= typedef_statement.
-compilation_unit ::= struct_statement.
+%type compilation_unit { CompilationUnit * }
+%destructor compilation_unit { delete_compilation_unit(ctx, $$); }
+compilation_unit(A) ::= variable_declaration(B). { A = new_global_variable(ctx, B); }
+compilation_unit(A) ::= function_signature(B) SEMICOLON. { A = new_function(ctx, B, NULL); }
+compilation_unit(A) ::= function_signature(B) statement_block(C). { A = new_function(ctx, B, C); }
+compilation_unit(A) ::= typedef(B). { A = new_global_typedef(ctx, B); }
+compilation_unit(A) ::= struct_declaration(B) SEMICOLON. { A = new_global_struct(ctx, B); }
+//compilation_unit(A) ::= error SEMICOLON. { A = NULL; }  // !!! FIXME: research using the error nonterminal
 
-function_declaration ::= function_signature SEMICOLON.
+%type typedef { Typedef * }
+%destructor typedef { delete_typedef(ctx, $$); }
+// !!! FIXME: should CONST be here, or in datatype?
+typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); }
+typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); }
 
-function_definition ::= function_signature statement_block.
+%type function_signature { FunctionSignature * }
+%destructor function_signature { delete_function_signature(ctx, $$); }
+function_signature(A) ::= function_storageclass(B) function_details(C) semantic(D). { A = C; A->storage_class = B; A->semantic = D; }
+function_signature(A) ::= function_storageclass(B) function_details(C). { A = C; A->storage_class = B; }
+function_signature(A) ::= function_details(B) semantic(C). { A = B; A->semantic = C; }
+function_signature(A) ::= function_details(B). { A = B; }
 
-function_signature ::= function_storageclass function_details semantic.
-function_signature ::= function_storageclass function_details.
-function_signature ::= function_details semantic.
-function_signature ::= function_details.
-
-function_details ::= datatype IDENTIFIER LPAREN function_arguments RPAREN.
-function_details ::= VOID IDENTIFIER LPAREN function_arguments RPAREN.
+%type function_details { FunctionSignature * }
+%destructor function_details { delete_function_signature(ctx, $$); }
+function_details(A) ::= datatype(B) IDENTIFIER(C) LPAREN function_arguments(D) RPAREN. { A = new_function_signature(ctx, B, C.string, D); }
+function_details(A) ::= VOID IDENTIFIER(B) LPAREN function_arguments(C) RPAREN. { A = new_function_signature(ctx, NULL, B.string, C); }
 
 // !!! FIXME: there is a "target" storage class that is the name of the
 // !!! FIXME:  platform that this function is meant for...but I don't know
@@ -107,172 +118,230 @@ function_details ::= VOID IDENTIFIER LPAREN function_arguments RPAREN.
 
 // !!! FIXME: Also, the docs say "one of" inline or target, but I bet you can
 // !!! FIXME:  specify both.
-//function_storageclass ::= target.
-function_storageclass ::= INLINE.
+%type function_storageclass { FunctionStorageClass }
+//function_storageclass(A) ::= target(B). { A = B; }
+function_storageclass(A) ::= INLINE. { A = FNSTORECLS_INLINE; }
 
-function_arguments ::= VOID.
-function_arguments ::= function_argument_list.
-function_arguments ::= .
+%type function_arguments { FunctionArguments * }
+%destructor function_arguments { delete_function_args(ctx, $$); }
+function_arguments(A) ::= VOID. { A = NULL; }
+function_arguments(A) ::= function_argument_list(B). { A = B; }
+function_arguments(A) ::= . { A = NULL; }
 
-function_argument_list ::= function_argument.
-function_argument_list ::= function_argument_list COMMA function_argument.
+%type function_argument_list { FunctionArguments * }
+%destructor function_argument_list { delete_function_args(ctx, $$); }
+function_argument_list(A) ::= function_argument(B). { A = B; }
+function_argument_list(A) ::= function_argument_list(B) COMMA function_argument(C). { C->next = B; A = C; }
 
-function_argument ::= input_modifier datatype IDENTIFIER semantic interpolation_mod initializer.
-function_argument ::= input_modifier datatype IDENTIFIER semantic interpolation_mod.
-function_argument ::= input_modifier datatype IDENTIFIER semantic initializer.
-function_argument ::= input_modifier datatype IDENTIFIER semantic.
-function_argument ::= input_modifier datatype IDENTIFIER interpolation_mod initializer.
-function_argument ::= input_modifier datatype IDENTIFIER interpolation_mod.
-function_argument ::= input_modifier datatype IDENTIFIER initializer.
-function_argument ::= input_modifier datatype IDENTIFIER.
-function_argument ::= datatype IDENTIFIER semantic interpolation_mod initializer.
-function_argument ::= datatype IDENTIFIER semantic interpolation_mod.
-function_argument ::= datatype IDENTIFIER semantic initializer.
-function_argument ::= datatype IDENTIFIER semantic.
-function_argument ::= datatype IDENTIFIER interpolation_mod initializer.
-function_argument ::= datatype IDENTIFIER interpolation_mod.
-function_argument ::= datatype IDENTIFIER initializer.
-function_argument ::= datatype IDENTIFIER.
+// !!! FIXME: this is pretty unreadable.
+%type function_argument { FunctionArguments * }
+%destructor function_argument { delete_function_args(ctx, $$); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F) initializer(G). { A = new_function_arg(ctx, B, C, D.string, E, F, G); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F). { A = new_function_arg(ctx, B, C, D.string, E, F, NULL); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) initializer(F). { A = new_function_arg(ctx, B, C, D.string, E, INTERPMOD_NONE, F); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E). { A = new_function_arg(ctx, B, C, D.string, E, INTERPMOD_NONE, NULL); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E) initializer(F). { A = new_function_arg(ctx, B, C, D.string, NULL, E, F); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E). { A = new_function_arg(ctx, B, C, D.string, NULL, E, NULL); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) initializer(E). { A = new_function_arg(ctx, B, C, D.string, NULL, INTERPMOD_NONE, E); }
+function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D). { A = new_function_arg(ctx, B, C, D.string, NULL, INTERPMOD_NONE, NULL); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E) initializer(F). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, E, F); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, E, NULL); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) initializer(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, E); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, NULL); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D) initializer(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, D, E); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, D, NULL); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C) initializer(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, D); }
+function_argument(A) ::= datatype(B) IDENTIFIER(C). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, NULL); }
 
-input_modifier ::= IN.
-input_modifier ::= INOUT.
-input_modifier ::= OUT.
-input_modifier ::= IN OUT.
-input_modifier ::= OUT IN.
-input_modifier ::= UNIFORM.
+%type input_modifier { InputModifier }
+input_modifier(A) ::= IN. { A = INPUTMOD_IN; }
+input_modifier(A) ::= INOUT. { A = INPUTMOD_INOUT; }
+input_modifier(A) ::= OUT. { A = INPUTMOD_OUT; }
+input_modifier(A) ::= IN OUT. { A = INPUTMOD_INOUT; }
+input_modifier(A) ::= OUT IN. { A = INPUTMOD_INOUT; }
+input_modifier(A) ::= UNIFORM. { A = INPUTMOD_UNIFORM; }
 
-semantic ::= COLON SEMANTIC.
+%type semantic { const char * }
+semantic(A) ::= COLON SEMANTIC(B). { A = B.string; }
 
 // DX10 only?
-interpolation_mod ::= LINEAR.
-interpolation_mod ::= CENTROID.
-interpolation_mod ::= NOINTERPOLATION.
-interpolation_mod ::= NOPERSPECTIVE.
-interpolation_mod ::= SAMPLE.
+%type interpolation_mod { InterpolationModifier }
+interpolation_mod(A) ::= LINEAR. { A = INTERPMOD_LINEAR; }
+interpolation_mod(A) ::= CENTROID. { A = INTERPMOD_CENTROID; }
+interpolation_mod(A) ::= NOINTERPOLATION. { A = INTERPMOD_NOINTERPOLATION; }
+interpolation_mod(A) ::= NOPERSPECTIVE. { A = INTERPMOD_NOPERSPECTIVE; }
+interpolation_mod(A) ::= SAMPLE. { A = INTERPMOD_SAMPLE; }
 
-global_variable ::= variable_declaration.
+%type variable_declaration { VariableDeclaration * }
+%destructor variable_declaration { delete_variable_declaration(ctx, $$); }
+variable_declaration(A) ::= variable_attribute_list(B) datatype(C) variable_declaration_details_list(D) SEMICOLON. { A = D; A->attributes = B; A->datatype = C; }
+variable_declaration(A) ::= datatype(B) variable_declaration_details_list(C) SEMICOLON. { A = C; A->datatype = B; }
+variable_declaration(A) ::= struct_declaration(B) variable_declaration_details_list(C) SEMICOLON. { A = C; A->anonymous_datatype = B; }
 
-variable_declaration ::= variable_attribute_list datatype variable_declaration_details_list SEMICOLON.
-variable_declaration ::= datatype variable_declaration_details_list SEMICOLON.
-variable_declaration ::= struct_declaration scalar_or_array SEMICOLON.
+%type variable_attribute_list { int }
+variable_attribute_list(A) ::= variable_attribute(B). { A = B; }
+variable_attribute_list(A) ::= variable_attribute_list(B) variable_attribute(C). { A = B | C; }
 
-variable_declaration_details_list ::= variable_declaration_details.
-variable_declaration_details_list ::= variable_declaration_details_list COMMA variable_declaration_details.
+%type variable_attribute { int }
+variable_attribute(A) ::= EXTERN. { A = VARATTR_EXTERN; }
+variable_attribute(A) ::= NOINTERPOLATION. { A = VARATTR_NOINTERPOLATION; }
+variable_attribute(A) ::= SHARED. { A = VARATTR_SHARED; }
+variable_attribute(A) ::= STATIC. { A = VARATTR_STATIC; }
+variable_attribute(A) ::= UNIFORM. { A = VARATTR_UNIFORM; }
+variable_attribute(A) ::= VOLATILE. { A = VARATTR_VOLATILE; }
+variable_attribute(A) ::= CONST. { A = VARATTR_CONST; }
+variable_attribute(A) ::= ROWMAJOR. { A = VARATTR_ROWMAJOR; }
+variable_attribute(A) ::= COLUMNMAJOR. { A = VARATTR_COLUMNMAJOR; }
 
-variable_declaration_details ::= scalar_or_array semantic annotations initializer variable_lowlevel.
-variable_declaration_details ::= scalar_or_array semantic annotations initializer.
-variable_declaration_details ::= scalar_or_array semantic annotations variable_lowlevel.
-variable_declaration_details ::= scalar_or_array semantic annotations.
-variable_declaration_details ::= scalar_or_array semantic initializer variable_lowlevel.
-variable_declaration_details ::= scalar_or_array semantic initializer.
-variable_declaration_details ::= scalar_or_array semantic variable_lowlevel.
-variable_declaration_details ::= scalar_or_array semantic.
-variable_declaration_details ::= scalar_or_array annotations initializer variable_lowlevel.
-variable_declaration_details ::= scalar_or_array annotations initializer.
-variable_declaration_details ::= scalar_or_array annotations variable_lowlevel.
-variable_declaration_details ::= scalar_or_array annotations.
-variable_declaration_details ::= scalar_or_array initializer variable_lowlevel.
-variable_declaration_details ::= scalar_or_array initializer.
-variable_declaration_details ::= scalar_or_array variable_lowlevel.
-variable_declaration_details ::= scalar_or_array.
+%type variable_declaration_details_list { VariableDeclaration * }
+%destructor variable_declaration_details_list { delete_variable_declaration(ctx, $$); }
+variable_declaration_details_list(A) ::= variable_declaration_details(B). { A = B; }
+variable_declaration_details_list(A) ::= variable_declaration_details_list(B) COMMA variable_declaration_details(C). { A = C; A->next = B; }
+
+%type variable_declaration_details { VariableDeclaration * }
+%destructor variable_declaration_details { delete_variable_declaration(ctx, $$); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) annotations(D) initializer(E) variable_lowlevel(F). { A = new_variable_declaration(ctx, B, C, D, E, F); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) annotations(D) initializer(E). { A = new_variable_declaration(ctx, B, C, D, E, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) annotations(D) variable_lowlevel(E). { A = new_variable_declaration(ctx, B, C, D, NULL, E); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) annotations(D). { A = new_variable_declaration(ctx, B, C, D, NULL, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) initializer(D) variable_lowlevel(E). { A = new_variable_declaration(ctx, B, C, NULL, D, E); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) initializer(D). { A = new_variable_declaration(ctx, B, C, NULL, D, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C) variable_lowlevel(D). { A = new_variable_declaration(ctx, B, C, NULL, NULL, D); }
+variable_declaration_details(A) ::= scalar_or_array(B) semantic(C). { A = new_variable_declaration(ctx, B, C, NULL, NULL, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) annotations(C) initializer(D) variable_lowlevel(E). { A = new_variable_declaration(ctx, B, NULL, C, D, E); }
+variable_declaration_details(A) ::= scalar_or_array(B) annotations(C) initializer(D). { A = new_variable_declaration(ctx, B, NULL, C, D, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) annotations(C) variable_lowlevel(D). { A = new_variable_declaration(ctx, B, NULL, C, NULL, D); }
+variable_declaration_details(A) ::= scalar_or_array(B) annotations(C). { A = new_variable_declaration(ctx, B, NULL, C, NULL, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) initializer(C) variable_lowlevel(D). { A = new_variable_declaration(ctx, B, NULL, NULL, C, D); }
+variable_declaration_details(A) ::= scalar_or_array(B) initializer(C). { A = new_variable_declaration(ctx, B, NULL, NULL, C, NULL); }
+variable_declaration_details(A) ::= scalar_or_array(B) variable_lowlevel(C). { A = new_variable_declaration(ctx, B, NULL, NULL, NULL, C); }
+variable_declaration_details(A) ::= scalar_or_array(B). { A = new_variable_declaration(ctx, B, NULL, NULL, NULL, NULL); }
 
 // !!! FIXME: we don't handle full sampler declarations at the moment.
 
-struct_declaration ::= STRUCT IDENTIFIER(A) LBRACE struct_member_list RBRACE.
+
+%type struct_declaration { StructDeclaration * }
+%destructor struct_declaration { delete_struct_declaration(ctx, $$); }
+struct_declaration(A) ::= STRUCT IDENTIFIER(B) LBRACE struct_member_list(C) RBRACE.
 {
-    add_usertype(ctx, A.string);
+    A = new_struct_declaration(ctx, B.string, C);
+    // !!! FIXME: we need to decide what scope we are in and make sure this is only a valid usertype at that point.
+    add_usertype(ctx, B.string);
 }
 
-struct_member_list ::= struct_member.
-struct_member_list ::= struct_member_list struct_member.
+%type struct_member_list { StructMembers * }
+%destructor struct_member_list { delete_struct_member(ctx, $$); }
+struct_member_list(A) ::= struct_member(B). { A = B; }
+struct_member_list(A) ::= struct_member_list(B) struct_member(C). { A = C; A->next = B; }
 
-struct_member ::= interpolation_mod struct_member_details.
-struct_member ::= struct_member_details.
+%type struct_member { StructMembers * }
+%destructor struct_member { delete_struct_member(ctx, $$); }
+struct_member(A) ::= interpolation_mod(B) struct_member_details(C). { StructMembers *i = C; A = C; while (i) { i->interpolation_mod = B; i = i->next; } }
+struct_member(A) ::= struct_member_details(B). { A = B; }
 
-struct_member_details ::= datatype struct_member_item_list SEMICOLON.
+%type struct_member_details { StructMembers * }
+%destructor struct_member_details { delete_struct_member(ctx, $$); }
+struct_member_details(A) ::= datatype(B) struct_member_item_list(C) SEMICOLON. { StructMembers *i = C; A = C; while (i) { i->datatype = B; i = i->next; } }
 
-struct_member_item_list ::= scalar_or_array.
-struct_member_item_list ::= scalar_or_array semantic.
-struct_member_item_list ::= struct_member_item_list COMMA IDENTIFIER.
+%type struct_member_item_list { StructMembers * }
+%destructor struct_member_item_list { delete_struct_member(ctx, $$); }
+struct_member_item_list(A) ::= scalar_or_array(B). { A = new_struct_member(ctx, B, NULL); }
+struct_member_item_list(A) ::= scalar_or_array(B) semantic(C). { A = new_struct_member(ctx, B, C); }
+struct_member_item_list(A) ::= struct_member_item_list(B) COMMA IDENTIFIER(C). { A = new_struct_member(ctx, new_scalar_or_array(ctx, C.string, 0, NULL), NULL); A->next = B; A->semantic = B->semantic; }
 
-typedef_statement ::= TYPEDEF CONST datatype scalar_or_array.
-typedef_statement ::= TYPEDEF datatype scalar_or_array.
+%type variable_lowlevel { VariableLowLevel * }
+%destructor variable_lowlevel { delete_variable_lowlevel(ctx, $$); }
+variable_lowlevel(A) ::= packoffset(B) register(C). { A = new_variable_lowlevel(ctx, B, C); }
+variable_lowlevel(A) ::= register(B) packoffset(C). { A = new_variable_lowlevel(ctx, C, B); }
+variable_lowlevel(A) ::= packoffset(B). { A = new_variable_lowlevel(ctx, B, NULL); }
+variable_lowlevel(A) ::= register(B). { A = new_variable_lowlevel(ctx, NULL, B); }
 
-variable_lowlevel ::= packoffset register.
-variable_lowlevel ::= packoffset.
-variable_lowlevel ::= register.
+// !!! FIXME: I sort of hate this type name.
+%type scalar_or_array { ScalarOrArray * }
+%destructor scalar_or_array { delete_scalar_or_array(ctx, $$); }
+scalar_or_array(A) ::= IDENTIFIER(B) LBRACKET RBRACKET. { A = new_scalar_or_array(ctx, B.string, 1, NULL); }
+scalar_or_array(A) ::= IDENTIFIER(B) LBRACKET expression(C) RBRACKET. { A = new_scalar_or_array(ctx, B.string, 1, C); }
+scalar_or_array(A) ::= IDENTIFIER(B). { A = new_scalar_or_array(ctx, B.string, 0, NULL); }
 
-scalar_or_array ::= IDENTIFIER LBRACKET RBRACKET.
-scalar_or_array ::= IDENTIFIER LBRACKET expression RBRACKET.
-scalar_or_array ::= IDENTIFIER.
+%type packoffset { PackOffset * }
+%destructor packoffset { delete_pack_offset(ctx, $$); }
+packoffset(A) ::= COLON PACKOFFSET LPAREN IDENTIFIER(B) DOT IDENTIFIER(C) RPAREN. { A = new_pack_offset(ctx, B.string, C.string); }
+packoffset(A) ::= COLON PACKOFFSET LPAREN IDENTIFIER(B) RPAREN. { A = new_pack_offset(ctx, B.string, NULL); }
 
-packoffset ::= PACKOFFSET LPAREN IDENTIFIER IDENTIFIER RPAREN.
-packoffset ::= PACKOFFSET LPAREN IDENTIFIER RPAREN.
+// !!! FIXME: can take a profile, like ": register(ps_5_0, s)"
+// !!! FIXME: IDENTIFIER is wrong: "s[2]" works, apparently. Use scalar_or_array instead?
+// !!! FIXME: (these might be SM4 features)
+%type register { const char * }
+register(A) ::= COLON REGISTER LPAREN IDENTIFIER(B) RPAREN. { A = B.string; }
 
-register ::= COLON REGISTER LPAREN IDENTIFIER RPAREN.
+%type annotations { Annotations * }
+%destructor annotations { delete_annotation(ctx, $$); }
+annotations(A) ::= LT annotation_list(B) GT. { A = B; }
 
-annotations ::= LT annotation_list GT.
+%type annotation_list { Annotations * }
+%destructor annotation_list { delete_annotation(ctx, $$); }
+annotation_list(A) ::= annotation(B). { A = B; }
+annotation_list(A) ::= annotation_list(B) annotation(C). { A = C; A->next = B; }
 
-annotation_list ::= annotation.
-annotation_list ::= annotation_list annotation.
+// !!! FIXME: can this take a USERTYPE if we typedef'd a scalar type?
+%type annotation { Annotations * }
+%destructor annotation { delete_annotation(ctx, $$); }
+annotation(A) ::= datatype_scalar(B) initializer(C) SEMICOLON. { A = new_annotation(ctx, B, C); }
 
-annotation ::= datatype_scalar initializer SEMICOLON.
+%type initializer_block_list { Expression * }
+%destructor initializer_block_list { delete_expr(ctx, $$); }
+initializer_block_list(A) ::= expression(B). { A = B; }
+initializer_block_list(A) ::= LBRACE initializer_block_list(B) RBRACE. { A = B; }
+initializer_block_list(A) ::= initializer_block_list(B) COMMA initializer_block_list(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
 
-variable_attribute_list ::= variable_attribute.
-variable_attribute_list ::= variable_attribute_list variable_attribute.
+%type initializer_block { Expression * }
+%destructor initializer_block { delete_expr(ctx, $$); }
+initializer_block(A) ::= LBRACE initializer_block_list(B) RBRACE. { A = B; }
 
-variable_attribute ::= EXTERN.
-variable_attribute ::= NOINTERPOLATION.
-variable_attribute ::= SHARED.
-variable_attribute ::= STATIC.
-variable_attribute ::= UNIFORM.
-variable_attribute ::= VOLATILE.
-variable_attribute ::= CONST.
-variable_attribute ::= ROWMAJOR.
-variable_attribute ::= COLUMNMAJOR.
+%type initializer { Expression * }
+%destructor initializer { delete_expr(ctx, $$); }
+initializer(A) ::= ASSIGN initializer_block(B). { A = B; }
+initializer(A) ::= ASSIGN expression(B). { A = B; }
 
-initializer_block_list ::= expression.
-initializer_block_list ::= LBRACE initializer_block_list RBRACE.
-initializer_block_list ::= initializer_block_list COMMA initializer_block_list.
-initializer_block ::= LBRACE initializer_block_list RBRACE.
+%type intrinsic_datatype { const char * }
+intrinsic_datatype(A) ::= datatype_vector(B). { A = B; }
+intrinsic_datatype(A) ::= datatype_matrix(B). { A = B; }
+intrinsic_datatype(A) ::= datatype_scalar(B). { A = B; }
+intrinsic_datatype(A) ::= datatype_sampler(B). { A = B; }
 
-initializer ::= ASSIGN initializer_block.
-initializer ::= ASSIGN expression.
+%type datatype { const char * }
+datatype(A) ::= intrinsic_datatype(B). { A = B; }
+datatype(A) ::= USERTYPE(B). { A = B.string; }
 
-intrinsic_datatype ::= datatype_vector.
-intrinsic_datatype ::= datatype_matrix.
-intrinsic_datatype ::= datatype_scalar.
-intrinsic_datatype ::= datatype_sampler.
+%type datatype_sampler { const char * }
+datatype_sampler(A) ::= SAMPLER. { A = cache_string_fmt(ctx, "s1"); }
+datatype_sampler(A) ::= SAMPLER1D. { A = cache_string_fmt(ctx, "s1"); }
+datatype_sampler(A) ::= SAMPLER2D. { A = cache_string_fmt(ctx, "s2"); }
+datatype_sampler(A) ::= SAMPLER3D. { A = cache_string_fmt(ctx, "s3"); }
+datatype_sampler(A) ::= SAMPLERCUBE. { A = cache_string_fmt(ctx, "sc"); }
+datatype_sampler(A) ::= SAMPLER_STATE. { A = cache_string_fmt(ctx, "ss"); }
+datatype_sampler(A) ::= SAMPLERSTATE. { A = cache_string_fmt(ctx, "ss"); }
+datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = cache_string_fmt(ctx, "sS"); }
 
-datatype ::= intrinsic_datatype.
-datatype ::= USERTYPE.
-
-datatype_sampler ::= SAMPLER.
-datatype_sampler ::= SAMPLER1D.
-datatype_sampler ::= SAMPLER2D.
-datatype_sampler ::= SAMPLER3D.
-datatype_sampler ::= SAMPLERCUBE.
-datatype_sampler ::= SAMPLER_STATE.
-datatype_sampler ::= SAMPLERSTATE.
-datatype_sampler ::= SAMPLERCOMPARISONSTATE.
-
-datatype_scalar ::= BOOL.
-datatype_scalar ::= INT.
-datatype_scalar ::= UINT.
-datatype_scalar ::= HALF.
-datatype_scalar ::= FLOAT.
-datatype_scalar ::= DOUBLE.
-datatype_scalar ::= STRING.  // this is for the effects framework, not HLSL.
-datatype_scalar ::= SNORM FLOAT.
-datatype_scalar ::= UNORM FLOAT.
-datatype_scalar ::= BUFFER LT datatype_scalar GT.
+%type datatype_scalar { const char * }
+datatype_scalar(A) ::= BOOL. { A = cache_string_fmt(ctx, "b"); }
+datatype_scalar(A) ::= INT. { A = cache_string_fmt(ctx, "i"); }
+datatype_scalar(A) ::= UINT. { A = cache_string_fmt(ctx, "u"); }
+datatype_scalar(A) ::= HALF. { A = cache_string_fmt(ctx, "h"); }
+datatype_scalar(A) ::= FLOAT. { A = cache_string_fmt(ctx, "f"); }
+datatype_scalar(A) ::= DOUBLE. { A = cache_string_fmt(ctx, "d"); }
+datatype_scalar(A) ::= STRING. { A = cache_string_fmt(ctx, "S"); } // this is for the effects framework, not HLSL.
+datatype_scalar(A) ::= SNORM FLOAT. { A = cache_string_fmt(ctx, "Fs"); }
+datatype_scalar(A) ::= UNORM FLOAT. { A = cache_string_fmt(ctx, "Fu"); }
+datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = cache_string_fmt(ctx, "B%s", B); }
 
 // !!! FIXME: MSDN suggests that the matrix ones are just typedefs inserted
 // !!! FIXME:  before parsing begins, like:
 // !!! FIXME: typedef matrix <bool,4,3> bool4x3;
 // !!! FIXME:  ...maybe we can rip these out of the grammar and just create
 // !!! FIXME:  them at startup?
-datatype_vector ::= VECTOR LT datatype_scalar COMMA INT_CONSTANT GT.
+%type datatype_vector { const char * }
+datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = cache_string_fmt(ctx, "v%d%s", (int) C.i64, B); }
 datatype_vector ::= BOOL1.
 datatype_vector ::= BOOL2.
 datatype_vector ::= BOOL3.
@@ -298,7 +367,8 @@ datatype_vector ::= DOUBLE2.
 datatype_vector ::= DOUBLE3.
 datatype_vector ::= DOUBLE4.
 
-datatype_matrix ::= MATRIX LT datatype_scalar COMMA INT_CONSTANT COMMA INT_CONSTANT GT.
+%type datatype_matrix { const char * }
+datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = cache_string_fmt(ctx, "m%d%d%s", (int) C.i64, (int) D.i64, B); }
 datatype_matrix ::= BOOL1X1.
 datatype_matrix ::= BOOL1X2.
 datatype_matrix ::= BOOL1X3.
@@ -396,103 +466,119 @@ datatype_matrix ::= DOUBLE4X2.
 datatype_matrix ::= DOUBLE4X3.
 datatype_matrix ::= DOUBLE4X4.
 
-statement_block ::= LBRACE RBRACE.
-statement_block ::= LBRACE statement_list RBRACE.
+%type statement_block { Statement * }
+%destructor statement_block { delete_statement(ctx, $$); }
+statement_block(A) ::= LBRACE RBRACE. { A = new_empty_statement(ctx); }
+statement_block(A) ::= LBRACE statement_list(B) RBRACE. { A = B; }
 
-statement_list ::= statement.
-statement_list ::= statement_list statement.
+%type statement_list { Statement * }
+%destructor statement_list { delete_statement(ctx, $$); }
+statement_list(A) ::= statement(B). { A = B; }
+statement_list(A) ::= statement_list(B) statement(C). { A = C; A->next = B; }  // !!! FIXME: we're stacking this list backwards.
 
 // These are for Shader Model 4 and Xbox 360 only, apparently.
-statement_attribute_details ::= ISOLATE.
-statement_attribute_details ::= MAXINSTRUCTIONCOUNT LPAREN INT_CONSTANT RPAREN.
-statement_attribute_details ::= NOEXPRESSIONOPTIMIZATIONS.
-statement_attribute_details ::= REMOVEUNUSEDINPUTS.
-statement_attribute_details ::= UNUSED.
-statement_attribute_details ::= XPS.
+// !!! FIXME: ...so we ignore them for now.
+// !!! FIXME: can these stack?  "[isolate][unused]{}" or something?
+%type statement_attribute { int }
+statement_attribute(A) ::= ISOLATE. { A = 0; }  // !!! FIXME
+statement_attribute(A) ::= MAXINSTRUCTIONCOUNT LPAREN INT_CONSTANT RPAREN. { A = 0; }  // !!! FIXME
+statement_attribute(A) ::= NOEXPRESSIONOPTIMIZATIONS. { A = 0; }  // !!! FIXME
+statement_attribute(A) ::= REMOVEUNUSEDINPUTS. { A = 0; }  // !!! FIXME
+statement_attribute(A) ::= UNUSED. { A = 0; }  // !!! FIXME
+statement_attribute(A) ::= XPS. { A = 0; }  // !!! FIXME
 
-statement_attribute ::= LBRACKET statement_attribute_details RBRACKET.
+%type statement { Statement * }
+%destructor statement { delete_statement(ctx, $$); }
+statement(A) ::= BREAK SEMICOLON. { A = new_break_statement(ctx); }
+statement(A) ::= CONTINUE SEMICOLON. { A = new_continue_statement(ctx); }
+statement(A) ::= DISCARD SEMICOLON. { A = new_discard_statement(ctx); }
+statement(A) ::= LBRACKET statement_attribute(B) RBRACKET statement_block(C). { A = C; /* !!! FIXME: A->attributes = B;*/ B = 0; }
+statement(A) ::= variable_declaration(B). { A = new_vardecl_statement(ctx, B); }
+statement(A) ::= struct_declaration(B) SEMICOLON. { A = new_struct_statement(ctx, B); }
+statement(A) ::= do_intro(B) DO statement(C) WHILE LPAREN expression(D) RPAREN SEMICOLON. { A = new_do_statement(ctx, B, C, D); }
+statement(A) ::= while_intro(B) LPAREN expression(C) RPAREN statement(D). { A = new_while_statement(ctx, B, C, D); }
+statement(A) ::= if_intro(B) LPAREN expression(C) RPAREN statement(D). { A = new_if_statement(ctx, B, C, D, NULL); }
+statement(A) ::= if_intro(B) LPAREN expression(C) RPAREN statement(D) ELSE statement(E). { A = new_if_statement(ctx, B, C, D, E); }
+statement(A) ::= switch_intro(B) LPAREN expression(C) RPAREN LBRACE switch_case_list(D) RBRACE. { A = new_switch_statement(ctx, B, C, D); }
+statement(A) ::= typedef(B). { A = new_typedef_statement(ctx, B); }
+statement(A) ::= SEMICOLON. { A = new_empty_statement(ctx); }
+statement(A) ::= expression(B) SEMICOLON. { A = new_expr_statement(ctx, B); }
+statement(A) ::= RETURN SEMICOLON. { A = new_return_statement(ctx, NULL); }
+statement(A) ::= RETURN expression(B) SEMICOLON. { A = new_return_statement(ctx, B); }
+statement(A) ::= statement_block(B). { A = B; }
+statement(A) ::= for_statement(B). { A = B; }
+//statement(A) ::= error SEMICOLON. { A = NULL; }  // !!! FIXME: research using the error nonterminal
 
-statement ::= return_statement.
-statement ::= BREAK SEMICOLON.
-statement ::= CONTINUE SEMICOLON.
-statement ::= DISCARD SEMICOLON.
-statement ::= statement_attribute statement_block.
-statement ::= statement_block.
-statement ::= for_statement.
-statement ::= do_statement.
-statement ::= while_statement.
-statement ::= if_statement.
-statement ::= switch_statement.
-statement ::= variable_declaration.
-statement ::= typedef_statement.
-statement ::= expression_statement.
-statement ::= struct_statement.
+%type while_intro { int64 }
+while_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET WHILE. { A = (B.i64 < 0) ? 0 : B.i64; }
+while_intro(A) ::= LBRACKET UNROLL RBRACKET WHILE. { A = -1; }
+while_intro(A) ::= LBRACKET LOOP RBRACKET WHILE. { A = 0; }
+while_intro(A) ::= WHILE. { A = -1; }
 
-struct_statement ::= struct_declaration SEMICOLON.
+%type for_statement { Statement * }
+%destructor for_statement { delete_statement(ctx, $$); }
+for_statement(A) ::= for_intro(B) for_details(C). { A = C; ((ForStatement *) A)->unroll = B; }
 
-expression_statement ::= SEMICOLON.
-expression_statement ::= expression SEMICOLON.
+%type for_intro { int64 }
+for_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET FOR. { A = (B.i64 < 0) ? 0 : B.i64; }
+for_intro(A) ::= LBRACKET UNROLL RBRACKET FOR. { A = -1; }
+for_intro(A) ::= LBRACKET LOOP RBRACKET FOR. { A = 0; }
+for_intro(A) ::= FOR. { A = -1; }
 
-return_statement ::= RETURN SEMICOLON.
-return_statement ::= RETURN expression SEMICOLON.
+%type for_details { Statement * }
+%destructor for_details { delete_statement(ctx, $$); }
+for_details(A) ::= LPAREN expression(B) SEMICOLON expression(C) SEMICOLON expression(D) RPAREN statement(E). { A = new_for_statement(ctx, NULL, B, C, D, E); }
+for_details(A) ::= LPAREN SEMICOLON SEMICOLON RPAREN statement(B). { A = new_for_statement(ctx, NULL, NULL, NULL, NULL, B); }
+for_details(A) ::= LPAREN SEMICOLON SEMICOLON expression(B) RPAREN statement(C). { A = new_for_statement(ctx, NULL, NULL, NULL, B, C); }
+for_details(A) ::= LPAREN SEMICOLON expression(B) SEMICOLON RPAREN statement(C). { A = new_for_statement(ctx, NULL, NULL, B, NULL, C); }
+for_details(A) ::= LPAREN SEMICOLON expression(B) SEMICOLON expression(C) RPAREN statement(D). { A = new_for_statement(ctx, NULL, NULL, B, C, D); }
+for_details(A) ::= LPAREN expression(B) SEMICOLON SEMICOLON RPAREN statement(C). { A = new_for_statement(ctx, NULL, B, NULL, NULL, C); }
+for_details(A) ::= LPAREN expression(B) SEMICOLON SEMICOLON expression(C) RPAREN statement(D). { A = new_for_statement(ctx, NULL, B, NULL, C, D); }
+for_details(A) ::= LPAREN expression(B) SEMICOLON expression(C) SEMICOLON RPAREN statement(D). { A = new_for_statement(ctx, NULL, B, C, NULL, D); }
+for_details(A) ::= LPAREN variable_declaration(B) expression(C) SEMICOLON expression(D) RPAREN statement(E). { A = new_for_statement(ctx, B, NULL, C, D, E); }
+for_details(A) ::= LPAREN variable_declaration(B) SEMICOLON RPAREN statement(C).  { A = new_for_statement(ctx, B, NULL, NULL, NULL, C); }
+for_details(A) ::= LPAREN variable_declaration(B) SEMICOLON expression(C) RPAREN statement(D). { A = new_for_statement(ctx, B, NULL, C, NULL, D); }
+for_details(A) ::= LPAREN variable_declaration(B) expression(C) SEMICOLON RPAREN statement(D). { A = new_for_statement(ctx, B, NULL, C, NULL, D); }
 
-while_statement ::= loop_attribute while_details.
-while_statement ::= while_details.
+%type do_intro { int64 }
+do_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET DO. { A = (B.i64 < 0) ? 0 : (int) B.i64; }
+do_intro(A) ::= LBRACKET UNROLL RBRACKET DO. { A = -1; }
+do_intro(A) ::= LBRACKET LOOP RBRACKET DO. { A = 0; }
+do_intro(A) ::= DO. { A = -1; }
 
-while_details ::= WHILE LPAREN expression RPAREN statement.
+%type if_intro { int }
+if_intro(A) ::= LBRACKET BRANCH RBRACKET IF. { A = IFATTR_BRANCH; }
+if_intro(A) ::= LBRACKET FLATTEN RBRACKET IF. { A = IFATTR_FLATTEN; }
+if_intro(A) ::= LBRACKET IFALL RBRACKET IF. { A = IFATTR_IFALL; }
+if_intro(A) ::= LBRACKET IFANY RBRACKET IF. { A = IFATTR_IFANY; }
+if_intro(A) ::= LBRACKET PREDICATE RBRACKET IF. { A = IFATTR_PREDICATE; }
+if_intro(A) ::= LBRACKET PREDICATEBLOCK RBRACKET IF. { A = IFATTR_PREDICATEBLOCK; }
+if_intro(A) ::= IF. { A = IFATTR_NONE; }
 
-for_statement ::= loop_attribute for_details.
-for_statement ::= for_details.
+%type switch_intro { int }
+switch_intro(A) ::= LBRACKET FLATTEN RBRACKET SWITCH. { A = SWITCHATTR_FLATTEN; }
+switch_intro(A) ::= LBRACKET BRANCH RBRACKET SWITCH. { A = SWITCHATTR_BRANCH; }
+switch_intro(A) ::= LBRACKET FORCECASE RBRACKET SWITCH. { A = SWITCHATTR_FORCECASE; }
+switch_intro(A) ::= LBRACKET CALL RBRACKET SWITCH. { A = SWITCHATTR_CALL; }
+switch_intro(A) ::= SWITCH. { A = SWITCHATTR_NONE; }
 
-for_details ::= FOR LPAREN expression SEMICOLON expression SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN SEMICOLON SEMICOLON RPAREN statement.
-for_details ::= FOR LPAREN SEMICOLON SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN SEMICOLON expression SEMICOLON RPAREN statement.
-for_details ::= FOR LPAREN SEMICOLON expression SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON RPAREN statement.
-for_details ::= FOR LPAREN expression SEMICOLON SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN expression SEMICOLON expression SEMICOLON RPAREN statement.
-for_details ::= FOR LPAREN variable_declaration expression SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN variable_declaration SEMICOLON RPAREN statement.
-for_details ::= FOR LPAREN variable_declaration SEMICOLON expression RPAREN statement.
-for_details ::= FOR LPAREN variable_declaration expression SEMICOLON RPAREN statement.
-
-loop_attribute ::= UNROLL LPAREN INT_CONSTANT RPAREN.
-loop_attribute ::= UNROLL.
-loop_attribute ::= LOOP.
-
-do_statement ::= DO statement WHILE LPAREN expression RPAREN SEMICOLON.
-
-if_statement ::= if_attribute IF LPAREN expression RPAREN statement.
-if_statement ::= IF LPAREN expression RPAREN statement.
-if_statement ::= if_attribute IF LPAREN expression RPAREN statement ELSE statement.
-if_statement ::= IF LPAREN expression RPAREN statement ELSE statement.
-
-if_attribute ::= BRANCH.
-if_attribute ::= FLATTEN.
-
-switch_statement ::= switch_attribute switch_details.
-switch_statement ::= switch_details.
-
-switch_details ::= SWITCH LPAREN expression RPAREN LBRACE switch_case_list RBRACE.
-
-switch_attribute ::= FLATTEN.
-switch_attribute ::= BRANCH.
-switch_attribute ::= FORCECASE.
-switch_attribute ::= CALL.
-
-switch_case_list ::= switch_case.
-switch_case_list ::= switch_case_list switch_case.
+%type switch_case_list { SwitchCases * }
+%destructor switch_case_list { delete_switch_case(ctx, $$); }
+switch_case_list(A) ::= switch_case(B). { A = B; }
+switch_case_list(A) ::= switch_case_list(B) switch_case(C). { A = C; A->next = B; }
 
 // You can do math here, apparently, as long as it produces an int constant.
 //  ...so "case 3+2:" works.
-switch_case ::= CASE expression COLON statement_list.
-switch_case ::= CASE expression COLON.
-switch_case ::= DEFAULT COLON statement_list.
-switch_case ::= DEFAULT COLON.
+%type switch_case { SwitchCases * }
+%destructor switch_case { delete_switch_case(ctx, $$); }
+switch_case(A) ::= CASE expression(B) COLON statement_list(C). { A = new_switch_case(ctx, B, C); }
+switch_case(A) ::= CASE expression(B) COLON. { A = new_switch_case(ctx, B, NULL); }
+switch_case(A) ::= DEFAULT COLON statement_list(B). { A = new_switch_case(ctx, NULL, B); }
+switch_case(A) ::= DEFAULT COLON. { A = new_switch_case(ctx, NULL, NULL); }
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.
 %type primary_expr { Expression * }
+%destructor primary_expr { delete_expr(ctx, $$); }
 primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, B.string); }
 primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, B.i64); }
 primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, B.dbl); }
@@ -500,6 +586,7 @@ primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, B.stri
 primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 
 %type postfix_expr { Expression * }
+%destructor postfix_expr { delete_expr(ctx, $$); }
 postfix_expr(A) ::= primary_expr(B). { A = B; }
 postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, OP_DEREF_ARRAY, B, C); }
 postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
@@ -510,11 +597,13 @@ postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTI
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
 
 %type argument_expr_list { Expression * }
+%destructor argument_expr_list { delete_expr(ctx, $$); }
 argument_expr_list(A) ::= assignment_expr(B). { A = B; }
 argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
 
 %type unary_expr { Expression * }
-unary_expr(A) ::= postfix_expr(B).  { A = B; }
+%destructor unary_expr { delete_expr(ctx, $$); }
+unary_expr(A) ::= postfix_expr(B). { A = B; }
 unary_expr(A) ::= PLUSPLUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREINCREMENT, B); }
 unary_expr(A) ::= MINUSMINUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREDECREMENT, B); }
 unary_expr(A) ::= PLUS cast_expr(B). { A = B; }  // unary "+x" is always a no-op, so throw it away here.
@@ -523,26 +612,31 @@ unary_expr(A) ::= COMPLEMENT cast_expr(B). { A = new_unary_expr(ctx, OP_COMPLEME
 unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, OP_NOT, B); }
 
 %type cast_expr { Expression * }
+%destructor cast_expr { delete_expr(ctx, $$); }
 cast_expr(A) ::= unary_expr(B). { A = B; }
 //cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx, B, C); }
 
 %type multiplicative_expr { Expression * }
+%destructor multiplicative_expr { delete_expr(ctx, $$); }
 multiplicative_expr(A) ::= cast_expr(B). { A = B; }
 multiplicative_expr(A) ::= multiplicative_expr(B) STAR cast_expr(C). { A = new_binary_expr(ctx, OP_MULTIPLY, B, C); }
 multiplicative_expr(A) ::= multiplicative_expr(B) SLASH cast_expr(C). { A = new_binary_expr(ctx, OP_DIVIDE, B, C); }
 multiplicative_expr(A) ::= multiplicative_expr(B) PERCENT cast_expr(C). { A = new_binary_expr(ctx, OP_MODULO, B, C); }
 
 %type additive_expr { Expression * }
+%destructor additive_expr { delete_expr(ctx, $$); }
 additive_expr(A) ::= multiplicative_expr(B). { A = B; }
 additive_expr(A) ::= additive_expr(B) PLUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_ADD, B, C); }
 additive_expr(A) ::= additive_expr(B) MINUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_SUBTRACT, B, C); }
 
 %type shift_expr { Expression * }
+%destructor shift_expr { delete_expr(ctx, $$); }
 shift_expr(A) ::= additive_expr(B). { A = B; }
 shift_expr(A) ::= shift_expr(B) LSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_LSHIFT, B, C); }
 shift_expr(A) ::= shift_expr(B) RSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_RSHIFT, B, C); }
 
 %type relational_expr { Expression * }
+%destructor relational_expr { delete_expr(ctx, $$); }
 relational_expr(A) ::= shift_expr(B). { A = B; }
 relational_expr(A) ::= relational_expr(B) LT shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHAN, B, C); }
 relational_expr(A) ::= relational_expr(B) GT shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHAN, B, C); }
@@ -550,35 +644,43 @@ relational_expr(A) ::= relational_expr(B) LEQ shift_expr(C). { A = new_binary_ex
 relational_expr(A) ::= relational_expr(B) GEQ shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHANOREQUAL, B, C); }
 
 %type equality_expr { Expression * }
+%destructor equality_expr { delete_expr(ctx, $$); }
 equality_expr(A) ::= relational_expr(B). { A = B; }
 equality_expr(A) ::= equality_expr(B) EQL relational_expr(C). { A = new_binary_expr(ctx, OP_EQUAL, B, C); }
 equality_expr(A) ::= equality_expr(B) NEQ relational_expr(C). { A = new_binary_expr(ctx, OP_NOTEQUAL, B, C); }
 
 %type and_expr { Expression * }
+%destructor and_expr { delete_expr(ctx, $$); }
 and_expr(A) ::= equality_expr(B). { A = B; }
 and_expr(A) ::= and_expr(B) AND equality_expr(C). { A = new_binary_expr(ctx, OP_BINARYAND, B, C); }
 
 %type exclusive_or_expr { Expression * }
+%destructor exclusive_or_expr { delete_expr(ctx, $$); }
 exclusive_or_expr(A) ::= and_expr(B). { A = B; }
 exclusive_or_expr(A) ::= exclusive_or_expr(B) XOR and_expr(C). { A = new_binary_expr(ctx, OP_BINARYXOR, B, C); }
 
 %type inclusive_or_expr { Expression * }
+%destructor inclusive_or_expr { delete_expr(ctx, $$); }
 inclusive_or_expr(A) ::= exclusive_or_expr(B). { A = B; }
 inclusive_or_expr(A) ::= inclusive_or_expr(B) OR exclusive_or_expr(C). { A = new_binary_expr(ctx, OP_BINARYOR, B, C); }
 
 %type logical_and_expr { Expression * }
+%destructor logical_and_expr { delete_expr(ctx, $$); }
 logical_and_expr(A) ::= inclusive_or_expr(B). { A = B; }
 logical_and_expr(A) ::= logical_and_expr(B) ANDAND inclusive_or_expr(C). { A = new_binary_expr(ctx, OP_LOGICALAND, B, C); }
 
 %type logical_or_expr { Expression * }
+%destructor logical_or_expr { delete_expr(ctx, $$); }
 logical_or_expr(A) ::= logical_and_expr(B). { A = B; }
 logical_or_expr(A) ::= logical_or_expr(B) OROR logical_and_expr(C). { A = new_binary_expr(ctx, OP_LOGICALOR, B, C); }
 
 %type conditional_expr { Expression * }
+%destructor conditional_expr { delete_expr(ctx, $$); }
 conditional_expr(A) ::= logical_or_expr(B). { A = B; }
 conditional_expr(A) ::= logical_or_expr(B) QUESTION logical_or_expr(C) COLON conditional_expr(D). { A = new_ternary_expr(ctx, OP_CONDITIONAL, B, C, D); }
 
 %type assignment_expr { Expression * }
+%destructor assignment_expr { delete_expr(ctx, $$); }
 assignment_expr(A) ::= conditional_expr(B). { A = B; }
 assignment_expr(A) ::= unary_expr(B) ASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ASSIGN, B, C); }
 assignment_expr(A) ::= unary_expr(B) MULASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MULASSIGN, B, C); }
@@ -593,6 +695,7 @@ assignment_expr(A) ::= unary_expr(B) XORASSIGN assignment_expr(C). { A = new_bin
 assignment_expr(A) ::= unary_expr(B) ORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ORASSIGN, B, C); }
 
 %type expression { Expression * }
+%destructor expression { delete_expr(ctx, $$); }
 expression(A) ::= assignment_expr(B). { A = B; }
 expression(A) ::= expression(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
 
