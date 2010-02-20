@@ -88,6 +88,9 @@ typedef enum Operator
     OP_FLOAT_LITERAL,
     OP_STRING_LITERAL,
     OP_END_RANGE_DATA,
+
+    OP_CONSTRUCTOR,
+    OP_CAST
 } Operator;
 
 typedef enum VariableAttributes
@@ -188,6 +191,20 @@ typedef struct ExpressionStringLiteral
     Operator op;  // Always OP_STRING_LITERAL
     const char *string;
 } ExpressionStringLiteral;
+
+typedef struct ExpressionConstructor
+{
+    Operator op;  // Always OP_CONSTRUCTOR
+    const char *datatype;
+    Expression *args;
+} ExpressionConstructor;
+
+typedef struct ExpressionCast
+{
+    Operator op;  // Always OP_CAST
+    const char *datatype;
+    Expression *operand;
+} ExpressionCast;
 
 typedef enum CompilationUnitType
 {
@@ -517,6 +534,26 @@ static inline void Free(Context *ctx, void *ptr)
 static void delete_compilation_unit(Context *ctx, CompilationUnit *unit);
 static void delete_statement(Context *ctx, Statement *stmt);
 
+static Expression *new_constructor_expr(Context *ctx, const char *datatype,
+                                        Expression *args)
+{
+    NEW_AST_NODE(ExpressionConstructor);
+    retval->op = OP_CONSTRUCTOR;
+    retval->datatype = datatype;
+    retval->args = args;
+    return (Expression *) retval;
+} // new_constructor_expr
+
+static Expression *new_cast_expr(Context *ctx, const char *datatype,
+                                 Expression *operand)
+{
+    NEW_AST_NODE(ExpressionCast);
+    retval->op = OP_CAST;
+    retval->datatype = datatype;
+    retval->operand = operand;
+    return (Expression *) retval;
+} // new_cast_expr
+
 static Expression *new_unary_expr(Context *ctx, const Operator op,
                                   Expression *operand)
 {
@@ -604,9 +641,14 @@ static void delete_expr(Context *ctx, Expression *expr)
         delete_expr(ctx, ternary->center);
         delete_expr(ctx, ternary->right);
     } // else if
-
-    // don't need to free extra fields in other types at the moment.
-
+    else if (expr->op == OP_CAST)
+    {
+        delete_expr(ctx, ((ExpressionCast *) expr)->operand);
+    } // else if
+    else if (expr->op == OP_CONSTRUCTOR)
+    {
+        delete_expr(ctx, ((ExpressionConstructor *) expr)->args);
+    } // else if
     Free(ctx, expr);
 } // delete_expr
 

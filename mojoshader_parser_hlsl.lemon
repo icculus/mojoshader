@@ -591,7 +591,7 @@ postfix_expr(A) ::= primary_expr(B). { A = B; }
 postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, OP_DEREF_ARRAY, B, C); }
 postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
 postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
-//postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
+postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = NULL; new_constructor_expr(ctx, B, C); } // HLSL constructor
 postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
@@ -614,7 +614,7 @@ unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, OP_NOT, B)
 %type cast_expr { Expression * }
 %destructor cast_expr { delete_expr(ctx, $$); }
 cast_expr(A) ::= unary_expr(B). { A = B; }
-//cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx, B, C); }
+cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx, B, C); }
 
 %type multiplicative_expr { Expression * }
 %destructor multiplicative_expr { delete_expr(ctx, $$); }
