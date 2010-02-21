@@ -1399,23 +1399,6 @@ static const char *cache_string_fmt(Context *ctx, const char *fmt, ...)
 #include "mojoshader_parser_hlsl.h"
 
 
-static void free_string_cache(Context *ctx)
-{
-    size_t i;
-    for (i = 0; i < STATICARRAYLEN(ctx->string_hashtable); i++)
-    {
-        StringBucket *bucket = ctx->string_hashtable[i];
-        ctx->string_hashtable[i] = NULL;
-        while (bucket)
-        {
-            StringBucket *next = bucket->next;
-            Free(ctx, bucket->string);
-            Free(ctx, bucket);
-            bucket = next;
-        } // while
-    } // for
-} // free_string_cache
-
 static inline int64 strtoi64(const char *str, unsigned int len)
 {
     int64 retval = 0;
@@ -1764,6 +1747,32 @@ static int convert_to_lemon_token(const Context *ctx, const char *token,
     return 0;
 } // convert_to_lemon_token
 
+static void free_string_cache(Context *ctx)
+{
+    size_t i;
+    for (i = 0; i < STATICARRAYLEN(ctx->string_hashtable); i++)
+    {
+        StringBucket *bucket = ctx->string_hashtable[i];
+        ctx->string_hashtable[i] = NULL;
+        while (bucket)
+        {
+            StringBucket *next = bucket->next;
+            Free(ctx, bucket->string);
+            Free(ctx, bucket);
+            bucket = next;
+        } // while
+    } // for
+} // free_string_cache
+
+static void destroy_context(Context *ctx)
+{
+    if (ctx->preprocessor != NULL)
+        preprocessor_end(ctx->preprocessor);
+    // !!! FIXME: free ctx->errors
+    // !!! FIXME: free ctx->usertypes
+    delete_compilation_unit(ctx, ctx->ast);
+    free_string_cache(ctx);
+} // destroy_context
 
 void MOJOSHADER_compile(const char *filename,
                         const char *source, unsigned int sourcelen,
@@ -1790,6 +1799,8 @@ void MOJOSHADER_compile(const char *filename,
     ctx.preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
                                            defines, define_count, 0, m, f, d);
+
+    // !!! FIXME: check if (ctx.preprocessor == NULL)...
 
     void *pParser = ParseHLSLAlloc(m, d);
 
@@ -1825,8 +1836,7 @@ void MOJOSHADER_compile(const char *filename,
     } while ((!ctx.isfail) && (tokenval != TOKEN_EOI));
 
     ParseHLSLFree(pParser, f, d);
-    // !!! FIXME: destruct (ctx) here.
-    free_string_cache(&ctx);
+    destroy_context(&ctx);
 } // MOJOSHADER_compile
 
 // end of mojoshader_compiler.c ...
