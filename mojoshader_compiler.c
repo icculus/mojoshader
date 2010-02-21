@@ -482,6 +482,8 @@ typedef struct Context
     ErrorList *errors;
     Preprocessor *preprocessor;
     StringBucket *string_hashtable[256];
+    const char *sourcefile;
+    unsigned int sourceline;
     const char *usertypes[512];  // !!! FIXME: dynamic allocation
     int usertype_count;
     CompilationUnit *ast;  // Abstract Syntax Tree
@@ -522,7 +524,7 @@ static void fail(Context *ctx, const char *str)
 {
     // !!! FIXME: placeholder.
     (void) ctx;
-    printf("FAIL: %s\n", str);
+    printf("%s:%u: %s\n", ctx->sourcefile, ctx->sourceline, str);
 } // fail
 
 // These functions are mostly for construction and cleanup of nodes in the
@@ -1787,6 +1789,7 @@ void MOJOSHADER_compile(const char *filename,
     Token tokenval;
     const char *token;
     int lemon_token;
+    const char *fname;
 
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
@@ -1816,7 +1819,10 @@ void MOJOSHADER_compile(const char *filename,
             break;
         } // if
 
-        else if (tokenval == TOKEN_BAD_CHARS)
+        fname = preprocessor_sourcepos(ctx.preprocessor, &ctx.sourceline);
+        ctx.sourcefile = fname ? cache_string(&ctx, fname, strlen(fname)) : 0;
+
+        if (tokenval == TOKEN_BAD_CHARS)
         {
             fail(&ctx, "Bad characters in source file");
             continue;
