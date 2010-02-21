@@ -226,6 +226,12 @@ static Token nexttoken(Context *ctx)
                 break;
             } // if
 
+            else if (ctx->tokenval == TOKEN_BAD_CHARS)
+            {
+                fail(ctx, "Bad characters in source file");
+                continue;
+            } // else if
+
             else if (ctx->tokenval == TOKEN_PREPROCESSING_ERROR)
             {
                 fail(ctx, ctx->token);
