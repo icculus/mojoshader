@@ -492,6 +492,7 @@ typedef struct Context
 
 static inline void out_of_memory(Context *ctx)
 {
+    if (!ctx->out_of_memory) printf("out of memory\n");  // !!! FIXME: placeholder.
     ctx->isfail = ctx->out_of_memory = 1;
 } // out_of_memory
 
@@ -517,6 +518,12 @@ static inline void Free(Context *ctx, void *ptr)
         ctx->free(ptr, ctx->malloc_data);
 } // Free
 
+static void fail(Context *ctx, const char *str)
+{
+    // !!! FIXME: placeholder.
+    (void) ctx;
+    printf("FAIL: %s\n", str);
+} // fail
 
 // These functions are mostly for construction and cleanup of nodes in the
 //  parse tree. Mostly this is simple allocation and initialization, so we
@@ -1733,14 +1740,6 @@ static int convert_to_lemon_token(const Context *ctx, const char *token,
             return TOKEN_HLSL_IDENTIFIER;
 
         case TOKEN_EOI: return 0;
-        // !!! FIXME: just fail() with the error info and keep lexing until we
-        // !!! FIXME:  get a non-bad_chars result. Only report bad chars once
-        // !!! FIXME:  in a row, so a block of line noise doesn't give us
-        // !!! FIXME:  dozens of errors.
-        case TOKEN_BAD_CHARS: printf("bad chars from lexer\n"); return 0;
-        // !!! FIXME: don't return 0 here, check this elsewhere, and handle it properly.
-        // !!! FIXME: just fail() with the error info and continue on.
-        case TOKEN_PREPROCESSING_ERROR: printf("error from lexer\n"); return 0;
         default: assert(0 && "unexpected token from lexer\n"); return 0;
     } // switch
 
@@ -1810,6 +1809,25 @@ void MOJOSHADER_compile(const char *filename,
 
     do {
         token = preprocessor_nexttoken(ctx.preprocessor, &tokenlen, &tokenval);
+
+        if (preprocessor_outofmemory(ctx.preprocessor))
+        {
+            out_of_memory(&ctx);
+            break;
+        } // if
+
+        else if (tokenval == TOKEN_BAD_CHARS)
+        {
+            fail(&ctx, "Bad characters in source file");
+            continue;
+        } // else if
+
+        else if (tokenval == TOKEN_PREPROCESSING_ERROR)
+        {
+            fail(&ctx, token);  // this happens to be null-terminated.
+            continue;
+        } // else if
+
         lemon_token = convert_to_lemon_token(&ctx, token, tokenlen, tokenval);
         switch (lemon_token)
         {
@@ -1833,7 +1851,7 @@ void MOJOSHADER_compile(const char *filename,
         } // switch
 
         ParseHLSL(pParser, lemon_token, data, &ctx);
-    } while ((!ctx.isfail) && (tokenval != TOKEN_EOI));
+    } while (tokenval != TOKEN_EOI);
 
     ParseHLSLFree(pParser, f, d);
     destroy_context(&ctx);
