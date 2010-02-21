@@ -1462,8 +1462,7 @@ static inline double strtodouble(const char *_str, unsigned int len)
     return strtod(str, NULL);
 } // strtodouble
 
-
-
+#if 0
 // This does not check correctness (POSITIONT993842 passes, etc).
 static int is_semantic(const Context *ctx, const char *token,
                        const unsigned int tokenlen)
@@ -1498,7 +1497,7 @@ static int is_semantic(const Context *ctx, const char *token,
 
     return 0;
 } // is_semantic
-
+#endif
 
 static int convert_to_lemon_token(const Context *ctx, const char *token,
                                   unsigned int tokenlen, const Token tokenval)
@@ -1746,9 +1745,7 @@ static int convert_to_lemon_token(const Context *ctx, const char *token,
 
             #undef tokencmp
 
-            if (is_semantic(ctx, token, tokenlen))
-                return TOKEN_HLSL_SEMANTIC;
-            else if (is_usertype(ctx, token, tokenlen))
+            if (is_usertype(ctx, token, tokenlen))
                 return TOKEN_HLSL_USERTYPE;
             return TOKEN_HLSL_IDENTIFIER;
 
@@ -1813,7 +1810,6 @@ void MOJOSHADER_compile(const char *filename,
                 data.dbl = strtodouble(token, tokenlen);
                 break;
 
-            case TOKEN_HLSL_SEMANTIC:
             case TOKEN_HLSL_USERTYPE:
             case TOKEN_HLSL_STRING_LITERAL:
             case TOKEN_HLSL_IDENTIFIER:

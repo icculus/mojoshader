@@ -162,7 +162,7 @@ input_modifier(A) ::= OUT IN. { A = INPUTMOD_INOUT; }
 input_modifier(A) ::= UNIFORM. { A = INPUTMOD_UNIFORM; }
 
 %type semantic { const char * }
-semantic(A) ::= COLON SEMANTIC(B). { A = B.string; }
+semantic(A) ::= COLON IDENTIFIER(B). { A = B.string; }
 
 // DX10 only?
 %type interpolation_mod { InterpolationModifier }
