@@ -383,6 +383,8 @@ IMPLEMENT_POOL(Define, define)
 
 // Preprocessor define hashtable stuff...
 
+// !!! FIXME: why isn't this using mojoshader_common.c's code?
+
 // this is djb's xor hashing function.
 static inline uint32 hash_string_djbxor(const char *sym)
 {
