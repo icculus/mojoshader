@@ -36,20 +36,17 @@
 
 %syntax_error {
     // !!! FIXME: make this a proper fail() function.
-    ctx->isfail = 1;
-    fprintf(stderr,"Syntax error\n");
+    fail(ctx, "Syntax error");
 }
 
 %parse_failure {
     // !!! FIXME: make this a proper fail() function.
-    ctx->isfail = 1;
-    fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
+    fail(ctx, "Giving up. Parser is hopelessly lost...");
 }
 
 %stack_overflow {
     // !!! FIXME: make this a proper fail() function.
-    ctx->isfail = 1;
-    fprintf(stderr,"Giving up.  Parser stack overflow\n");
+    fail(ctx, "Giving up. Parser stack overflow");
 }
 
 // operator precedence (matches C spec)...
