@@ -1995,6 +1995,400 @@ static void parse_source(Context *ctx, const char *filename,
 } // parse_source
 
 
+static void print_ast(void *ast)
+{
+    static int indent = 0;
+    int i;
+
+    if (!ast) return;
+
+    switch ( ((ASTGeneric *) ast)->ast.type )
+    {
+        case AST_OP_POSTINCREMENT:
+            print_ast(((ExpressionUnary *) ast)->operand);
+            printf("++");
+            break;
+
+        case AST_OP_POSTDECREMENT:
+            print_ast(((ExpressionUnary *) ast)->operand);
+            printf("--");
+            break;
+
+        case AST_OP_PREINCREMENT:
+            printf("++");
+            print_ast(((ExpressionUnary *) ast)->operand);
+            break;
+
+        case AST_OP_PREDECREMENT:
+            printf("--");
+            print_ast(((ExpressionUnary *) ast)->operand);
+            break;
+
+        case AST_OP_NEGATE:
+            printf("-");
+            print_ast(((ExpressionUnary *) ast)->operand);
+            break;
+
+        case AST_OP_COMPLEMENT:
+            printf("~");
+            print_ast(((ExpressionUnary *) ast)->operand);
+            break;
+
+        case AST_OP_NOT:
+            printf("!");
+            print_ast(((ExpressionUnary *) ast)->operand);
+            break;
+
+        case AST_OP_DEREF_ARRAY:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf("[");
+            print_ast(((ExpressionBinary *) ast)->right);
+            printf("]");
+            break;
+
+        case AST_OP_CALLFUNC:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf("(");
+            print_ast(((ExpressionBinary *) ast)->right);
+            printf(")");
+            break;
+
+        case AST_OP_DEREF_STRUCT:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(".");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_COMMA:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(", ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_MULTIPLY:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" * ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_DIVIDE:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" / ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_MODULO:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" %% ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_ADD:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" + ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_SUBTRACT:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" - ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LSHIFT:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" << ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_RSHIFT:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" >> ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LESSTHAN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" < ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_GREATERTHAN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" > ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LESSTHANOREQUAL:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" <= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_GREATERTHANOREQUAL:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" >= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_EQUAL:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" == ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_NOTEQUAL:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" != ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_BINARYAND:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" & ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_BINARYXOR:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" ^ ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_BINARYOR:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" | ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LOGICALAND:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" && ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LOGICALOR:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" || ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_ASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" = ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_MULASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" *= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_DIVASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" /= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_MODASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" %%= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_ADDASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" += ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_SUBASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" -= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_LSHIFTASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" <<= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_RSHIFTASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" >>= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_ANDASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" &= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_XORASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" ^= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_ORASSIGN:
+            print_ast(((ExpressionBinary *) ast)->left);
+            printf(" |= ");
+            print_ast(((ExpressionBinary *) ast)->right);
+            break;
+
+        case AST_OP_CONDITIONAL:
+            print_ast(((ExpressionTernary *) ast)->left);
+            printf(" ? ");
+            print_ast(((ExpressionTernary *) ast)->center);
+            printf(" : ");
+            print_ast(((ExpressionTernary *) ast)->right);
+            break;
+
+        case AST_OP_IDENTIFIER:
+            printf("%s", ((ExpressionIdentifier *) ast)->identifier);
+            break;
+
+        case AST_OP_INT_LITERAL:
+            printf("%lld", (long long) ((ExpressionIntLiteral *) ast)->value);
+            break;
+
+        case AST_OP_FLOAT_LITERAL:
+            printf("%f", ((ExpressionFloatLiteral *) ast)->value);
+            break;
+
+        case AST_OP_STRING_LITERAL:
+            printf("\"%s\"", ((ExpressionStringLiteral *) ast)->string);
+            break;
+
+        case AST_OP_CONSTRUCTOR:
+            printf("%s(", ((ExpressionConstructor *) ast)->datatype);
+            print_ast(((ExpressionConstructor *) ast)->args);
+            printf(")");
+            break;
+
+        case AST_OP_CAST:
+            printf("(%s) (", ((ExpressionCast *) ast)->datatype);
+            print_ast(((ExpressionCast *) ast)->operand);
+            printf(")");
+            break;
+
+        case AST_STATEMENT_EMPTY:
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_EXPRESSION:
+            print_ast(((ExpressionStatement *) ast)->expr);  // !!! FIXME: This is named badly...
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_IF:
+            printf("if (");
+            print_ast(((IfStatement *) ast)->expr);
+            printf(") {\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            indent++;
+            print_ast(((IfStatement *) ast)->statement);
+            indent--;
+            printf("}\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_TYPEDEF:
+        case AST_STATEMENT_STRUCT:
+        case AST_STATEMENT_VARDECL:
+        case AST_STATEMENT_SWITCH:
+        case AST_STATEMENT_FOR:
+        case AST_STATEMENT_DO:
+        case AST_STATEMENT_WHILE:
+            print_ast(((Statement *) ast)->next);
+            break;  // !!! FIXME: write me.
+
+        case AST_STATEMENT_RETURN:
+            printf("return");
+            if (((ReturnStatement *) ast)->expr)
+            {
+                printf(" ");
+                print_ast(((ReturnStatement *) ast)->expr);
+            } // if
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_BREAK:
+            printf("break;");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_CONTINUE:
+            printf("continue;");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_DISCARD:
+            printf("discard;");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_COMPUNIT_FUNCTION:
+            printf("function ... {\n");  // !!! FIXME: write me.
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((CompilationUnitFunction *) ast)->definition);
+            indent--;
+            printf("\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}\n\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((CompilationUnit *) ast)->next);
+            break;
+
+        case AST_COMPUNIT_TYPEDEF:
+            printf("global typedef ...\n");  // !!! FIXME: write me.
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((CompilationUnit *) ast)->next);
+            break;
+
+        case AST_COMPUNIT_STRUCT:
+            printf("global struct ...\n");  // !!! FIXME: write me.
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((CompilationUnit *) ast)->next);
+            break;
+
+        case AST_COMPUNIT_VARIABLE:
+            printf("global variable ...\n");  // !!! FIXME: write me.
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((CompilationUnit *) ast)->next);
+            break;
+
+        case AST_FUNCTION_ARGS:
+        case AST_FUNCTION_SIGNATURE:
+        case AST_SCALAR_OR_ARRAY:
+        case AST_TYPEDEF:
+        case AST_PACK_OFFSET:
+        case AST_VARIABLE_LOWLEVEL:
+        case AST_ANNOTATION:
+        case AST_VARIABLE_DECLARATION:
+        case AST_STRUCT_DECLARATION:
+        case AST_STRUCT_MEMBER:
+        case AST_SWITCH_CASE:
+            break;
+
+        default:
+            assert(0 && "unexpected type");
+            break;
+    } // switch
+} // print_ast
+
+
 void MOJOSHADER_compile(const char *filename,
                         const char *source, unsigned int sourcelen,
                         const MOJOSHADER_preprocessorDefine *defines,
@@ -2011,6 +2405,8 @@ void MOJOSHADER_compile(const char *filename,
                  include_open, include_close);
 
     // !!! FIXME: check (ctx->ast != NULL), and maybe isfail().
+
+    print_ast(ctx->ast);
 
     destroy_context(ctx);
 
