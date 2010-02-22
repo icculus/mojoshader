@@ -643,9 +643,12 @@ static void push_scope(Context *ctx)
 static void pop_scope(Context *ctx)
 {
     UserTypeMap *map = &ctx->usertypes;
-    assert(map->scope != NULL);
     while ((map->scope) && (map->scope->symbol))
         pop_usertype(ctx);
+
+    assert(map->scope != NULL);
+    assert(map->scope->symbol == NULL);
+    pop_usertype(ctx);
 } // push_scope
 
 static void destroy_usertypemap(Context *ctx)
