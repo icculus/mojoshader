@@ -1855,6 +1855,7 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
     return 0;
 } // convert_to_lemon_token
 
+// !!! FIXME: unify this code with the string cache in the preprocessor.
 static void free_string_cache(Context *ctx)
 {
     size_t i;
