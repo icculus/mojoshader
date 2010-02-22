@@ -579,8 +579,6 @@ static void fail(Context *ctx, const char *str)
     printf("%s:%u: %s\n", ctx->sourcefile, ctx->sourceline, str);
 } // fail
 
-#define dbg printf
-
 
 static void usertypemap_nuke(const void *k, const void *v) { /* no-op. */ }
 
@@ -605,8 +603,6 @@ static void push_usertype(Context *ctx, const char *sym, const char *datatype)
 {
     UserTypeMap *map = &ctx->usertypes;
     UserTypeScopeStack *item;
-
-    dbg("push_usertype: %s -> %s\n", sym, datatype);
 
     item = (UserTypeScopeStack *) Malloc(ctx, sizeof (UserTypeScopeStack));
     if (item == NULL)
@@ -633,7 +629,6 @@ static void pop_usertype(Context *ctx)
     UserTypeScopeStack *item = map->scope;
     if (!item)
         return;
-    dbg("pop_usertype: %s -> %s\n", item->symbol, item->datatype);
     if (item->symbol)
         hash_remove(map->types, item->symbol);
     map->scope = item->next;
@@ -642,13 +637,11 @@ static void pop_usertype(Context *ctx)
 
 static void push_scope(Context *ctx)
 {
-    dbg("push_scope\n");
     push_usertype(ctx, NULL, NULL);
 } // push_scope
 
 static void pop_scope(Context *ctx)
 {
-    dbg("pop_scope\n");
     UserTypeMap *map = &ctx->usertypes;
     assert(map->scope != NULL);
     while ((map->scope) && (map->scope->symbol))
