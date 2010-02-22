@@ -691,10 +691,9 @@ static void delete_expr(Context *ctx, Expression *expr)
     {
         delete_expr(ctx, ((ExpressionConstructor *) expr)->args);
     } // else if
-    else
-    {
-        assert(0 && "Unexpected type");
-    } // else
+
+    // rest of operators don't have extra data to free.
+
     Free(ctx, expr);
 } // delete_expr
 
