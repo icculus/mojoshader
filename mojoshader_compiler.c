@@ -533,7 +533,6 @@ typedef struct Context
     void *malloc_data;
     int error_count;
     ErrorList *errors;
-    Preprocessor *preprocessor;
     StringBucket *string_hashtable[256];
     const char *sourcefile;  // current source file that we're parsing.
     unsigned int sourceline; // current line in sourcefile that we're parsing.
@@ -1871,76 +1870,95 @@ static void free_string_cache(Context *ctx)
 
 static void destroy_context(Context *ctx)
 {
-    if (ctx->preprocessor != NULL)
-        preprocessor_end(ctx->preprocessor);
-    // !!! FIXME: free ctx->errors
-    delete_compilation_unit(ctx, ctx->ast);
-    destroy_usertypemap(ctx);
-    free_string_cache(ctx);
+    if (ctx != NULL)
+    {
+        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
+        void *d = ctx->malloc_data;
+
+        // !!! FIXME: free ctx->errors
+        delete_compilation_unit(ctx, ctx->ast);
+        destroy_usertypemap(ctx);
+        free_string_cache(ctx);
+        f(ctx, d);
+    } // if
 } // destroy_context
 
-void MOJOSHADER_compile(const char *filename,
+static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+{
+    if (!m) m = MOJOSHADER_internal_malloc;
+    if (!f) f = MOJOSHADER_internal_free;
+
+    Context *ctx = (Context *) m(sizeof (Context), d);
+    if (ctx == NULL)
+        return NULL;
+
+    memset(ctx, '\0', sizeof (Context));
+    ctx->malloc = m;
+    ctx->free = f;
+    ctx->malloc_data = d;
+    //ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+    create_usertypemap(ctx);  // !!! FIXME: check for failure.
+    return ctx;
+} // build_context
+
+
+// parse the source code into an AST.
+static void parse_source(Context *ctx, const char *filename,
                         const char *source, unsigned int sourcelen,
                         const MOJOSHADER_preprocessorDefine *defines,
                         unsigned int define_count,
                         MOJOSHADER_includeOpen include_open,
-                        MOJOSHADER_includeClose include_close,
-                        MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+                        MOJOSHADER_includeClose include_close)
 {
-    Context ctx;
     TokenData data;
     unsigned int tokenlen;
     Token tokenval;
     const char *token;
     int lemon_token;
     const char *fname;
+    Preprocessor *pp;
+    void *parser;
 
-    if (m == NULL) m = MOJOSHADER_internal_malloc;
-    if (f == NULL) f = MOJOSHADER_internal_free;
+    if (!include_open) include_open = MOJOSHADER_internal_include_open;
+    if (!include_close) include_close = MOJOSHADER_internal_include_close;
 
-    memset(&ctx, '\0', sizeof (Context));
-    ctx.malloc = m;
-    ctx.free = f;
-    ctx.malloc_data = d;
-    ctx.preprocessor = preprocessor_start(filename, source, sourcelen,
-                                           include_open, include_close,
-                                           defines, define_count, 0, m, f, d);
+    pp = preprocessor_start(filename, source, sourcelen, include_open,
+                            include_close, defines, define_count, 0,
+                            ctx->malloc, ctx->free, ctx->malloc_data);
 
-    // !!! FIXME: check if (ctx.preprocessor == NULL)...
+    // !!! FIXME: check if (pp == NULL)...
 
-    create_usertypemap(&ctx);  // !!! FIXME: check for failure.
-
-    void *pParser = ParseHLSLAlloc(m, d);
+    parser = ParseHLSLAlloc(ctx->malloc, ctx->malloc_data);
 
     #if DEBUG_COMPILER_PARSER
     ParseHLSLTrace(stdout, "COMPILER: ");
     #endif
 
     do {
-        token = preprocessor_nexttoken(ctx.preprocessor, &tokenlen, &tokenval);
+        token = preprocessor_nexttoken(pp, &tokenlen, &tokenval);
 
-        if (preprocessor_outofmemory(ctx.preprocessor))
+        if (preprocessor_outofmemory(pp))
         {
-            out_of_memory(&ctx);
+            out_of_memory(ctx);
             break;
         } // if
 
-        fname = preprocessor_sourcepos(ctx.preprocessor, &ctx.sourceline);
-        ctx.sourcefile = fname ? cache_string(&ctx, fname, strlen(fname)) : 0;
+        fname = preprocessor_sourcepos(pp, &ctx->sourceline);
+        ctx->sourcefile = fname ? cache_string(ctx, fname, strlen(fname)) : 0;
 
         if (tokenval == TOKEN_BAD_CHARS)
         {
-            fail(&ctx, "Bad characters in source file");
+            fail(ctx, "Bad characters in source file");
             continue;
         } // else if
 
         else if (tokenval == TOKEN_PREPROCESSING_ERROR)
         {
-            fail(&ctx, token);  // this happens to be null-terminated.
+            fail(ctx, token);  // this happens to be null-terminated.
             continue;
         } // else if
 
-        lemon_token = convert_to_lemon_token(&ctx, token, tokenlen, tokenval);
+        lemon_token = convert_to_lemon_token(ctx, token, tokenlen, tokenval);
         switch (lemon_token)
         {
             case TOKEN_HLSL_INT_CONSTANT:
@@ -1954,7 +1972,7 @@ void MOJOSHADER_compile(const char *filename,
             case TOKEN_HLSL_USERTYPE:
             case TOKEN_HLSL_STRING_LITERAL:
             case TOKEN_HLSL_IDENTIFIER:
-                data.string = cache_string(&ctx, token, tokenlen);
+                data.string = cache_string(ctx, token, tokenlen);
                 break;
 
             default:
@@ -1962,19 +1980,41 @@ void MOJOSHADER_compile(const char *filename,
                 break;
         } // switch
 
-        ParseHLSL(pParser, lemon_token, data, &ctx);
+        ParseHLSL(parser, lemon_token, data, ctx);
 
         // this probably isn't perfect, but it's good enough for surviving
         //  the parse. We'll sort out correctness once we have a tree.
         if (lemon_token == TOKEN_HLSL_LBRACE)
-            push_scope(&ctx);
+            push_scope(ctx);
         else if (lemon_token == TOKEN_HLSL_RBRACE)
-            pop_scope(&ctx);
-
+            pop_scope(ctx);
     } while (tokenval != TOKEN_EOI);
 
-    ParseHLSLFree(pParser, f, d);
-    destroy_context(&ctx);
+    ParseHLSLFree(parser, ctx->free, ctx->malloc_data);
+    preprocessor_end(pp);
+} // parse_source
+
+
+void MOJOSHADER_compile(const char *filename,
+                        const char *source, unsigned int sourcelen,
+                        const MOJOSHADER_preprocessorDefine *defines,
+                        unsigned int define_count,
+                        MOJOSHADER_includeOpen include_open,
+                        MOJOSHADER_includeClose include_close,
+                        MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+{
+    Context *ctx = build_context(m, f, d);
+    if (!ctx)
+        return;  // !!! FIXME: report error.
+
+    parse_source(ctx, filename, source, sourcelen, defines, define_count,
+                 include_open, include_close);
+
+    // !!! FIXME: check (ctx->ast != NULL), and maybe isfail().
+
+    destroy_context(ctx);
+
+    // !!! FIXME: report success/error.
 } // MOJOSHADER_compile
 
 // end of mojoshader_compiler.c ...
