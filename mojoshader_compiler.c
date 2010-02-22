@@ -466,7 +466,7 @@ typedef struct VarDeclStatement
 {
     ASTNode ast;
     struct Statement *next;
-    VariableDeclaration *decl;
+    VariableDeclaration *declaration;
 } VarDeclStatement;
 
 typedef struct StructStatement
@@ -1345,7 +1345,7 @@ static Statement *new_vardecl_statement(Context *ctx, VariableDeclaration *vd)
 {
     NEW_AST_NODE(retval, VarDeclStatement, AST_STATEMENT_VARDECL);
     retval->next = NULL;
-    retval->decl = vd;
+    retval->declaration = vd;
     return (Statement *) retval;
 } // new_vardecl_statement
 
@@ -1353,7 +1353,7 @@ static void delete_vardecl_statement(Context *ctx, VarDeclStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
-    delete_variable_declaration(ctx, stmt->decl);
+    delete_variable_declaration(ctx, stmt->declaration);
     Free(ctx, stmt);
 } // delete_vardecl_statement
 
@@ -2302,12 +2302,69 @@ static void print_ast(void *ast)
             break;
 
         case AST_STATEMENT_TYPEDEF:
-        case AST_STATEMENT_STRUCT:
-        case AST_STATEMENT_VARDECL:
+            print_ast(((TypedefStatement *) ast)->type_info);
+            printf("\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
         case AST_STATEMENT_SWITCH:
+            switch ( ((SwitchStatement *) ast)->attributes )
+            {
+                case SWITCHATTR_NONE: break;
+                case SWITCHATTR_FLATTEN: printf("[flatten] "); break;
+                case SWITCHATTR_BRANCH: printf("[branch] "); break;
+                case SWITCHATTR_FORCECASE: printf("[forcecase] "); break;
+                case SWITCHATTR_CALL: printf("[call] "); break;
+            } // switch
+
+            printf("switch (");
+            print_ast(((SwitchStatement *) ast)->expr);
+            printf(")\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((SwitchStatement *) ast)->cases);
+            indent--;
+            printf("\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_SWITCH_CASE:
+            printf("case ");
+            print_ast(((SwitchCases *) ast)->expr);
+            printf(":\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((SwitchCases *) ast)->statement);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((SwitchCases *) ast)->next);
+            break;
+
+        case AST_STATEMENT_STRUCT:
+            print_ast(((CompilationUnitStruct *) ast)->struct_info);
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_VARDECL:
+            print_ast(((VarDeclStatement *) ast)->declaration);
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
         case AST_STATEMENT_FOR:
         case AST_STATEMENT_DO:
         case AST_STATEMENT_WHILE:
+            printf("[!!!]");
             print_ast(((Statement *) ast)->next);
             break;  // !!! FIXME: write me.
 
@@ -2339,47 +2396,196 @@ static void print_ast(void *ast)
             break;
 
         case AST_COMPUNIT_FUNCTION:
-            printf("function ... {\n");  // !!! FIXME: write me.
-            indent++;
-            for (i = 0; i < indent; i++) printf("    ");
-            print_ast(((CompilationUnitFunction *) ast)->definition);
-            indent--;
-            printf("\n");
-            for (i = 0; i < indent; i++) printf("    ");
-            printf("}\n\n");
+            print_ast(((CompilationUnitFunction *) ast)->declaration);
+            if (((CompilationUnitFunction *) ast)->definition == NULL)
+                printf(";\n");
+            else
+            {
+                printf("\n");
+                for (i = 0; i < indent; i++) printf("    ");
+                printf("{\n");
+                indent++;
+                for (i = 0; i < indent; i++) printf("    ");
+                print_ast(((CompilationUnitFunction *) ast)->definition);
+                indent--;
+                printf("\n");
+                for (i = 0; i < indent; i++) printf("    ");
+                printf("}\n\n");
+            } // else
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((CompilationUnit *) ast)->next);
             break;
 
         case AST_COMPUNIT_TYPEDEF:
-            printf("global typedef ...\n");  // !!! FIXME: write me.
+            print_ast(((CompilationUnitTypedef *) ast)->type_info);
+            printf("\n");
             for (i = 0; i < indent; i++) printf("    ");
-            print_ast(((CompilationUnit *) ast)->next);
+            print_ast(((Statement *) ast)->next);
             break;
 
         case AST_COMPUNIT_STRUCT:
-            printf("global struct ...\n");  // !!! FIXME: write me.
+            print_ast(((CompilationUnitStruct *) ast)->struct_info);
+            printf(";\n");
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((CompilationUnit *) ast)->next);
             break;
 
         case AST_COMPUNIT_VARIABLE:
-            printf("global variable ...\n");  // !!! FIXME: write me.
+            print_ast(((CompilationUnitVariable *) ast)->declaration);
+            printf(";\n");
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((CompilationUnit *) ast)->next);
             break;
 
-        case AST_FUNCTION_ARGS:
-        case AST_FUNCTION_SIGNATURE:
         case AST_SCALAR_OR_ARRAY:
+            printf("%s", ((ScalarOrArray*) ast)->identifier);
+            if (((ScalarOrArray*) ast)->isarray)
+            {
+                printf("[");
+                print_ast(((ScalarOrArray*) ast)->dimension);
+                printf("]");
+            } // if
+            break;
+
         case AST_TYPEDEF:
+            printf("typedef %s%s ",
+                    (((Typedef *) ast)->isconst) ? "const " : "",
+                    (((Typedef *) ast)->datatype));
+            print_ast(((Typedef *) ast)->details);
+            printf(";");
+            break;
+
+        case AST_FUNCTION_ARGS:
+            switch (((FunctionArguments *) ast)->input_modifier)
+            {
+                case INPUTMOD_NONE: break;
+                case INPUTMOD_IN: printf("in "); break;
+                case INPUTMOD_OUT: printf("out "); break;
+                case INPUTMOD_INOUT: printf("in out "); break;
+                case INPUTMOD_UNIFORM: printf("uniform "); break;
+            } // switch
+
+            printf("%s %s", (((FunctionArguments *) ast)->datatype),
+                   (((FunctionArguments *) ast)->identifier));
+            if (((FunctionArguments *) ast)->semantic)
+                printf(" : %s", ((FunctionArguments *) ast)->semantic);
+
+            switch (((FunctionArguments *) ast)->interpolation_modifier)
+            {
+                case INTERPMOD_NONE: break;
+                case INTERPMOD_LINEAR: printf(" linear"); break;
+                case INTERPMOD_CENTROID: printf(" centroid"); break;
+                case INTERPMOD_NOINTERPOLATION: printf(" nointerpolation"); break;
+                case INTERPMOD_NOPERSPECTIVE: printf(" noperspective"); break;
+                case INTERPMOD_SAMPLE: printf(" sample"); break;
+            } // switch
+
+            if (((FunctionArguments *) ast)->initializer)
+                print_ast(((FunctionArguments *) ast)->initializer);
+
+            if (((FunctionArguments *) ast)->next)
+            {
+                printf(", ");
+                print_ast(((FunctionArguments *) ast)->next);
+            } // if
+            break;
+
+        case AST_FUNCTION_SIGNATURE:
+            switch (((FunctionSignature *) ast)->storage_class)
+            {
+                case FNSTORECLS_NONE: break;
+                case FNSTORECLS_INLINE: printf("inline "); break;
+            } // switch
+            printf("%s %s(", ((FunctionSignature *) ast)->datatype,
+                    ((FunctionSignature *) ast)->identifier);
+            print_ast(((FunctionSignature *) ast)->args);
+            printf(")");
+            if (((FunctionSignature *) ast)->semantic)
+                printf(" : %s", ((FunctionSignature *) ast)->semantic);
+            break;
+
+        case AST_STRUCT_DECLARATION:
+            printf("struct %s\n", ((StructDeclaration *) ast)->name);
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((StructDeclaration *) ast)->members);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}");
+            break;
+
+        case AST_STRUCT_MEMBER:
+            switch (((StructMembers *) ast)->interpolation_mod)
+            {
+                case INTERPMOD_NONE: break;
+                case INTERPMOD_LINEAR: printf("linear "); break;
+                case INTERPMOD_CENTROID: printf("centroid "); break;
+                case INTERPMOD_NOINTERPOLATION: printf("nointerpolation "); break;
+                case INTERPMOD_NOPERSPECTIVE: printf("noperspective "); break;
+                case INTERPMOD_SAMPLE: printf("sample "); break;
+            } // switch
+            printf("%s ", ((StructMembers *) ast)->datatype);
+            print_ast(((StructMembers *) ast)->details);
+            if (((StructMembers *) ast)->semantic)
+                printf(" : %s", ((StructMembers *) ast)->semantic);
+            printf(";\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((StructMembers *) ast)->next);
+            break;
+
+        case AST_VARIABLE_DECLARATION:
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_EXTERN)
+                printf("extern ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_NOINTERPOLATION)
+                printf("nointerpolation ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_SHARED)
+                printf("shared");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_STATIC)
+                printf("static ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_UNIFORM)
+                printf("uniform ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_VOLATILE)
+                printf("nointerpolation ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_CONST)
+                printf("const ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_ROWMAJOR)
+                printf("rowmajor ");
+            if (((VariableDeclaration *) ast)->attributes & VARATTR_COLUMNMAJOR)
+                printf("columnmajor ");
+
+            if (((VariableDeclaration *) ast)->datatype)
+                printf("%s", ((VariableDeclaration *) ast)->datatype);
+            else
+                print_ast(((VariableDeclaration *) ast)->anonymous_datatype);
+            printf(" ");
+            print_ast(((VariableDeclaration *) ast)->details);
+            if (((VariableDeclaration *) ast)->semantic)
+                printf(" : %s", ((VariableDeclaration *) ast)->semantic);
+            if (((VariableDeclaration *) ast)->annotations)
+            {
+                printf(" ");
+                print_ast(((VariableDeclaration *) ast)->annotations);
+            } // if
+            print_ast(((VariableDeclaration *) ast)->initializer);
+            print_ast(((VariableDeclaration *) ast)->lowlevel);
+
+            if (((VariableDeclaration *) ast)->next)
+            {
+                int attr = (((VariableDeclaration *) ast)->next)->attributes;
+                printf(", ");
+                (((VariableDeclaration *) ast)->next)->attributes = 0;
+                print_ast(((VariableDeclaration *) ast)->next);
+                (((VariableDeclaration *) ast)->next)->attributes = attr;
+            } // if
+            break;
+
         case AST_PACK_OFFSET:
         case AST_VARIABLE_LOWLEVEL:
         case AST_ANNOTATION:
-        case AST_VARIABLE_DECLARATION:
-        case AST_STRUCT_DECLARATION:
-        case AST_STRUCT_MEMBER:
-        case AST_SWITCH_CASE:
+            printf("[!!!]");
             break;
 
         default:
