@@ -292,7 +292,7 @@ annotation(A) ::= datatype_scalar(B) initializer(C) SEMICOLON. { A = new_annotat
 %destructor initializer_block_list { delete_expr(ctx, $$); }
 initializer_block_list(A) ::= expression(B). { A = B; }
 initializer_block_list(A) ::= LBRACE initializer_block_list(B) RBRACE. { A = B; }
-initializer_block_list(A) ::= initializer_block_list(B) COMMA initializer_block_list(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
+initializer_block_list(A) ::= initializer_block_list(B) COMMA initializer_block_list(C). { A = new_binary_expr(ctx, AST_OP_COMMA, B, C); }
 
 %type initializer_block { Expression * }
 %destructor initializer_block { delete_expr(ctx, $$); }
@@ -588,28 +588,28 @@ primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 %type postfix_expr { Expression * }
 %destructor postfix_expr { delete_expr(ctx, $$); }
 postfix_expr(A) ::= primary_expr(B). { A = B; }
-postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, OP_DEREF_ARRAY, B, C); }
-postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, NULL); }
-postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, OP_CALLFUNC, B, C); }
+postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, AST_OP_DEREF_ARRAY, B, C); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, AST_OP_CALLFUNC, B, NULL); }
+postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, AST_OP_CALLFUNC, B, C); }
 postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = NULL; new_constructor_expr(ctx, B, C); } // HLSL constructor
-postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
-postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, OP_POSTINCREMENT, B); }
-postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, OP_POSTDECREMENT, B); }
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, AST_OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
+postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, AST_OP_POSTINCREMENT, B); }
+postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, AST_OP_POSTDECREMENT, B); }
 
 %type argument_expr_list { Expression * }
 %destructor argument_expr_list { delete_expr(ctx, $$); }
 argument_expr_list(A) ::= assignment_expr(B). { A = B; }
-argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
+argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_COMMA, B, C); }
 
 %type unary_expr { Expression * }
 %destructor unary_expr { delete_expr(ctx, $$); }
 unary_expr(A) ::= postfix_expr(B). { A = B; }
-unary_expr(A) ::= PLUSPLUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREINCREMENT, B); }
-unary_expr(A) ::= MINUSMINUS unary_expr(B). { A = new_unary_expr(ctx, OP_PREDECREMENT, B); }
+unary_expr(A) ::= PLUSPLUS unary_expr(B). { A = new_unary_expr(ctx, AST_OP_PREINCREMENT, B); }
+unary_expr(A) ::= MINUSMINUS unary_expr(B). { A = new_unary_expr(ctx, AST_OP_PREDECREMENT, B); }
 unary_expr(A) ::= PLUS cast_expr(B). { A = B; }  // unary "+x" is always a no-op, so throw it away here.
-unary_expr(A) ::= MINUS cast_expr(B). { A = new_unary_expr(ctx, OP_NEGATE, B); }
-unary_expr(A) ::= COMPLEMENT cast_expr(B). { A = new_unary_expr(ctx, OP_COMPLEMENT, B); }
-unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, OP_NOT, B); }
+unary_expr(A) ::= MINUS cast_expr(B). { A = new_unary_expr(ctx, AST_OP_NEGATE, B); }
+unary_expr(A) ::= COMPLEMENT cast_expr(B). { A = new_unary_expr(ctx, AST_OP_COMPLEMENT, B); }
+unary_expr(A) ::= EXCLAMATION cast_expr(B). { A = new_unary_expr(ctx, AST_OP_NOT, B); }
 
 %type cast_expr { Expression * }
 %destructor cast_expr { delete_expr(ctx, $$); }
@@ -619,85 +619,85 @@ cast_expr(A) ::= LPAREN datatype(B) RPAREN cast_expr(C). { A = new_cast_expr(ctx
 %type multiplicative_expr { Expression * }
 %destructor multiplicative_expr { delete_expr(ctx, $$); }
 multiplicative_expr(A) ::= cast_expr(B). { A = B; }
-multiplicative_expr(A) ::= multiplicative_expr(B) STAR cast_expr(C). { A = new_binary_expr(ctx, OP_MULTIPLY, B, C); }
-multiplicative_expr(A) ::= multiplicative_expr(B) SLASH cast_expr(C). { A = new_binary_expr(ctx, OP_DIVIDE, B, C); }
-multiplicative_expr(A) ::= multiplicative_expr(B) PERCENT cast_expr(C). { A = new_binary_expr(ctx, OP_MODULO, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) STAR cast_expr(C). { A = new_binary_expr(ctx, AST_OP_MULTIPLY, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) SLASH cast_expr(C). { A = new_binary_expr(ctx, AST_OP_DIVIDE, B, C); }
+multiplicative_expr(A) ::= multiplicative_expr(B) PERCENT cast_expr(C). { A = new_binary_expr(ctx, AST_OP_MODULO, B, C); }
 
 %type additive_expr { Expression * }
 %destructor additive_expr { delete_expr(ctx, $$); }
 additive_expr(A) ::= multiplicative_expr(B). { A = B; }
-additive_expr(A) ::= additive_expr(B) PLUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_ADD, B, C); }
-additive_expr(A) ::= additive_expr(B) MINUS multiplicative_expr(C). { A = new_binary_expr(ctx, OP_SUBTRACT, B, C); }
+additive_expr(A) ::= additive_expr(B) PLUS multiplicative_expr(C). { A = new_binary_expr(ctx, AST_OP_ADD, B, C); }
+additive_expr(A) ::= additive_expr(B) MINUS multiplicative_expr(C). { A = new_binary_expr(ctx, AST_OP_SUBTRACT, B, C); }
 
 %type shift_expr { Expression * }
 %destructor shift_expr { delete_expr(ctx, $$); }
 shift_expr(A) ::= additive_expr(B). { A = B; }
-shift_expr(A) ::= shift_expr(B) LSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_LSHIFT, B, C); }
-shift_expr(A) ::= shift_expr(B) RSHIFT additive_expr(C). { A = new_binary_expr(ctx, OP_RSHIFT, B, C); }
+shift_expr(A) ::= shift_expr(B) LSHIFT additive_expr(C). { A = new_binary_expr(ctx, AST_OP_LSHIFT, B, C); }
+shift_expr(A) ::= shift_expr(B) RSHIFT additive_expr(C). { A = new_binary_expr(ctx, AST_OP_RSHIFT, B, C); }
 
 %type relational_expr { Expression * }
 %destructor relational_expr { delete_expr(ctx, $$); }
 relational_expr(A) ::= shift_expr(B). { A = B; }
-relational_expr(A) ::= relational_expr(B) LT shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHAN, B, C); }
-relational_expr(A) ::= relational_expr(B) GT shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHAN, B, C); }
-relational_expr(A) ::= relational_expr(B) LEQ shift_expr(C). { A = new_binary_expr(ctx, OP_LESSTHANOREQUAL, B, C); }
-relational_expr(A) ::= relational_expr(B) GEQ shift_expr(C). { A = new_binary_expr(ctx, OP_GREATERTHANOREQUAL, B, C); }
+relational_expr(A) ::= relational_expr(B) LT shift_expr(C). { A = new_binary_expr(ctx, AST_OP_LESSTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) GT shift_expr(C). { A = new_binary_expr(ctx, AST_OP_GREATERTHAN, B, C); }
+relational_expr(A) ::= relational_expr(B) LEQ shift_expr(C). { A = new_binary_expr(ctx, AST_OP_LESSTHANOREQUAL, B, C); }
+relational_expr(A) ::= relational_expr(B) GEQ shift_expr(C). { A = new_binary_expr(ctx, AST_OP_GREATERTHANOREQUAL, B, C); }
 
 %type equality_expr { Expression * }
 %destructor equality_expr { delete_expr(ctx, $$); }
 equality_expr(A) ::= relational_expr(B). { A = B; }
-equality_expr(A) ::= equality_expr(B) EQL relational_expr(C). { A = new_binary_expr(ctx, OP_EQUAL, B, C); }
-equality_expr(A) ::= equality_expr(B) NEQ relational_expr(C). { A = new_binary_expr(ctx, OP_NOTEQUAL, B, C); }
+equality_expr(A) ::= equality_expr(B) EQL relational_expr(C). { A = new_binary_expr(ctx, AST_OP_EQUAL, B, C); }
+equality_expr(A) ::= equality_expr(B) NEQ relational_expr(C). { A = new_binary_expr(ctx, AST_OP_NOTEQUAL, B, C); }
 
 %type and_expr { Expression * }
 %destructor and_expr { delete_expr(ctx, $$); }
 and_expr(A) ::= equality_expr(B). { A = B; }
-and_expr(A) ::= and_expr(B) AND equality_expr(C). { A = new_binary_expr(ctx, OP_BINARYAND, B, C); }
+and_expr(A) ::= and_expr(B) AND equality_expr(C). { A = new_binary_expr(ctx, AST_OP_BINARYAND, B, C); }
 
 %type exclusive_or_expr { Expression * }
 %destructor exclusive_or_expr { delete_expr(ctx, $$); }
 exclusive_or_expr(A) ::= and_expr(B). { A = B; }
-exclusive_or_expr(A) ::= exclusive_or_expr(B) XOR and_expr(C). { A = new_binary_expr(ctx, OP_BINARYXOR, B, C); }
+exclusive_or_expr(A) ::= exclusive_or_expr(B) XOR and_expr(C). { A = new_binary_expr(ctx, AST_OP_BINARYXOR, B, C); }
 
 %type inclusive_or_expr { Expression * }
 %destructor inclusive_or_expr { delete_expr(ctx, $$); }
 inclusive_or_expr(A) ::= exclusive_or_expr(B). { A = B; }
-inclusive_or_expr(A) ::= inclusive_or_expr(B) OR exclusive_or_expr(C). { A = new_binary_expr(ctx, OP_BINARYOR, B, C); }
+inclusive_or_expr(A) ::= inclusive_or_expr(B) OR exclusive_or_expr(C). { A = new_binary_expr(ctx, AST_OP_BINARYOR, B, C); }
 
 %type logical_and_expr { Expression * }
 %destructor logical_and_expr { delete_expr(ctx, $$); }
 logical_and_expr(A) ::= inclusive_or_expr(B). { A = B; }
-logical_and_expr(A) ::= logical_and_expr(B) ANDAND inclusive_or_expr(C). { A = new_binary_expr(ctx, OP_LOGICALAND, B, C); }
+logical_and_expr(A) ::= logical_and_expr(B) ANDAND inclusive_or_expr(C). { A = new_binary_expr(ctx, AST_OP_LOGICALAND, B, C); }
 
 %type logical_or_expr { Expression * }
 %destructor logical_or_expr { delete_expr(ctx, $$); }
 logical_or_expr(A) ::= logical_and_expr(B). { A = B; }
-logical_or_expr(A) ::= logical_or_expr(B) OROR logical_and_expr(C). { A = new_binary_expr(ctx, OP_LOGICALOR, B, C); }
+logical_or_expr(A) ::= logical_or_expr(B) OROR logical_and_expr(C). { A = new_binary_expr(ctx, AST_OP_LOGICALOR, B, C); }
 
 %type conditional_expr { Expression * }
 %destructor conditional_expr { delete_expr(ctx, $$); }
 conditional_expr(A) ::= logical_or_expr(B). { A = B; }
-conditional_expr(A) ::= logical_or_expr(B) QUESTION logical_or_expr(C) COLON conditional_expr(D). { A = new_ternary_expr(ctx, OP_CONDITIONAL, B, C, D); }
+conditional_expr(A) ::= logical_or_expr(B) QUESTION logical_or_expr(C) COLON conditional_expr(D). { A = new_ternary_expr(ctx, AST_OP_CONDITIONAL, B, C, D); }
 
 %type assignment_expr { Expression * }
 %destructor assignment_expr { delete_expr(ctx, $$); }
 assignment_expr(A) ::= conditional_expr(B). { A = B; }
-assignment_expr(A) ::= unary_expr(B) ASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) MULASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MULASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) DIVASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_DIVASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) MODASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_MODASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) ADDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ADDASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) SUBASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_SUBASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) LSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_LSHIFTASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) RSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_RSHIFTASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) ANDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ANDASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) XORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_XORASSIGN, B, C); }
-assignment_expr(A) ::= unary_expr(B) ORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, OP_ORASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_ASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MULASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_MULASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) DIVASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_DIVASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) MODASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_MODASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ADDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_ADDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) SUBASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_SUBASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) LSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_LSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) RSHIFTASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_RSHIFTASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ANDASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_ANDASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) XORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_XORASSIGN, B, C); }
+assignment_expr(A) ::= unary_expr(B) ORASSIGN assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_ORASSIGN, B, C); }
 
 %type expression { Expression * }
 %destructor expression { delete_expr(ctx, $$); }
 expression(A) ::= assignment_expr(B). { A = B; }
-expression(A) ::= expression(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, OP_COMMA, B, C); }
+expression(A) ::= expression(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_COMMA, B, C); }
 
 // end of mojoshader_parser_hlsl.lemon ...
 

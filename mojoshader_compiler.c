@@ -30,68 +30,119 @@ typedef struct StringBucket
 
 // Structures that make up the parse tree...
 
-typedef enum Operator
+typedef enum ASTNodeType
 {
-    OP_START_RANGE_UNARY,
-    OP_POSTINCREMENT,
-    OP_POSTDECREMENT,
-    OP_PREINCREMENT,
-    OP_PREDECREMENT,
-    OP_NEGATE,
-    OP_COMPLEMENT,
-    OP_NOT,
-    OP_END_RANGE_UNARY,
+    AST_OP_START_RANGE,
+    AST_OP_START_RANGE_UNARY,
+    AST_OP_POSTINCREMENT,
+    AST_OP_POSTDECREMENT,
+    AST_OP_PREINCREMENT,
+    AST_OP_PREDECREMENT,
+    AST_OP_NEGATE,
+    AST_OP_COMPLEMENT,
+    AST_OP_NOT,
+    AST_OP_END_RANGE_UNARY,
 
-    OP_START_RANGE_BINARY,
-    OP_DEREF_ARRAY,
-    OP_CALLFUNC,
-    OP_DEREF_STRUCT,
-    OP_COMMA,
-    OP_MULTIPLY,
-    OP_DIVIDE,
-    OP_MODULO,
-    OP_ADD,
-    OP_SUBTRACT,
-    OP_LSHIFT,
-    OP_RSHIFT,
-    OP_LESSTHAN,
-    OP_GREATERTHAN,
-    OP_LESSTHANOREQUAL,
-    OP_GREATERTHANOREQUAL,
-    OP_EQUAL,
-    OP_NOTEQUAL,
-    OP_BINARYAND,
-    OP_BINARYXOR,
-    OP_BINARYOR,
-    OP_LOGICALAND,
-    OP_LOGICALOR,
-    OP_ASSIGN,
-    OP_MULASSIGN,
-    OP_DIVASSIGN,
-    OP_MODASSIGN,
-    OP_ADDASSIGN,
-    OP_SUBASSIGN,
-    OP_LSHIFTASSIGN,
-    OP_RSHIFTASSIGN,
-    OP_ANDASSIGN,
-    OP_XORASSIGN,
-    OP_ORASSIGN,
-    OP_END_RANGE_BINARY,
+    AST_OP_START_RANGE_BINARY,
+    AST_OP_DEREF_ARRAY,
+    AST_OP_CALLFUNC,
+    AST_OP_DEREF_STRUCT,
+    AST_OP_COMMA,
+    AST_OP_MULTIPLY,
+    AST_OP_DIVIDE,
+    AST_OP_MODULO,
+    AST_OP_ADD,
+    AST_OP_SUBTRACT,
+    AST_OP_LSHIFT,
+    AST_OP_RSHIFT,
+    AST_OP_LESSTHAN,
+    AST_OP_GREATERTHAN,
+    AST_OP_LESSTHANOREQUAL,
+    AST_OP_GREATERTHANOREQUAL,
+    AST_OP_EQUAL,
+    AST_OP_NOTEQUAL,
+    AST_OP_BINARYAND,
+    AST_OP_BINARYXOR,
+    AST_OP_BINARYOR,
+    AST_OP_LOGICALAND,
+    AST_OP_LOGICALOR,
+    AST_OP_ASSIGN,
+    AST_OP_MULASSIGN,
+    AST_OP_DIVASSIGN,
+    AST_OP_MODASSIGN,
+    AST_OP_ADDASSIGN,
+    AST_OP_SUBASSIGN,
+    AST_OP_LSHIFTASSIGN,
+    AST_OP_RSHIFTASSIGN,
+    AST_OP_ANDASSIGN,
+    AST_OP_XORASSIGN,
+    AST_OP_ORASSIGN,
+    AST_OP_END_RANGE_BINARY,
 
-    OP_START_RANGE_TERNARY,
-    OP_CONDITIONAL,
-    OP_END_RANGE_TERNARY,
+    AST_OP_START_RANGE_TERNARY,
+    AST_OP_CONDITIONAL,
+    AST_OP_END_RANGE_TERNARY,
 
-    OP_START_RANGE_DATA,
-    OP_IDENTIFIER,
-    OP_INT_LITERAL,
-    OP_FLOAT_LITERAL,
-    OP_STRING_LITERAL,
-    OP_END_RANGE_DATA,
+    AST_OP_START_RANGE_DATA,
+    AST_OP_IDENTIFIER,
+    AST_OP_INT_LITERAL,
+    AST_OP_FLOAT_LITERAL,
+    AST_OP_STRING_LITERAL,
+    AST_OP_END_RANGE_DATA,
 
-    OP_CONSTRUCTOR,
-    OP_CAST
-} Operator;
+    AST_OP_START_RANGE_MISC,
+    AST_OP_CONSTRUCTOR,
+    AST_OP_CAST,
+    AST_OP_END_RANGE_MISC,
+    AST_OP_END_RANGE,
+
+    AST_COMPUNIT_START_RANGE,
+    AST_COMPUNIT_FUNCTION,    // function declaration or definition
+    AST_COMPUNIT_TYPEDEF,     // typedef or struct
+    AST_COMPUNIT_STRUCT,      // global struct
+    AST_COMPUNIT_VARIABLE,    // global variable
+    AST_COMPUNIT_END_RANGE,
+
+    AST_STATEMENT_START_RANGE,
+    AST_STATEMENT_EMPTY,
+    AST_STATEMENT_EXPRESSION,
+    AST_STATEMENT_IF,
+    AST_STATEMENT_SWITCH,
+    AST_STATEMENT_FOR,
+    AST_STATEMENT_DO,
+    AST_STATEMENT_WHILE,
+    AST_STATEMENT_RETURN,
+    AST_STATEMENT_BREAK,
+    AST_STATEMENT_CONTINUE,
+    AST_STATEMENT_DISCARD,
+    AST_STATEMENT_TYPEDEF,
+    AST_STATEMENT_STRUCT,
+    AST_STATEMENT_VARDECL,
+    AST_STATEMENT_END_RANGE,
+
+    AST_MISC_START_RANGE,
+    AST_FUNCTION_ARGS,
+    AST_FUNCTION_SIGNATURE,
+    AST_SCALAR_OR_ARRAY,
+    AST_TYPEDEF,
+    AST_PACK_OFFSET,
+    AST_VARIABLE_LOWLEVEL,
+    AST_ANNOTATION,
+    AST_VARIABLE_DECLARATION,
+    AST_STRUCT_DECLARATION,
+    AST_STRUCT_MEMBER,
+    AST_SWITCH_CASE,
+    AST_MISC_END_RANGE,
+
+    AST_END_RANGE
+} ASTNodeType;
+
+typedef struct ASTNode
+{
+    ASTNodeType type;
+    const char *filename;
+    uint32 line;
+} ASTNode;
 
 typedef enum VariableAttributes
 {
@@ -126,43 +177,44 @@ typedef enum SwitchAttributes
     SWITCHATTR_CALL
 } SwitchAttributes;
 
-static inline int operator_is_unary(const Operator op)
+static inline int operator_is_unary(const ASTNodeType op)
 {
-    return ((op > OP_START_RANGE_UNARY) && (op < OP_END_RANGE_UNARY));
+    return ((op > AST_OP_START_RANGE_UNARY) && (op < AST_OP_END_RANGE_UNARY));
 } // operator_is_unary
 
-static inline int operator_is_binary(const Operator op)
+static inline int operator_is_binary(const ASTNodeType op)
 {
-    return ((op > OP_START_RANGE_BINARY) && (op < OP_END_RANGE_BINARY));
+    return ((op > AST_OP_START_RANGE_BINARY) && (op < AST_OP_END_RANGE_BINARY));
 } // operator_is_binary
 
-static inline int operator_is_ternary(const Operator op)
+static inline int operator_is_ternary(const ASTNodeType op)
 {
-    return ((op > OP_START_RANGE_TERNARY) && (op < OP_END_RANGE_TERNARY));
+    return ((op > AST_OP_START_RANGE_TERNARY) && (op < AST_OP_END_RANGE_TERNARY));
 } // operator_is_ternary
 
-
-typedef struct Expression
+typedef struct ASTGeneric
 {
-    Operator op;  // operator
-} Expression;
+    ASTNode ast;
+} ASTGeneric;
+
+typedef ASTGeneric Expression;
 
 typedef struct ExpressionUnary
 {
-    Operator op;  // operator
+    ASTNode ast;
     Expression *operand;
 } ExpressionUnary;
 
 typedef struct ExpressionBinary
 {
-    Operator op;  // operator
+    ASTNode ast;
     Expression *left;
     Expression *right;
 } ExpressionBinary;
 
 typedef struct ExpressionTernary
 {
-    Operator op;  // operator
+    ASTNode ast;
     Expression *left;
     Expression *center;
     Expression *right;
@@ -170,53 +222,45 @@ typedef struct ExpressionTernary
 
 typedef struct ExpressionIdentifier
 {
-    Operator op;  // Always OP_IDENTIFIER
+    ASTNode ast;  // Always AST_OP_IDENTIFIER
     const char *identifier;
 } ExpressionIdentifier;
 
 typedef struct ExpressionIntLiteral
 {
-    Operator op;  // Always OP_INT_LITERAL
+    ASTNode ast;  // Always AST_OP_INT_LITERAL
     int64 value;
 } ExpressionIntLiteral;
 
 typedef struct ExpressionFloatLiteral
 {
-    Operator op;  // Always OP_FLOAT_LITERAL
+    ASTNode ast;  // Always AST_OP_FLOAT_LITERAL
     double value;
 } ExpressionFloatLiteral;
 
 typedef struct ExpressionStringLiteral
 {
-    Operator op;  // Always OP_STRING_LITERAL
+    ASTNode ast;  // Always AST_OP_STRING_LITERAL
     const char *string;
 } ExpressionStringLiteral;
 
 typedef struct ExpressionConstructor
 {
-    Operator op;  // Always OP_CONSTRUCTOR
+    ASTNode ast;  // Always AST_OP_CONSTRUCTOR
     const char *datatype;
     Expression *args;
 } ExpressionConstructor;
 
 typedef struct ExpressionCast
 {
-    Operator op;  // Always OP_CAST
+    ASTNode ast;  // Always AST_OP_CAST
     const char *datatype;
     Expression *operand;
 } ExpressionCast;
 
-typedef enum CompilationUnitType
-{
-    COMPUNITTYPE_FUNCTION,  // function declaration or definition
-    COMPUNITTYPE_TYPEDEF,   // typedef or struct
-    COMPUNITTYPE_STRUCT,    // global struct
-    COMPUNITTYPE_VARIABLE   // global variable
-} CompilationUnitType;
-
 typedef struct CompilationUnit
 {
-    CompilationUnitType type;
+    ASTNode ast;
     struct CompilationUnit *next;
 } CompilationUnit;
 
@@ -247,6 +291,7 @@ typedef enum InterpolationModifier
 
 typedef struct FunctionArguments
 {
+    ASTNode ast;
     InputModifier input_modifier;
     const char *datatype;
     const char *identifier;
@@ -258,6 +303,7 @@ typedef struct FunctionArguments
 
 typedef struct FunctionSignature
 {
+    ASTNode ast;
     const char *datatype;
     const char *identifier;
     FunctionArguments *args;
@@ -267,6 +313,7 @@ typedef struct FunctionSignature
 
 typedef struct ScalarOrArray
 {
+    ASTNode ast;
     const char *identifier;
     int isarray;
     Expression *dimension;
@@ -274,6 +321,7 @@ typedef struct ScalarOrArray
 
 typedef struct Annotations
 {
+    ASTNode ast;
     const char *datatype;
     Expression *initializer;
     struct Annotations *next;
@@ -281,18 +329,21 @@ typedef struct Annotations
 
 typedef struct PackOffset
 {
+    ASTNode ast;
     const char *ident1;   // !!! FIXME: rename this.
     const char *ident2;
 } PackOffset;
 
 typedef struct VariableLowLevel
 {
+    ASTNode ast;
     PackOffset *packoffset;
     const char *register_name;
 } VariableLowLevel;
 
 typedef struct StructMembers
 {
+    ASTNode ast;
     const char *datatype;
     const char *semantic;
     ScalarOrArray *details;
@@ -302,12 +353,14 @@ typedef struct StructMembers
 
 typedef struct StructDeclaration
 {
+    ASTNode ast;
     const char *name;
     StructMembers *members;
 } StructDeclaration;
 
 typedef struct VariableDeclaration
 {
+    ASTNode ast;
     int attributes;
     const char *datatype;
     StructDeclaration *anonymous_datatype;
@@ -319,27 +372,9 @@ typedef struct VariableDeclaration
     struct VariableDeclaration *next;
 } VariableDeclaration;
 
-typedef enum StatementType
-{
-    STATEMENTTYPE_EMPTY,
-    STATEMENTTYPE_EXPRESSION,
-    STATEMENTTYPE_IF,
-    STATEMENTTYPE_SWITCH,
-    STATEMENTTYPE_FOR,
-    STATEMENTTYPE_DO,
-    STATEMENTTYPE_WHILE,
-    STATEMENTTYPE_RETURN,
-    STATEMENTTYPE_BREAK,
-    STATEMENTTYPE_CONTINUE,
-    STATEMENTTYPE_DISCARD,
-    STATEMENTTYPE_TYPEDEF,
-    STATEMENTTYPE_STRUCT,
-    STATEMENTTYPE_VARDECL,
-} StatementType;
-
 typedef struct Statement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
 } Statement;
 
@@ -350,21 +385,21 @@ typedef Statement DiscardStatement;
 
 typedef struct ReturnStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     Expression *expr;
 } ReturnStatement;
 
 typedef struct ExpressionStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     Expression *expr;
 } ExpressionStatement;
 
 typedef struct IfStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     int attributes;
     Expression *expr;
@@ -374,6 +409,7 @@ typedef struct IfStatement
 
 typedef struct SwitchCases
 {
+    ASTNode ast;
     Expression *expr;
     Statement *statement;
     struct SwitchCases *next;
@@ -381,7 +417,7 @@ typedef struct SwitchCases
 
 typedef struct SwitchStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     int attributes;
     Expression *expr;
@@ -390,7 +426,7 @@ typedef struct SwitchStatement
 
 typedef struct WhileStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
     Expression *expr;
@@ -401,7 +437,7 @@ typedef WhileStatement DoStatement;
 
 typedef struct ForStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
     VariableDeclaration *var_decl;
@@ -413,6 +449,7 @@ typedef struct ForStatement
 
 typedef struct Typedef
 {
+    ASTNode ast;
     int isconst;
     const char *datatype;
     ScalarOrArray *details;
@@ -420,28 +457,28 @@ typedef struct Typedef
 
 typedef struct TypedefStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     Typedef *type_info;
 } TypedefStatement;
 
 typedef struct VarDeclStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     VariableDeclaration *decl;
 } VarDeclStatement;
 
 typedef struct StructStatement
 {
-    StatementType type;
+    ASTNode ast;
     struct Statement *next;
     StructDeclaration *struct_info;
 } StructStatement;
 
 typedef struct CompilationUnitFunction
 {
-    CompilationUnitType type;
+    ASTNode ast;
     struct CompilationUnit *next;
     FunctionSignature *declaration;
     Statement *definition;
@@ -449,21 +486,21 @@ typedef struct CompilationUnitFunction
 
 typedef struct CompilationUnitTypedef
 {
-    CompilationUnitType type;
+    ASTNode ast;
     struct CompilationUnit *next;
     Typedef *type_info;
 } CompilationUnitTypedef;
 
 typedef struct CompilationUnitStruct
 {
-    CompilationUnitType type;
+    ASTNode ast;
     struct CompilationUnit *next;
     StructDeclaration *struct_info;
 } CompilationUnitStruct;
 
 typedef struct CompilationUnitVariable
 {
-    CompilationUnitType type;
+    ASTNode ast;
     struct CompilationUnit *next;
     VariableDeclaration *declaration;
 } CompilationUnitVariable;
@@ -482,8 +519,8 @@ typedef struct Context
     ErrorList *errors;
     Preprocessor *preprocessor;
     StringBucket *string_hashtable[256];
-    const char *sourcefile;
-    unsigned int sourceline;
+    const char *sourcefile;  // current source file that we're parsing.
+    unsigned int sourceline; // current line in sourcefile that we're parsing.
     const char *usertypes[512];  // !!! FIXME: dynamic allocation
     int usertype_count;
     CompilationUnit *ast;  // Abstract Syntax Tree
@@ -532,11 +569,16 @@ static void fail(Context *ctx, const char *str)
 //  can do as little in the lemon code as possible, and then sort it all out
 //  afterwards.
 
-#define NEW_AST_NODE(cls) \
+#define NEW_AST_NODE(retval, cls, typ) \
     cls *retval = Malloc(ctx, sizeof (cls)); \
-    if (retval == NULL) { return NULL; } \
+    do { \
+        if (retval == NULL) { return NULL; } \
+        retval->ast.type = typ; \
+        retval->ast.filename = ctx->sourcefile; \
+        retval->ast.line = ctx->sourceline; \
+    } while (0)
 
-#define DELETE_AST_NODE(cls) do {\
+#define DELETE_AST_NODE(cls) do { \
     if (!cls) return; \
 } while (0)
 
@@ -546,8 +588,7 @@ static void delete_statement(Context *ctx, Statement *stmt);
 static Expression *new_constructor_expr(Context *ctx, const char *datatype,
                                         Expression *args)
 {
-    NEW_AST_NODE(ExpressionConstructor);
-    retval->op = OP_CONSTRUCTOR;
+    NEW_AST_NODE(retval, ExpressionConstructor, AST_OP_CONSTRUCTOR);
     retval->datatype = datatype;
     retval->args = args;
     return (Expression *) retval;
@@ -556,41 +597,37 @@ static Expression *new_constructor_expr(Context *ctx, const char *datatype,
 static Expression *new_cast_expr(Context *ctx, const char *datatype,
                                  Expression *operand)
 {
-    NEW_AST_NODE(ExpressionCast);
-    retval->op = OP_CAST;
+    NEW_AST_NODE(retval, ExpressionCast, AST_OP_CAST);
     retval->datatype = datatype;
     retval->operand = operand;
     return (Expression *) retval;
 } // new_cast_expr
 
-static Expression *new_unary_expr(Context *ctx, const Operator op,
+static Expression *new_unary_expr(Context *ctx, const ASTNodeType op,
                                   Expression *operand)
 {
-    NEW_AST_NODE(ExpressionUnary);
+    NEW_AST_NODE(retval, ExpressionUnary, op);
     assert(operator_is_unary(op));
-    retval->op = op;
     retval->operand = operand;
     return (Expression *) retval;
 } // new_unary_expr
 
-static Expression *new_binary_expr(Context *ctx, const Operator op,
+static Expression *new_binary_expr(Context *ctx, const ASTNodeType op,
                                    Expression *left, Expression *right)
 {
-    NEW_AST_NODE(ExpressionBinary);
+    NEW_AST_NODE(retval, ExpressionBinary, op);
     assert(operator_is_binary(op));
-    retval->op = op;
     retval->left = left;
     retval->right = right;
     return (Expression *) retval;
 } // new_binary_expr
 
-static Expression *new_ternary_expr(Context *ctx, const Operator op,
+static Expression *new_ternary_expr(Context *ctx, const ASTNodeType op,
                                     Expression *left, Expression *center,
                                     Expression *right)
 {
-    NEW_AST_NODE(ExpressionTernary);
+    NEW_AST_NODE(retval, ExpressionTernary, op);
     assert(operator_is_ternary(op));
-    retval->op = op;
     retval->left = left;
     retval->center = center;
     retval->right = right;
@@ -599,32 +636,28 @@ static Expression *new_ternary_expr(Context *ctx, const Operator op,
 
 static Expression *new_identifier_expr(Context *ctx, const char *string)
 {
-    NEW_AST_NODE(ExpressionIdentifier);
-    retval->op = OP_IDENTIFIER;
+    NEW_AST_NODE(retval, ExpressionIdentifier, AST_OP_IDENTIFIER);
     retval->identifier = string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_identifier_expr
 
 static Expression *new_literal_int_expr(Context *ctx, const int64 value)
 {
-    NEW_AST_NODE(ExpressionIntLiteral);
-    retval->op = OP_INT_LITERAL;
+    NEW_AST_NODE(retval, ExpressionIntLiteral, AST_OP_INT_LITERAL);
     retval->value = value;
     return (Expression *) retval;
 } // new_literal_int_expr
 
 static Expression *new_literal_float_expr(Context *ctx, const double dbl)
 {
-    NEW_AST_NODE(ExpressionFloatLiteral);
-    retval->op = OP_FLOAT_LITERAL;
+    NEW_AST_NODE(retval, ExpressionFloatLiteral, AST_OP_FLOAT_LITERAL);
     retval->value = dbl;
     return (Expression *) retval;
 } // new_literal_float_expr
 
 static Expression *new_literal_string_expr(Context *ctx, const char *string)
 {
-    NEW_AST_NODE(ExpressionStringLiteral);
-    retval->op = OP_STRING_LITERAL;
+    NEW_AST_NODE(retval, ExpressionStringLiteral, AST_OP_STRING_LITERAL);
     retval->string = string;  // cached; don't copy string.
     return (Expression *) retval;
 } // new_string_literal_expr
@@ -632,32 +665,36 @@ static Expression *new_literal_string_expr(Context *ctx, const char *string)
 static void delete_expr(Context *ctx, Expression *expr)
 {
     DELETE_AST_NODE(expr);
-    if (operator_is_unary(expr->op))
+    if (operator_is_unary(expr->ast.type))
     {
         const ExpressionUnary *unary = (const ExpressionUnary *) expr;
         delete_expr(ctx, unary->operand);
     } // if
-    else if (operator_is_binary(expr->op))
+    else if (operator_is_binary(expr->ast.type))
     {
         const ExpressionBinary *binary = (const ExpressionBinary *) expr;
         delete_expr(ctx, binary->left);
         delete_expr(ctx, binary->right);
     } // else if
-    else if (operator_is_ternary(expr->op))
+    else if (operator_is_ternary(expr->ast.type))
     {
         const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
         delete_expr(ctx, ternary->left);
         delete_expr(ctx, ternary->center);
         delete_expr(ctx, ternary->right);
     } // else if
-    else if (expr->op == OP_CAST)
+    else if (expr->ast.type == AST_OP_CAST)
     {
         delete_expr(ctx, ((ExpressionCast *) expr)->operand);
     } // else if
-    else if (expr->op == OP_CONSTRUCTOR)
+    else if (expr->ast.type == AST_OP_CONSTRUCTOR)
     {
         delete_expr(ctx, ((ExpressionConstructor *) expr)->args);
     } // else if
+    else
+    {
+        assert(0 && "Unexpected type");
+    } // else
     Free(ctx, expr);
 } // delete_expr
 
@@ -669,7 +706,7 @@ static FunctionArguments *new_function_arg(Context *ctx,
                                         const InterpolationModifier interpmod,
                                         Expression *initializer)
 {
-    NEW_AST_NODE(FunctionArguments);
+    NEW_AST_NODE(retval, FunctionArguments, AST_FUNCTION_ARGS);
     retval->input_modifier = inputmod;
     retval->datatype = datatype;
     retval->identifier = identifier;
@@ -693,7 +730,7 @@ static FunctionSignature *new_function_signature(Context *ctx,
                                                  const char *identifier,
                                                  FunctionArguments *args)
 {
-    NEW_AST_NODE(FunctionSignature);
+    NEW_AST_NODE(retval, FunctionSignature, AST_FUNCTION_SIGNATURE);
     retval->datatype = datatype;
     retval->identifier = identifier;
     retval->args = args;
@@ -713,8 +750,7 @@ static CompilationUnit *new_function(Context *ctx,
                                      FunctionSignature *declaration,
                                      Statement *definition)
 {
-    NEW_AST_NODE(CompilationUnitFunction);
-    retval->type = COMPUNITTYPE_FUNCTION;
+    NEW_AST_NODE(retval, CompilationUnitFunction, AST_COMPUNIT_FUNCTION);
     retval->next = NULL;
     retval->declaration = declaration;
     retval->definition = definition;
@@ -733,7 +769,7 @@ static void delete_function(Context *ctx, CompilationUnitFunction *unitfn)
 static ScalarOrArray *new_scalar_or_array(Context *ctx, const char *ident,
                                           const int isvec, Expression *dim)
 {
-    NEW_AST_NODE(ScalarOrArray);
+    NEW_AST_NODE(retval, ScalarOrArray, AST_SCALAR_OR_ARRAY);
     retval->identifier = ident;
     retval->isarray = isvec;
     retval->dimension = dim;
@@ -750,7 +786,7 @@ static void delete_scalar_or_array(Context *ctx, ScalarOrArray *soa)
 static Typedef *new_typedef(Context *ctx, int isconst, const char *datatype,
                             ScalarOrArray *soa)
 {
-    NEW_AST_NODE(Typedef);
+    NEW_AST_NODE(retval, Typedef, AST_TYPEDEF);
     retval->isconst = isconst;
     retval->datatype = datatype;
     retval->details = soa;
@@ -766,7 +802,7 @@ static void delete_typedef(Context *ctx, Typedef *td)
 
 static PackOffset *new_pack_offset(Context *ctx, const char *a, const char *b)
 {
-    NEW_AST_NODE(PackOffset);
+    NEW_AST_NODE(retval, PackOffset, AST_PACK_OFFSET);
     retval->ident1 = a;
     retval->ident2 = b;
     return retval;
@@ -781,7 +817,7 @@ static void delete_pack_offset(Context *ctx, PackOffset *o)
 static VariableLowLevel *new_variable_lowlevel(Context *ctx, PackOffset *po,
                                                const char *reg)
 {
-    NEW_AST_NODE(VariableLowLevel);
+    NEW_AST_NODE(retval, VariableLowLevel, AST_VARIABLE_LOWLEVEL);
     retval->packoffset = po;
     retval->register_name = reg;
     return retval;
@@ -797,7 +833,7 @@ static void delete_variable_lowlevel(Context *ctx, VariableLowLevel *vll)
 static Annotations *new_annotation(Context *ctx, const char *datatype,
                                    Expression *initializer)
 {
-    NEW_AST_NODE(Annotations);
+    NEW_AST_NODE(retval, Annotations, AST_ANNOTATION);
     retval->datatype = datatype;
     retval->initializer = initializer;
     retval->next = NULL;
@@ -817,7 +853,7 @@ static VariableDeclaration *new_variable_declaration(Context *ctx,
                                     Annotations *annotations, Expression *init,
                                     VariableLowLevel *vll)
 {
-    NEW_AST_NODE(VariableDeclaration)
+    NEW_AST_NODE(retval, VariableDeclaration, AST_VARIABLE_DECLARATION);
     retval->attributes = 0;
     retval->datatype = NULL;
     retval->anonymous_datatype = NULL;
@@ -844,8 +880,7 @@ static void delete_variable_declaration(Context *ctx, VariableDeclaration *dcl)
 static CompilationUnit *new_global_variable(Context *ctx,
                                             VariableDeclaration *decl)
 {
-    NEW_AST_NODE(CompilationUnitVariable);
-    retval->type = COMPUNITTYPE_FUNCTION;
+    NEW_AST_NODE(retval, CompilationUnitVariable, AST_COMPUNIT_VARIABLE);
     retval->next = NULL;
     retval->declaration = decl;
     return (CompilationUnit *) retval;
@@ -861,8 +896,7 @@ static void delete_global_variable(Context *ctx, CompilationUnitVariable *var)
 
 static CompilationUnit *new_global_typedef(Context *ctx, Typedef *td)
 {
-    NEW_AST_NODE(CompilationUnitTypedef)
-    retval->type = COMPUNITTYPE_TYPEDEF;
+    NEW_AST_NODE(retval, CompilationUnitTypedef, AST_COMPUNIT_TYPEDEF);
     retval->next = NULL;
     retval->type_info = td;
     return (CompilationUnit *) retval;
@@ -879,7 +913,7 @@ static void delete_global_typedef(Context *ctx, CompilationUnitTypedef *unit)
 static StructMembers *new_struct_member(Context *ctx, ScalarOrArray *soa,
                                         const char *semantic)
 {
-    NEW_AST_NODE(StructMembers);
+    NEW_AST_NODE(retval, StructMembers, AST_STRUCT_MEMBER);
     retval->datatype = NULL;
     retval->semantic = semantic;
     retval->details = soa;
@@ -899,7 +933,7 @@ static void delete_struct_member(Context *ctx, StructMembers *member)
 static StructDeclaration *new_struct_declaration(Context *ctx,
                                     const char *name, StructMembers *members)
 {
-    NEW_AST_NODE(StructDeclaration);
+    NEW_AST_NODE(retval, StructDeclaration, AST_STRUCT_DECLARATION);
     retval->name = name;
     retval->members = members;
     return retval;
@@ -914,8 +948,7 @@ static void delete_struct_declaration(Context *ctx, StructDeclaration *decl)
 
 static CompilationUnit *new_global_struct(Context *ctx, StructDeclaration *sd)
 {
-    NEW_AST_NODE(CompilationUnitStruct)
-    retval->type = COMPUNITTYPE_STRUCT;
+    NEW_AST_NODE(retval, CompilationUnitStruct, AST_COMPUNIT_STRUCT);
     retval->next = NULL;
     retval->struct_info = sd;
     return (CompilationUnit *) retval;
@@ -951,10 +984,10 @@ static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
         i = next;
     } // while
 
-    switch (unit->type)
+    switch (unit->ast.type)
     {
         #define DELETE_UNIT(typ, cls, fn) \
-            case COMPUNITTYPE_##typ: delete_##fn(ctx, (cls *) unit); break;
+            case AST_COMPUNIT_##typ: delete_##fn(ctx, (cls *) unit); break;
         DELETE_UNIT(FUNCTION, CompilationUnitFunction, function);
         DELETE_UNIT(TYPEDEF, CompilationUnitTypedef, global_typedef);
         DELETE_UNIT(VARIABLE, CompilationUnitVariable, global_variable);
@@ -968,8 +1001,7 @@ static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
 
 static Statement *new_typedef_statement(Context *ctx, Typedef *td)
 {
-    NEW_AST_NODE(TypedefStatement)
-    retval->type = STATEMENTTYPE_TYPEDEF;
+    NEW_AST_NODE(retval, TypedefStatement, AST_STATEMENT_TYPEDEF);
     retval->next = NULL;
     retval->type_info = td;
     return (Statement *) retval;
@@ -985,8 +1017,7 @@ static void delete_typedef_statement(Context *ctx, TypedefStatement *stmt)
 
 static Statement *new_return_statement(Context *ctx, Expression *expr)
 {
-    NEW_AST_NODE(ReturnStatement);
-    retval->type = STATEMENTTYPE_RETURN;
+    NEW_AST_NODE(retval, ReturnStatement, AST_STATEMENT_RETURN);
     retval->next = NULL;
     retval->expr = expr;
     return (Statement *) retval;
@@ -1005,8 +1036,7 @@ static Statement *new_for_statement(Context *ctx, VariableDeclaration *decl,
                                     Expression *looptest, Expression *counter,
                                     Statement *statement)
 {
-    NEW_AST_NODE(ForStatement);
-    retval->type = STATEMENTTYPE_FOR;
+    NEW_AST_NODE(retval, ForStatement, AST_STATEMENT_FOR);
     retval->next = NULL;
     retval->unroll = -1;
     retval->var_decl = decl;
@@ -1032,8 +1062,7 @@ static void delete_for_statement(Context *ctx, ForStatement *stmt)
 static Statement *new_do_statement(Context *ctx, int64 unroll,
                                    Statement *stmt, Expression *expr)
 {
-    NEW_AST_NODE(DoStatement);
-    retval->type = STATEMENTTYPE_DO;
+    NEW_AST_NODE(retval, DoStatement, AST_STATEMENT_DO);
     retval->next = NULL;
     retval->unroll = unroll;
     retval->expr = expr;
@@ -1053,8 +1082,7 @@ static void delete_do_statement(Context *ctx, DoStatement *stmt)
 static Statement *new_while_statement(Context *ctx, int64 unroll,
                                       Expression *expr, Statement *stmt)
 {
-    NEW_AST_NODE(WhileStatement);
-    retval->type = STATEMENTTYPE_WHILE;
+    NEW_AST_NODE(retval, WhileStatement, AST_STATEMENT_WHILE);
     retval->next = NULL;
     retval->unroll = unroll;
     retval->expr = expr;
@@ -1074,8 +1102,7 @@ static void delete_while_statement(Context *ctx, WhileStatement *stmt)
 static Statement *new_if_statement(Context *ctx, int attr, Expression *expr,
                                    Statement *stmt, Statement *elsestmt)
 {
-    NEW_AST_NODE(IfStatement);
-    retval->type = STATEMENTTYPE_IF;
+    NEW_AST_NODE(retval, IfStatement, AST_STATEMENT_IF);
     retval->next = NULL;
     retval->attributes = attr;
     retval->expr = expr;
@@ -1097,7 +1124,7 @@ static void delete_if_statement(Context *ctx, IfStatement *stmt)
 static SwitchCases *new_switch_case(Context *ctx, Expression *expr,
                                     Statement *stmt)
 {
-    NEW_AST_NODE(SwitchCases);
+    NEW_AST_NODE(retval, SwitchCases, AST_SWITCH_CASE);
     retval->expr = expr;
     retval->statement = stmt;
     retval->next = NULL;
@@ -1115,8 +1142,7 @@ static void delete_switch_case(Context *ctx, SwitchCases *sc)
 
 static Statement *new_empty_statement(Context *ctx)
 {
-    NEW_AST_NODE(EmptyStatement);
-    retval->type = STATEMENTTYPE_EMPTY;
+    NEW_AST_NODE(retval, EmptyStatement, AST_STATEMENT_EMPTY);
     retval->next = NULL;
     return (Statement *) retval;
 } // new_empty_statement
@@ -1130,8 +1156,7 @@ static void delete_empty_statement(Context *ctx, EmptyStatement *stmt)
 
 static Statement *new_break_statement(Context *ctx)
 {
-    NEW_AST_NODE(BreakStatement);
-    retval->type = STATEMENTTYPE_BREAK;
+    NEW_AST_NODE(retval, BreakStatement, AST_STATEMENT_BREAK);
     retval->next = NULL;
     return (Statement *) retval;
 } // new_break_statement
@@ -1145,8 +1170,7 @@ static void delete_break_statement(Context *ctx, BreakStatement *stmt)
 
 static Statement *new_continue_statement(Context *ctx)
 {
-    NEW_AST_NODE(ContinueStatement);
-    retval->type = STATEMENTTYPE_CONTINUE;
+    NEW_AST_NODE(retval, ContinueStatement, AST_STATEMENT_CONTINUE);
     retval->next = NULL;
     return (Statement *) retval;
 } // new_continue_statement
@@ -1160,8 +1184,7 @@ static void delete_continue_statement(Context *ctx, ContinueStatement *stmt)
 
 static Statement *new_discard_statement(Context *ctx)
 {
-    NEW_AST_NODE(DiscardStatement);
-    retval->type = STATEMENTTYPE_DISCARD;
+    NEW_AST_NODE(retval, DiscardStatement, AST_STATEMENT_DISCARD);
     retval->next = NULL;
     return (Statement *) retval;
 } // new_discard_statement
@@ -1175,8 +1198,7 @@ static void delete_discard_statement(Context *ctx, DiscardStatement *stmt)
 
 static Statement *new_expr_statement(Context *ctx, Expression *expr)
 {
-    NEW_AST_NODE(ExpressionStatement);
-    retval->type = STATEMENTTYPE_EXPRESSION;
+    NEW_AST_NODE(retval, ExpressionStatement, AST_STATEMENT_EXPRESSION);
     retval->next = NULL;
     retval->expr = expr;
     return (Statement *) retval;
@@ -1193,8 +1215,7 @@ static void delete_expr_statement(Context *ctx, ExpressionStatement *stmt)
 static Statement *new_switch_statement(Context *ctx, int attr,
                                        Expression *expr, SwitchCases *cases)
 {
-    NEW_AST_NODE(SwitchStatement);
-    retval->type = STATEMENTTYPE_SWITCH;
+    NEW_AST_NODE(retval, SwitchStatement, AST_STATEMENT_SWITCH);
     retval->next = NULL;
     retval->attributes = attr;
     retval->expr = expr;
@@ -1212,8 +1233,7 @@ static void delete_switch_statement(Context *ctx, SwitchStatement *stmt)
 
 static Statement *new_struct_statement(Context *ctx, StructDeclaration *sd)
 {
-    NEW_AST_NODE(StructStatement);
-    retval->type = STATEMENTTYPE_STRUCT;
+    NEW_AST_NODE(retval, StructStatement, AST_STATEMENT_STRUCT);
     retval->next = NULL;
     retval->struct_info = sd;
     return (Statement *) retval;
@@ -1229,8 +1249,7 @@ static void delete_struct_statement(Context *ctx, StructStatement *stmt)
 
 static Statement *new_vardecl_statement(Context *ctx, VariableDeclaration *vd)
 {
-    NEW_AST_NODE(VarDeclStatement);
-    retval->type = STATEMENTTYPE_VARDECL;
+    NEW_AST_NODE(retval, VarDeclStatement, AST_STATEMENT_VARDECL);
     retval->next = NULL;
     retval->decl = vd;
     return (Statement *) retval;
@@ -1266,24 +1285,24 @@ static void delete_statement(Context *ctx, Statement *stmt)
         i = next;
     } // while
 
-    switch (stmt->type)
+    switch (stmt->ast.type)
     {
-        #define DELETE_STATEMENT(typ, cls, fn) \
-            case typ: delete_##fn##_statement(ctx, (cls *) stmt); break;
-        DELETE_STATEMENT(STATEMENTTYPE_EMPTY, EmptyStatement, empty);
-        DELETE_STATEMENT(STATEMENTTYPE_IF, IfStatement, if);
-        DELETE_STATEMENT(STATEMENTTYPE_SWITCH, SwitchStatement, switch);
-        DELETE_STATEMENT(STATEMENTTYPE_EXPRESSION, ExpressionStatement, expr);
-        DELETE_STATEMENT(STATEMENTTYPE_FOR, ForStatement, for);
-        DELETE_STATEMENT(STATEMENTTYPE_DO, DoStatement, do);
-        DELETE_STATEMENT(STATEMENTTYPE_WHILE, WhileStatement, while);
-        DELETE_STATEMENT(STATEMENTTYPE_RETURN, ReturnStatement, return);
-        DELETE_STATEMENT(STATEMENTTYPE_BREAK, BreakStatement, break);
-        DELETE_STATEMENT(STATEMENTTYPE_CONTINUE, ContinueStatement, continue);
-        DELETE_STATEMENT(STATEMENTTYPE_DISCARD, DiscardStatement, discard);
-        DELETE_STATEMENT(STATEMENTTYPE_TYPEDEF, TypedefStatement, typedef);
-        DELETE_STATEMENT(STATEMENTTYPE_STRUCT, StructStatement, struct);
-        DELETE_STATEMENT(STATEMENTTYPE_VARDECL, VarDeclStatement, vardecl);
+        #define DELETE_STATEMENT(typ, cls, fn) case AST_STATEMENT_##typ: \
+            delete_##fn##_statement(ctx, (cls *) stmt); break;
+        DELETE_STATEMENT(EMPTY, EmptyStatement, empty);
+        DELETE_STATEMENT(IF, IfStatement, if);
+        DELETE_STATEMENT(SWITCH, SwitchStatement, switch);
+        DELETE_STATEMENT(EXPRESSION, ExpressionStatement, expr);
+        DELETE_STATEMENT(FOR, ForStatement, for);
+        DELETE_STATEMENT(DO, DoStatement, do);
+        DELETE_STATEMENT(WHILE, WhileStatement, while);
+        DELETE_STATEMENT(RETURN, ReturnStatement, return);
+        DELETE_STATEMENT(BREAK, BreakStatement, break);
+        DELETE_STATEMENT(CONTINUE, ContinueStatement, continue);
+        DELETE_STATEMENT(DISCARD, DiscardStatement, discard);
+        DELETE_STATEMENT(TYPEDEF, TypedefStatement, typedef);
+        DELETE_STATEMENT(STRUCT, StructStatement, struct);
+        DELETE_STATEMENT(VARDECL, VarDeclStatement, vardecl);
         #undef DELETE_STATEMENT
         default: assert(0 && "missing cleanup code"); break;
     } // switch
@@ -1302,6 +1321,7 @@ static void add_usertype(Context *ctx, const char *sym)
 static int is_usertype(const Context *ctx, const char *token,
                        const unsigned int tokenlen)
 {
+
     // !!! FIXME: dynamic allocation
     // !!! FIXME: should probably redesign this anyhow.
     int i;
