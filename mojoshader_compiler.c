@@ -506,6 +506,22 @@ typedef struct CompilationUnitVariable
 } CompilationUnitVariable;
 
 
+// This tracks typedefs and structs, and notes when they enter/leave scope.
+
+typedef struct UserTypeScopeStack
+{
+    const char *symbol;
+    const char *datatype;
+    struct UserTypeScopeStack *next;
+} UserTypeScopeStack;
+
+typedef struct UserTypeMap
+{
+    HashTable *types;
+    UserTypeScopeStack *scope;
+} UserTypeMap;
+
+
 // Compile state, passed around all over the place.
 
 typedef struct Context
@@ -521,8 +537,7 @@ typedef struct Context
     StringBucket *string_hashtable[256];
     const char *sourcefile;  // current source file that we're parsing.
     unsigned int sourceline; // current line in sourcefile that we're parsing.
-    const char *usertypes[512];  // !!! FIXME: dynamic allocation
-    int usertype_count;
+    UserTypeMap usertypes;
     CompilationUnit *ast;  // Abstract Syntax Tree
 } Context;
 
@@ -563,6 +578,91 @@ static void fail(Context *ctx, const char *str)
     (void) ctx;
     printf("%s:%u: %s\n", ctx->sourcefile, ctx->sourceline, str);
 } // fail
+
+#define dbg printf
+
+
+static void usertypemap_nuke(const void *k, const void *v) { /* no-op. */ }
+
+static int create_usertypemap(Context *ctx)
+{
+    UserTypeMap *map = &ctx->usertypes;
+
+    map->scope = NULL;
+    map->types = hash_create(255, hash_hash_string, hash_keymatch_string,
+                             usertypemap_nuke, 1, ctx->malloc, ctx->free,
+                             ctx->malloc_data);
+    if (!map->types)
+    {
+        out_of_memory(ctx);
+        return 0;
+    } // if
+
+    return 1;
+} // create_usertypemap
+
+static void push_usertype(Context *ctx, const char *sym, const char *datatype)
+{
+    UserTypeMap *map = &ctx->usertypes;
+    UserTypeScopeStack *item;
+
+    dbg("push_usertype: %s -> %s\n", sym, datatype);
+
+    item = (UserTypeScopeStack *) Malloc(ctx, sizeof (UserTypeScopeStack));
+    if (item == NULL)
+        return;
+
+    if (sym != NULL)
+    {
+        if (hash_insert(map->types, sym, datatype) == -1)
+        {
+            Free(ctx, item);
+            return;
+        }
+    } // if
+
+    item->symbol = sym;  // cached strings, don't copy.
+    item->datatype = datatype;
+    item->next = map->scope;
+    map->scope = item;
+} // push_usertype
+
+static void pop_usertype(Context *ctx)
+{
+    UserTypeMap *map = &ctx->usertypes;
+    UserTypeScopeStack *item = map->scope;
+    if (!item)
+        return;
+    dbg("pop_usertype: %s -> %s\n", item->symbol, item->datatype);
+    if (item->symbol)
+        hash_remove(map->types, item->symbol);
+    map->scope = item->next;
+    Free(ctx, item);
+} // pop_usertype
+
+static void push_scope(Context *ctx)
+{
+    dbg("push_scope\n");
+    push_usertype(ctx, NULL, NULL);
+} // push_scope
+
+static void pop_scope(Context *ctx)
+{
+    dbg("pop_scope\n");
+    UserTypeMap *map = &ctx->usertypes;
+    assert(map->scope != NULL);
+    while ((map->scope) && (map->scope->symbol))
+        pop_usertype(ctx);
+} // push_scope
+
+static void destroy_usertypemap(Context *ctx)
+{
+    UserTypeMap *map = &ctx->usertypes;
+    while (map->scope)
+        pop_usertype(ctx);
+    hash_destroy(map->types);
+} // destroy_usertypemap
+
 
 // These functions are mostly for construction and cleanup of nodes in the
 //  parse tree. Mostly this is simple allocation and initialization, so we
@@ -1308,30 +1408,16 @@ static void delete_statement(Context *ctx, Statement *stmt)
     // don't free (stmt) here, the class-specific functions do it.
 } // delete_statement
 
+// This is only for initial parsing: we only care that it exists at this point!
 static void add_usertype(Context *ctx, const char *sym)
 {
-    // !!! FIXME: error if this is a reserved keyword.
-    // !!! FIXME: dynamic allocation
-    assert(ctx->usertype_count < STATICARRAYLEN(ctx->usertypes));
-    ctx->usertypes[ctx->usertype_count++] = sym;
-    ctx->usertype_count++;
+    push_usertype(ctx, sym, NULL);
 } // add_usertype
 
-static int is_usertype(const Context *ctx, const char *token,
-                       const unsigned int tokenlen)
+static int is_usertype(const Context *ctx, const char *token)
 {
-
-    // !!! FIXME: dynamic allocation
-    // !!! FIXME: should probably redesign this anyhow.
-    int i;
-    for (i = 0; i < ctx->usertype_count; i++)
-    {
-        const char *type = ctx->usertypes[i];
-        if (strncmp(type, token, tokenlen) == 0)
-            return type[tokenlen] == '\0';
-    } // for
-
-    return 0;
+    const void *value;
+    return hash_find(ctx->usertypes.types, token, &value);
 } // is_usertype
 
 
@@ -1510,7 +1596,7 @@ static int is_semantic(const Context *ctx, const char *token,
 } // is_semantic
 #endif
 
-static int convert_to_lemon_token(const Context *ctx, const char *token,
+static int convert_to_lemon_token(Context *ctx, const char *token,
                                   unsigned int tokenlen, const Token tokenval)
 {
     switch (tokenval)
@@ -1756,7 +1842,9 @@ static int convert_to_lemon_token(const Context *ctx, const char *token,
 
             #undef tokencmp
 
-            if (is_usertype(ctx, token, tokenlen))
+            // get a canonical copy of the string now, as we'll need it.
+            token = cache_string(ctx, token, tokenlen);
+            if (is_usertype(ctx, token))
                 return TOKEN_HLSL_USERTYPE;
             return TOKEN_HLSL_IDENTIFIER;
 
@@ -1789,8 +1877,8 @@ static void destroy_context(Context *ctx)
     if (ctx->preprocessor != NULL)
         preprocessor_end(ctx->preprocessor);
     // !!! FIXME: free ctx->errors
-    // !!! FIXME: free ctx->usertypes
     delete_compilation_unit(ctx, ctx->ast);
+    destroy_usertypemap(ctx);
     free_string_cache(ctx);
 } // destroy_context
 
@@ -1822,6 +1910,8 @@ void MOJOSHADER_compile(const char *filename,
                                            defines, define_count, 0, m, f, d);
 
     // !!! FIXME: check if (ctx.preprocessor == NULL)...
+
+    create_usertypemap(&ctx);  // !!! FIXME: check for failure.
 
     void *pParser = ParseHLSLAlloc(m, d);
 
@@ -1876,6 +1966,14 @@ void MOJOSHADER_compile(const char *filename,
         } // switch
 
         ParseHLSL(pParser, lemon_token, data, &ctx);
+
+        // this probably isn't perfect, but it's good enough for surviving
+        //  the parse. We'll sort out correctness once we have a tree.
+        if (lemon_token == TOKEN_HLSL_LBRACE)
+            push_scope(&ctx);
+        else if (lemon_token == TOKEN_HLSL_RBRACE)
+            pop_scope(&ctx);
+
     } while (tokenval != TOKEN_EOI);
 
     ParseHLSLFree(pParser, f, d);

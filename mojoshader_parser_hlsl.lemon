@@ -97,8 +97,8 @@ compilation_unit(A) ::= struct_declaration(B) SEMICOLON. { A = new_global_struct
 %type typedef { Typedef * }
 %destructor typedef { delete_typedef(ctx, $$); }
 // !!! FIXME: should CONST be here, or in datatype?
-typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); }
-typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); }
+typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); add_usertype(ctx, C->identifier); }
+typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); add_usertype(ctx, C->identifier); }
 
 %type function_signature { FunctionSignature * }
 %destructor function_signature { delete_function_signature(ctx, $$); }
@@ -222,12 +222,11 @@ variable_declaration_details(A) ::= scalar_or_array(B). { A = new_variable_decla
 
 %type struct_declaration { StructDeclaration * }
 %destructor struct_declaration { delete_struct_declaration(ctx, $$); }
-struct_declaration(A) ::= STRUCT IDENTIFIER(B) LBRACE struct_member_list(C) RBRACE.
-{
-    A = new_struct_declaration(ctx, B.string, C);
-    // !!! FIXME: we need to decide what scope we are in and make sure this is only a valid usertype at that point.
-    add_usertype(ctx, B.string);
-}
+struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. { A = new_struct_declaration(ctx, B, C); }
+
+// This has to be separate from struct_declaration so that the struct is in the usertypemap when parsing its members.
+%type struct_intro { const char * }
+struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; add_usertype(ctx, A); }
 
 %type struct_member_list { StructMembers * }
 %destructor struct_member_list { delete_struct_member(ctx, $$); }
