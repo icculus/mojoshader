@@ -75,7 +75,7 @@
 
 // The rules...
 
-shader ::= compilation_units(B). { assert(ctx->ast == NULL); ctx->ast = B; }
+shader ::= compilation_units(B). { assert(ctx->ast == NULL); REVERSE_LINKED_LIST(CompilationUnit, B); ctx->ast = B; }
 
 %type compilation_units { CompilationUnit * }
 %destructor compilation_units { delete_compilation_unit(ctx, $$); }
@@ -122,7 +122,7 @@ function_storageclass(A) ::= INLINE. { A = FNSTORECLS_INLINE; }
 %type function_arguments { FunctionArguments * }
 %destructor function_arguments { delete_function_args(ctx, $$); }
 function_arguments(A) ::= VOID. { A = NULL; }
-function_arguments(A) ::= function_argument_list(B). { A = B; }
+function_arguments(A) ::= function_argument_list(B). { REVERSE_LINKED_LIST(FunctionArguments, B); A = B; }
 function_arguments(A) ::= . { A = NULL; }
 
 %type function_argument_list { FunctionArguments * }
@@ -171,9 +171,9 @@ interpolation_mod(A) ::= SAMPLE. { A = INTERPMOD_SAMPLE; }
 
 %type variable_declaration { VariableDeclaration * }
 %destructor variable_declaration { delete_variable_declaration(ctx, $$); }
-variable_declaration(A) ::= variable_attribute_list(B) datatype(C) variable_declaration_details_list(D) SEMICOLON. { A = D; A->attributes = B; A->datatype = C; }
-variable_declaration(A) ::= datatype(B) variable_declaration_details_list(C) SEMICOLON. { A = C; A->datatype = B; }
-variable_declaration(A) ::= struct_declaration(B) variable_declaration_details_list(C) SEMICOLON. { A = C; A->anonymous_datatype = B; }
+variable_declaration(A) ::= variable_attribute_list(B) datatype(C) variable_declaration_details_list(D) SEMICOLON. { REVERSE_LINKED_LIST(VariableDeclaration, D); A = D; A->attributes = B; A->datatype = C; }
+variable_declaration(A) ::= datatype(B) variable_declaration_details_list(C) SEMICOLON. { REVERSE_LINKED_LIST(VariableDeclaration, C); A = C; A->datatype = B; }
+variable_declaration(A) ::= struct_declaration(B) variable_declaration_details_list(C) SEMICOLON. { REVERSE_LINKED_LIST(VariableDeclaration, C); A = C; A->anonymous_datatype = B; }
 
 %type variable_attribute_list { int }
 variable_attribute_list(A) ::= variable_attribute(B). { A = B; }
@@ -219,7 +219,7 @@ variable_declaration_details(A) ::= scalar_or_array(B). { A = new_variable_decla
 
 %type struct_declaration { StructDeclaration * }
 %destructor struct_declaration { delete_struct_declaration(ctx, $$); }
-struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. { A = new_struct_declaration(ctx, B, C); }
+struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. { REVERSE_LINKED_LIST(StructMembers, C); A = new_struct_declaration(ctx, B, C); }
 
 // This has to be separate from struct_declaration so that the struct is in the usertypemap when parsing its members.
 %type struct_intro { const char * }
@@ -272,7 +272,7 @@ register(A) ::= COLON REGISTER LPAREN IDENTIFIER(B) RPAREN. { A = B.string; }
 
 %type annotations { Annotations * }
 %destructor annotations { delete_annotation(ctx, $$); }
-annotations(A) ::= LT annotation_list(B) GT. { A = B; }
+annotations(A) ::= LT annotation_list(B) GT. { REVERSE_LINKED_LIST(Annotations, B); A = B; }
 
 %type annotation_list { Annotations * }
 %destructor annotation_list { delete_annotation(ctx, $$); }
@@ -465,12 +465,12 @@ datatype_matrix ::= DOUBLE4X4.
 %type statement_block { Statement * }
 %destructor statement_block { delete_statement(ctx, $$); }
 statement_block(A) ::= LBRACE RBRACE. { A = new_empty_statement(ctx); }
-statement_block(A) ::= LBRACE statement_list(B) RBRACE. { A = B; }
+statement_block(A) ::= LBRACE statement_list(B) RBRACE. { REVERSE_LINKED_LIST(Statement, B); A = B; }
 
 %type statement_list { Statement * }
 %destructor statement_list { delete_statement(ctx, $$); }
 statement_list(A) ::= statement(B). { A = B; }
-statement_list(A) ::= statement_list(B) statement(C). { A = C; A->next = B; }  // !!! FIXME: we're stacking this list backwards.
+statement_list(A) ::= statement_list(B) statement(C). { A = C; A->next = B; }
 
 // These are for Shader Model 4 and Xbox 360 only, apparently.
 // !!! FIXME: ...so we ignore them for now.
@@ -495,7 +495,7 @@ statement(A) ::= do_intro(B) DO statement(C) WHILE LPAREN expression(D) RPAREN S
 statement(A) ::= while_intro(B) LPAREN expression(C) RPAREN statement(D). { A = new_while_statement(ctx, B, C, D); }
 statement(A) ::= if_intro(B) LPAREN expression(C) RPAREN statement(D). { A = new_if_statement(ctx, B, C, D, NULL); }
 statement(A) ::= if_intro(B) LPAREN expression(C) RPAREN statement(D) ELSE statement(E). { A = new_if_statement(ctx, B, C, D, E); }
-statement(A) ::= switch_intro(B) LPAREN expression(C) RPAREN LBRACE switch_case_list(D) RBRACE. { A = new_switch_statement(ctx, B, C, D); }
+statement(A) ::= switch_intro(B) LPAREN expression(C) RPAREN LBRACE switch_case_list(D) RBRACE. { REVERSE_LINKED_LIST(SwitchCases, D); A = new_switch_statement(ctx, B, C, D); }
 statement(A) ::= typedef(B). { A = new_typedef_statement(ctx, B); }
 statement(A) ::= SEMICOLON. { A = new_empty_statement(ctx); }
 statement(A) ::= expression(B) SEMICOLON. { A = new_expr_statement(ctx, B); }
@@ -567,9 +567,9 @@ switch_case_list(A) ::= switch_case_list(B) switch_case(C). { A = C; A->next = B
 //  ...so "case 3+2:" works.
 %type switch_case { SwitchCases * }
 %destructor switch_case { delete_switch_case(ctx, $$); }
-switch_case(A) ::= CASE expression(B) COLON statement_list(C). { A = new_switch_case(ctx, B, C); }
+switch_case(A) ::= CASE expression(B) COLON statement_list(C). { REVERSE_LINKED_LIST(Statement, C); A = new_switch_case(ctx, B, C); }
 switch_case(A) ::= CASE expression(B) COLON. { A = new_switch_case(ctx, B, NULL); }
-switch_case(A) ::= DEFAULT COLON statement_list(B). { A = new_switch_case(ctx, NULL, B); }
+switch_case(A) ::= DEFAULT COLON statement_list(B). { REVERSE_LINKED_LIST(Statement, B); A = new_switch_case(ctx, NULL, B); }
 switch_case(A) ::= DEFAULT COLON. { A = new_switch_case(ctx, NULL, NULL); }
 
 // the expression stuff is based on Jeff Lee's ANSI C grammar.

@@ -14,6 +14,20 @@
 #define LEMON_SUPPORT_TRACING 1
 #endif
 
+#define REVERSE_LINKED_LIST(typ, head) { \
+    if ((head) && (head->next)) { \
+        typ *tmp = NULL; \
+        typ *tmp1 = NULL; \
+        while (head != NULL) { \
+            tmp = head; \
+            head = head->next; \
+            tmp->next = tmp1; \
+            tmp1 = tmp; \
+        } \
+        head = tmp; \
+    } \
+}
+
 typedef union TokenData
 {
     int64 i64;
