@@ -428,7 +428,7 @@ typedef struct WhileStatement
 {
     ASTNode ast;
     struct Statement *next;
-    int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
+    int64 unroll;  // # times to unroll, 0 to loop, negative for compiler's choice.
     Expression *expr;
     Statement *statement;
 } WhileStatement;
@@ -439,7 +439,7 @@ typedef struct ForStatement
 {
     ASTNode ast;
     struct Statement *next;
-    int64 unroll;  // # times to unroll, 0 to loop, -1 for compiler's choice.
+    int64 unroll;  // # times to unroll, 0 to loop, negative for compiler's choice.
     VariableDeclaration *var_decl;
     Expression *initializer;
     Expression *looptest;
@@ -2362,11 +2362,90 @@ static void print_ast(void *ast)
             break;
 
         case AST_STATEMENT_FOR:
-        case AST_STATEMENT_DO:
-        case AST_STATEMENT_WHILE:
-            printf("[!!!]");
+            if (((ForStatement *) ast)->unroll == 0)
+                printf("[loop] ");
+            else if (((ForStatement *) ast)->unroll == -1)
+                printf("[unroll] ");
+            else if (((ForStatement *) ast)->unroll > 0)
+            {
+                printf("[unroll(%lld)] ",
+                        (long long) (((ForStatement *) ast)->unroll) );
+            } // else if
+
+            printf("for (");
+            print_ast(((ForStatement *) ast)->var_decl);
+            print_ast(((ForStatement *) ast)->initializer);
+            printf("; ");
+            print_ast(((ForStatement *) ast)->looptest);
+            printf("; ");
+            print_ast(((ForStatement *) ast)->counter);
+            printf(")\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((ForStatement *) ast)->statement);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}\n");
+            for (i = 0; i < indent; i++) printf("    ");
             print_ast(((Statement *) ast)->next);
-            break;  // !!! FIXME: write me.
+            break;
+
+        case AST_STATEMENT_DO:
+            if (((DoStatement *) ast)->unroll == 0)
+                printf("[loop] ");
+            else if (((DoStatement *) ast)->unroll == -1)
+                printf("[unroll] ");
+            else if (((DoStatement *) ast)->unroll > 0)
+            {
+                printf("[unroll(%lld)] ",
+                        (long long) (((DoStatement *) ast)->unroll) );
+            } // else if
+
+            printf("do\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((DoStatement *) ast)->statement);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("} while (");
+            print_ast(((DoStatement *) ast)->expr);
+            printf(");\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
+        case AST_STATEMENT_WHILE:
+            if (((WhileStatement *) ast)->unroll == 0)
+                printf("[loop] ");
+            else if (((WhileStatement *) ast)->unroll == -1)
+                printf("[unroll] ");
+            else if (((WhileStatement *) ast)->unroll > 0)
+            {
+                printf("[unroll(%lld)] ",
+                        (long long) (((WhileStatement *) ast)->unroll) );
+            } // else if
+
+            printf("while (");
+            print_ast(((WhileStatement *) ast)->expr);
+            printf(")\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((WhileStatement *) ast)->statement);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
 
         case AST_STATEMENT_RETURN:
             printf("return");
@@ -2583,10 +2662,33 @@ static void print_ast(void *ast)
             break;
 
         case AST_PACK_OFFSET:
-        case AST_VARIABLE_LOWLEVEL:
-        case AST_ANNOTATION:
-            printf("[!!!]");
+            printf(" : packoffset(%s%s%s)",
+                    ((PackOffset *) ast)->ident1,
+                    ((PackOffset *) ast)->ident2 ? "." : "",
+                    ((PackOffset *) ast)->ident2 ? ((PackOffset *) ast)->ident2 : "");
             break;
+
+        case AST_VARIABLE_LOWLEVEL:
+            print_ast(((VariableLowLevel *) ast)->packoffset);
+            if (((VariableLowLevel *) ast)->register_name)
+                printf(" : register(%s)", ((VariableLowLevel *) ast)->register_name);
+            break;
+
+        case AST_ANNOTATION:
+        {
+            const Annotations *a = (Annotations *) ast;
+            printf("<");
+            while (a)
+            {
+                printf(" %s ", a->datatype);
+                print_ast(a->initializer);
+                if (a->next)
+                    printf(",");
+                a = a->next;
+            } // while
+            printf(" >");
+            break;
+        } // case
 
         default:
             assert(0 && "unexpected type");

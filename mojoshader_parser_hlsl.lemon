@@ -509,7 +509,7 @@ statement(A) ::= for_statement(B). { A = B; }
 while_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET WHILE. { A = (B.i64 < 0) ? 0 : B.i64; }
 while_intro(A) ::= LBRACKET UNROLL RBRACKET WHILE. { A = -1; }
 while_intro(A) ::= LBRACKET LOOP RBRACKET WHILE. { A = 0; }
-while_intro(A) ::= WHILE. { A = -1; }
+while_intro(A) ::= WHILE. { A = -2; }
 
 %type for_statement { Statement * }
 %destructor for_statement { delete_statement(ctx, $$); }
@@ -519,7 +519,7 @@ for_statement(A) ::= for_intro(B) for_details(C). { A = C; ((ForStatement *) A)-
 for_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET FOR. { A = (B.i64 < 0) ? 0 : B.i64; }
 for_intro(A) ::= LBRACKET UNROLL RBRACKET FOR. { A = -1; }
 for_intro(A) ::= LBRACKET LOOP RBRACKET FOR. { A = 0; }
-for_intro(A) ::= FOR. { A = -1; }
+for_intro(A) ::= FOR. { A = -2; }
 
 %type for_details { Statement * }
 %destructor for_details { delete_statement(ctx, $$); }
@@ -540,7 +540,7 @@ for_details(A) ::= LPAREN variable_declaration(B) expression(C) SEMICOLON RPAREN
 do_intro(A) ::= LBRACKET UNROLL LPAREN INT_CONSTANT(B) RPAREN RBRACKET DO. { A = (B.i64 < 0) ? 0 : (int) B.i64; }
 do_intro(A) ::= LBRACKET UNROLL RBRACKET DO. { A = -1; }
 do_intro(A) ::= LBRACKET LOOP RBRACKET DO. { A = 0; }
-do_intro(A) ::= DO. { A = -1; }
+do_intro(A) ::= DO. { A = -2; }
 
 %type if_intro { int }
 if_intro(A) ::= LBRACKET BRANCH RBRACKET IF. { A = IFATTR_BRANCH; }
