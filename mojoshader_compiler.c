@@ -2399,127 +2399,7 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
             if (tokencmp("unorm")) return TOKEN_HLSL_UNORM;
             if (tokencmp("buffer")) return TOKEN_HLSL_BUFFER;
             if (tokencmp("vector")) return TOKEN_HLSL_VECTOR;
-            if (tokencmp("bool1")) return TOKEN_HLSL_BOOL1;
-            if (tokencmp("bool2")) return TOKEN_HLSL_BOOL2;
-            if (tokencmp("bool3")) return TOKEN_HLSL_BOOL3;
-            if (tokencmp("bool4")) return TOKEN_HLSL_BOOL4;
-            if (tokencmp("int1")) return TOKEN_HLSL_INT1;
-            if (tokencmp("int2")) return TOKEN_HLSL_INT2;
-            if (tokencmp("int3")) return TOKEN_HLSL_INT3;
-            if (tokencmp("int4")) return TOKEN_HLSL_INT4;
-            if (tokencmp("uint1")) return TOKEN_HLSL_UINT1;
-            if (tokencmp("uint2")) return TOKEN_HLSL_UINT2;
-            if (tokencmp("uint3")) return TOKEN_HLSL_UINT3;
-            if (tokencmp("uint4")) return TOKEN_HLSL_UINT4;
-            if (tokencmp("half1")) return TOKEN_HLSL_HALF1;
-            if (tokencmp("half2")) return TOKEN_HLSL_HALF2;
-            if (tokencmp("half3")) return TOKEN_HLSL_HALF3;
-            if (tokencmp("half4")) return TOKEN_HLSL_HALF4;
-            if (tokencmp("float1")) return TOKEN_HLSL_FLOAT1;
-            if (tokencmp("float2")) return TOKEN_HLSL_FLOAT2;
-            if (tokencmp("float3")) return TOKEN_HLSL_FLOAT3;
-            if (tokencmp("float4")) return TOKEN_HLSL_FLOAT4;
-            if (tokencmp("double1")) return TOKEN_HLSL_DOUBLE1;
-            if (tokencmp("double2")) return TOKEN_HLSL_DOUBLE2;
-            if (tokencmp("double3")) return TOKEN_HLSL_DOUBLE3;
-            if (tokencmp("double4")) return TOKEN_HLSL_DOUBLE4;
             if (tokencmp("matrix")) return TOKEN_HLSL_MATRIX;
-            if (tokencmp("bool1x1")) return TOKEN_HLSL_BOOL1X1;
-            if (tokencmp("bool1x2")) return TOKEN_HLSL_BOOL1X2;
-            if (tokencmp("bool1x3")) return TOKEN_HLSL_BOOL1X3;
-            if (tokencmp("bool1x4")) return TOKEN_HLSL_BOOL1X4;
-            if (tokencmp("bool2x1")) return TOKEN_HLSL_BOOL2X1;
-            if (tokencmp("bool2x2")) return TOKEN_HLSL_BOOL2X2;
-            if (tokencmp("bool2x3")) return TOKEN_HLSL_BOOL2X3;
-            if (tokencmp("bool2x4")) return TOKEN_HLSL_BOOL2X4;
-            if (tokencmp("bool3x1")) return TOKEN_HLSL_BOOL3X1;
-            if (tokencmp("bool3x2")) return TOKEN_HLSL_BOOL3X2;
-            if (tokencmp("bool3x3")) return TOKEN_HLSL_BOOL3X3;
-            if (tokencmp("bool3x4")) return TOKEN_HLSL_BOOL3X4;
-            if (tokencmp("bool4x1")) return TOKEN_HLSL_BOOL4X1;
-            if (tokencmp("bool4x2")) return TOKEN_HLSL_BOOL4X2;
-            if (tokencmp("bool4x3")) return TOKEN_HLSL_BOOL4X3;
-            if (tokencmp("bool4x4")) return TOKEN_HLSL_BOOL4X4;
-            if (tokencmp("int1x1")) return TOKEN_HLSL_INT1X1;
-            if (tokencmp("int1x2")) return TOKEN_HLSL_INT1X2;
-            if (tokencmp("int1x3")) return TOKEN_HLSL_INT1X3;
-            if (tokencmp("int1x4")) return TOKEN_HLSL_INT1X4;
-            if (tokencmp("int2x1")) return TOKEN_HLSL_INT2X1;
-            if (tokencmp("int2x2")) return TOKEN_HLSL_INT2X2;
-            if (tokencmp("int2x3")) return TOKEN_HLSL_INT2X3;
-            if (tokencmp("int2x4")) return TOKEN_HLSL_INT2X4;
-            if (tokencmp("int3x1")) return TOKEN_HLSL_INT3X1;
-            if (tokencmp("int3x2")) return TOKEN_HLSL_INT3X2;
-            if (tokencmp("int3x3")) return TOKEN_HLSL_INT3X3;
-            if (tokencmp("int3x4")) return TOKEN_HLSL_INT3X4;
-            if (tokencmp("int4x1")) return TOKEN_HLSL_INT4X1;
-            if (tokencmp("int4x2")) return TOKEN_HLSL_INT4X2;
-            if (tokencmp("int4x3")) return TOKEN_HLSL_INT4X3;
-            if (tokencmp("int4x4")) return TOKEN_HLSL_INT4X4;
-            if (tokencmp("uint1x1")) return TOKEN_HLSL_UINT1X1;
-            if (tokencmp("uint1x2")) return TOKEN_HLSL_UINT1X2;
-            if (tokencmp("uint1x3")) return TOKEN_HLSL_UINT1X3;
-            if (tokencmp("uint1x4")) return TOKEN_HLSL_UINT1X4;
-            if (tokencmp("uint2x1")) return TOKEN_HLSL_UINT2X1;
-            if (tokencmp("uint2x2")) return TOKEN_HLSL_UINT2X2;
-            if (tokencmp("uint2x3")) return TOKEN_HLSL_UINT2X3;
-            if (tokencmp("uint2x4")) return TOKEN_HLSL_UINT2X4;
-            if (tokencmp("uint3x1")) return TOKEN_HLSL_UINT3X1;
-            if (tokencmp("uint3x2")) return TOKEN_HLSL_UINT3X2;
-            if (tokencmp("uint3x3")) return TOKEN_HLSL_UINT3X3;
-            if (tokencmp("uint3x4")) return TOKEN_HLSL_UINT3X4;
-            if (tokencmp("uint4x1")) return TOKEN_HLSL_UINT4X1;
-            if (tokencmp("uint4x2")) return TOKEN_HLSL_UINT4X2;
-            if (tokencmp("uint4x3")) return TOKEN_HLSL_UINT4X3;
-            if (tokencmp("uint4x4")) return TOKEN_HLSL_UINT4X4;
-            if (tokencmp("half1x1")) return TOKEN_HLSL_HALF1X1;
-            if (tokencmp("half1x2")) return TOKEN_HLSL_HALF1X2;
-            if (tokencmp("half1x3")) return TOKEN_HLSL_HALF1X3;
-            if (tokencmp("half1x4")) return TOKEN_HLSL_HALF1X4;
-            if (tokencmp("half2x1")) return TOKEN_HLSL_HALF2X1;
-            if (tokencmp("half2x2")) return TOKEN_HLSL_HALF2X2;
-            if (tokencmp("half2x3")) return TOKEN_HLSL_HALF2X3;
-            if (tokencmp("half2x4")) return TOKEN_HLSL_HALF2X4;
-            if (tokencmp("half3x1")) return TOKEN_HLSL_HALF3X1;
-            if (tokencmp("half3x2")) return TOKEN_HLSL_HALF3X2;
-            if (tokencmp("half3x3")) return TOKEN_HLSL_HALF3X3;
-            if (tokencmp("half3x4")) return TOKEN_HLSL_HALF3X4;
-            if (tokencmp("half4x1")) return TOKEN_HLSL_HALF4X1;
-            if (tokencmp("half4x2")) return TOKEN_HLSL_HALF4X2;
-            if (tokencmp("half4x3")) return TOKEN_HLSL_HALF4X3;
-            if (tokencmp("half4x4")) return TOKEN_HLSL_HALF4X4;
-            if (tokencmp("float1x1")) return TOKEN_HLSL_FLOAT1X1;
-            if (tokencmp("float1x2")) return TOKEN_HLSL_FLOAT1X2;
-            if (tokencmp("float1x3")) return TOKEN_HLSL_FLOAT1X3;
-            if (tokencmp("float1x4")) return TOKEN_HLSL_FLOAT1X4;
-            if (tokencmp("float2x1")) return TOKEN_HLSL_FLOAT2X1;
-            if (tokencmp("float2x2")) return TOKEN_HLSL_FLOAT2X2;
-            if (tokencmp("float2x3")) return TOKEN_HLSL_FLOAT2X3;
-            if (tokencmp("float2x4")) return TOKEN_HLSL_FLOAT2X4;
-            if (tokencmp("float3x1")) return TOKEN_HLSL_FLOAT3X1;
-            if (tokencmp("float3x2")) return TOKEN_HLSL_FLOAT3X2;
-            if (tokencmp("float3x3")) return TOKEN_HLSL_FLOAT3X3;
-            if (tokencmp("float3x4")) return TOKEN_HLSL_FLOAT3X4;
-            if (tokencmp("float4x1")) return TOKEN_HLSL_FLOAT4X1;
-            if (tokencmp("float4x2")) return TOKEN_HLSL_FLOAT4X2;
-            if (tokencmp("float4x3")) return TOKEN_HLSL_FLOAT4X3;
-            if (tokencmp("float4x4")) return TOKEN_HLSL_FLOAT4X4;
-            if (tokencmp("double1x1")) return TOKEN_HLSL_DOUBLE1X1;
-            if (tokencmp("double1x2")) return TOKEN_HLSL_DOUBLE1X2;
-            if (tokencmp("double1x3")) return TOKEN_HLSL_DOUBLE1X3;
-            if (tokencmp("double1x4")) return TOKEN_HLSL_DOUBLE1X4;
-            if (tokencmp("double2x1")) return TOKEN_HLSL_DOUBLE2X1;
-            if (tokencmp("double2x2")) return TOKEN_HLSL_DOUBLE2X2;
-            if (tokencmp("double2x3")) return TOKEN_HLSL_DOUBLE2X3;
-            if (tokencmp("double2x4")) return TOKEN_HLSL_DOUBLE2X4;
-            if (tokencmp("double3x1")) return TOKEN_HLSL_DOUBLE3X1;
-            if (tokencmp("double3x2")) return TOKEN_HLSL_DOUBLE3X2;
-            if (tokencmp("double3x3")) return TOKEN_HLSL_DOUBLE3X3;
-            if (tokencmp("double3x4")) return TOKEN_HLSL_DOUBLE3X4;
-            if (tokencmp("double4x1")) return TOKEN_HLSL_DOUBLE4X1;
-            if (tokencmp("double4x2")) return TOKEN_HLSL_DOUBLE4X2;
-            if (tokencmp("double4x3")) return TOKEN_HLSL_DOUBLE4X3;
-            if (tokencmp("double4x4")) return TOKEN_HLSL_DOUBLE4X4;
             if (tokencmp("break")) return TOKEN_HLSL_BREAK;
             if (tokencmp("continue")) return TOKEN_HLSL_CONTINUE;
             if (tokencmp("discard")) return TOKEN_HLSL_DISCARD;
@@ -2646,10 +2526,33 @@ static void parse_source(Context *ctx, const char *filename,
 
     parser = ParseHLSLAlloc(ctx->malloc, ctx->malloc_data);
 
+    // !!! FIXME: check if (parser == NULL)...
+
     #if DEBUG_COMPILER_PARSER
     ParseHLSLTrace(stdout, "COMPILER: ");
     #endif
 
+    // add in standard typedefs...
+    static char *types[] = { "bool", "int", "uint", "half", "float", "double" };
+    int i;
+    for (i = 0; i < STATICARRAYLEN(types); i++)
+    {
+        char buf[32];
+        int j;
+        for (j = 1; j <= 4; j++)
+        {
+            int len = snprintf(buf, sizeof (buf), "%s%d", types[i], j);
+            add_usertype(ctx, cache_string(ctx, buf, len));  // "float2"
+            int k;
+            for (k = 1; k <= 4; k++)
+            {
+                len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i], j, k);
+                add_usertype(ctx, cache_string(ctx, buf, len));  // "float2x2"
+            } // for
+        } // for
+    } // for
+
+    // Run the preprocessor/lexer/parser...
     do {
         token = preprocessor_nexttoken(pp, &tokenlen, &tokenval);
 
