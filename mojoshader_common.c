@@ -178,7 +178,7 @@ static inline uint32 hash_string(const char *str, size_t len)
 uint32 hash_hash_string(const void *sym, void *data)
 {
     (void) data;
-    return hash_string(sym, strlen(sym));
+    return hash_string(sym, strlen((const char *) sym));
 } // hash_hash_string
 
 int hash_keymatch_string(const void *a, const void *b, void *data)
