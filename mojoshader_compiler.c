@@ -587,14 +587,14 @@ static void fail(Context *ctx, const char *str)
 } // fail
 
 
-static void usertypemap_nuke(const void *k, const void *v) { /* no-op. */ }
+static void usertypemap_nuke(const void *k, const void *v, void *d) {/*no-op*/}
 
 static int create_usertypemap(Context *ctx)
 {
     UserTypeMap *map = &ctx->usertypes;
 
     map->scope = NULL;
-    map->types = hash_create(255, hash_hash_string, hash_keymatch_string,
+    map->types = hash_create(ctx, hash_hash_string, hash_keymatch_string,
                              usertypemap_nuke, 1, ctx->malloc, ctx->free,
                              ctx->malloc_data);
     if (!map->types)

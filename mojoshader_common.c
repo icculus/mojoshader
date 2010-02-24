@@ -13,26 +13,47 @@ struct HashTable
     HashItem **table;
     uint32 table_len;
     int stackable;
+    void *data;
     HashTable_HashFn hash;
     HashTable_KeyMatchFn keymatch;
     HashTable_NukeFn nuke;
-    MOJOSHADER_malloc malloc;
-    MOJOSHADER_free free;
-    void *malloc_data;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
 };
+
+static inline uint32 calc_hash(const HashTable *table, const void *key)
+{
+    return table->hash(key, table->data) & (table->table_len-1);
+} // calc_hash
 
 int hash_find(const HashTable *table, const void *key, const void **_value)
 {
     HashItem *i;
-    const uint32 hash = table->hash(key) & table->table_len;
+    void *data = table->data;
+    const uint32 hash = calc_hash(table, key);
+    HashItem *prev = NULL;
     for (i = table->table[hash]; i != NULL; i = i->next)
     {
-        if (table->keymatch(key, i->key))
+        if (table->keymatch(key, i->key, data))
         {
             if (_value != NULL)
                 *_value = i->value;
+
+            // Matched! Move to the front of list for faster lookup next time.
+            //  (stackable tables have to remain in the same order, though!)
+            if ((!table->stackable) && (prev != NULL))
+            {
+                assert(prev->next == i);
+                prev->next = i->next;
+                i->next = table->table[hash];
+                table->table[hash] = i;
+            } // if
+
             return 1;
         } // if
+
+        prev = i;
     } // for
 
     return 0;
@@ -41,12 +62,12 @@ int hash_find(const HashTable *table, const void *key, const void **_value)
 int hash_insert(HashTable *table, const void *key, const void *value)
 {
     HashItem *item = NULL;
-    const uint32 hash = table->hash(key) & table->table_len;
+    const uint32 hash = calc_hash(table, key);
     if ( (!table->stackable) && (hash_find(table, key, NULL)) )
         return 0;
 
     // !!! FIXME: grow and rehash table if it gets too saturated.
-    item = (HashItem *) table->malloc(sizeof (HashItem), table->malloc_data);
+    item = (HashItem *) table->m(sizeof (HashItem), table->d);
     if (item == NULL)
         return -1;
 
@@ -58,13 +79,13 @@ int hash_insert(HashTable *table, const void *key, const void *value)
     return 1;
 } // hash_insert
 
-HashTable *hash_create(const uint32 initial_table_size,
-              const HashTable_HashFn hashfn,
+HashTable *hash_create(void *data, const HashTable_HashFn hashfn,
               const HashTable_KeyMatchFn keymatchfn,
               const HashTable_NukeFn nukefn,
               const int stackable,
               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    const uint32 initial_table_size = 256;
     const uint32 alloc_len = sizeof (HashItem *) * initial_table_size;
     HashTable *table = (HashTable *) m(sizeof (HashTable), d);
     if (table == NULL)
@@ -81,50 +102,55 @@ HashTable *hash_create(const uint32 initial_table_size,
     memset(table->table, '\0', alloc_len);
     table->table_len = initial_table_size;
     table->stackable = stackable;
+    table->data = data;
     table->hash = hashfn;
     table->keymatch = keymatchfn;
     table->nuke = nukefn;
-    table->malloc = m;
-    table->free = f;
-    table->malloc_data = d;
+    table->m = m;
+    table->f = f;
+    table->d = d;
     return table;
 } // hash_create
 
 void hash_destroy(HashTable *table)
 {
     uint32 i;
+    void *data = table->data;
+    MOJOSHADER_free f = table->f;
+    void *d = table->d;
     for (i = 0; i < table->table_len; i++)
     {
         HashItem *item = table->table[i];
         while (item != NULL)
         {
             HashItem *next = item->next;
-            table->nuke(item->key, item->value);
-            table->free(item, table->malloc_data);
+            table->nuke(item->key, item->value, data);
+            f(item, d);
             item = next;
         } // while
     } // for
 
-    table->free(table->table, table->malloc_data);
-    table->free(table, table->malloc_data);
+    f(table->table, d);
+    f(table, d);
 } // hash_destroy
 
 int hash_remove(HashTable *table, const void *key)
 {
     HashItem *item = NULL;
     HashItem *prev = NULL;
-    const uint32 hash = table->hash(key) & table->table_len;
+    void *data = table->data;
+    const uint32 hash = calc_hash(table, key);
     for (item = table->table[hash]; item != NULL; item = item->next)
     {
-        if (table->keymatch(key, item->key))
+        if (table->keymatch(key, item->key, data))
         {
             if (prev != NULL)
                 prev->next = item->next;
             else
                 table->table[hash] = item->next;
 
-            table->nuke(item->key, item->value);
-            table->free(item, table->malloc_data);
+            table->nuke(item->key, item->value, data);
+            table->f(item, table->d);
             return 1;
         } // if
 
@@ -149,18 +175,78 @@ static inline uint32 hash_string(const char *str, size_t len)
     return hash_string_djbxor(str, len);
 } // hash_string
 
-uint32 hash_hash_string(const void *sym)
+uint32 hash_hash_string(const void *sym, void *data)
 {
+    (void) data;
     return hash_string(sym, strlen(sym));
 } // hash_hash_string
 
-int hash_keymatch_string(const void *a, const void *b)
+int hash_keymatch_string(const void *a, const void *b, void *data)
 {
+    (void) data;
     return (strcmp((const char *) a, (const char *) b) == 0);
 } // hash_keymatch_string
 
 
-// The string cache...
+// string -> string map...
+
+static void stringmap_nuke_noop(const void *key, const void *val, void *d) {}
+
+static void stringmap_nuke(const void *key, const void *val, void *d)
+{
+    StringMap *smap = (StringMap *) d;
+    smap->f((void *) key, smap->d);
+    smap->f((void *) val, smap->d);
+} // stringmap_nuke
+
+StringMap *stringmap_create(const int copy, MOJOSHADER_malloc m,
+                            MOJOSHADER_free f, void *d)
+{
+    HashTable_NukeFn nuke = copy ? stringmap_nuke : stringmap_nuke_noop;
+    StringMap *smap;
+    smap = hash_create(0,hash_hash_string,hash_keymatch_string,nuke,0,m,f,d);
+    smap->data = smap;
+    return smap;
+} // stringmap_create
+
+void stringmap_destroy(StringMap *smap)
+{
+    return hash_destroy(smap);
+} // stringmap_destroy
+
+int stringmap_insert(StringMap *smap, const char *key, const char *value)
+{
+    assert(key != NULL);
+    if (smap->nuke == stringmap_nuke_noop)  // no copy?
+        return hash_insert(smap, key, value);
+
+    int rc = -1;
+    char *k = (char *) smap->m(strlen(key) + 1, smap->d);
+    char *v = (char *) v ? smap->m(strlen(value) + 1, smap->d) : NULL;
+    if ( (!k) || ((!v) && (value)) || ((rc = hash_insert(smap, k, v)) <= 0) )
+    {
+        smap->f(k, smap->d);
+        smap->f(v, smap->d);
+    } // if
+
+    return rc;
+} // stringmap_insert
+
+int stringmap_remove(StringMap *smap, const char *key)
+{
+    return hash_remove(smap, key);
+} // stringmap_remove
+
+int stringmap_find(const StringMap *smap, const char *key, const char **_value)
+{
+    const void *value = NULL;
+    const int retval = hash_find(smap, key, &value);
+    *_value = (const char *) value;
+    return retval;
+} // stringmap_find
+
+
+// The string cache...   !!! FIXME: use StringMap internally for this.
 
 typedef struct StringBucket
 {
