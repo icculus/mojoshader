@@ -468,7 +468,6 @@ typedef struct Define
 typedef struct IncludeState
 {
     const char *filename;
-    int included;
     const char *source_base;
     const char *source;
     const char *token;
