@@ -1052,7 +1052,9 @@ static void handle_pp_define(Context *ctx)
             case TOKEN_INCOMPLETE_COMMENT:
             case TOKEN_EOI:
                 pushback(state);  // move back so we catch this later.
-                // fall through!
+                done = 1;
+                break;
+
             case ((Token) '\n'):
                 done = 1;
                 break;
@@ -1077,10 +1079,38 @@ static void handle_pp_define(Context *ctx)
         ctx->out_of_memory = (definition == NULL);
     } // if
 
+    size_t buflen = buffer.total_bytes + 1;
     free_buffer(&buffer, ctx->free, d);
 
     if (ctx->out_of_memory)
         goto handle_pp_define_failed;
+
+    int hashhash_error = 0;
+    if ((buflen > 2) && (definition[0] == '#') && (definition[1] == '#'))
+    {
+        hashhash_error = 1;
+        buflen -= 2;
+        memmove(definition, definition + 2, buflen);
+    } // if
+
+    if (buflen > 2)
+    {
+        char *ptr = (definition + buflen) - 2;
+        if (*ptr == ' ')
+        {
+            ptr--;
+            buflen--;
+        } // if
+        if ((buflen > 2) && (ptr[0] == '#') && (ptr[-1] == '#'))
+        {
+            hashhash_error = 1;
+            buflen -= 2;
+            ptr[-1] = '\0';
+        } // if
+    } // if
+
+    if (hashhash_error)
+        fail(ctx, "'##' cannot appear at either end of a macro expansion");
 
     assert(done);
 
@@ -1196,11 +1226,11 @@ static int handle_pp_identifier(Context *ctx)
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
 
-    // IncludeState defines take precedence over Context defines.
+    // IncludeState defines (macro args) take precedence over Context defines.
     const Define *def = state->defines;
     while (def)
     {
-        assert(def->paramcount == 0);
+        assert(def->paramcount == 0);  // args can't have args!
         if (strcmp(def->identifier, sym) == 0)
             break;
         def = def->next;
