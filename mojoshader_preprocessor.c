@@ -37,16 +37,6 @@ static void print_debug_lexing_position(IncludeState *s)
 #define print_debug_lexing_position(s)
 #endif
 
-
-
-// Simple linked list to cache source filenames, so we don't have to copy
-//  the same string over and over for each opcode.
-typedef struct FilenameCache
-{
-    char *filename;
-    struct FilenameCache *next;
-} FilenameCache;
-
 typedef struct Context
 {
     int isfail;
@@ -59,7 +49,7 @@ typedef struct Context
     IncludeState *include_pool;
     Define *define_hashtable[256];
     Define *define_pool;
-    FilenameCache *filename_cache;
+    StringCache *filename_cache;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
     MOJOSHADER_malloc malloc;
@@ -507,54 +497,6 @@ static void put_all_defines(Context *ctx)
 } // put_all_defines
 
 
-// filename cache stuff...
-
-static const char *cache_filename(Context *ctx, const char *fname)
-{
-    if (fname == NULL)
-        return NULL;
-
-    // !!! FIXME: this could be optimized into a hash table, but oh well.
-    FilenameCache *item = ctx->filename_cache;
-    while (item != NULL)
-    {
-        if (strcmp(item->filename, fname) == 0)
-            return item->filename;
-        item = item->next;
-    } // while
-
-    // new cache item.
-    item = (FilenameCache *) Malloc(ctx, sizeof (FilenameCache));
-    if (item == NULL)
-        return NULL;
-
-    item->filename = StrDup(ctx, fname);
-    if (item->filename == NULL)
-    {
-        Free(ctx, item);
-        return NULL;
-    } // if
-
-    item->next = ctx->filename_cache;
-    ctx->filename_cache = item;
-
-    return item->filename;
-} // cache_filename
-
-
-static void free_filename_cache(Context *ctx)
-{
-    FilenameCache *item = ctx->filename_cache;
-    while (item != NULL)
-    {
-        FilenameCache *next = item->next;
-        Free(ctx, item->filename);
-        Free(ctx, item);
-        item = next;
-    } // while
-} // free_filename_cache
-
-
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum,
                        MOJOSHADER_includeClose close_callback, Define *defs)
@@ -568,9 +510,10 @@ static int push_source(Context *ctx, const char *fname, const char *source,
 
     if (fname != NULL)
     {
-        state->filename = cache_filename(ctx, fname);
+        state->filename = stringcache(ctx->filename_cache, fname);
         if (state->filename == NULL)
         {
+            out_of_memory(ctx);
             put_include(ctx, state);
             return 0;
         } // if
@@ -661,7 +604,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
 
     Context *ctx = (Context *) m(sizeof (Context), d);
     if (ctx == NULL)
-        return 0;
+        return NULL;
 
     memset(ctx, '\0', sizeof (Context));
     ctx->malloc = m;
@@ -670,6 +613,12 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->open_callback = open_callback;
     ctx->close_callback = close_callback;
     ctx->asm_comments = asm_comments;
+    ctx->filename_cache = stringcache_create(m, f, d);
+    if (ctx->filename_cache == 0)
+    {
+        f(ctx, d);
+        return NULL;
+    } // if
 
     // let the usual preprocessor parser sort these out.
     char *define_include = NULL;
@@ -728,7 +677,9 @@ void preprocessor_end(Preprocessor *_ctx)
 
     put_all_defines(ctx);
 
-    free_filename_cache(ctx);
+    if (ctx->filename_cache != NULL)
+        stringcache_destroy(ctx->filename_cache);
+
     free_define_pool(ctx);
     free_conditional_pool(ctx);
     free_include_pool(ctx);
@@ -890,8 +841,9 @@ static void handle_pp_line(Context *ctx)
         return;
     } // if
 
-    const char *cached = cache_filename(ctx, filename);
-    assert((cached != NULL) || (ctx->out_of_memory));
+    const char *cached = stringcache(ctx->filename_cache, filename);
+    if (cached == NULL)
+        out_of_memory(ctx);
     state->filename = cached;
     state->line = linenum;
 } // handle_pp_line

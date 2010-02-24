@@ -310,26 +310,26 @@ datatype(A) ::= intrinsic_datatype(B). { A = B; }
 datatype(A) ::= USERTYPE(B). { A = B.string; }
 
 %type datatype_sampler { const char * }
-datatype_sampler(A) ::= SAMPLER. { A = cache_string_fmt(ctx, "s1"); }
-datatype_sampler(A) ::= SAMPLER1D. { A = cache_string_fmt(ctx, "s1"); }
-datatype_sampler(A) ::= SAMPLER2D. { A = cache_string_fmt(ctx, "s2"); }
-datatype_sampler(A) ::= SAMPLER3D. { A = cache_string_fmt(ctx, "s3"); }
-datatype_sampler(A) ::= SAMPLERCUBE. { A = cache_string_fmt(ctx, "sc"); }
-datatype_sampler(A) ::= SAMPLER_STATE. { A = cache_string_fmt(ctx, "ss"); }
-datatype_sampler(A) ::= SAMPLERSTATE. { A = cache_string_fmt(ctx, "ss"); }
-datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = cache_string_fmt(ctx, "sS"); }
+datatype_sampler(A) ::= SAMPLER. { A = stringcache_fmt(ctx->strcache, "s1"); }
+datatype_sampler(A) ::= SAMPLER1D. { A = stringcache_fmt(ctx->strcache, "s1"); }
+datatype_sampler(A) ::= SAMPLER2D. { A = stringcache_fmt(ctx->strcache, "s2"); }
+datatype_sampler(A) ::= SAMPLER3D. { A = stringcache_fmt(ctx->strcache, "s3"); }
+datatype_sampler(A) ::= SAMPLERCUBE. { A = stringcache_fmt(ctx->strcache, "sc"); }
+datatype_sampler(A) ::= SAMPLER_STATE. { A = stringcache_fmt(ctx->strcache, "ss"); }
+datatype_sampler(A) ::= SAMPLERSTATE. { A = stringcache_fmt(ctx->strcache, "ss"); }
+datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = stringcache_fmt(ctx->strcache, "sS"); }
 
 %type datatype_scalar { const char * }
-datatype_scalar(A) ::= BOOL. { A = cache_string_fmt(ctx, "b"); }
-datatype_scalar(A) ::= INT. { A = cache_string_fmt(ctx, "i"); }
-datatype_scalar(A) ::= UINT. { A = cache_string_fmt(ctx, "u"); }
-datatype_scalar(A) ::= HALF. { A = cache_string_fmt(ctx, "h"); }
-datatype_scalar(A) ::= FLOAT. { A = cache_string_fmt(ctx, "f"); }
-datatype_scalar(A) ::= DOUBLE. { A = cache_string_fmt(ctx, "d"); }
-datatype_scalar(A) ::= STRING. { A = cache_string_fmt(ctx, "S"); } // this is for the effects framework, not HLSL.
-datatype_scalar(A) ::= SNORM FLOAT. { A = cache_string_fmt(ctx, "Fs"); }
-datatype_scalar(A) ::= UNORM FLOAT. { A = cache_string_fmt(ctx, "Fu"); }
-datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = cache_string_fmt(ctx, "B%s", B); }
+datatype_scalar(A) ::= BOOL. { A = stringcache_fmt(ctx->strcache, "b"); }
+datatype_scalar(A) ::= INT. { A = stringcache_fmt(ctx->strcache, "i"); }
+datatype_scalar(A) ::= UINT. { A = stringcache_fmt(ctx->strcache, "u"); }
+datatype_scalar(A) ::= HALF. { A = stringcache_fmt(ctx->strcache, "h"); }
+datatype_scalar(A) ::= FLOAT. { A = stringcache_fmt(ctx->strcache, "f"); }
+datatype_scalar(A) ::= DOUBLE. { A = stringcache_fmt(ctx->strcache, "d"); }
+datatype_scalar(A) ::= STRING. { A = stringcache_fmt(ctx->strcache, "S"); } // this is for the effects framework, not HLSL.
+datatype_scalar(A) ::= SNORM FLOAT. { A = stringcache_fmt(ctx->strcache, "Fs"); }
+datatype_scalar(A) ::= UNORM FLOAT. { A = stringcache_fmt(ctx->strcache, "Fu"); }
+datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = stringcache_fmt(ctx->strcache, "B%s", B); }
 
 // !!! FIXME: MSDN suggests that the matrix ones are just typedefs inserted
 // !!! FIXME:  before parsing begins, like:
@@ -337,10 +337,10 @@ datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = cache_string_fmt(c
 // !!! FIXME:  ...maybe we can rip these out of the grammar and just create
 // !!! FIXME:  them at startup?
 %type datatype_vector { const char * }
-datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = cache_string_fmt(ctx, "v%d%s", (int) C.i64, B); }
+datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = stringcache_fmt(ctx->strcache, "v%d%s", (int) C.i64, B); }
 
 %type datatype_matrix { const char * }
-datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = cache_string_fmt(ctx, "m%d%d%s", (int) C.i64, (int) D.i64, B); }
+datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = stringcache_fmt(ctx->strcache, "m%d%d%s", (int) C.i64, (int) D.i64, B); }
 
 %type statement_block { Statement * }
 %destructor statement_block { delete_statement(ctx, $$); }

@@ -172,6 +172,18 @@ int hash_find(const HashTable *table, const void *key, const void **_value);
 uint32 hash_hash_string(const void *sym);
 int hash_keymatch_string(const void *a, const void *b);
 
+
+// String caching...
+
+typedef struct StringCache StringCache;
+StringCache *stringcache_create(MOJOSHADER_malloc m,MOJOSHADER_free f,void *d);
+const char *stringcache(StringCache *cache, const char *str);
+const char *stringcache_len(StringCache *cache, const char *str,
+                            const unsigned int len);
+const char *stringcache_fmt(StringCache *cache, const char *fmt, ...);
+void stringcache_destroy(StringCache *cache);
+
+
 // This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.
 #define CTAB_ID 0x42415443  // 0x42415443 == 'CTAB'
 #define CTAB_SIZE 28  // sizeof (D3DXSHADER_CONSTANTTABLE).

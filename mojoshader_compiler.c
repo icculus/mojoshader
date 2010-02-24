@@ -35,12 +35,6 @@ typedef union TokenData
     const char *string;
 } TokenData;
 
-typedef struct StringBucket
-{
-    char *string;
-    struct StringBucket *next;
-} StringBucket;
-
 
 // Structures that make up the parse tree...
 
@@ -547,7 +541,7 @@ typedef struct Context
     void *malloc_data;
     int error_count;
     ErrorList *errors;
-    StringBucket *string_hashtable[256];
+    StringCache *strcache;
     const char *sourcefile;  // current source file that we're parsing.
     unsigned int sourceline; // current line in sourcefile that we're parsing.
     UserTypeMap usertypes;
@@ -1429,93 +1423,6 @@ static int is_usertype(const Context *ctx, const char *token)
     return hash_find(ctx->usertypes.types, token, &value);
 } // is_usertype
 
-
-// !!! FIXME: sort of cut-and-paste from the preprocessor...
-
-// this is djb's xor hashing function.
-static inline uint32 hash_string_djbxor(const char *str, unsigned int len)
-{
-    register uint32 hash = 5381;
-    while (len--)
-        hash = ((hash << 5) + hash) ^ *(str++);
-    return hash;
-} // hash_string_djbxor
-
-static inline uint8 hash_string(const char *str, const unsigned int len)
-{
-    return (uint8) hash_string_djbxor(str, len);
-} // hash_string
-
-static const char *cache_string(Context *ctx, const char *str,
-                                const unsigned int len)
-{
-    const uint8 hash = hash_string(str, len);
-    StringBucket *bucket = ctx->string_hashtable[hash];
-    StringBucket *prev = NULL;
-    while (bucket)
-    {
-        const char *bstr = bucket->string;
-        if ((strncmp(bstr, str, len) == 0) && (bstr[len] == 0))
-        {
-            // Matched! Move this to the front of the list.
-            if (prev != NULL)
-            {
-                assert(prev->next == bucket);
-                prev->next = bucket->next;
-                bucket->next = ctx->string_hashtable[hash];
-                ctx->string_hashtable[hash] = bucket;
-            } // if
-            return bstr; // already cached
-        } // if
-        prev = bucket;
-        bucket = bucket->next;
-    } // while
-
-    // no match, add to the table.
-    bucket = (StringBucket *) Malloc(ctx, sizeof (StringBucket));
-    if (bucket == NULL)
-        return NULL;
-    bucket->string = (char *) Malloc(ctx, len + 1);
-    if (bucket->string == NULL)
-    {
-        Free(ctx, bucket);
-        return NULL;
-    } // if
-    memcpy(bucket->string, str, len);
-    bucket->string[len] = '\0';
-    bucket->next = ctx->string_hashtable[hash];
-    ctx->string_hashtable[hash] = bucket;
-    return bucket->string;
-} // cache_string
-
-static const char *cache_string_fmt(Context *ctx, const char *fmt, ...)
-{
-    char buf[128];  // use the stack if reasonable.
-    char *ptr = NULL;
-    int len = 0;  // number of chars, NOT counting null-terminator!
-    va_list ap;
-
-    va_start(ap, fmt);
-    len = vsnprintf(buf, sizeof (buf), fmt, ap);
-    va_end(ap);
-
-    if (len > sizeof (buf))
-    {
-        ptr = (char *) Malloc(ctx, len);
-        if (ptr == NULL)
-            return NULL;
-
-        va_start(ap, fmt);
-        vsnprintf(ptr, len, fmt, ap);
-        va_end(ap);
-    } // if
-
-    const char *retval = cache_string(ctx, ptr ? ptr : buf, len);
-    if (ptr != NULL)
-        Free(ctx, ptr);
-
-    return retval;
-} // cache_string_fmt
 
 // This is where the actual parsing happens. It's Lemon-generated!
 #define __MOJOSHADER_HLSL_COMPILER__ 1
@@ -2434,7 +2341,7 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
             #undef tokencmp
 
             // get a canonical copy of the string now, as we'll need it.
-            token = cache_string(ctx, token, tokenlen);
+            token = stringcache_len(ctx->strcache, token, tokenlen);
             if (is_usertype(ctx, token))
                 return TOKEN_HLSL_USERTYPE;
             return TOKEN_HLSL_IDENTIFIER;
@@ -2446,24 +2353,6 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
     return 0;
 } // convert_to_lemon_token
 
-// !!! FIXME: unify this code with the string cache in the preprocessor.
-static void free_string_cache(Context *ctx)
-{
-    size_t i;
-    for (i = 0; i < STATICARRAYLEN(ctx->string_hashtable); i++)
-    {
-        StringBucket *bucket = ctx->string_hashtable[i];
-        ctx->string_hashtable[i] = NULL;
-        while (bucket)
-        {
-            StringBucket *next = bucket->next;
-            Free(ctx, bucket->string);
-            Free(ctx, bucket);
-            bucket = next;
-        } // while
-    } // for
-} // free_string_cache
-
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -2474,7 +2363,10 @@ static void destroy_context(Context *ctx)
         // !!! FIXME: free ctx->errors
         delete_compilation_unit(ctx, ctx->ast);
         destroy_usertypemap(ctx);
-        free_string_cache(ctx);
+
+        if (ctx->strcache)
+            stringcache_destroy(ctx->strcache);
+
         f(ctx, d);
     } // if
 } // destroy_context
@@ -2494,6 +2386,8 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     ctx->malloc_data = d;
     //ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
     create_usertypemap(ctx);  // !!! FIXME: check for failure.
+    ctx->strcache = stringcache_create(m, f, d);  // !!! FIXME: check for failure.
+
     return ctx;
 } // build_context
 
@@ -2541,13 +2435,15 @@ static void parse_source(Context *ctx, const char *filename,
         int j;
         for (j = 1; j <= 4; j++)
         {
+            // "float2"
             int len = snprintf(buf, sizeof (buf), "%s%d", types[i], j);
-            add_usertype(ctx, cache_string(ctx, buf, len));  // "float2"
+            add_usertype(ctx, stringcache_len(ctx->strcache, buf, len));
             int k;
             for (k = 1; k <= 4; k++)
             {
+                // "float2x2"
                 len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i], j, k);
-                add_usertype(ctx, cache_string(ctx, buf, len));  // "float2x2"
+                add_usertype(ctx, stringcache_len(ctx->strcache, buf, len));
             } // for
         } // for
     } // for
@@ -2563,7 +2459,7 @@ static void parse_source(Context *ctx, const char *filename,
         } // if
 
         fname = preprocessor_sourcepos(pp, &ctx->sourceline);
-        ctx->sourcefile = fname ? cache_string(ctx, fname, strlen(fname)) : 0;
+        ctx->sourcefile = fname ? stringcache(ctx->strcache, fname) : 0;
 
         if (tokenval == TOKEN_BAD_CHARS)
         {
@@ -2591,7 +2487,7 @@ static void parse_source(Context *ctx, const char *filename,
             case TOKEN_HLSL_USERTYPE:
             case TOKEN_HLSL_STRING_LITERAL:
             case TOKEN_HLSL_IDENTIFIER:
-                data.string = cache_string(ctx, token, tokenlen);
+                data.string = stringcache_len(ctx->strcache, token, tokenlen);
                 break;
 
             default:
