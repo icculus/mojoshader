@@ -178,7 +178,7 @@ static inline uint32 hash_string(const char *str, size_t len)
 uint32 hash_hash_string(const void *sym, void *data)
 {
     (void) data;
-    return hash_string(sym, strlen((const char *) sym));
+    return hash_string((const char*) sym, strlen((const char *) sym));
 } // hash_hash_string
 
 int hash_keymatch_string(const void *a, const void *b, void *data)
@@ -222,7 +222,7 @@ int stringmap_insert(StringMap *smap, const char *key, const char *value)
 
     int rc = -1;
     char *k = (char *) smap->m(strlen(key) + 1, smap->d);
-    char *v = (char *) v ? smap->m(strlen(value) + 1, smap->d) : NULL;
+    char *v = (char *) (value ? smap->m(strlen(value) + 1, smap->d) : NULL);
     if ( (!k) || ((!v) && (value)) || ((rc = hash_insert(smap, k, v)) <= 0) )
     {
         smap->f(k, smap->d);
