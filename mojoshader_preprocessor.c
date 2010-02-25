@@ -515,6 +515,24 @@ static const Define *find_define_by_token(Context *ctx)
 } // find_define_by_token
 
 
+static const Define *find_macro_arg(const IncludeState *state)
+{
+    const Define *def = NULL;
+    char *sym = (char *) alloca(state->tokenlen + 1);
+    memcpy(sym, state->token, state->tokenlen);
+    sym[state->tokenlen] = '\0';
+
+    for (def = state->defines; def != NULL; def = def->next)
+    {
+        assert(def->paramcount == 0);  // args can't have args!
+        if (strcmp(def->identifier, sym) == 0)
+            break;
+    } // while
+
+    return def;
+} // find_macro_arg
+
+
 static void put_all_defines(Context *ctx)
 {
     size_t i;
@@ -1066,12 +1084,12 @@ static void handle_pp_define(Context *ctx)
             case ((Token) ' '):  // may not actually point to ' '.
                 assert(buffer.total_bytes > 0);
                 if (!add_to_buffer(&buffer, &space, 1, m, d))
-                    ctx->out_of_memory = 1;
+                    out_of_memory(ctx);
                 break;
 
             default:
                 if (!add_to_buffer(&buffer,state->token,state->tokenlen,m,d))
-                    ctx->out_of_memory = 1;
+                    out_of_memory(ctx);
                 break;
         } // switch
     } // while
@@ -1080,7 +1098,8 @@ static void handle_pp_define(Context *ctx)
     if (!ctx->out_of_memory)
     {
         definition = flatten_buffer(&buffer, m, d);
-        ctx->out_of_memory = (definition == NULL);
+        if (definition == NULL)
+            out_of_memory(ctx);
     } // if
 
     size_t buflen = buffer.total_bytes + 1;
@@ -1230,18 +1249,10 @@ static int handle_pp_identifier(Context *ctx)
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
 
-    // IncludeState defines (macro args) take precedence over Context defines.
-    const Define *def = state->defines;
-    while (def)
-    {
-        assert(def->paramcount == 0);  // args can't have args!
-        if (strcmp(def->identifier, sym) == 0)
-            break;
-        def = def->next;
-    } // while
-
     Define *params = NULL;
 
+    // IncludeState defines (macro args) take precedence over Context defines.
+    const Define *def = find_macro_arg(state);
     if (def == NULL)
     {
         def = find_define(ctx, sym);
@@ -1781,18 +1792,7 @@ static void handle_pp_stringify(Context *ctx)
     assert(state->is_macro);
 
     if (lexer(state) == TOKEN_IDENTIFIER)
-    {
-        char *sym = (char *) alloca(state->tokenlen+1);
-        memcpy(sym, state->token, state->tokenlen);
-        sym[state->tokenlen] = '\0';
-
-        for (def = state->defines; def != NULL; def = def->next)
-        {
-            assert(def->paramcount == 0);  // args can't have args!
-            if (strcmp(def->identifier, sym) == 0)
-                break;
-        } // while
-    } // if
+        def = find_macro_arg(state);
 
     if (def == NULL)
     {
@@ -1813,6 +1813,80 @@ static void handle_pp_stringify(Context *ctx)
     push_source(ctx, filename, litstring, deflen + 2, state->line,
                 close_define_include, NULL, 0);
 } // handle_pp_stringify
+
+
+static int handle_pp_concat(Context *ctx)
+{
+    MOJOSHADER_malloc m = ctx->malloc;
+    MOJOSHADER_free f = ctx->free;
+    void *d = ctx->malloc_data;
+    IncludeState *state = ctx->include_stack;
+    Buffer buffer;
+    int glued = 0;
+    int rc = 0;
+    const Define *def = NULL;
+
+    assert(state->is_macro);
+
+    init_buffer(&buffer);
+
+    def = (state->tokenval == TOKEN_IDENTIFIER) ? find_macro_arg(state) : 0;
+    if (def)
+        rc = add_to_buffer(&buffer, def->definition, strlen(def->definition), m, d);
+    else
+        rc = add_to_buffer(&buffer, state->token, state->tokenlen, m, d);
+
+    while (rc)
+    {
+        IncludeState saved;  // can't just pushback; we need all the state.
+        memcpy(&saved, state, sizeof (IncludeState));
+        if (lexer(state) != TOKEN_HASHHASH)  // concat operator ("##")
+        {
+            memcpy(state, &saved, sizeof (IncludeState));
+            break;
+        } // if
+
+        lexer(state);  // step past ## token.
+
+        // we checked these things when parsing the macro.
+        assert(state->is_macro);
+        assert(state->tokenval != TOKEN_EOI);
+        assert(state->tokenval != ((Token) ' '));
+
+        def = (state->tokenval == TOKEN_IDENTIFIER) ? find_macro_arg(state) : 0;
+        if (def)
+            rc = add_to_buffer(&buffer, def->definition, strlen(def->definition), m, d);
+        else
+            rc = add_to_buffer(&buffer, state->token, state->tokenlen, m, d);
+
+        glued = 1;
+    } // while
+
+    if (!rc)
+    {
+        out_of_memory(ctx);
+        return 0;
+    } // if
+
+    if (glued)
+    {
+        char *combined = flatten_buffer(&buffer, m, d);
+        if (combined == NULL)
+        {
+            out_of_memory(ctx);
+            glued = 0;
+        } // if
+        else
+        {
+            const char *filename = state->filename;
+            push_source(ctx, filename, combined, buffer.total_bytes,
+                        state->line, close_define_include, NULL, 0);
+        } // else
+    } // if
+
+    free_buffer(&buffer, f, d);
+    return glued;
+} // handle_pp_concat
 
 
 static void unterminated_pp_condition(Context *ctx)
@@ -1958,14 +2032,20 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
-        // stringify operator ("#") ... only during macro replacement.
-        else if ((token == TOKEN_HASH) && (state->is_macro))
+        // stringify ("#") and concat ("##") only during macro replacement.
+        if (state->is_macro)
         {
-            handle_pp_stringify(ctx);
-            continue;
-        } // else if
+            if (token == TOKEN_HASH)
+            {
+                handle_pp_stringify(ctx);
+                continue;
+            } // if
 
-        else if (token == TOKEN_IDENTIFIER)
+            if (handle_pp_concat(ctx))
+                continue;
+        } // if
+
+        if (token == TOKEN_IDENTIFIER)
         {
             if (handle_pp_identifier(ctx))
                 continue;  // pushed the include_stack.
