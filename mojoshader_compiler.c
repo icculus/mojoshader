@@ -2461,6 +2461,9 @@ static void parse_source(Context *ctx, const char *filename,
         fname = preprocessor_sourcepos(pp, &ctx->sourceline);
         ctx->sourcefile = fname ? stringcache(ctx->strcache, fname) : 0;
 
+        if ((tokenval == TOKEN_HASH) || (tokenval == TOKEN_HASHHASH))
+            tokenval = TOKEN_BAD_CHARS;
+
         if (tokenval == TOKEN_BAD_CHARS)
         {
             fail(ctx, "Bad characters in source file");
