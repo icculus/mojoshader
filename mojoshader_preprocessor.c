@@ -880,7 +880,15 @@ static void handle_pp_line(Context *ctx)
         linenum = token_to_int(state);
 
     if (!bogus)
-        bogus = (lexer(state) != TOKEN_STRING_LITERAL);
+    {
+        Token t = lexer(state);
+        if (t == ((Token) '\n'))
+        {
+            state->line = linenum;
+            return;
+        }
+        bogus = (t != TOKEN_STRING_LITERAL);
+    }
 
     if (!bogus)
     {
