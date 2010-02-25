@@ -128,6 +128,7 @@ scanner_loop:
     ">="            { RET(TOKEN_GEQ); }
     "=="            { RET(TOKEN_EQL); }
     "!="            { RET(TOKEN_NEQ); }
+    "#"             { RET(TOKEN_HASH); }
     "##"            { RET(TOKEN_HASHHASH); }
     "("             { RET('('); }
     ")"             { RET(')'); }

@@ -408,6 +408,7 @@ typedef enum
     TOKEN_GEQ,
     TOKEN_EQL,
     TOKEN_NEQ,
+    TOKEN_HASH,
     TOKEN_HASHHASH,
 
     // This is returned at the end of input...no more to process.
@@ -475,6 +476,7 @@ typedef struct IncludeState
     Token tokenval;
     int pushedback;
     const unsigned char *lexer_marker;
+    int is_macro;
     int report_whitespace;
     int asm_comments;
     unsigned int orig_length;

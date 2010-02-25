@@ -146,6 +146,7 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
         TOKENCASE(TOKEN_GEQ);
         TOKENCASE(TOKEN_EQL);
         TOKENCASE(TOKEN_NEQ);
+        TOKENCASE(TOKEN_HASH);
         TOKENCASE(TOKEN_HASHHASH);
         TOKENCASE(TOKEN_PP_INCLUDE);
         TOKENCASE(TOKEN_PP_LINE);
@@ -533,7 +534,8 @@ static void put_all_defines(Context *ctx)
 
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum,
-                       MOJOSHADER_includeClose close_callback, Define *defs)
+                       MOJOSHADER_includeClose close_callback, Define *defs,
+                       const int is_macro)
 {
     if (srclen == 0)
         return 1;  // nothing to do: just pretend you did it.
@@ -564,6 +566,7 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->defines = defs;
     state->next = ctx->include_stack;
     state->asm_comments = ctx->asm_comments;
+    state->is_macro = is_macro;
 
     print_debug_lexing_position(state);
 
@@ -681,13 +684,14 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
         } // else
     } // if
 
-    if ((okay) && (!push_source(ctx, fname, source, sourcelen, 1, NULL, NULL)))
+    if ((okay) && (!push_source(ctx,fname,source,sourcelen,1,NULL,NULL,0)))
         okay = 0;
 
     if ((okay) && (define_include != NULL))
     {
         okay = push_source(ctx, "<predefined macros>", define_include,
-                           define_include_len, 1, close_define_include, NULL);
+                           define_include_len, 1, close_define_include,
+                           NULL, 0);
     } // if
 
     if (!okay)
@@ -837,7 +841,7 @@ static void handle_pp_include(Context *ctx)
     } // if
 
     MOJOSHADER_includeClose callback = ctx->close_callback;
-    if (!push_source(ctx, filename, newdata, newbytes, 1, callback, NULL))
+    if (!push_source(ctx, filename, newdata, newbytes, 1, callback, NULL, 0))
     {
         assert(ctx->out_of_memory);
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
@@ -1220,7 +1224,7 @@ static int handle_pp_identifier(Context *ctx)
     const char *fname = NULL;
     const char *val = NULL;
     size_t vallen = 0;
-
+    int is_macro = 0;
     IncludeState *state = ctx->include_stack;
     char *sym = (char *) alloca(state->tokenlen+1);
     memcpy(sym, state->token, state->tokenlen);
@@ -1243,6 +1247,8 @@ static int handle_pp_identifier(Context *ctx)
         def = find_define(ctx, sym);
         if (def == NULL)
             return 0;   // just send the token through unchanged.
+
+        is_macro = 1;
 
         if (def->paramcount != 0)
         {
@@ -1339,7 +1345,7 @@ static int handle_pp_identifier(Context *ctx)
     val = def->definition;
     vallen = strlen(val);
     fname = state->filename;
-    if (!push_source(ctx, fname, val, vallen, state->line, NULL, params))
+    if (!push_source(ctx,fname,val,vallen,state->line,NULL,params,is_macro))
     {
         assert(ctx->out_of_memory);
         goto handle_pp_identifier_failed;
@@ -1767,6 +1773,48 @@ static void handle_pp_endif(Context *ctx)
 } // handle_pp_endif
 
 
+static void handle_pp_stringify(Context *ctx)
+{
+    IncludeState *state = ctx->include_stack;
+    const Define *def = NULL;
+
+    assert(state->is_macro);
+
+    if (lexer(state) == TOKEN_IDENTIFIER)
+    {
+        char *sym = (char *) alloca(state->tokenlen+1);
+        memcpy(sym, state->token, state->tokenlen);
+        sym[state->tokenlen] = '\0';
+
+        for (def = state->defines; def != NULL; def = def->next)
+        {
+            assert(def->paramcount == 0);  // args can't have args!
+            if (strcmp(def->identifier, sym) == 0)
+                break;
+        } // while
+    } // if
+
+    if (def == NULL)
+    {
+        pushback(state);
+        fail(ctx, "'#' is not followed by a macro parameter");
+        return;  // we just fail(), drop the '#' token and continue on.
+    } // if
+
+    const size_t deflen = strlen(def->definition);
+    char *litstring = (char *) Malloc(ctx, deflen + 2);
+    if (!litstring)
+        return;
+
+    litstring[0] = '\"';
+    memcpy(litstring + 1, def->definition, deflen);
+    litstring[deflen + 1] = '\"';
+    const char *filename = state->filename;
+    push_source(ctx, filename, litstring, deflen + 2, state->line,
+                close_define_include, NULL, 0);
+} // handle_pp_stringify
+
+
 static void unterminated_pp_condition(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -1816,7 +1864,7 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
 
-        Token token = lexer(state);
+        const Token token = lexer(state);
 
         if (token != TOKEN_IDENTIFIER)
             ctx->recursion_count = 0;
@@ -1908,6 +1956,13 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             handle_pp_undef(ctx);
             continue;  // will return at top of loop.
+        } // else if
+
+        // stringify operator ("#") ... only during macro replacement.
+        else if ((token == TOKEN_HASH) && (state->is_macro))
+        {
+            handle_pp_stringify(ctx);
+            continue;
         } // else if
 
         else if (token == TOKEN_IDENTIFIER)
