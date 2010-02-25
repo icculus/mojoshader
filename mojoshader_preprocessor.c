@@ -2102,8 +2102,11 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
 
     if (!m) m = MOJOSHADER_internal_malloc;
     if (!f) f = MOJOSHADER_internal_free;
+
+#if !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
     if (!include_open) include_open = MOJOSHADER_internal_include_open;
     if (!include_close) include_close = MOJOSHADER_internal_include_close;
+#endif
 
     Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
