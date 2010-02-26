@@ -524,6 +524,7 @@ static const Define *find_macro_arg(const IncludeState *state)
 
     for (def = state->defines; def != NULL; def = def->next)
     {
+        assert(def->parameters == NULL);  // args can't have args!
         assert(def->paramcount == 0);  // args can't have args!
         if (strcmp(def->identifier, sym) == 0)
             break;
@@ -1271,6 +1272,9 @@ static int handle_pp_identifier(Context *ctx)
 
         if (def->paramcount != 0)
         {
+            MOJOSHADER_malloc m = ctx->malloc;
+            MOJOSHADER_free f = ctx->free;
+            void *d = ctx->malloc_data;
             const int expected = (def->paramcount < 0) ? 0 : def->paramcount;
             int saw_params = 0;
             IncludeState saved;  // can't pushback, we need the original token.
@@ -1285,42 +1289,64 @@ static int handle_pp_identifier(Context *ctx)
             int paren = 1;
             while (paren > 0)
             {
-                const char *expr = NULL;
-                const char *exprend = NULL;
+                Buffer buffer;
                 assert(!void_call);
+
+                init_buffer(&buffer);
+
                 while (1)
                 {
-                    exprend = state->source;
                     const Token t = lexer(state);
+                    const char *expr = state->token;
+                    unsigned int exprlen = state->tokenlen;
                     if (t == '(')
                         paren++;
+
                     else if (t == ')')
                     {
                         paren--;
                         if (paren < 1)  // end of macro?
                             break;
                     } // else if
+
                     else if (t == ',')
                     {
                         if (paren == 1)  // new macro arg?
                             break;
                     } // else if
+
+                    // is this an arg in the current macro?
+                    //  This is a special case, we need to replace here.
+                    else if ((state->is_macro) && (t == TOKEN_IDENTIFIER))
+                    {
+                        const Define *arg = find_macro_arg(state);
+                        if (arg)
+                        {
+                            expr = arg->definition;
+                            exprlen = strlen(arg->definition);
+                        } // if
+                    } // else if
+
                     else if ((t == TOKEN_INCOMPLETE_COMMENT) || (t == TOKEN_EOI))
                     {
                         pushback(state);
                         fail(ctx, "Unterminated macro list");
+                        free_buffer(&buffer, f, d);
                         goto handle_pp_identifier_failed;
                     } // else if
 
-                    if (expr == NULL)
-                        expr = state->token;
+                    assert(expr != NULL);
+
+                    if (!add_to_buffer(&buffer, expr, exprlen, m, d))
+                    {
+                        out_of_memory(ctx);
+                        free_buffer(&buffer, f, d);
+                        goto handle_pp_identifier_failed;
+                    } // if
                 } // while
 
-                if (expr == NULL)
-                {
-                    expr = exprend = "";
+                if (buffer.total_bytes == 0)
                     void_call = ((saw_params == 0) && (paren == 0));
-                } // if
 
                 if (saw_params < expected)
                 {
@@ -1331,12 +1357,13 @@ static int handle_pp_identifier(Context *ctx)
                     p->next = params;
                     params = p;
 
-                    const unsigned int exprlen = (unsigned int) (exprend - expr);
-                    char *definition = (char *) Malloc(ctx, exprlen + 1);
+                    char *definition = flatten_buffer(&buffer, m, d);
+                    free_buffer(&buffer, f, d);
                     if (definition == NULL)
+                    {
+                        out_of_memory(ctx);
                         goto handle_pp_identifier_failed;
-                    memcpy(definition, expr, exprlen);
-                    definition[exprlen] = '\0';
+                    } // if
                     p->identifier = def->parameters[saw_params];
                     p->definition = definition;
                 } // if
