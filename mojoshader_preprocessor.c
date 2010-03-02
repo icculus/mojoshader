@@ -44,6 +44,8 @@ typedef struct Context
     char failstr[256];
     int recursion_count;
     int asm_comments;
+    int file_macro_special;
+    int line_macro_special;
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
@@ -434,7 +436,8 @@ static int add_define(Context *ctx, const char *sym, const char *val,
     {
         if (strcmp(bucket->identifier, sym) == 0)
         {
-            failf(ctx, "'%s' already defined", sym);
+            failf(ctx, "'%s' already defined", sym); // !!! FIXME: warning?
+            // !!! FIXME: gcc reports the location of previous #define here.
             return 0;
         } // if
         bucket = bucket->next;
@@ -669,6 +672,8 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->open_callback = open_callback;
     ctx->close_callback = close_callback;
     ctx->asm_comments = asm_comments;
+    ctx->file_macro_special = 1;
+    ctx->line_macro_special = 1;
     ctx->filename_cache = stringcache_create(m, f, d);
     if (ctx->filename_cache == 0)
     {
@@ -991,6 +996,20 @@ static void handle_pp_define(Context *ctx)
         return;
     } // if
 
+    // Don't treat these symbols as special anymore if they get (re)#defined.
+    if (strcmp(sym, "__FILE__") == 0)
+    {
+        if (ctx->file_macro_special)
+            failf(ctx, "'%s' already defined", sym); // !!! FIXME: warning?
+        ctx->file_macro_special = 0;
+    } // if
+    else if (strcmp(sym, "__LINE__") == 0)
+    {
+        if (ctx->line_macro_special)
+            failf(ctx, "'%s' already defined", sym); // !!! FIXME: warning?
+        ctx->line_macro_special = 0;
+    } // else if
+
     // #define a(b) is different than #define a (b)    :(
     state->report_whitespace = 1;
     lexer(state);
@@ -1180,6 +1199,19 @@ static void handle_pp_undef(Context *ctx)
         return;
     } // if
 
+    if (strcmp(sym, "__FILE__") == 0)
+    {
+        if ((ctx->file_macro_special) && (find_define(ctx, sym) == NULL))
+            failf(ctx, "undefining \"%s\"", sym);  // !!! FIXME: should be warning.
+        ctx->file_macro_special = 0;
+    } // if
+    else if (strcmp(sym, "__LINE__") == 0)
+    {
+        if ((ctx->line_macro_special) && (find_define(ctx, sym) == NULL))
+            failf(ctx, "undefining \"%s\"", sym);  // !!! FIXME: should be warning.
+        ctx->line_macro_special = 0;
+    } // if
+
     remove_define(ctx, sym);
 } // handle_pp_undef
 
@@ -1259,6 +1291,46 @@ static int handle_pp_identifier(Context *ctx)
     sym[state->tokenlen] = '\0';
 
     Define *params = NULL;
+
+    if ( (ctx->file_macro_special) && (strcmp(sym, "__FILE__") == 0) )
+    {
+        const char *fname = state->filename;
+        const unsigned int line = state->line;
+        const size_t len = strlen(fname) + 2;
+        char *str = (char *) Malloc(ctx, len);
+        if (!str)
+            return 0;
+        str[0] = '\"';
+        memcpy(str + 1, fname, len - 2);
+        str[len - 1] = '\"';
+        if (!push_source(ctx,fname,str,len,line,close_define_include,NULL,1))
+        {
+            assert(ctx->out_of_memory);
+            Free(ctx, str);
+            return 0;
+        } // if
+        return 1;
+    } // if
+
+    else if ( (ctx->line_macro_special) && (strcmp(sym, "__LINE__") == 0) )
+    {
+        const char *fname = state->filename;
+        const unsigned int line = state->line;
+        const size_t bufsize = 32;
+        char *str = (char *) Malloc(ctx, bufsize);
+        if (!str)
+            return 0;
+
+        const size_t len = snprintf(str, bufsize, "%u", line);
+        assert(len < bufsize);
+        if (!push_source(ctx,fname,str,len,line,close_define_include,NULL,1))
+        {
+            assert(ctx->out_of_memory);
+            Free(ctx, str);
+            return 0;
+        } // if
+        return 1;
+    } // else
 
     // IncludeState defines (macro args) take precedence over Context defines.
     const Define *def = find_macro_arg(state);
