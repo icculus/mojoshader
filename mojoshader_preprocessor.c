@@ -206,41 +206,48 @@ int MOJOSHADER_internal_include_open(MOJOSHADER_includeType inctype,
                                      void *d)
 {
 #ifdef _MSC_VER
-	WCHAR widePath[MAX_PATH];
-	if (!MultiByteToWideChar( CP_UTF8, 0, fname, -1, widePath, MAX_PATH ))
-		return 0;
-	HANDLE fileHandle = CreateFileW (widePath, FILE_GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, NULL, NULL );
-	if (fileHandle == INVALID_HANDLE_VALUE)
-		return 0;
-	DWORD fileSize = GetFileSize (fileHandle, NULL);
-	if (fileSize == INVALID_FILE_SIZE)
-	{
-		CloseHandle (fileHandle);
-		return 0;
-	}
-	char *data = (char *) m(fileSize, d);
-	if (data == NULL)
-	{
-		CloseHandle (fileHandle);
-		return 0;
-	}
-	DWORD readLength = 0;
-	if (!ReadFile( fileHandle, data, fileSize, &readLength, NULL))
-	{
-		CloseHandle (fileHandle);
-		f(data, d);
-		return 0;
-	}
-	CloseHandle (fileHandle);
-	if (readLength != fileSize)
-	{
-		f(data, d);
-		return 0;
-	}
-	*outdata = data;
-	*outbytes = fileSize;
-	return 1;
-	
+    WCHAR wpath[MAX_PATH];
+    if (!MultiByteToWideChar(CP_UTF8, 0, fname, -1, wpath, MAX_PATH))
+        return 0;
+
+    const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    const HANDLE handle = CreateFileW(wpath, FILE_GENERIC_READ, share,
+                                      NULL, OPEN_EXISTING, NULL, NULL);
+    if (handle == INVALID_HANDLE_VALUE)
+        return 0;
+
+    const DWORD fileSize = GetFileSize(handle, NULL);
+    if (fileSize == INVALID_FILE_SIZE)
+    {
+        CloseHandle(handle);
+        return 0;
+    } // if
+
+    char *data = (char *) m(fileSize, d);
+    if (data == NULL)
+    {
+        CloseHandle(handle);
+        return 0;
+    } // if
+
+    DWORD readLength = 0;
+    if (!ReadFile(handle, data, fileSize, &readLength, NULL))
+    {
+        CloseHandle(handle);
+        f(data, d);
+        return 0;
+    } // if
+
+    CloseHandle(handle);
+
+    if (readLength != fileSize)
+    {
+        f(data, d);
+        return 0;
+    } // if
+    *outdata = data;
+    *outbytes = fileSize;
+    return 1;
 #else
     struct stat statbuf;
     if (stat(fname, &statbuf) == -1)
