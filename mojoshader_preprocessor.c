@@ -1387,11 +1387,16 @@ static int handle_pp_identifier(Context *ctx)
                             break;
                     } // else if
 
-                    // is this an arg in the current macro?
-                    //  This is a special case, we need to replace here.
-                    else if ((state->is_macro) && (t == TOKEN_IDENTIFIER))
+                    // see if a replacement is in order...
+                    // !!! FIXME: this fails if we get another macro with args:
+                    // !!! FIXME:  macro1(macro2(arg))
+                    else if (t == TOKEN_IDENTIFIER)
                     {
-                        const Define *arg = find_macro_arg(state);
+                        const Define *arg = NULL;
+                        if (state->is_macro)
+                            arg = find_macro_arg(state);
+                        if (arg == NULL)
+                            arg = find_define_by_token(ctx);
                         if (arg)
                         {
                             expr = arg->definition;
