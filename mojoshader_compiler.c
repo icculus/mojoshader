@@ -673,7 +673,7 @@ static void destroy_usertypemap(Context *ctx)
 //  afterwards.
 
 #define NEW_AST_NODE(retval, cls, typ) \
-    cls *retval = Malloc(ctx, sizeof (cls)); \
+    cls *retval = (cls *) Malloc(ctx, sizeof (cls)); \
     do { \
         if (retval == NULL) { return NULL; } \
         retval->ast.type = typ; \
