@@ -3,12 +3,14 @@
 use warnings;
 use strict;
 use Digest::SHA1;
+use Cwd;
 
 use FindBin qw($Bin);
 my $testdir = $Bin;
 undef $Bin;
 #print("testdir is $testdir\n");
-
+my $binpath = getcwd();
+#print("binpath is $binpath\n");
 
 my $GPrintCmds = 0;
 
@@ -58,7 +60,7 @@ $tests{'output'} = sub {
 
     # !!! FIXME: this should go elsewhere.
     if ($module eq 'preprocessor') {
-        $cmd = "./mojoshader-compiler -P '$fname' -o '$output'";
+        $cmd = "$binpath/mojoshader-compiler -P '$fname' -o '$output'";
     } else {
         return (0, "Don't know how to do this module type");
     }
@@ -88,12 +90,13 @@ my $fail = 0;
 my $skip = 0;
 
 my $result = '';
+chdir($testdir) or die("Failed to chdir('$testdir'): $!\n");
 foreach (@modules) {
     my $module = $_;
     foreach (keys %tests) {
         my $testtype = $_;
         my $fn = $tests{$_};
-        my $d = "$testdir/$module/$testtype";
+        my $d = "$module/$testtype";
         next if (not -d $d);  # no tests at the moment.
         opendir(TESTDIR, $d) || die("Failed to open dir '$d': $!\n");
         print(" ... $module / $testtype ...\n");
