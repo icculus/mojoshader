@@ -112,6 +112,7 @@ my $totaltests = 0;
 my $pass = 0;
 my $fail = 0;
 my $skip = 0;
+my @fails = ();
 
 my $result = '';
 chdir($testdir) or die("Failed to chdir('$testdir'): $!\n");
@@ -126,6 +127,7 @@ foreach (@modules) {
         print(" ... $module / $testtype ...\n");
         my $fname = readdir(TESTDIR);
         while (defined $fname) {
+            my $isfail = 0;
             my $origfname = $fname;
             $fname = readdir(TESTDIR);  # set for next iteration.
             next if (-d $origfname);
@@ -136,6 +138,7 @@ foreach (@modules) {
                 $result = 'PASS';
                 $pass++;
             } elsif ($rc == 0) {
+                $isfail = 1;
                 $result = 'FAIL';
                 $fail++;
             } elsif ($rc == -1) {
@@ -148,12 +151,28 @@ foreach (@modules) {
             } else {
                 $reason = '';
             }
-            print("$result ${origfname}${reason}\n");
+            my $output = "$result ${origfname}${reason}\n";
+            print($output);
+            push(@fails, $output) if $isfail;
 
             $totaltests++;
         }
         closedir(TESTDIR);
     }
+}
+
+if (scalar(@fails)) {
+    print("\n\n");
+    print("*************************************************************\n");
+    print("*************************************************************\n");
+    print("** SOME TESTS FAILED! PLEASE CORRECT THE FOLLOWING ISSUES. **\n");
+    print("*************************************************************\n");
+    print("*************************************************************\n");
+    print("\n");
+    foreach (@fails) {
+        print $_;
+    }
+    print("\n\n");
 }
 
 print("\n$totaltests tests, $pass passed, $fail failed, $skip skipped.\n\n");
