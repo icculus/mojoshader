@@ -81,7 +81,31 @@ $tests{'output'} = sub {
 };
 
 $tests{'errors'} = sub {
-    return (-1, 'Unimplemented');  # !!! FIXME
+    my ($module, $fname) = @_;
+    my $error_output = 'unittest_temperroutput';
+    my $output = 'unittest_tempoutput';
+    my $desired = $fname . '.correct';
+    my $cmd = undef;
+    my $endlines = 1;
+
+    # !!! FIXME: this should go elsewhere.
+    if ($module eq 'preprocessor') {
+        $cmd = "$binpath/mojoshader-compiler -P '$fname' -o '$output'";
+    } else {
+        return (0, "Don't know how to do this module type");
+    }
+    $cmd .= " 2>$error_output 1>/dev/null";
+
+    print("$cmd\n") if ($GPrintCmds);
+
+    system($cmd);
+    unlink($output) if (-f $output);
+
+    if (not -f $error_output) { return (0, "Didn't get any error output"); }
+
+    my @retval = compare_files($desired, $error_output, $endlines);
+    unlink($error_output);
+    return @retval;
 };
 
 my $totaltests = 0;

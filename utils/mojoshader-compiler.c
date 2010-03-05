@@ -126,7 +126,7 @@ static int preprocess(const char *fname, const char *buf, int len,
         int i;
         for (i = 0; i < pd->error_count; i++)
         {
-            printf("%s:%d: ERROR: %s\n",
+            fprintf(stderr, "%s:%d: ERROR: %s\n",
                     pd->errors[i].filename ? pd->errors[i].filename : "???",
                     pd->errors[i].error_position,
                     pd->errors[i].error);
@@ -168,7 +168,7 @@ static int assemble(const char *fname, const char *buf, int len,
         int i;
         for (i = 0; i < pd->error_count; i++)
         {
-            printf("%s:%d: ERROR: %s\n",
+            fprintf(stderr, "%s:%d: ERROR: %s\n",
                     pd->errors[i].filename ? pd->errors[i].filename : "???",
                     pd->errors[i].error_position,
                     pd->errors[i].error);
