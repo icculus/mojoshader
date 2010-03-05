@@ -124,7 +124,9 @@ foreach (@modules) {
         my $d = "$module/$testtype";
         next if (not -d $d);  # no tests at the moment.
         opendir(TESTDIR, $d) || die("Failed to open dir '$d': $!\n");
-        print(" ... $module / $testtype ...\n");
+        my $subsection = " ... $module / $testtype ...\n";
+        print($subsection);
+        my $addedsubsection = 0;
         my $fname = readdir(TESTDIR);
         while (defined $fname) {
             my $isfail = 0;
@@ -153,7 +155,14 @@ foreach (@modules) {
             }
             my $output = "$result ${origfname}${reason}\n";
             print($output);
-            push(@fails, $output) if $isfail;
+
+            if ($isfail) {
+                if (!$addedsubsection) {
+                    $addedsubsection = 1;
+                    push(@fails, $subsection);
+                }
+                push(@fails, $output);
+            }
 
             $totaltests++;
         }
