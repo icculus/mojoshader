@@ -218,6 +218,7 @@ static int compile(const char *fname, const char *buf, int len,
 typedef enum
 {
     ACTION_UNKNOWN,
+    ACTION_VERSION,
     ACTION_PREPROCESS,
     ACTION_ASSEMBLE,
     ACTION_COMPILE,
@@ -262,6 +263,13 @@ int main(int argc, char **argv)
             if ((action != ACTION_UNKNOWN) && (action != ACTION_COMPILE))
                 fail("Multiple actions specified");
             action = ACTION_COMPILE;
+        } // else if
+
+        else if ((strcmp(arg, "-V") == 0) || (strcmp(arg, "--version") == 0))
+        {
+            if ((action != ACTION_UNKNOWN) && (action != ACTION_VERSION))
+                fail("Multiple actions specified");
+            action = ACTION_VERSION;
         } // else if
 
         else if (strcmp(arg, "-o") == 0)
@@ -316,6 +324,12 @@ int main(int argc, char **argv)
 
     if (action == ACTION_UNKNOWN)
         action = ACTION_ASSEMBLE;
+
+    if (action == ACTION_VERSION)
+    {
+        printf("mojoshader-compiler, changeset %s\n", MOJOSHADER_CHANGESET);
+        return 0;
+    } // if
 
     if (infile == NULL)
         fail("no input file specified");
