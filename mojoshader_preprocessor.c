@@ -44,13 +44,13 @@ typedef struct Context
     char failstr[256];
     int recursion_count;
     int asm_comments;
-    int file_macro_special;
-    int line_macro_special;
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
     Define *define_hashtable[256];
     Define *define_pool;
+    Define *file_macro;
+    Define *line_macro;
     StringCache *filename_cache;
     MOJOSHADER_includeOpen open_callback;
     MOJOSHADER_includeClose close_callback;
@@ -467,14 +467,17 @@ static int add_define(Context *ctx, const char *sym, const char *val,
 
 static void free_define(Context *ctx, Define *def)
 {
-    int i;
-    for (i = 0; i < def->paramcount; i++)
-        Free(ctx, (void *) def->parameters[i]);
-    Free(ctx, (void *) def->parameters);
-    Free(ctx, (void *) def->identifier);
-    Free(ctx, (void *) def->definition);
-    Free(ctx, (void *) def->original);
-    put_define(ctx, def);
+    if (def != NULL)
+    {
+        int i;
+        for (i = 0; i < def->paramcount; i++)
+            Free(ctx, (void *) def->parameters[i]);
+        Free(ctx, (void *) def->parameters);
+        Free(ctx, (void *) def->identifier);
+        Free(ctx, (void *) def->definition);
+        Free(ctx, (void *) def->original);
+        put_define(ctx, def);
+    } // if
 } // free_define
 
 
@@ -504,6 +507,37 @@ static int remove_define(Context *ctx, const char *sym)
 
 static const Define *find_define(Context *ctx, const char *sym)
 {
+    if ( (ctx->file_macro) && (strcmp(sym, "__FILE__") == 0) )
+    {
+        Free(ctx, (char *) ctx->file_macro->definition);
+        const IncludeState *state = ctx->include_stack;
+        const char *fname = state ? state->filename : "";
+        const size_t len = strlen(fname) + 2;
+        char *str = (char *) Malloc(ctx, len);
+        if (!str)
+            return NULL;
+        str[0] = '\"';
+        memcpy(str + 1, fname, len - 2);
+        str[len - 1] = '\"';
+        ctx->file_macro->definition = str;
+        return ctx->file_macro;
+    } // if
+
+    else if ( (ctx->line_macro) && (strcmp(sym, "__LINE__") == 0) )
+    {
+        Free(ctx, (char *) ctx->line_macro->definition);
+        const IncludeState *state = ctx->include_stack;
+        const size_t bufsize = 32;
+        char *str = (char *) Malloc(ctx, bufsize);
+        if (!str)
+            return 0;
+
+        const size_t len = snprintf(str, bufsize, "%u", state->line);
+        assert(len < bufsize);
+        ctx->line_macro->definition = str;
+        return ctx->line_macro;
+    } // else
+
     const uint8 hash = hash_define(sym);
     Define *bucket = ctx->define_hashtable[hash];
     while (bucket)
@@ -668,19 +702,24 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->open_callback = open_callback;
     ctx->close_callback = close_callback;
     ctx->asm_comments = asm_comments;
-    ctx->file_macro_special = 1;
-    ctx->line_macro_special = 1;
+
     ctx->filename_cache = stringcache_create(m, f, d);
-    if (ctx->filename_cache == 0)
-    {
-        f(ctx, d);
-        return NULL;
-    } // if
+    okay = ((okay) && (ctx->filename_cache != NULL));
+
+    ctx->file_macro = get_define(ctx);
+    okay = ((okay) && (ctx->file_macro != NULL));
+    if ((okay) && (ctx->file_macro))
+        okay = ((ctx->file_macro->identifier = StrDup(ctx, "__FILE__")) != 0);
+
+    ctx->line_macro = get_define(ctx);
+    okay = ((okay) && (ctx->line_macro != NULL));
+    if ((okay) && (ctx->line_macro))
+        okay = ((ctx->line_macro->identifier = StrDup(ctx, "__LINE__")) != 0);
 
     // let the usual preprocessor parser sort these out.
     char *define_include = NULL;
     unsigned int define_include_len = 0;
-    if (define_count > 0)
+    if ((okay) && (define_count > 0))
     {
         for (i = 0; i < define_count; i++)
         {
@@ -737,6 +776,8 @@ void preprocessor_end(Preprocessor *_ctx)
     if (ctx->filename_cache != NULL)
         stringcache_destroy(ctx->filename_cache);
 
+    free_define(ctx, ctx->file_macro);
+    free_define(ctx, ctx->line_macro);
     free_define_pool(ctx);
     free_conditional_pool(ctx);
     free_include_pool(ctx);
@@ -994,15 +1035,21 @@ static void handle_pp_define(Context *ctx)
     // Don't treat these symbols as special anymore if they get (re)#defined.
     if (strcmp(sym, "__FILE__") == 0)
     {
-        if (ctx->file_macro_special)
+        if (ctx->file_macro)
+        {
             failf(ctx, "'%s' already defined", sym); // !!! FIXME: warning?
-        ctx->file_macro_special = 0;
+            free_define(ctx, ctx->file_macro);
+            ctx->file_macro = NULL;
+        } // if
     } // if
     else if (strcmp(sym, "__LINE__") == 0)
     {
-        if (ctx->line_macro_special)
+        if (ctx->line_macro)
+        {
             failf(ctx, "'%s' already defined", sym); // !!! FIXME: warning?
-        ctx->line_macro_special = 0;
+            free_define(ctx, ctx->line_macro);
+            ctx->line_macro = NULL;
+        } // if
     } // else if
 
     // #define a(b) is different than #define a (b)    :(
@@ -1196,15 +1243,21 @@ static void handle_pp_undef(Context *ctx)
 
     if (strcmp(sym, "__FILE__") == 0)
     {
-        if ((ctx->file_macro_special) && (find_define(ctx, sym) == NULL))
+        if (ctx->file_macro)
+        {
             failf(ctx, "undefining \"%s\"", sym);  // !!! FIXME: should be warning.
-        ctx->file_macro_special = 0;
+            free_define(ctx, ctx->file_macro);
+            ctx->file_macro = NULL;
+        } // if
     } // if
     else if (strcmp(sym, "__LINE__") == 0)
     {
-        if ((ctx->line_macro_special) && (find_define(ctx, sym) == NULL))
+        if (ctx->line_macro)
+        {
             failf(ctx, "undefining \"%s\"", sym);  // !!! FIXME: should be warning.
-        ctx->line_macro_special = 0;
+            free_define(ctx, ctx->line_macro);
+            ctx->line_macro = NULL;
+        } // if
     } // if
 
     remove_define(ctx, sym);
@@ -1576,40 +1629,6 @@ static int handle_pp_identifier(Context *ctx)
     char *sym = (char *) alloca(state->tokenlen+1);
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
-
-    if ( (ctx->file_macro_special) && (strcmp(sym, "__FILE__") == 0) )
-    {
-        const size_t len = strlen(fname) + 2;
-        char *str = (char *) Malloc(ctx, len);
-        if (!str)
-            return 0;
-        str[0] = '\"';
-        memcpy(str + 1, fname, len - 2);
-        str[len - 1] = '\"';
-        if (!push_source(ctx,fname,str,len,line,close_define_include))
-        {
-            Free(ctx, str);
-            return 0;
-        } // if
-        return 1;
-    } // if
-
-    else if ( (ctx->line_macro_special) && (strcmp(sym, "__LINE__") == 0) )
-    {
-        const size_t bufsize = 32;
-        char *str = (char *) Malloc(ctx, bufsize);
-        if (!str)
-            return 0;
-
-        const size_t len = snprintf(str, bufsize, "%u", line);
-        assert(len < bufsize);
-        if (!push_source(ctx,fname,str,len,line,close_define_include))
-        {
-            Free(ctx, str);
-            return 0;
-        } // if
-        return 1;
-    } // else
 
     // Is this identifier #defined?
     const Define *def = find_define(ctx, sym);
