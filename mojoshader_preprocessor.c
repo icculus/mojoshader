@@ -1503,7 +1503,8 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
             else if (t == TOKEN_IDENTIFIER)
             {
                 const Define *def = find_define_by_token(ctx);
-                if (def)
+                // don't replace macros with arguments so they replace correctly, later.
+                if ((def) && (def->paramcount == 0))
                 {
                     expr = def->definition;
                     exprlen = strlen(def->definition);
