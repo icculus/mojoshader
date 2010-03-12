@@ -1564,7 +1564,7 @@ handle_macro_args_failed:
 
 static int handle_pp_identifier(Context *ctx)
 {
-    if (ctx->recursion_count++ >= 256)  // !!! FIXME: necessary now?
+    if (ctx->recursion_count++ >= 256)  // !!! FIXME: gcc can figure this out.
     {
         fail(ctx, "Recursing macros");
         return 0;
