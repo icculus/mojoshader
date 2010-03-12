@@ -461,6 +461,7 @@ typedef struct Define
 {
     const char *identifier;
     const char *definition;
+    const char *original;
     const char **parameters;
     int paramcount;
     struct Define *next;
@@ -476,14 +477,12 @@ typedef struct IncludeState
     Token tokenval;
     int pushedback;
     const unsigned char *lexer_marker;
-    int is_macro;
     int report_whitespace;
     int asm_comments;
     unsigned int orig_length;
     unsigned int bytes_left;
     unsigned int line;
     Conditional *conditional_stack;
-    Define *defines;  // temp defines for macros with parameters.
     MOJOSHADER_includeClose close_callback;
     struct IncludeState *next;
 } IncludeState;

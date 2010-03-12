@@ -455,6 +455,7 @@ static int add_define(Context *ctx, const char *sym, const char *val,
         return 0;
 
     bucket->definition = val;
+    bucket->original = NULL;
     bucket->identifier = sym;
     bucket->parameters = (const char **) parameters;
     bucket->paramcount = paramcount;
@@ -472,6 +473,7 @@ static void free_define(Context *ctx, Define *def)
     Free(ctx, (void *) def->parameters);
     Free(ctx, (void *) def->identifier);
     Free(ctx, (void *) def->definition);
+    Free(ctx, (void *) def->original);
     put_define(ctx, def);
 } // free_define
 
@@ -525,14 +527,15 @@ static const Define *find_define_by_token(Context *ctx)
 } // find_define_by_token
 
 
-static const Define *find_macro_arg(const IncludeState *state)
+static const Define *find_macro_arg(const IncludeState *state,
+                                    const Define *defines)
 {
     const Define *def = NULL;
     char *sym = (char *) alloca(state->tokenlen + 1);
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
 
-    for (def = state->defines; def != NULL; def = def->next)
+    for (def = defines; def != NULL; def = def->next)
     {
         assert(def->parameters == NULL);  // args can't have args!
         assert(def->paramcount == 0);  // args can't have args!
@@ -563,8 +566,7 @@ static void put_all_defines(Context *ctx)
 
 static int push_source(Context *ctx, const char *fname, const char *source,
                        unsigned int srclen, unsigned int linenum,
-                       MOJOSHADER_includeClose close_callback, Define *defs,
-                       const int is_macro)
+                       MOJOSHADER_includeClose close_callback)
 {
     if (srclen == 0)
         return 1;  // nothing to do: just pretend you did it.
@@ -592,10 +594,8 @@ static int push_source(Context *ctx, const char *fname, const char *source,
     state->orig_length = srclen;
     state->bytes_left = srclen;
     state->line = linenum;
-    state->defines = defs;
     state->next = ctx->include_stack;
     state->asm_comments = ctx->asm_comments;
-    state->is_macro = is_macro;
 
     print_debug_lexing_position(state);
 
@@ -625,17 +625,6 @@ static void pop_source(Context *ctx)
         Conditional *next = cond->next;
         put_conditional(ctx, cond);
         cond = next;
-    } // while
-
-    Define *def = state->defines;
-    while (def)
-    {
-        Define *next = def->next;
-        def->identifier = NULL;  // we reuse an allocation here, don't free!
-        assert(def->parameters == NULL);
-        assert(def->paramcount == 0);
-        free_define(ctx, def);
-        def = next;
     } // while
 
     ctx->include_stack = state->next;
@@ -715,14 +704,13 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
         } // else
     } // if
 
-    if ((okay) && (!push_source(ctx,fname,source,sourcelen,1,NULL,NULL,0)))
+    if ((okay) && (!push_source(ctx,fname,source,sourcelen,1,NULL)))
         okay = 0;
 
     if ((okay) && (define_include != NULL))
     {
         okay = push_source(ctx, "<predefined macros>", define_include,
-                           define_include_len, 1, close_define_include,
-                           NULL, 0);
+                           define_include_len, 1, close_define_include);
     } // if
 
     if (!okay)
@@ -872,7 +860,7 @@ static void handle_pp_include(Context *ctx)
     } // if
 
     MOJOSHADER_includeClose callback = ctx->close_callback;
-    if (!push_source(ctx, filename, newdata, newbytes, 1, callback, NULL, 0))
+    if (!push_source(ctx, filename, newdata, newbytes, 1, callback))
     {
         assert(ctx->out_of_memory);
         ctx->close_callback(newdata, ctx->malloc, ctx->free, ctx->malloc_data);
@@ -955,7 +943,7 @@ static void handle_pp_error(Context *ctx)
                 done = 1;
                 break;
 
-            case ' ':
+            case ((Token) ' '):
                 if (!avail)
                     break;
                 *(ptr++) = ' ';
@@ -1280,29 +1268,317 @@ static inline void handle_pp_ifndef(Context *ctx)
 } // handle_pp_ifndef
 
 
+static int replace_and_push_macro(Context *ctx, const Define *def,
+                                  const Define *params)
+{
+    char *final = NULL;
+    MOJOSHADER_malloc m = ctx->malloc;
+    MOJOSHADER_free f = ctx->free;
+    void *d = ctx->malloc_data;
+
+    // We push the #define and lex it, building a buffer with argument
+    //  replacement, stringification, and concatenation.
+    IncludeState *state = ctx->include_stack;
+    if (!push_source(ctx, state->filename, def->definition,
+                     strlen(def->definition), state->line, NULL))
+        return 0;
+
+    Buffer buffer;
+    init_buffer(&buffer);
+
+    state = ctx->include_stack;
+    while (lexer(state) != TOKEN_EOI)
+    {
+        int wantorig = 0;
+        const Define *arg = NULL;
+
+        // put a space between tokens if we're not concatenating.
+        if (state->tokenval == TOKEN_HASHHASH)  // concatenate?
+        {
+            wantorig = 1;
+            lexer(state);
+            assert(state->tokenval != TOKEN_EOI);
+        } // if
+        else
+        {
+            if (buffer.total_bytes > 0)
+            {
+                if (!add_to_buffer(&buffer, " ", 1, m, d))
+                    goto replace_and_push_macro_failed;
+            } // if
+        } // else
+
+        const char *data = state->token;
+        unsigned int len = state->tokenlen;
+
+        if (state->tokenval == TOKEN_HASH)  // stringify?
+        {
+            lexer(state);
+            assert(state->tokenval != TOKEN_EOI);  // we checked for this.
+
+            if (!add_to_buffer(&buffer, "\"", 1, m, d))
+                goto replace_and_push_macro_failed;
+
+            if (state->tokenval == TOKEN_IDENTIFIER)
+            {
+                arg = find_macro_arg(state, params);
+                if (arg != NULL)
+                {
+                    data = arg->original;
+                    len = strlen(data);
+                } // if
+            } // if
+
+            if (!add_to_buffer(&buffer, data, len, m, d))
+                goto replace_and_push_macro_failed;
+
+            if (!add_to_buffer(&buffer, "\"", 1, m, d))
+                goto replace_and_push_macro_failed;
+
+            continue;
+        } // if
+
+        if (state->tokenval == TOKEN_IDENTIFIER)
+        {
+            arg = find_macro_arg(state, params);
+            if (arg != NULL)
+            {
+                if (!wantorig)
+                {
+                    wantorig = (lexer(state) == TOKEN_HASHHASH);
+                    pushback(state);
+                } // if
+                data = wantorig ? arg->original : arg->definition;
+                len = strlen(data);
+            } // if
+        } // if
+
+        if (!add_to_buffer(&buffer, data, len, m, d))
+            goto replace_and_push_macro_failed;
+    } // while
+
+    final = flatten_buffer(&buffer, m, d);
+    if (!final)
+    {
+        out_of_memory(ctx);
+        goto replace_and_push_macro_failed;
+    } // if
+
+    free_buffer(&buffer, f, d);
+    pop_source(ctx);  // ditch the macro.
+    state = ctx->include_stack;
+    if (!push_source(ctx, state->filename, final, strlen(final), state->line,
+                     close_define_include))
+    {
+        Free(ctx, final);
+        return 0;
+    } // if
+
+    return 1;
+
+replace_and_push_macro_failed:
+    pop_source(ctx);
+    free_buffer(&buffer, f, d);
+    return 0;
+} // replace_and_push_macro
+
+
+static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
+{
+    int retval = 0;
+    MOJOSHADER_malloc m = ctx->malloc;
+    MOJOSHADER_free f = ctx->free;
+    void *d = ctx->malloc_data;
+    IncludeState *state = ctx->include_stack;
+    Define *params = NULL;
+    const int expected = (def->paramcount < 0) ? 0 : def->paramcount;
+    int saw_params = 0;
+    IncludeState saved;  // can't pushback, we need the original token.
+    memcpy(&saved, state, sizeof (IncludeState));
+    if (lexer(state) != ((Token) '('))
+    {
+        memcpy(state, &saved, sizeof (IncludeState));
+        goto handle_macro_args_failed;  // gcc abandons replacement, too.
+    } // if
+
+    state->report_whitespace = 1;
+
+    int void_call = 0;
+    int paren = 1;
+    while (paren > 0)
+    {
+        Buffer buffer;
+        Buffer origbuffer;
+        init_buffer(&buffer);
+        init_buffer(&origbuffer);
+
+        Token t = lexer(state);
+
+        assert(!void_call);
+
+        while (1)
+        {
+            const char *origexpr = state->token;
+            unsigned int origexprlen = state->tokenlen;
+            const char *expr = state->token;
+            unsigned int exprlen = state->tokenlen;
+
+            if (t == ((Token) '('))
+                paren++;
+
+            else if (t == ((Token) ')'))
+            {
+                paren--;
+                if (paren < 1)  // end of macro?
+                    break;
+            } // else if
+
+            else if (t == ((Token) ','))
+            {
+                if (paren == 1)  // new macro arg?
+                    break;
+            } // else if
+
+            else if (t == ((Token) ' '))
+            {
+                // don't add whitespace to the start, so we recognize
+                //  void calls correctly.
+                origexpr = expr = " ";
+                origexprlen = (buffer.total_bytes == 0) ? 0 : 1;
+            } // else if
+
+            else if (t == TOKEN_IDENTIFIER)
+            {
+                const Define *def = find_define_by_token(ctx);
+                if (def)
+                {
+                    expr = def->definition;
+                    exprlen = strlen(def->definition);
+                } // if
+            } // else if
+
+            else if ((t == TOKEN_INCOMPLETE_COMMENT) || (t == TOKEN_EOI))
+            {
+                pushback(state);
+                fail(ctx, "Unterminated macro list");
+                goto handle_macro_args_failed;
+            } // else if
+
+            assert(expr != NULL);
+
+            if (!add_to_buffer(&buffer, expr, exprlen, m, d))
+            {
+                out_of_memory(ctx);
+                goto handle_macro_args_failed;
+            } // if
+
+            if (!add_to_buffer(&origbuffer, origexpr, origexprlen, m, d))
+            {
+                out_of_memory(ctx);
+                goto handle_macro_args_failed;
+            } // if
+
+            t = lexer(state);
+        } // while
+
+        if (buffer.total_bytes == 0)
+            void_call = ((saw_params == 0) && (paren == 0));
+
+        if (saw_params < expected)
+        {
+            char *origdefinition = flatten_buffer(&origbuffer, m, d);
+            char *definition = flatten_buffer(&buffer, m, d);
+            Define *p = get_define(ctx);
+            if ((!origdefinition) || (!definition) || (!p))
+            {
+                Free(ctx, origdefinition);
+                Free(ctx, definition);
+                free_buffer(&origbuffer, f, d);
+                free_buffer(&buffer, f, d);
+                free_define(ctx, p);
+                goto handle_macro_args_failed;
+            } // if
+
+            // trim any whitespace from the end of the string...
+            int i;
+            for (i = (int) buffer.total_bytes - 1; i >= 0; i--)
+            {
+                if (definition[i] == ' ')
+                    definition[i] = '\0';
+                else
+                    break;
+            } // for
+
+            for (i = (int) origbuffer.total_bytes - 1; i >= 0; i--)
+            {
+                if (origdefinition[i] == ' ')
+                    origdefinition[i] = '\0';
+                else
+                    break;
+            } // for
+
+            p->identifier = def->parameters[saw_params];
+            p->definition = definition;
+            p->original = origdefinition;
+            p->next = params;
+            params = p;
+        } // if
+
+        free_buffer(&buffer, f, d);
+        free_buffer(&origbuffer, f, d);
+        saw_params++;
+    } // while
+
+    assert(paren == 0);
+
+    // "a()" should match "#define a()" ...
+    if ((expected == 0) && (saw_params == 1) && (void_call))
+    {
+        assert(params == NULL);
+        saw_params = 0;
+    } // if
+
+    if (saw_params != expected)
+    {
+        failf(ctx, "macro '%s' passed %d arguments, but requires %d",
+              sym, saw_params, expected);
+        goto handle_macro_args_failed;
+    } // if
+
+    // this handles arg replacement and the '##' and '#' operators.
+    retval = replace_and_push_macro(ctx, def, params);
+
+handle_macro_args_failed:
+    while (params)
+    {
+        Define *next = params->next;
+        params->identifier = NULL;
+        free_define(ctx, params);
+        params = next;
+    } // while
+
+    state->report_whitespace = 0;
+    return retval;
+} // handle_macro_args
+
+
 static int handle_pp_identifier(Context *ctx)
 {
-    if (ctx->recursion_count++ >= 256)
+    if (ctx->recursion_count++ >= 256)  // !!! FIXME: necessary now?
     {
         fail(ctx, "Recursing macros");
         return 0;
     } // if
 
-    const char *fname = NULL;
-    const char *val = NULL;
-    size_t vallen = 0;
-    int is_macro = 0;
     IncludeState *state = ctx->include_stack;
+    const char *fname = state->filename;
+    const unsigned int line = state->line;
     char *sym = (char *) alloca(state->tokenlen+1);
     memcpy(sym, state->token, state->tokenlen);
     sym[state->tokenlen] = '\0';
 
-    Define *params = NULL;
-
     if ( (ctx->file_macro_special) && (strcmp(sym, "__FILE__") == 0) )
     {
-        const char *fname = state->filename;
-        const unsigned int line = state->line;
         const size_t len = strlen(fname) + 2;
         char *str = (char *) Malloc(ctx, len);
         if (!str)
@@ -1310,9 +1586,8 @@ static int handle_pp_identifier(Context *ctx)
         str[0] = '\"';
         memcpy(str + 1, fname, len - 2);
         str[len - 1] = '\"';
-        if (!push_source(ctx,fname,str,len,line,close_define_include,NULL,1))
+        if (!push_source(ctx,fname,str,len,line,close_define_include))
         {
-            assert(ctx->out_of_memory);
             Free(ctx, str);
             return 0;
         } // if
@@ -1321,8 +1596,6 @@ static int handle_pp_identifier(Context *ctx)
 
     else if ( (ctx->line_macro_special) && (strcmp(sym, "__LINE__") == 0) )
     {
-        const char *fname = state->filename;
-        const unsigned int line = state->line;
         const size_t bufsize = 32;
         char *str = (char *) Malloc(ctx, bufsize);
         if (!str)
@@ -1330,168 +1603,23 @@ static int handle_pp_identifier(Context *ctx)
 
         const size_t len = snprintf(str, bufsize, "%u", line);
         assert(len < bufsize);
-        if (!push_source(ctx,fname,str,len,line,close_define_include,NULL,1))
+        if (!push_source(ctx,fname,str,len,line,close_define_include))
         {
-            assert(ctx->out_of_memory);
             Free(ctx, str);
             return 0;
         } // if
         return 1;
     } // else
 
-    // IncludeState defines (macro args) take precedence over Context defines.
-    const Define *def = find_macro_arg(state);
+    // Is this identifier #defined?
+    const Define *def = find_define(ctx, sym);
     if (def == NULL)
-    {
-        def = find_define(ctx, sym);
-        if (def == NULL)
-            return 0;   // just send the token through unchanged.
+        return 0;   // just send the token through unchanged.
+    else if (def->paramcount != 0)
+        return handle_macro_args(ctx, sym, def);
 
-        is_macro = 1;
-
-        if (def->paramcount != 0)
-        {
-            MOJOSHADER_malloc m = ctx->malloc;
-            MOJOSHADER_free f = ctx->free;
-            void *d = ctx->malloc_data;
-            const int expected = (def->paramcount < 0) ? 0 : def->paramcount;
-            int saw_params = 0;
-            IncludeState saved;  // can't pushback, we need the original token.
-            memcpy(&saved, state, sizeof (IncludeState));
-            if (lexer(state) != ((Token) '('))
-            {
-                memcpy(state, &saved, sizeof (IncludeState));
-                return 0;  // gcc abandons replacement in this case, too.
-            } // if
-
-            int void_call = 0;
-            int paren = 1;
-            while (paren > 0)
-            {
-                Buffer buffer;
-                assert(!void_call);
-
-                init_buffer(&buffer);
-
-                while (1)
-                {
-                    const Token t = lexer(state);
-                    const char *expr = state->token;
-                    unsigned int exprlen = state->tokenlen;
-                    if (t == '(')
-                        paren++;
-
-                    else if (t == ')')
-                    {
-                        paren--;
-                        if (paren < 1)  // end of macro?
-                            break;
-                    } // else if
-
-                    else if (t == ',')
-                    {
-                        if (paren == 1)  // new macro arg?
-                            break;
-                    } // else if
-
-                    // see if a replacement is in order...
-                    // !!! FIXME: this fails if we get another macro with args:
-                    // !!! FIXME:  macro1(macro2(arg))
-                    else if (t == TOKEN_IDENTIFIER)
-                    {
-                        const Define *arg = NULL;
-                        if (state->is_macro)
-                            arg = find_macro_arg(state);
-                        if (arg == NULL)
-                            arg = find_define_by_token(ctx);
-                        if (arg)
-                        {
-                            expr = arg->definition;
-                            exprlen = strlen(arg->definition);
-                        } // if
-                    } // else if
-
-                    else if ((t == TOKEN_INCOMPLETE_COMMENT) || (t == TOKEN_EOI))
-                    {
-                        pushback(state);
-                        fail(ctx, "Unterminated macro list");
-                        free_buffer(&buffer, f, d);
-                        goto handle_pp_identifier_failed;
-                    } // else if
-
-                    assert(expr != NULL);
-
-                    if (!add_to_buffer(&buffer, expr, exprlen, m, d))
-                    {
-                        out_of_memory(ctx);
-                        free_buffer(&buffer, f, d);
-                        goto handle_pp_identifier_failed;
-                    } // if
-                } // while
-
-                if (buffer.total_bytes == 0)
-                    void_call = ((saw_params == 0) && (paren == 0));
-
-                if (saw_params < expected)
-                {
-                    Define *p = get_define(ctx);
-                    if (p == NULL)
-                        goto handle_pp_identifier_failed;
-
-                    p->next = params;
-                    params = p;
-
-                    char *definition = flatten_buffer(&buffer, m, d);
-                    free_buffer(&buffer, f, d);
-                    if (definition == NULL)
-                    {
-                        out_of_memory(ctx);
-                        goto handle_pp_identifier_failed;
-                    } // if
-                    p->identifier = def->parameters[saw_params];
-                    p->definition = definition;
-                } // if
-
-                saw_params++;
-            } // while
-            assert(paren == 0);  // make sure it's not negative.
-
-            // "a()" should match "#define a()" ...
-            if ((expected == 0) && (saw_params == 1) && (void_call))
-            {
-                assert(params == NULL);
-                saw_params = 0;
-            } // if
-
-            if (saw_params != expected)
-            {
-                failf(ctx, "macro '%s' passed %d arguments, but requires %d",
-                      sym, saw_params, expected);
-                goto handle_pp_identifier_failed;
-            } // if
-        } // if
-    } // if
-
-    val = def->definition;
-    vallen = strlen(val);
-    fname = state->filename;
-    if (!push_source(ctx,fname,val,vallen,state->line,NULL,params,is_macro))
-    {
-        assert(ctx->out_of_memory);
-        goto handle_pp_identifier_failed;
-    } // if
-
-    return 1;
-
-handle_pp_identifier_failed:
-    while (params)
-    {
-        Define *next = params->next;
-        params->identifier = NULL;
-        free_define(ctx, params);
-        params = next;
-    } // while
-    return 0;
+    const size_t deflen = strlen(def->definition);
+    return push_source(ctx, fname, def->definition, deflen, line, NULL);
 } // handle_pp_identifier
 
 
@@ -1903,111 +2031,6 @@ static void handle_pp_endif(Context *ctx)
 } // handle_pp_endif
 
 
-static void handle_pp_stringify(Context *ctx)
-{
-    IncludeState *state = ctx->include_stack;
-    const Define *def = NULL;
-
-    assert(state->is_macro);
-
-    if (lexer(state) == TOKEN_IDENTIFIER)
-        def = find_macro_arg(state);
-
-    if (def == NULL)
-    {
-        pushback(state);
-        fail(ctx, "'#' is not followed by a macro parameter");
-        return;  // we just fail(), drop the '#' token and continue on.
-    } // if
-
-    const size_t deflen = strlen(def->definition);
-    char *litstring = (char *) Malloc(ctx, deflen + 2);
-    if (!litstring)
-        return;
-
-    litstring[0] = '\"';
-    memcpy(litstring + 1, def->definition, deflen);
-    litstring[deflen + 1] = '\"';
-    const char *filename = state->filename;
-    push_source(ctx, filename, litstring, deflen + 2, state->line,
-                close_define_include, NULL, 0);
-} // handle_pp_stringify
-
-
-static int handle_pp_concat(Context *ctx)
-{
-    MOJOSHADER_malloc m = ctx->malloc;
-    MOJOSHADER_free f = ctx->free;
-    void *d = ctx->malloc_data;
-    IncludeState *state = ctx->include_stack;
-    Buffer buffer;
-    int glued = 0;
-    int rc = 0;
-    const Define *def = NULL;
-
-    assert(state->is_macro);
-
-    init_buffer(&buffer);
-
-    def = (state->tokenval == TOKEN_IDENTIFIER) ? find_macro_arg(state) : 0;
-    if (def)
-        rc = add_to_buffer(&buffer, def->definition, strlen(def->definition), m, d);
-    else
-        rc = add_to_buffer(&buffer, state->token, state->tokenlen, m, d);
-
-    while (rc)
-    {
-        IncludeState saved;  // can't just pushback; we need all the state.
-        memcpy(&saved, state, sizeof (IncludeState));
-        if (lexer(state) != TOKEN_HASHHASH)  // concat operator ("##")
-        {
-            memcpy(state, &saved, sizeof (IncludeState));
-            break;
-        } // if
-
-        lexer(state);  // step past ## token.
-
-        // we checked these things when parsing the macro.
-        assert(state->is_macro);
-        assert(state->tokenval != TOKEN_EOI);
-        assert(state->tokenval != ((Token) ' '));
-
-        def = (state->tokenval == TOKEN_IDENTIFIER) ? find_macro_arg(state) : 0;
-        if (def)
-            rc = add_to_buffer(&buffer, def->definition, strlen(def->definition), m, d);
-        else
-            rc = add_to_buffer(&buffer, state->token, state->tokenlen, m, d);
-
-        glued = 1;
-    } // while
-
-    if (!rc)
-    {
-        out_of_memory(ctx);
-        return 0;
-    } // if
-
-    if (glued)
-    {
-        char *combined = flatten_buffer(&buffer, m, d);
-        if (combined == NULL)
-        {
-            out_of_memory(ctx);
-            glued = 0;
-        } // if
-        else
-        {
-            const char *filename = state->filename;
-            push_source(ctx, filename, combined, buffer.total_bytes,
-                        state->line, close_define_include, NULL, 0);
-        } // else
-    } // if
-
-    free_buffer(&buffer, f, d);
-    return glued;
-} // handle_pp_concat
-
-
 static void unterminated_pp_condition(Context *ctx)
 {
     IncludeState *state = ctx->include_stack;
@@ -2150,19 +2173,6 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             handle_pp_undef(ctx);
             continue;  // will return at top of loop.
         } // else if
-
-        // stringify ("#") and concat ("##") only during macro replacement.
-        if (state->is_macro)
-        {
-            if (token == TOKEN_HASH)
-            {
-                handle_pp_stringify(ctx);
-                continue;
-            } // if
-
-            if (handle_pp_concat(ctx))
-                continue;
-        } // if
 
         if (token == TOKEN_IDENTIFIER)
         {
