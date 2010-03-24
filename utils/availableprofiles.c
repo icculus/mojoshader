@@ -43,8 +43,8 @@ int main(int argc, char **argv)
 
     #if 0
     printf("MojoShader availableprofile\n");
-    printf("Compiled against version %d\n", MOJOSHADER_VERSION);
-    printf("Linked against version %d\n", MOJOSHADER_version());
+    printf("Compiled against changeset %s\n", MOJOSHADER_CHANGESET);
+    printf("Linked against changeset %s\n", MOJOSHADER_changeset());
     printf("\n");
     #endif
 

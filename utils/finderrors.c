@@ -176,8 +176,8 @@ static int do_dir(const char *dname, const char *profile)
 int main(int argc, char **argv)
 {
     //printf("MojoShader finderrors\n");
-    //printf("Compiled against version %d\n", MOJOSHADER_VERSION);
-    //printf("Linked against version %d\n", MOJOSHADER_version());
+    //printf("Compiled against changeset %s\n", MOJOSHADER_CHANGESET);
+    //printf("Linked against changeset %s\n", MOJOSHADER_changeset());
     //printf("\n");
 
     if (argc <= 2)
