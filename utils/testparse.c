@@ -54,7 +54,8 @@ static const char *shader_type(const MOJOSHADER_shaderType s)
 } // shader_type
 
 
-static int do_parse(const unsigned char *buf, const int len, const char *prof)
+static int do_parse(const char *fname, const unsigned char *buf,
+                    const int len, const char *prof)
 {
     const MOJOSHADER_parseData *pd;
     int retval = 0;
@@ -67,7 +68,7 @@ static int do_parse(const unsigned char *buf, const int len, const char *prof)
         for (i = 0; i < pd->error_count; i++)
         {
             printf("%s:%d: ERROR: %s\n",
-                    pd->errors[i].filename ? pd->errors[i].filename : "???",
+                    pd->errors[i].filename ? pd->errors[i].filename : fname,
                     pd->errors[i].error_position,
                     pd->errors[i].error);
         } // for
@@ -228,7 +229,7 @@ int main(int argc, char **argv)
                 unsigned char *buf = (unsigned char *) malloc(1000000);
                 int rc = fread(buf, 1, 1000000, io);
                 fclose(io);
-                if (!do_parse(buf, rc, profile))
+                if (!do_parse(argv[i], buf, rc, profile))
                     retval = 1;
                 free(buf);
             } // else
