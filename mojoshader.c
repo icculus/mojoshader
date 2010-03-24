@@ -6709,6 +6709,7 @@ static int parse_version_token(Context *ctx, const char *profilestr)
     else  // geometry shader? Bogus data?
     {
         fail(ctx, "Unsupported shader type or not a shader at all");
+        return -1;
     } // else
 
     ctx->major_ver = major;
@@ -7675,6 +7676,15 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     // Version token always comes first.
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
     rc = parse_version_token(ctx, profile);
+
+    // drop out now if this definitely isn't bytecode. Saves lots of
+    //  meaningless errors flooding through.
+    if (rc < 0)
+    {
+        retval = build_parsedata(ctx);
+        destroy_context(ctx);
+        return retval;
+    } // if
 
     if ( ((uint32) rc) > ctx->tokencount )
     {
