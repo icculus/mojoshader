@@ -1593,7 +1593,7 @@ static void update_enabled_arrays(void)
     // Enable/disable vertex arrays to match our needs.
     // this happens to work in both ARB1 and GLSL, but if something alien
     //  shows up, we'll have to split these into profile*() functions.
-    for (i = 0; i <= ctx->max_attrs; i++)
+    for (i = 0; i < ctx->max_attrs; i++)
     {
         const int want = (const int) ctx->want_attr[i];
         const int have = (const int) ctx->have_attr[i];
@@ -1607,7 +1607,7 @@ static void update_enabled_arrays(void)
         } // if
 
         if (want)
-            highest_enabled = i;
+            highest_enabled = i + 1;
     } // for
 
     ctx->max_attrs = highest_enabled;  // trim unneeded iterations next time.
@@ -1801,8 +1801,8 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 
     // flag this array as in use, so we can enable it later.
     ctx->want_attr[gl_index] = 1;
-    if (ctx->max_attrs < gl_index)
-        ctx->max_attrs = gl_index;
+    if (ctx->max_attrs < (gl_index + 1))
+        ctx->max_attrs = gl_index + 1;
 } // MOJOSHADER_glSetVertexAttribute
 
 
