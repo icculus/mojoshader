@@ -11,14 +11,20 @@
 #include "mojoshader.h"
 #include "SDL.h"
 
+static void *lookup(const char *fnname, void *unused)
+{
+    (void) unused;
+    return SDL_GL_GetProcAddress(fnname);
+} // lookup
+
 static int check_available(void)
 {
     const char **avail = NULL;
-    int total = MOJOSHADER_glAvailableProfiles(SDL_GL_GetProcAddress, NULL, 0);
+    int total = MOJOSHADER_glAvailableProfiles(lookup, NULL, NULL, 0);
     if (total > 0)
     {
         avail = (const char **) alloca(sizeof (const char *) * total);
-        total = MOJOSHADER_glAvailableProfiles(SDL_GL_GetProcAddress, avail, total);
+        total = MOJOSHADER_glAvailableProfiles(lookup, NULL, avail, total);
     } // if
 
     if (total <= 0)

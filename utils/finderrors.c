@@ -18,6 +18,11 @@
 
 #if FINDERRORS_COMPILE_SHADERS
 #include "SDL.h"
+static void *lookup(const char *fnname, void *unused)
+{
+    (void) unused;
+    return SDL_GL_GetProcAddress(fnname);
+} // lookup
 #endif
 
 #ifdef _MSC_VER
@@ -192,9 +197,9 @@ int main(int argc, char **argv)
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
-        printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(SDL_GL_GetProcAddress));
+        printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(lookup, 0));
         MOJOSHADER_glContext *ctx;
-        ctx = MOJOSHADER_glCreateContext(profile, SDL_GL_GetProcAddress, 0, 0, 0);
+        ctx = MOJOSHADER_glCreateContext(profile, lookup, 0, 0, 0, 0);
         if (ctx == NULL)
         {
             printf("MOJOSHADER_glCreateContext() fail: %s\n", MOJOSHADER_glGetError());

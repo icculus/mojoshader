@@ -748,17 +748,18 @@ const char *MOJOSHADER_glGetError(void)
 } // MOJOSHADER_glGetError
 
 
-static void *loadsym(void *(*lookup)(const char *fn), const char *fn, int *ext)
+static void *loadsym(MOJOSHADER_glGetProcAddress lookup, void *d,
+                     const char *fn, int *ext)
 {
     void *retval = NULL;
     if (lookup != NULL)
     {
-        retval = lookup(fn);
+        retval = lookup(fn, d);
         if (retval == NULL)
         {
             char arbfn[64];
             snprintf(arbfn, sizeof (arbfn), "%sARB", fn);
-            retval = lookup(arbfn);
+            retval = lookup(arbfn, d);
         } // if
     } // if
 
@@ -768,11 +769,11 @@ static void *loadsym(void *(*lookup)(const char *fn), const char *fn, int *ext)
     return retval;
 } // loadsym
 
-static void lookup_entry_points(void *(*lookup)(const char *fnname))
+static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
 {
     #define DO_LOOKUP(ext, typ, fn) { \
         int exist = ctx->have_##ext; \
-        ctx->fn = (typ) loadsym(lookup, #fn, &exist); \
+        ctx->fn = (typ) loadsym(lookup, d, #fn, &exist); \
         ctx->have_##ext = exist; \
     }
 
@@ -875,7 +876,7 @@ static int glsl_version_atleast(int maj, int min)
 #endif
 
 
-static void load_extensions(void *(*lookup)(const char *fnname))
+static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
 {
     const char *extlist = NULL;
 
@@ -894,7 +895,7 @@ static void load_extensions(void *(*lookup)(const char *fnname))
     ctx->have_GL_ARB_half_float_vertex = 1;
     ctx->have_GL_OES_vertex_half_float = 1;
 
-    lookup_entry_points(lookup);
+    lookup_entry_points(lookup, d);
 
     if (!ctx->have_base_opengl)
         set_error("missing basic OpenGL entry points");
@@ -1034,7 +1035,7 @@ static const char *profile_priorities[] = {
 #endif
 };
 
-int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
+int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
                                    const char **profs, const int size)
 {
     int retval = 0;
@@ -1043,7 +1044,7 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
 
     ctx = &_ctx;
     memset(ctx, '\0', sizeof (MOJOSHADER_glContext));
-    load_extensions(lookup);
+    load_extensions(lookup, d);
 
     if (ctx->have_base_opengl)
     {
@@ -1065,10 +1066,10 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
 } // MOJOSHADER_glAvailableProfiles
 
 
-const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
+const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress gpa, void *d)
 {
     const char *prof[STATICARRAYLEN(profile_priorities)];
-    if (MOJOSHADER_glAvailableProfiles(lookup, prof, STATICARRAYLEN(prof)) <= 0)
+    if (MOJOSHADER_glAvailableProfiles(gpa, d, prof, STATICARRAYLEN(prof)) <= 0)
     {
         set_error("no profiles available");
         return NULL;
@@ -1079,9 +1080,10 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname))
 
 
 MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
-                                        void *(*lookup)(const char *fnname),
+                                        MOJOSHADER_glGetProcAddress lookup,
+                                        void *lookup_d,
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                        void *d)
+                                        void *malloc_d)
 {
     MOJOSHADER_glContext *retval = NULL;
     MOJOSHADER_glContext *current_ctx = ctx;
@@ -1091,7 +1093,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
 
-    ctx = (MOJOSHADER_glContext *) m(sizeof (MOJOSHADER_glContext), d);
+    ctx = (MOJOSHADER_glContext *) m(sizeof (MOJOSHADER_glContext), malloc_d);
     if (ctx == NULL)
     {
         set_error("out of memory");
@@ -1101,10 +1103,10 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     memset(ctx, '\0', sizeof (MOJOSHADER_glContext));
     ctx->malloc_fn = m;
     ctx->free_fn = f;
-    ctx->malloc_data = d;
+    ctx->malloc_data = malloc_d;
     snprintf(ctx->profile, sizeof (ctx->profile), "%s", profile);
 
-    load_extensions(lookup);
+    load_extensions(lookup, lookup_d);
     if (!valid_profile(profile))
         goto init_fail;
 
@@ -1184,7 +1186,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 
 init_fail:
     if (ctx != NULL)
-        f(ctx, d);
+        f(ctx, malloc_d);
     ctx = current_ctx;
     return NULL;
 } // MOJOSHADER_glCreateContext
@@ -1909,7 +1911,7 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
     update_enabled_arrays();  // disables all vertex arrays.
-    lookup_entry_points(NULL);
+    lookup_entry_points(NULL, NULL);
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_glDestroyContext

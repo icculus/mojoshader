@@ -885,6 +885,27 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
 /* OpenGL interface... */
 
 /*
+ * Signature for function lookup callbacks. MojoShader will call a function
+ *  you provide to get OpenGL entry points (both standard functions and
+ *  extensions). Through this, MojoShader never links directly to OpenGL,
+ *  but relies on you to provide the implementation. This means you can
+ *  swap in different drivers, or hook functions (log every GL call MojoShader
+ *  makes, etc).
+ *
+ * (fnname) is the function name we want the address for ("glBegin" or
+ *  whatever. (data) is a void pointer you provide, if this callback needs
+ *  extra information. If you don't need it, you may specify NULL.
+ *
+ * Return the entry point on success, NULL if it couldn't be found.
+ *  Note that this could ask for standard entry points like glEnable(), or
+ *  extensions like glProgramLocalParameterI4ivNV(), so you might need
+ *  to check two places to find the desired entry point, depending on your
+ *  platform (Windows might need to look in OpenGL32.dll and use WGL, etc).
+ */
+typedef void *(*MOJOSHADER_glGetProcAddress)(const char *fnname, void *data);
+
+
+/*
  * "Contexts" map to OpenGL contexts...you need one per window, or whatever,
  *  and need to inform MojoShader when you make a new one current.
  *
@@ -913,9 +934,9 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *
  * You can only call this AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
- *  through the callback you supply. The lookup function is neither stored nor
- *  used by MojoShader after this function returns, nor are the functions it
- *  might look up.
+ *  through the callback you supply, via (lookup) and (d). The lookup function
+ *  is neither stored nor used by MojoShader after this function returns, nor
+ *  are the functions it might look up.
  *
  * You should not free any strings returned from this function; they are
  *  pointers to internal, probably static, memory.
@@ -924,7 +945,7 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
+int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
                                    const char **profs, const int size);
 
 
@@ -933,9 +954,9 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
  *
  * You can only call this AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
- *  through the callback you supply. The lookup function is neither stored nor
- *  used by MojoShader after this function returns, nor are the functions it
- *  might look up.
+ *  through the callback you supply via (lookup) and (d). The lookup function
+ *  is neither stored nor used by MojoShader after this function returns, nor
+ *  are the functions it might look up.
  *
  * Returns the name of the "best" profile on success, NULL if none of the
  *  available profiles will work on this system. "Best" is a relative term,
@@ -950,7 +971,7 @@ int MOJOSHADER_glAvailableProfiles(void *(*lookup)(const char *fnname),
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname));
+const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup, void *d);
 
 
 /*
@@ -960,23 +981,26 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname));
  *
  * You must call this once AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
- *  through the callback you supply, after which it may call them at any time
- *  up until you call MOJOSHADER_glDestroyContext(). The lookup function is
- *  neither stored nor used by MojoShader after this function returns.
+ *  through the callback you supply via (lookup) and (lookup_d), after which
+ *  it may call them at any time up until you call
+ *  MOJOSHADER_glDestroyContext(). The lookup function is neither stored nor
+ *  used by MojoShader after this function returns.
  *
  * (profile) is an OpenGL-specific MojoShader profile, which decides how
  *  Direct3D bytecode shaders get turned into OpenGL programs, and how they
  *  are fed to the GL.
  *
  * (lookup) is a callback that is used to load GL entry points. This callback
- *  has to look up base GL functions and extension entry points.
+ *  has to look up base GL functions and extension entry points. The pointer
+ *  you supply in (lookup_d) is passed as-is to the callback.
  *
  * As MojoShader requires some memory to be allocated, you may provide a
  *  custom allocator to this function, which will be used to allocate/free
  *  memory. They function just like malloc() and free(). We do not use
  *  realloc(). If you don't care, pass NULL in for the allocator functions.
  *  If your allocator needs instance-specific data, you may supply it with the
- *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
  *
  * Returns a new context on success, NULL on error. If you get a new context,
  *  you need to make it current before using it with
@@ -988,9 +1012,10 @@ const char *MOJOSHADER_glBestProfile(void *(*lookup)(const char *fnname));
  *  thread that created the GL context.
  */
 MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
-                                        void *(*lookup)(const char *fnname),
+                                        MOJOSHADER_glGetProcAddress lookup,
+                                        void *lookup_d,
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                        void *d);
+                                        void *malloc_d);
 
 /*
  * You must call this before using the context that you got from

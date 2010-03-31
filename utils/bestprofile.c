@@ -11,6 +11,12 @@
 #include "mojoshader.h"
 #include "SDL.h"
 
+static void *lookup(const char *fnname, void *unused)
+{
+    (void) unused;
+    return SDL_GL_GetProcAddress(fnname);
+} // lookup
+
 int main(int argc, char **argv)
 {
     int retval = 1;
@@ -31,9 +37,9 @@ int main(int argc, char **argv)
             fprintf(stderr, "SDL_SetVideoMode() error: %s\n", SDL_GetError());
         else
         {
-            const char *best = MOJOSHADER_glBestProfile(SDL_GL_GetProcAddress);
+            const char *best = MOJOSHADER_glBestProfile(lookup, NULL);
             MOJOSHADER_glContext *ctx;
-            ctx = MOJOSHADER_glCreateContext(best, SDL_GL_GetProcAddress, 0, 0, 0);
+            ctx = MOJOSHADER_glCreateContext(best, lookup, 0, 0, 0, 0);
             if (ctx == NULL)
                 printf("MOJOSHADER_glCreateContext() fail: %s\n", MOJOSHADER_glGetError());
             else
