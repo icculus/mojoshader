@@ -1585,6 +1585,35 @@ link_program_fail:
 } // MOJOSHADER_glLinkProgram
 
 
+static void update_enabled_arrays(void)
+{
+    int highest_enabled = 0;
+    int i;
+
+    // Enable/disable vertex arrays to match our needs.
+    // this happens to work in both ARB1 and GLSL, but if something alien
+    //  shows up, we'll have to split these into profile*() functions.
+    for (i = 0; i <= ctx->max_attrs; i++)
+    {
+        const int want = (const int) ctx->want_attr[i];
+        const int have = (const int) ctx->have_attr[i];
+        if (want != have)
+        {
+            if (want)
+                ctx->glEnableVertexAttribArray(i);
+            else
+                ctx->glDisableVertexAttribArray(i);
+            ctx->have_attr[i] = ctx->want_attr[i];
+        } // if
+
+        if (want)
+            highest_enabled = i;
+    } // for
+
+    ctx->max_attrs = highest_enabled;  // trim unneeded iterations next time.
+} // update_enabled_arrays
+
+
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
     GLuint handle = 0;
@@ -1599,6 +1628,12 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
     } // if
 
     memset(ctx->want_attr, '\0', sizeof (ctx->want_attr[0]) * ctx->max_attrs);
+
+    // If no program bound, disable all arrays, in case we're switching to
+    //  fixed function pipeline. Otherwise, we try to minimize state changes
+    //  by toggling just the changed set of needed arrays in ProgramReady().
+    if (program == NULL)
+        update_enabled_arrays();
 
     ctx->profileUseProgramObject(program);
     program_unref(ctx->bound_program);
@@ -1771,35 +1806,6 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 } // MOJOSHADER_glSetVertexAttribute
 
 
-static void update_enabled_arrays(void)
-{
-    int highest_enabled = 0;
-    int i;
-
-    // Enable/disable vertex arrays to match our needs.
-    // this happens to work in both ARB1 and GLSL, but if something alien
-    //  shows up, we'll have to split these into profile*() functions.
-    for (i = 0; i <= ctx->max_attrs; i++)
-    {
-        const int want = (const int) ctx->want_attr[i];
-        const int have = (const int) ctx->have_attr[i];
-        if (want != have)
-        {
-            if (want)
-                ctx->glEnableVertexAttribArray(i);
-            else
-                ctx->glDisableVertexAttribArray(i);
-            ctx->have_attr[i] = ctx->want_attr[i];
-        } // if
-
-        if (want)
-            highest_enabled = i;
-    } // for
-
-    ctx->max_attrs = highest_enabled;  // trim unneeded iterations next time.
-} // update_enabled_arrays
-
-
 void MOJOSHADER_glProgramReady(void)
 {
     MOJOSHADER_glProgram *program = ctx->bound_program;
@@ -1910,7 +1916,6 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
-    update_enabled_arrays();  // disables all vertex arrays.
     lookup_entry_points(NULL, NULL);
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
