@@ -6,7 +6,7 @@
 #endif
 
 // Shader bytecode format is described at MSDN:
-//  http://msdn.microsoft.com/en-us/library/ms800307.aspx
+//  http://msdn.microsoft.com/en-us/library/ff569705.aspx
 
 #include <stdio.h>
 #include <string.h>
