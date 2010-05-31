@@ -212,6 +212,7 @@ ppdirective:
         PP "elif"       { RET(TOKEN_PP_ELIF); }
         PP "endif"      { RET(TOKEN_PP_ENDIF); }
         PP "error"      { RET(TOKEN_PP_ERROR); }
+        PP "pragma"     { RET(TOKEN_PP_PRAGMA); }
         WHITESPACE      { goto ppdirective; }
 
         ANY             {

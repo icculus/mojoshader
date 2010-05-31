@@ -44,6 +44,7 @@ typedef struct Context
     char failstr[256];
     int recursion_count;
     int asm_comments;
+    int parsing_pragma;
     Conditional *conditional_pool;
     IncludeState *include_stack;
     IncludeState *include_pool;
@@ -161,6 +162,7 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
         TOKENCASE(TOKEN_PP_ELIF);
         TOKENCASE(TOKEN_PP_ENDIF);
         TOKENCASE(TOKEN_PP_ERROR);
+        TOKENCASE(TOKEN_PP_PRAGMA);
         TOKENCASE(TOKEN_INCOMPLETE_COMMENT);
         TOKENCASE(TOKEN_BAD_CHARS);
         TOKENCASE(TOKEN_EOI);
@@ -2194,6 +2196,11 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
             continue;  // will return at top of loop.
         } // else if
 
+        else if (token == TOKEN_PP_PRAGMA)
+        {
+            ctx->parsing_pragma = 1;
+        } // else if
+
         if (token == TOKEN_IDENTIFIER)
         {
             if (handle_pp_identifier(ctx))
@@ -2203,8 +2210,13 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         else if (token == ((Token) '\n'))
         {
             print_debug_lexing_position(state);
-            // preprocessor is line-oriented, nothing else gets newlines.
-            continue;  // get the next thing.
+            if (ctx->parsing_pragma)  // let this one through.
+                ctx->parsing_pragma = 0;
+            else
+            {
+                // preprocessor is line-oriented, nothing else gets newlines.
+                continue;  // get the next thing.
+            } // else
         } // else if
 
         assert(!skipping);
@@ -2382,6 +2394,16 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                 isnewline = 1;
             } // if
         } // if
+
+        else if (token == ((Token) '\n'))
+        {
+            if (!out_of_memory)
+            {
+                out_of_memory =
+                    (!add_to_buffer(&buffer, endline, sizeof (endline), m, d));
+            } // if
+            isnewline = 1;
+        } // else if
 
         else if (token == ((Token) '{'))
         {

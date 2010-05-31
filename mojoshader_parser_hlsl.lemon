@@ -84,6 +84,7 @@ compilation_units(A) ::= compilation_units(B) compilation_unit(C). { if (C) { C-
 
 %type compilation_unit { CompilationUnit * }
 %destructor compilation_unit { delete_compilation_unit(ctx, $$); }
+//compilation_unit(A) ::= PRAGMA . { A = NULL; }   // !!! FIXME: deal with pragmas.
 compilation_unit(A) ::= variable_declaration(B). { A = new_global_variable(ctx, B); }
 compilation_unit(A) ::= function_signature(B) SEMICOLON. { A = new_function(ctx, B, NULL); }
 compilation_unit(A) ::= function_signature(B) statement_block(C). { A = new_function(ctx, B, C); }

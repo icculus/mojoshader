@@ -2266,6 +2266,8 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
         case ((Token) ';'): return TOKEN_HLSL_SEMICOLON;
         case ((Token) '{'): return TOKEN_HLSL_LBRACE;
         case ((Token) '}'): return TOKEN_HLSL_RBRACE;
+        //case ((Token) TOKEN_PP_PRAGMA): return TOKEN_HLSL_PRAGMA;
+        //case ((Token) '\n'): return TOKEN_HLSL_NEWLINE;
 
         case ((Token) TOKEN_IDENTIFIER):
             #define tokencmp(t) ((tokenlen == strlen(t)) && (memcmp(token, t, tokenlen) == 0))
@@ -2449,6 +2451,8 @@ static void parse_source(Context *ctx, const char *filename,
     } // for
 
     // Run the preprocessor/lexer/parser...
+    int is_pragma = 0;   // !!! FIXME: remove this later when we can parse #pragma.
+    int skipping = 0; // !!! FIXME: remove this later when we can parse #pragma.
     do {
         token = preprocessor_nexttoken(pp, &tokenlen, &tokenval);
 
@@ -2475,6 +2479,27 @@ static void parse_source(Context *ctx, const char *filename,
             fail(ctx, token);  // this happens to be null-terminated.
             continue;
         } // else if
+
+        else if (tokenval == TOKEN_PP_PRAGMA)
+        {
+            assert(!is_pragma);
+            is_pragma = 1;
+            skipping = 1;
+            continue;
+        }
+
+        else if (tokenval == ((Token) '\n'))
+        {
+            assert(is_pragma);
+            is_pragma = 0;
+            skipping = 0;
+            continue;
+        }
+
+        else if (skipping)
+        {
+            continue;
+        }
 
         lemon_token = convert_to_lemon_token(ctx, token, tokenlen, tokenval);
         switch (lemon_token)
