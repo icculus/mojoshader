@@ -2009,7 +2009,9 @@ static void print_ast(void *ast)
                 case FNSTORECLS_NONE: break;
                 case FNSTORECLS_INLINE: printf("inline "); break;
             } // switch
-            printf("%s %s(", ((FunctionSignature *) ast)->datatype,
+            printf("%s %s(",
+                    ((FunctionSignature *) ast)->datatype ?
+                        ((FunctionSignature *) ast)->datatype : "void",
                     ((FunctionSignature *) ast)->identifier);
             print_ast(((FunctionSignature *) ast)->args);
             printf(")");
