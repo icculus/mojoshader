@@ -14,6 +14,8 @@
 #define LEMON_SUPPORT_TRACING 1
 #endif
 
+// !!! FIXME: I'd like to lose this. It's really inefficient. Just keep a
+// !!! FIXME:  (tail) on these list structures instead?
 #define REVERSE_LINKED_LIST(typ, head) { \
     if ((head) && (head->next)) { \
         typ *tmp = NULL; \
