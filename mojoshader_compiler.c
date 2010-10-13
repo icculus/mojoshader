@@ -114,6 +114,7 @@ typedef enum ASTNodeType
     AST_COMPUNIT_END_RANGE,
 
     AST_STATEMENT_START_RANGE,
+    AST_STATEMENT_BLOCK,
     AST_STATEMENT_EMPTY,
     AST_STATEMENT_EXPRESSION,
     AST_STATEMENT_IF,
@@ -392,6 +393,13 @@ typedef Statement EmptyStatement;
 typedef Statement BreakStatement;
 typedef Statement ContinueStatement;
 typedef Statement DiscardStatement;
+
+typedef struct BlockStatement  // something enclosed in "{}" braces.
+{
+    ASTNode ast;
+    struct Statement *next;
+    Statement *statements;  // list of statements enclosed by this block.
+} BlockStatement;
 
 typedef struct ReturnStatement
 {
@@ -1135,6 +1143,22 @@ static void delete_return_statement(Context *ctx, ReturnStatement *stmt)
     Free(ctx, stmt);
 } // delete_return_statement
 
+static Statement *new_block_statement(Context *ctx, Statement *statements)
+{
+    NEW_AST_NODE(retval, BlockStatement, AST_STATEMENT_BLOCK);
+    retval->next = NULL;
+    retval->statements = statements;
+    return (Statement *) retval;
+} // new_block_statement
+
+static void delete_block_statement(Context *ctx, BlockStatement *stmt)
+{
+    DELETE_AST_NODE(stmt);
+    delete_statement(ctx, stmt->statements);
+    delete_statement(ctx, stmt->next);
+    Free(ctx, stmt);
+} // delete_statement_block
+
 static Statement *new_for_statement(Context *ctx, VariableDeclaration *decl,
                                     Expression *initializer,
                                     Expression *looptest, Expression *counter,
@@ -1393,6 +1417,7 @@ static void delete_statement(Context *ctx, Statement *stmt)
     {
         #define DELETE_STATEMENT(typ, cls, fn) case AST_STATEMENT_##typ: \
             delete_##fn##_statement(ctx, (cls *) stmt); break;
+        DELETE_STATEMENT(BLOCK, BlockStatement, block);
         DELETE_STATEMENT(EMPTY, EmptyStatement, empty);
         DELETE_STATEMENT(IF, IfStatement, if);
         DELETE_STATEMENT(SWITCH, SwitchStatement, switch);
@@ -1727,12 +1752,18 @@ static void print_ast(void *ast)
         case AST_STATEMENT_IF:
             printf("if (");
             print_ast(((IfStatement *) ast)->expr);
-            printf(") {\n");
+            printf(")\n");
+
+            if (((IfStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+                indent++;
             for (i = 0; i < indent; i++) printf("    ");
-            indent++;
-            print_ast(((IfStatement *) ast)->statement);
-            indent--;
-            printf("}\n");
+            print_ast(((ForStatement *) ast)->statement);
+            if (((IfStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+            {
+                printf("\n");
+                indent--;
+            } // if
+
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((Statement *) ast)->next);
             break;
@@ -1797,6 +1828,19 @@ static void print_ast(void *ast)
             print_ast(((Statement *) ast)->next);
             break;
 
+        case AST_STATEMENT_BLOCK:
+            printf("{\n");
+            indent++;
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((BlockStatement *) ast)->statements);
+            printf("\n");
+            indent--;
+            for (i = 0; i < indent; i++) printf("    ");
+            printf("}\n");
+            for (i = 0; i < indent; i++) printf("    ");
+            print_ast(((Statement *) ast)->next);
+            break;
+
         case AST_STATEMENT_FOR:
             if (((ForStatement *) ast)->unroll == 0)
                 printf("[loop] ");
@@ -1815,16 +1859,18 @@ static void print_ast(void *ast)
             print_ast(((ForStatement *) ast)->looptest);
             printf("; ");
             print_ast(((ForStatement *) ast)->counter);
+
             printf(")\n");
-            for (i = 0; i < indent; i++) printf("    ");
-            printf("{\n");
-            indent++;
+            if (((ForStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+                indent++;
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((ForStatement *) ast)->statement);
-            printf("\n");
-            indent--;
-            for (i = 0; i < indent; i++) printf("    ");
-            printf("}\n");
+            if (((ForStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+            {
+                printf("\n");
+                indent--;
+            } // if
+
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((Statement *) ast)->next);
             break;
@@ -1841,15 +1887,19 @@ static void print_ast(void *ast)
             } // else if
 
             printf("do\n");
+
+            if (((DoStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+                indent++;
             for (i = 0; i < indent; i++) printf("    ");
-            printf("{\n");
-            indent++;
+            print_ast(((ForStatement *) ast)->statement);
+            if (((DoStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+            {
+                printf("\n");
+                indent--;
+            } // if
+
             for (i = 0; i < indent; i++) printf("    ");
-            print_ast(((DoStatement *) ast)->statement);
-            printf("\n");
-            indent--;
-            for (i = 0; i < indent; i++) printf("    ");
-            printf("} while (");
+            printf("while (");
             print_ast(((DoStatement *) ast)->expr);
             printf(");\n");
             for (i = 0; i < indent; i++) printf("    ");
@@ -1870,15 +1920,17 @@ static void print_ast(void *ast)
             printf("while (");
             print_ast(((WhileStatement *) ast)->expr);
             printf(")\n");
+
+            if (((WhileStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+                indent++;
             for (i = 0; i < indent; i++) printf("    ");
-            printf("{\n");
-            indent++;
-            for (i = 0; i < indent; i++) printf("    ");
-            print_ast(((WhileStatement *) ast)->statement);
-            printf("\n");
-            indent--;
-            for (i = 0; i < indent; i++) printf("    ");
-            printf("}\n");
+            print_ast(((ForStatement *) ast)->statement);
+            if (((WhileStatement *) ast)->statement->ast.type != AST_STATEMENT_BLOCK)
+            {
+                printf("\n");
+                indent--;
+            } // if
+
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((Statement *) ast)->next);
             break;
@@ -1890,8 +1942,7 @@ static void print_ast(void *ast)
                 printf(" ");
                 print_ast(((ReturnStatement *) ast)->expr);
             } // if
-            printf(";\n");
-            for (i = 0; i < indent; i++) printf("    ");
+            printf(";");
             print_ast(((Statement *) ast)->next);
             break;
 
@@ -1918,14 +1969,8 @@ static void print_ast(void *ast)
             {
                 printf("\n");
                 for (i = 0; i < indent; i++) printf("    ");
-                printf("{\n");
-                indent++;
-                for (i = 0; i < indent; i++) printf("    ");
                 print_ast(((CompilationUnitFunction *) ast)->definition);
-                indent--;
-                printf("\n");
-                for (i = 0; i < indent; i++) printf("    ");
-                printf("}\n\n");
+                printf("\n\n");
             } // else
             for (i = 0; i < indent; i++) printf("    ");
             print_ast(((CompilationUnit *) ast)->next);

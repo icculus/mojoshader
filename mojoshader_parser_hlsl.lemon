@@ -345,8 +345,8 @@ datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA 
 
 %type statement_block { Statement * }
 %destructor statement_block { delete_statement(ctx, $$); }
-statement_block(A) ::= LBRACE RBRACE. { A = new_empty_statement(ctx); }
-statement_block(A) ::= LBRACE statement_list(B) RBRACE. { REVERSE_LINKED_LIST(Statement, B); A = B; }
+statement_block(A) ::= LBRACE RBRACE. { A = new_block_statement(ctx, NULL); }
+statement_block(A) ::= LBRACE statement_list(B) RBRACE. { REVERSE_LINKED_LIST(Statement, B); A = new_block_statement(ctx, B); }
 
 %type statement_list { Statement * }
 %destructor statement_list { delete_statement(ctx, $$); }
