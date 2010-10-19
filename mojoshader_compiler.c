@@ -7,6 +7,10 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: this needs to be split into separate source files:
+// !!! FIXME:  parse, AST, IR, etc. The problem is we need to deal with the
+// !!! FIXME:  "Context" struct being passed around everywhere.
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
