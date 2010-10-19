@@ -528,20 +528,20 @@ typedef struct CompilationUnitVariable
 } CompilationUnitVariable;
 
 
-// This tracks typedefs and structs, and notes when they enter/leave scope.
+// This tracks data types and variables, and notes when they enter/leave scope.
 
-typedef struct UserTypeScopeStack
+typedef struct SymbolScope
 {
     const char *symbol;
     const char *datatype;
-    struct UserTypeScopeStack *next;
-} UserTypeScopeStack;
+    struct SymbolScope *next;
+} SymbolScope;
 
-typedef struct UserTypeMap
+typedef struct SymbolMap
 {
-    HashTable *types;
-    UserTypeScopeStack *scope;
-} UserTypeMap;
+    HashTable *hash;
+    SymbolScope *scope;
+} SymbolMap;
 
 
 // Compile state, passed around all over the place.
@@ -558,7 +558,8 @@ typedef struct Context
     StringCache *strcache;
     const char *sourcefile;  // current source file that we're parsing.
     unsigned int sourceline; // current line in sourcefile that we're parsing.
-    UserTypeMap usertypes;
+    SymbolMap usertypes;
+    SymbolMap variables;
     CompilationUnit *ast;  // Abstract Syntax Tree
 } Context;
 
@@ -601,37 +602,35 @@ static void fail(Context *ctx, const char *str)
 } // fail
 
 
-static void usertypemap_nuke(const void *k, const void *v, void *d) {/*no-op*/}
+static void symbolmap_nuke(const void *k, const void *v, void *d) {/*no-op*/}
 
-static int create_usertypemap(Context *ctx)
+static int create_symbolmap(Context *ctx, SymbolMap *map)
 {
-    UserTypeMap *map = &ctx->usertypes;
-
+    // !!! FIXME: should compare string pointer, with string in cache.
     map->scope = NULL;
-    map->types = hash_create(ctx, hash_hash_string, hash_keymatch_string,
-                             usertypemap_nuke, 1, ctx->malloc, ctx->free,
-                             ctx->malloc_data);
-    if (!map->types)
+    map->hash = hash_create(ctx, hash_hash_string, hash_keymatch_string,
+                            symbolmap_nuke, 1, ctx->malloc, ctx->free,
+                            ctx->malloc_data);
+    if (!map->hash)
     {
         out_of_memory(ctx);
         return 0;
     } // if
 
     return 1;
-} // create_usertypemap
+} // create_symbolmap
 
-static void push_usertype(Context *ctx, const char *sym, const char *datatype)
+
+static void push_symbol(Context *ctx, SymbolMap *map,
+                        const char *sym, const char *datatype)
 {
-    UserTypeMap *map = &ctx->usertypes;
-    UserTypeScopeStack *item;
-
-    item = (UserTypeScopeStack *) Malloc(ctx, sizeof (UserTypeScopeStack));
+    SymbolScope *item = (SymbolScope *) Malloc(ctx, sizeof (SymbolScope));
     if (item == NULL)
         return;
 
     if (sym != NULL)
     {
-        if (hash_insert(map->types, sym, datatype) == -1)
+        if (hash_insert(map->hash, sym, datatype) == -1)
         {
             Free(ctx, item);
             return;
@@ -642,43 +641,58 @@ static void push_usertype(Context *ctx, const char *sym, const char *datatype)
     item->datatype = datatype;
     item->next = map->scope;
     map->scope = item;
+} // push_symbol
+
+static inline void push_usertype(Context *ctx, const char *sym, const char *dt)
+{
+    push_symbol(ctx, &ctx->usertypes, sym, dt);
 } // push_usertype
 
-static void pop_usertype(Context *ctx)
+static inline void push_variable(Context *ctx, const char *sym, const char *dt)
 {
-    UserTypeMap *map = &ctx->usertypes;
-    UserTypeScopeStack *item = map->scope;
+    push_symbol(ctx, &ctx->variables, sym, dt);
+} // push_variable
+
+static inline void push_scope(Context *ctx)
+{
+    push_usertype(ctx, NULL, NULL);
+    push_variable(ctx, NULL, NULL);
+} // push_scope
+
+
+static void pop_symbol(Context *ctx, SymbolMap *map)
+{
+    SymbolScope *item = map->scope;
     if (!item)
         return;
     if (item->symbol)
-        hash_remove(map->types, item->symbol);
+        hash_remove(map->hash, item->symbol);
     map->scope = item->next;
     Free(ctx, item);
-} // pop_usertype
+} // pop_symbol
 
-static void push_scope(Context *ctx)
+static void pop_symbol_scope(Context *ctx, SymbolMap *map)
 {
-    push_usertype(ctx, NULL, NULL);
-} // push_scope
-
-static void pop_scope(Context *ctx)
-{
-    UserTypeMap *map = &ctx->usertypes;
     while ((map->scope) && (map->scope->symbol))
-        pop_usertype(ctx);
+        pop_symbol(ctx, map);
 
     assert(map->scope != NULL);
     assert(map->scope->symbol == NULL);
-    pop_usertype(ctx);
+    pop_symbol(ctx, map);
+} // pop_symbol_scope
+
+static inline void pop_scope(Context *ctx)
+{
+    pop_symbol_scope(ctx, &ctx->usertypes);
+    pop_symbol_scope(ctx, &ctx->variables);
 } // push_scope
 
-static void destroy_usertypemap(Context *ctx)
+static void destroy_symbolmap(Context *ctx, SymbolMap *map)
 {
-    UserTypeMap *map = &ctx->usertypes;
     while (map->scope)
-        pop_usertype(ctx);
-    hash_destroy(map->types);
-} // destroy_usertypemap
+        pop_symbol_scope(ctx, map);
+    hash_destroy(map->hash);
+} // destroy_symbolmap
 
 
 // These functions are mostly for construction and cleanup of nodes in the
@@ -1442,16 +1456,10 @@ static void delete_statement(Context *ctx, Statement *stmt)
     // don't free (stmt) here, the class-specific functions do it.
 } // delete_statement
 
-// This is only for initial parsing: we only care that it exists at this point!
-static void add_usertype(Context *ctx, const char *sym)
-{
-    push_usertype(ctx, sym, NULL);
-} // add_usertype
-
 static int is_usertype(const Context *ctx, const char *token)
 {
-    const void *value;
-    return hash_find(ctx->usertypes.types, token, &value);
+    const void *value;  // search all scopes.
+    return hash_find(ctx->usertypes.hash, token, &value);
 } // is_usertype
 
 
@@ -2430,7 +2438,8 @@ static void destroy_context(Context *ctx)
 
         // !!! FIXME: free ctx->errors
         delete_compilation_unit(ctx, ctx->ast);
-        destroy_usertypemap(ctx);
+        destroy_symbolmap(ctx, &ctx->usertypes);
+        destroy_symbolmap(ctx, &ctx->variables);
 
         if (ctx->strcache)
             stringcache_destroy(ctx->strcache);
@@ -2453,7 +2462,8 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     ctx->free = f;
     ctx->malloc_data = d;
     //ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
-    create_usertypemap(ctx);  // !!! FIXME: check for failure.
+    create_symbolmap(ctx, &ctx->usertypes); // !!! FIXME: check for failure.
+    create_symbolmap(ctx, &ctx->variables); // !!! FIXME: check for failure.
     ctx->strcache = stringcache_create(m, f, d);  // !!! FIXME: check for failure.
 
     return ctx;
@@ -2505,13 +2515,13 @@ static void parse_source(Context *ctx, const char *filename,
         {
             // "float2"
             int len = snprintf(buf, sizeof (buf), "%s%d", types[i], j);
-            add_usertype(ctx, stringcache_len(ctx->strcache, buf, len));
+            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), NULL);
             int k;
             for (k = 1; k <= 4; k++)
             {
                 // "float2x2"
                 len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i], j, k);
-                add_usertype(ctx, stringcache_len(ctx->strcache, buf, len));
+                push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), NULL);
             } // for
         } // for
     } // for

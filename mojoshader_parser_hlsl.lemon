@@ -95,8 +95,8 @@ compilation_unit(A) ::= struct_declaration(B) SEMICOLON. { A = new_global_struct
 %type typedef { Typedef * }
 %destructor typedef { delete_typedef(ctx, $$); }
 // !!! FIXME: should CONST be here, or in datatype?
-typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); add_usertype(ctx, C->identifier); }
-typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); add_usertype(ctx, C->identifier); }
+typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); push_usertype(ctx, C->identifier, NULL); }
+typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); push_usertype(ctx, C->identifier, NULL); }
 
 %type function_signature { FunctionSignature * }
 %destructor function_signature { delete_function_signature(ctx, $$); }
@@ -224,7 +224,7 @@ struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. {
 
 // This has to be separate from struct_declaration so that the struct is in the usertypemap when parsing its members.
 %type struct_intro { const char * }
-struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; add_usertype(ctx, A); }
+struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, NULL); }
 
 %type struct_member_list { StructMembers * }
 %destructor struct_member_list { delete_struct_member(ctx, $$); }
