@@ -561,6 +561,15 @@ typedef struct Context
     SymbolMap usertypes;
     SymbolMap variables;
     CompilationUnit *ast;  // Abstract Syntax Tree
+
+    // These are entries allocated in the strcache, so these pointers are
+    //  valid from shortly after we create the cache until we destroy it
+    //  with the rest of the context. This makes it so we can compare common
+    //  strings by pointer without having to hash them every time, so long as
+    //  we're comparing a string pointer we know came from this string cache.
+    const char *str_b;  // "b"
+    const char *str_f;  // "f"
+    const char *str_i;  // "i"
 } Context;
 
 
@@ -2465,6 +2474,11 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     create_symbolmap(ctx, &ctx->usertypes); // !!! FIXME: check for failure.
     create_symbolmap(ctx, &ctx->variables); // !!! FIXME: check for failure.
     ctx->strcache = stringcache_create(m, f, d);  // !!! FIXME: check for failure.
+
+    // fill in some common strings we'll want to use without further hashing.
+    ctx->str_b = stringcache(ctx->strcache, "b");
+    ctx->str_f = stringcache(ctx->strcache, "f");
+    ctx->str_i = stringcache(ctx->strcache, "i");
 
     return ctx;
 } // build_context
