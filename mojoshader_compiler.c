@@ -1456,6 +1456,7 @@ static int is_usertype(const Context *ctx, const char *token)
 #include "mojoshader_parser_hlsl.h"
 
 
+// !!! FIXME: this screws up on order of operations.
 static void print_ast(const int substmt, void *ast)
 {
     const char *nl = substmt ? "" : "\n";
@@ -1723,8 +1724,15 @@ static void print_ast(const int substmt, void *ast)
             break;
 
         case AST_OP_FLOAT_LITERAL:
-            printf("%f", ((ExpressionFloatLiteral *) ast)->value);
+        {
+            const float f = ((ExpressionFloatLiteral *) ast)->value;
+            const long long flr = (long long) f;
+            if (((float) flr) == f)
+                printf("%lld.0", flr);
+            else
+                printf("%.16g", f);
             break;
+        } // case
 
         case AST_OP_STRING_LITERAL:
             printf("\"%s\"", ((ExpressionStringLiteral *) ast)->string);
@@ -1850,7 +1858,11 @@ static void print_ast(const int substmt, void *ast)
 
             printf("for (");
             print_ast(1, ((ForStatement *) ast)->var_decl);
-            print_ast(1, ((ForStatement *) ast)->initializer);
+            if (((ForStatement *) ast)->initializer != NULL)
+            {
+                printf(" = ");
+                print_ast(1, ((ForStatement *) ast)->initializer);
+            } // if
             printf("; ");
             print_ast(1, ((ForStatement *) ast)->looptest);
             printf("; ");
@@ -2028,7 +2040,10 @@ static void print_ast(const int substmt, void *ast)
             } // switch
 
             if (((FunctionArguments *) ast)->initializer)
+            {
+                printf(" = ");
                 print_ast(0, ((FunctionArguments *) ast)->initializer);
+            } // if
 
             if (((FunctionArguments *) ast)->next)
             {
@@ -2117,7 +2132,11 @@ static void print_ast(const int substmt, void *ast)
                 printf(" ");
                 print_ast(0, ((VariableDeclaration *) ast)->annotations);
             } // if
-            print_ast(0, ((VariableDeclaration *) ast)->initializer);
+            if (((VariableDeclaration *) ast)->initializer != NULL)
+            {
+                printf(" = ");
+                print_ast(0, ((VariableDeclaration *) ast)->initializer);
+            } // if
             print_ast(0, ((VariableDeclaration *) ast)->lowlevel);
 
             if (((VariableDeclaration *) ast)->next == NULL)
@@ -2152,7 +2171,11 @@ static void print_ast(const int substmt, void *ast)
             while (a)
             {
                 printf(" %s ", a->datatype);
-                print_ast(0, a->initializer);
+                if (a->initializer != NULL)
+                {
+                    printf(" = ");
+                    print_ast(0, a->initializer);
+                } // if
                 if (a->next)
                     printf(",");
                 a = a->next;
