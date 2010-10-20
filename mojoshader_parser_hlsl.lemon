@@ -460,6 +460,8 @@ primary_expr(A) ::= IDENTIFIER(B). { A = new_identifier_expr(ctx, B.string); }
 primary_expr(A) ::= INT_CONSTANT(B). { A = new_literal_int_expr(ctx, B.i64); }
 primary_expr(A) ::= FLOAT_CONSTANT(B). { A = new_literal_float_expr(ctx, B.dbl); }
 primary_expr(A) ::= STRING_LITERAL(B). { A = new_literal_string_expr(ctx, B.string); }
+primary_expr(A) ::= TRUE. { A = new_literal_boolean_expr(ctx, 1); }
+primary_expr(A) ::= FALSE. { A = new_literal_boolean_expr(ctx, 0); }
 primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 
 %type postfix_expr { Expression * }

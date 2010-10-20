@@ -102,6 +102,7 @@ typedef enum ASTNodeType
     AST_OP_INT_LITERAL,
     AST_OP_FLOAT_LITERAL,
     AST_OP_STRING_LITERAL,
+    AST_OP_BOOLEAN_LITERAL,
     AST_OP_END_RANGE_DATA,
 
     AST_OP_START_RANGE_MISC,
@@ -258,6 +259,12 @@ typedef struct ExpressionStringLiteral
     ASTNode ast;  // Always AST_OP_STRING_LITERAL
     const char *string;
 } ExpressionStringLiteral;
+
+typedef struct ExpressionBooleanLiteral
+{
+    ASTNode ast;  // Always AST_OP_BOOLEAN_LITERAL
+    int value;  // Always 1 or 0.
+} ExpressionBooleanLiteral;
 
 typedef struct ExpressionConstructor
 {
@@ -800,7 +807,14 @@ static Expression *new_literal_string_expr(Context *ctx, const char *string)
     NEW_AST_NODE(retval, ExpressionStringLiteral, AST_OP_STRING_LITERAL);
     retval->string = string;  // cached; don't copy string.
     return (Expression *) retval;
-} // new_string_literal_expr
+} // new_literal_string_expr
+
+static Expression *new_literal_boolean_expr(Context *ctx, const int value)
+{
+    NEW_AST_NODE(retval, ExpressionBooleanLiteral, AST_OP_BOOLEAN_LITERAL);
+    retval->value = value;
+    return (Expression *) retval;
+} // new_literal_boolean_expr
 
 static void delete_expr(Context *ctx, Expression *expr)
 {
@@ -1759,6 +1773,10 @@ static void print_ast(const int substmt, void *ast)
             printf("\"%s\"", ((ExpressionStringLiteral *) ast)->string);
             break;
 
+        case AST_OP_BOOLEAN_LITERAL:
+            printf("%s", ((ExpressionBooleanLiteral *) ast)->value ? "true" : "false");
+            break;
+
         case AST_OP_CONSTRUCTOR:
             printf("%s(", ((ExpressionConstructor *) ast)->datatype);
             print_ast(0, ((ExpressionConstructor *) ast)->args);
@@ -2416,6 +2434,8 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
             if (tokencmp("samplerCUBE")) return TOKEN_HLSL_SAMPLERCUBE;
             if (tokencmp("sampler_state")) return TOKEN_HLSL_SAMPLER_STATE;
             if (tokencmp("SamplerState")) return TOKEN_HLSL_SAMPLERSTATE;
+            if (tokencmp("true")) return TOKEN_HLSL_TRUE;
+            if (tokencmp("false")) return TOKEN_HLSL_FALSE;
             if (tokencmp("SamplerComparisonState")) return TOKEN_HLSL_SAMPLERCOMPARISONSTATE;
             if (tokencmp("isolate")) return TOKEN_HLSL_ISOLATE;
             if (tokencmp("maxInstructionCount")) return TOKEN_HLSL_MAXINSTRUCTIONCOUNT;
