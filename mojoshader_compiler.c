@@ -577,6 +577,10 @@ typedef struct Context
     const char *str_b;  // "b"
     const char *str_f;  // "f"
     const char *str_i;  // "i"
+    const char *str_u;  // "u"
+    const char *str_h;  // "h"
+    const char *str_d;  // "d"
+    const char *str_s;  // "s"
 } Context;
 
 
@@ -2499,6 +2503,10 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     ctx->str_b = stringcache(ctx->strcache, "b");
     ctx->str_f = stringcache(ctx->strcache, "f");
     ctx->str_i = stringcache(ctx->strcache, "i");
+    ctx->str_u = stringcache(ctx->strcache, "u");
+    ctx->str_h = stringcache(ctx->strcache, "h");
+    ctx->str_d = stringcache(ctx->strcache, "d");
+    ctx->str_s = stringcache(ctx->strcache, "s");
 
     return ctx;
 } // build_context
