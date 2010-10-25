@@ -468,17 +468,21 @@ primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 %destructor postfix_expr { delete_expr(ctx, $$); }
 postfix_expr(A) ::= primary_expr(B). { A = B; }
 postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, AST_OP_DEREF_ARRAY, B, C); }
-postfix_expr(A) ::= postfix_expr(B) LPAREN RPAREN. { A = new_binary_expr(ctx, AST_OP_CALLFUNC, B, NULL); }
-postfix_expr(A) ::= postfix_expr(B) LPAREN argument_expr_list(C) RPAREN. { A = new_binary_expr(ctx, AST_OP_CALLFUNC, B, C); }
-postfix_expr(A) ::= datatype(B) LPAREN argument_expr_list(C) RPAREN. { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
+postfix_expr(A) ::= postfix_expr(B) arguments(C). { A = new_callfunc_expr(ctx, B, C); }
+postfix_expr(A) ::= datatype(B) arguments(C). { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
 postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, AST_OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, AST_OP_POSTINCREMENT, B); }
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, AST_OP_POSTDECREMENT, B); }
 
-%type argument_expr_list { Expression * }
-%destructor argument_expr_list { delete_expr(ctx, $$); }
-argument_expr_list(A) ::= assignment_expr(B). { A = B; }
-argument_expr_list(A) ::= argument_expr_list(B) COMMA assignment_expr(C). { A = new_binary_expr(ctx, AST_OP_COMMA, B, C); }
+%type arguments { Arguments * }
+%destructor arguments { delete_arguments(ctx, $$); }
+arguments(A) ::= LPAREN RPAREN. { A = NULL; }
+arguments(A) ::= LPAREN argument_list(B) RPAREN. { REVERSE_LINKED_LIST(Arguments, B); A = B; }
+
+%type argument_list { Arguments * }
+%destructor argument_list { delete_arguments(ctx, $$); }
+argument_list(A) ::= assignment_expr(B). { A = new_argument(ctx, B); }
+argument_list(A) ::= argument_list(B) COMMA assignment_expr(C). { A = new_argument(ctx, C); A->next = B; }
 
 %type unary_expr { Expression * }
 %destructor unary_expr { delete_expr(ctx, $$); }

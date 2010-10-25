@@ -59,7 +59,6 @@ typedef enum ASTNodeType
 
     AST_OP_START_RANGE_BINARY,
     AST_OP_DEREF_ARRAY,
-    AST_OP_CALLFUNC,
     AST_OP_DEREF_STRUCT,
     AST_OP_COMMA,
     AST_OP_MULTIPLY,
@@ -106,6 +105,7 @@ typedef enum ASTNodeType
     AST_OP_END_RANGE_DATA,
 
     AST_OP_START_RANGE_MISC,
+    AST_OP_CALLFUNC,
     AST_OP_CONSTRUCTOR,
     AST_OP_CAST,
     AST_OP_END_RANGE_MISC,
@@ -148,6 +148,7 @@ typedef enum ASTNodeType
     AST_STRUCT_DECLARATION,
     AST_STRUCT_MEMBER,
     AST_SWITCH_CASE,
+    AST_ARGUMENTS,
     AST_MISC_END_RANGE,
 
     AST_END_RANGE
@@ -215,6 +216,13 @@ typedef struct ASTGeneric
 
 typedef ASTGeneric Expression;
 
+typedef struct Arguments
+{
+    ASTNode ast;  // Always AST_ARGUMENTS
+    Expression *argument;
+    struct Arguments *next;
+} Arguments;
+
 typedef struct ExpressionUnary
 {
     ASTNode ast;
@@ -270,8 +278,15 @@ typedef struct ExpressionConstructor
 {
     ASTNode ast;  // Always AST_OP_CONSTRUCTOR
     const char *datatype;
-    Expression *args;
+    Arguments *args;
 } ExpressionConstructor;
+
+typedef struct ExpressionCallFunction
+{
+    ASTNode ast;  // Always AST_OP_CALLFUNC
+    Expression *identifier;
+    Arguments *args;
+} ExpressionCallFunction;
 
 typedef struct ExpressionCast
 {
@@ -736,8 +751,17 @@ static void destroy_symbolmap(Context *ctx, SymbolMap *map)
 static void delete_compilation_unit(Context *ctx, CompilationUnit *unit);
 static void delete_statement(Context *ctx, Statement *stmt);
 
+static Expression *new_callfunc_expr(Context *ctx, Expression *identifier,
+                                     Arguments *args)
+{
+    NEW_AST_NODE(retval, ExpressionCallFunction, AST_OP_CALLFUNC);
+    retval->identifier = identifier;
+    retval->args = args;
+    return (Expression *) retval;
+} // new_callfunc_expr
+
 static Expression *new_constructor_expr(Context *ctx, const char *datatype,
-                                        Expression *args)
+                                        Arguments *args)
 {
     NEW_AST_NODE(retval, ExpressionConstructor, AST_OP_CONSTRUCTOR);
     retval->datatype = datatype;
@@ -820,6 +844,8 @@ static Expression *new_literal_boolean_expr(Context *ctx, const int value)
     return (Expression *) retval;
 } // new_literal_boolean_expr
 
+static void delete_arguments(Context *ctx, Arguments *args);
+
 static void delete_expr(Context *ctx, Expression *expr)
 {
     DELETE_AST_NODE(expr);
@@ -847,13 +873,34 @@ static void delete_expr(Context *ctx, Expression *expr)
     } // else if
     else if (expr->ast.type == AST_OP_CONSTRUCTOR)
     {
-        delete_expr(ctx, ((ExpressionConstructor *) expr)->args);
+        delete_arguments(ctx, ((ExpressionConstructor *) expr)->args);
+    } // else if
+    else if (expr->ast.type == AST_OP_CALLFUNC)
+    {
+        delete_expr(ctx, ((ExpressionCallFunction *) expr)->identifier);
+        delete_arguments(ctx, ((ExpressionCallFunction *) expr)->args);
     } // else if
 
     // rest of operators don't have extra data to free.
 
     Free(ctx, expr);
 } // delete_expr
+
+static Arguments *new_argument(Context *ctx, Expression *argument)
+{
+    NEW_AST_NODE(retval, Arguments, AST_ARGUMENTS);
+    retval->argument = argument;
+    retval->next = NULL;
+    return retval;
+} // new_argument
+
+static void delete_arguments(Context *ctx, Arguments *args)
+{
+    DELETE_AST_NODE(args);
+    delete_arguments(ctx, args->next);
+    delete_expr(ctx, args->argument);
+    Free(ctx, args);
+} // delete_arguments
 
 static FunctionParameters *new_function_param(Context *ctx,
                                         const InputModifier inputmod,
@@ -1553,13 +1600,6 @@ static void print_ast(const int substmt, void *ast)
             printf("]");
             break;
 
-        case AST_OP_CALLFUNC:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf("(");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            printf(")");
-            break;
-
         case AST_OP_DEREF_STRUCT:
             print_ast(0, ((ExpressionBinary *) ast)->left);
             printf(".");
@@ -1779,6 +1819,22 @@ static void print_ast(const int substmt, void *ast)
 
         case AST_OP_BOOLEAN_LITERAL:
             printf("%s", ((ExpressionBooleanLiteral *) ast)->value ? "true" : "false");
+            break;
+
+        case AST_ARGUMENTS:
+            print_ast(0, ((Arguments *) ast)->argument);
+            if (((Arguments *) ast)->next != NULL)
+            {
+                printf(", ");
+                print_ast(0, ((Arguments *) ast)->next);
+            } // if
+            break;
+
+        case AST_OP_CALLFUNC:
+            print_ast(0, ((ExpressionCallFunction *) ast)->identifier);
+            printf("(");
+            print_ast(0, ((ExpressionCallFunction *) ast)->args);
+            printf(")");
             break;
 
         case AST_OP_CONSTRUCTOR:
