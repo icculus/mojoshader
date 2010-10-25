@@ -137,7 +137,7 @@ typedef enum ASTNodeType
     AST_STATEMENT_END_RANGE,
 
     AST_MISC_START_RANGE,
-    AST_FUNCTION_ARGS,
+    AST_FUNCTION_PARAMS,
     AST_FUNCTION_SIGNATURE,
     AST_SCALAR_OR_ARRAY,
     AST_TYPEDEF,
@@ -311,7 +311,7 @@ typedef enum InterpolationModifier
     INTERPMOD_SAMPLE
 } InterpolationModifier;
 
-typedef struct FunctionArguments
+typedef struct FunctionParameters
 {
     ASTNode ast;
     InputModifier input_modifier;
@@ -320,15 +320,15 @@ typedef struct FunctionArguments
     const char *semantic;
     InterpolationModifier interpolation_modifier;
     Expression *initializer;
-    struct FunctionArguments *next;
-} FunctionArguments;
+    struct FunctionParameters *next;
+} FunctionParameters;
 
 typedef struct FunctionSignature
 {
     ASTNode ast;
     const char *datatype;
     const char *identifier;
-    FunctionArguments *args;
+    FunctionParameters *params;
     FunctionStorageClass storage_class;
     const char *semantic;
 } FunctionSignature;
@@ -855,7 +855,7 @@ static void delete_expr(Context *ctx, Expression *expr)
     Free(ctx, expr);
 } // delete_expr
 
-static FunctionArguments *new_function_arg(Context *ctx,
+static FunctionParameters *new_function_param(Context *ctx,
                                         const InputModifier inputmod,
                                         const char *datatype,
                                         const char *identifier,
@@ -863,7 +863,7 @@ static FunctionArguments *new_function_arg(Context *ctx,
                                         const InterpolationModifier interpmod,
                                         Expression *initializer)
 {
-    NEW_AST_NODE(retval, FunctionArguments, AST_FUNCTION_ARGS);
+    NEW_AST_NODE(retval, FunctionParameters, AST_FUNCTION_PARAMS);
     retval->input_modifier = inputmod;
     retval->datatype = datatype;
     retval->identifier = identifier;
@@ -872,25 +872,25 @@ static FunctionArguments *new_function_arg(Context *ctx,
     retval->initializer = initializer;
     retval->next = NULL;
     return retval;
-} // new_function_arg
+} // new_function_param
 
-static void delete_function_args(Context *ctx, FunctionArguments *args)
+static void delete_function_params(Context *ctx, FunctionParameters *params)
 {
-    DELETE_AST_NODE(args);
-    delete_function_args(ctx, args->next);
-    delete_expr(ctx, args->initializer);
-    Free(ctx, args);
-} // delete_function_args
+    DELETE_AST_NODE(params);
+    delete_function_params(ctx, params->next);
+    delete_expr(ctx, params->initializer);
+    Free(ctx, params);
+} // delete_function_params
 
 static FunctionSignature *new_function_signature(Context *ctx,
                                                  const char *datatype,
                                                  const char *identifier,
-                                                 FunctionArguments *args)
+                                                 FunctionParameters *params)
 {
     NEW_AST_NODE(retval, FunctionSignature, AST_FUNCTION_SIGNATURE);
     retval->datatype = datatype;
     retval->identifier = identifier;
-    retval->args = args;
+    retval->params = params;
     retval->storage_class = FNSTORECLS_NONE;
     retval->semantic = NULL;
     return retval;
@@ -899,7 +899,7 @@ static FunctionSignature *new_function_signature(Context *ctx,
 static void delete_function_signature(Context *ctx, FunctionSignature *sig)
 {
     DELETE_AST_NODE(sig);
-    delete_function_args(ctx, sig->args);
+    delete_function_params(ctx, sig->params);
     Free(ctx, sig);
 } // delete_function_signature
 
@@ -2057,8 +2057,8 @@ static void print_ast(const int substmt, void *ast)
             printf(";%s", nl);
             break;
 
-        case AST_FUNCTION_ARGS:
-            switch (((FunctionArguments *) ast)->input_modifier)
+        case AST_FUNCTION_PARAMS:
+            switch (((FunctionParameters *) ast)->input_modifier)
             {
                 case INPUTMOD_NONE: break;
                 case INPUTMOD_IN: printf("in "); break;
@@ -2067,12 +2067,12 @@ static void print_ast(const int substmt, void *ast)
                 case INPUTMOD_UNIFORM: printf("uniform "); break;
             } // switch
 
-            printf("%s %s", (((FunctionArguments *) ast)->datatype),
-                   (((FunctionArguments *) ast)->identifier));
-            if (((FunctionArguments *) ast)->semantic)
-                printf(" : %s", ((FunctionArguments *) ast)->semantic);
+            printf("%s %s", (((FunctionParameters *) ast)->datatype),
+                   (((FunctionParameters *) ast)->identifier));
+            if (((FunctionParameters *) ast)->semantic)
+                printf(" : %s", ((FunctionParameters *) ast)->semantic);
 
-            switch (((FunctionArguments *) ast)->interpolation_modifier)
+            switch (((FunctionParameters *) ast)->interpolation_modifier)
             {
                 case INTERPMOD_NONE: break;
                 case INTERPMOD_LINEAR: printf(" linear"); break;
@@ -2082,16 +2082,16 @@ static void print_ast(const int substmt, void *ast)
                 case INTERPMOD_SAMPLE: printf(" sample"); break;
             } // switch
 
-            if (((FunctionArguments *) ast)->initializer)
+            if (((FunctionParameters *) ast)->initializer)
             {
                 printf(" = ");
-                print_ast(0, ((FunctionArguments *) ast)->initializer);
+                print_ast(0, ((FunctionParameters *) ast)->initializer);
             } // if
 
-            if (((FunctionArguments *) ast)->next)
+            if (((FunctionParameters *) ast)->next)
             {
                 printf(", ");
-                print_ast(0, ((FunctionArguments *) ast)->next);
+                print_ast(0, ((FunctionParameters *) ast)->next);
             } // if
             break;
 
@@ -2105,7 +2105,7 @@ static void print_ast(const int substmt, void *ast)
                     ((FunctionSignature *) ast)->datatype ?
                         ((FunctionSignature *) ast)->datatype : "void",
                     ((FunctionSignature *) ast)->identifier);
-            print_ast(0, ((FunctionSignature *) ast)->args);
+            print_ast(0, ((FunctionSignature *) ast)->params);
             printf(")");
             if (((FunctionSignature *) ast)->semantic)
                 printf(" : %s", ((FunctionSignature *) ast)->semantic);

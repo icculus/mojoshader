@@ -107,8 +107,8 @@ function_signature(A) ::= function_details(B). { A = B; }
 
 %type function_details { FunctionSignature * }
 %destructor function_details { delete_function_signature(ctx, $$); }
-function_details(A) ::= datatype(B) IDENTIFIER(C) LPAREN function_arguments(D) RPAREN. { A = new_function_signature(ctx, B, C.string, D); }
-function_details(A) ::= VOID IDENTIFIER(B) LPAREN function_arguments(C) RPAREN. { A = new_function_signature(ctx, NULL, B.string, C); }
+function_details(A) ::= datatype(B) IDENTIFIER(C) LPAREN function_parameters(D) RPAREN. { A = new_function_signature(ctx, B, C.string, D); }
+function_details(A) ::= VOID IDENTIFIER(B) LPAREN function_parameters(C) RPAREN. { A = new_function_signature(ctx, NULL, B.string, C); }
 
 // !!! FIXME: there is a "target" storage class that is the name of the
 // !!! FIXME:  platform that this function is meant for...but I don't know
@@ -120,36 +120,36 @@ function_details(A) ::= VOID IDENTIFIER(B) LPAREN function_arguments(C) RPAREN. 
 //function_storageclass(A) ::= target(B). { A = B; }
 function_storageclass(A) ::= INLINE. { A = FNSTORECLS_INLINE; }
 
-%type function_arguments { FunctionArguments * }
-%destructor function_arguments { delete_function_args(ctx, $$); }
-function_arguments(A) ::= VOID. { A = NULL; }
-function_arguments(A) ::= function_argument_list(B). { REVERSE_LINKED_LIST(FunctionArguments, B); A = B; }
-function_arguments(A) ::= . { A = NULL; }
+%type function_parameters { FunctionParameters * }
+%destructor function_parameters { delete_function_params(ctx, $$); }
+function_parameters(A) ::= VOID. { A = NULL; }
+function_parameters(A) ::= function_parameter_list(B). { REVERSE_LINKED_LIST(FunctionParameters, B); A = B; }
+function_parameters(A) ::= . { A = NULL; }
 
-%type function_argument_list { FunctionArguments * }
-%destructor function_argument_list { delete_function_args(ctx, $$); }
-function_argument_list(A) ::= function_argument(B). { A = B; }
-function_argument_list(A) ::= function_argument_list(B) COMMA function_argument(C). { C->next = B; A = C; }
+%type function_parameter_list { FunctionParameters * }
+%destructor function_parameter_list { delete_function_params(ctx, $$); }
+function_parameter_list(A) ::= function_parameter(B). { A = B; }
+function_parameter_list(A) ::= function_parameter_list(B) COMMA function_parameter(C). { C->next = B; A = C; }
 
 // !!! FIXME: this is pretty unreadable.
-%type function_argument { FunctionArguments * }
-%destructor function_argument { delete_function_args(ctx, $$); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F) initializer(G). { A = new_function_arg(ctx, B, C, D.string, E, F, G); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F). { A = new_function_arg(ctx, B, C, D.string, E, F, NULL); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) initializer(F). { A = new_function_arg(ctx, B, C, D.string, E, INTERPMOD_NONE, F); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E). { A = new_function_arg(ctx, B, C, D.string, E, INTERPMOD_NONE, NULL); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E) initializer(F). { A = new_function_arg(ctx, B, C, D.string, NULL, E, F); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E). { A = new_function_arg(ctx, B, C, D.string, NULL, E, NULL); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) initializer(E). { A = new_function_arg(ctx, B, C, D.string, NULL, INTERPMOD_NONE, E); }
-function_argument(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D). { A = new_function_arg(ctx, B, C, D.string, NULL, INTERPMOD_NONE, NULL); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E) initializer(F). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, E, F); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, E, NULL); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D) initializer(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, E); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) semantic(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, NULL); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D) initializer(E). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, D, E); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, D, NULL); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C) initializer(D). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, D); }
-function_argument(A) ::= datatype(B) IDENTIFIER(C). { A = new_function_arg(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, NULL); }
+%type function_parameter { FunctionParameters * }
+%destructor function_parameter { delete_function_params(ctx, $$); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F) initializer(G). { A = new_function_param(ctx, B, C, D.string, E, F, G); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F). { A = new_function_param(ctx, B, C, D.string, E, F, NULL); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) initializer(F). { A = new_function_param(ctx, B, C, D.string, E, INTERPMOD_NONE, F); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E). { A = new_function_param(ctx, B, C, D.string, E, INTERPMOD_NONE, NULL); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E) initializer(F). { A = new_function_param(ctx, B, C, D.string, NULL, E, F); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) interpolation_mod(E). { A = new_function_param(ctx, B, C, D.string, NULL, E, NULL); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) initializer(E). { A = new_function_param(ctx, B, C, D.string, NULL, INTERPMOD_NONE, E); }
+function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D). { A = new_function_param(ctx, B, C, D.string, NULL, INTERPMOD_NONE, NULL); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E) initializer(F). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, D, E, F); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) semantic(D) interpolation_mod(E). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, D, E, NULL); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) semantic(D) initializer(E). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, E); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) semantic(D). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, D, INTERPMOD_NONE, NULL); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D) initializer(E). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, NULL, D, E); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) interpolation_mod(D). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, NULL, D, NULL); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C) initializer(D). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, D); }
+function_parameter(A) ::= datatype(B) IDENTIFIER(C). { A = new_function_param(ctx, INPUTMOD_NONE, B, C.string, NULL, INTERPMOD_NONE, NULL); }
 
 %type input_modifier { InputModifier }
 input_modifier(A) ::= IN. { A = INPUTMOD_IN; }
