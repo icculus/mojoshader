@@ -2915,6 +2915,7 @@ datatype = "!!! FIXME";
             // declarations can be done multiple times if they match.
             else if (sig != unit->declaration->datatype)
             {
+                // !!! FIXME: function overloading is legal.
                 fail(ctx, "function sigs don't match");
             } // else
 
