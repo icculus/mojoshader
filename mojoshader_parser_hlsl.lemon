@@ -311,26 +311,26 @@ datatype(A) ::= intrinsic_datatype(B). { A = B; }
 datatype(A) ::= USERTYPE(B). { A = B.string; }
 
 %type datatype_sampler { const char * }
-datatype_sampler(A) ::= SAMPLER. { A = stringcache_fmt(ctx->strcache, "s1"); }
-datatype_sampler(A) ::= SAMPLER1D. { A = stringcache_fmt(ctx->strcache, "s1"); }
-datatype_sampler(A) ::= SAMPLER2D. { A = stringcache_fmt(ctx->strcache, "s2"); }
-datatype_sampler(A) ::= SAMPLER3D. { A = stringcache_fmt(ctx->strcache, "s3"); }
-datatype_sampler(A) ::= SAMPLERCUBE. { A = stringcache_fmt(ctx->strcache, "sc"); }
-datatype_sampler(A) ::= SAMPLER_STATE. { A = stringcache_fmt(ctx->strcache, "ss"); }
-datatype_sampler(A) ::= SAMPLERSTATE. { A = stringcache_fmt(ctx->strcache, "ss"); }
-datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = stringcache_fmt(ctx->strcache, "sS"); }
+datatype_sampler(A) ::= SAMPLER. { A = ctx->str_s1; }
+datatype_sampler(A) ::= SAMPLER1D. { A = ctx->str_s1; }
+datatype_sampler(A) ::= SAMPLER2D. { A = ctx->str_s2; }
+datatype_sampler(A) ::= SAMPLER3D. { A = ctx->str_s3; }
+datatype_sampler(A) ::= SAMPLERCUBE. { A = ctx->str_sc; }
+datatype_sampler(A) ::= SAMPLER_STATE. { A = ctx->str_ss; }
+datatype_sampler(A) ::= SAMPLERSTATE. { A = ctx->str_ss; }
+datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = ctx->str_sS; }
 
 %type datatype_scalar { const char * }
-datatype_scalar(A) ::= BOOL. { A = stringcache_fmt(ctx->strcache, "b"); }
-datatype_scalar(A) ::= INT. { A = stringcache_fmt(ctx->strcache, "i"); }
-datatype_scalar(A) ::= UINT. { A = stringcache_fmt(ctx->strcache, "u"); }
-datatype_scalar(A) ::= HALF. { A = stringcache_fmt(ctx->strcache, "h"); }
-datatype_scalar(A) ::= FLOAT. { A = stringcache_fmt(ctx->strcache, "f"); }
-datatype_scalar(A) ::= DOUBLE. { A = stringcache_fmt(ctx->strcache, "d"); }
-datatype_scalar(A) ::= STRING. { A = stringcache_fmt(ctx->strcache, "S"); } // this is for the effects framework, not HLSL.
-datatype_scalar(A) ::= SNORM FLOAT. { A = stringcache_fmt(ctx->strcache, "Fs"); }
-datatype_scalar(A) ::= UNORM FLOAT. { A = stringcache_fmt(ctx->strcache, "Fu"); }
-datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = stringcache_fmt(ctx->strcache, "B%s", B); }
+datatype_scalar(A) ::= BOOL. { A = ctx->str_b; }
+datatype_scalar(A) ::= INT. { A = ctx->str_i; }
+datatype_scalar(A) ::= UINT. { A = ctx->str_u; }
+datatype_scalar(A) ::= HALF. { A = ctx->str_h; }
+datatype_scalar(A) ::= FLOAT. { A = ctx->str_f; }
+datatype_scalar(A) ::= DOUBLE. { A = ctx->str_d; }
+datatype_scalar(A) ::= STRING. { A = ctx->str_S; } // this is for the effects framework, not HLSL.
+datatype_scalar(A) ::= SNORM FLOAT. { A = ctx->str_ns; }
+datatype_scalar(A) ::= UNORM FLOAT. { A = ctx->str_nu; }
+datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = stringcache_fmt(ctx->strcache, "B{%s}", B); }
 
 // !!! FIXME: MSDN suggests that the matrix ones are just typedefs inserted
 // !!! FIXME:  before parsing begins, like:
@@ -338,10 +338,10 @@ datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = stringcache_fmt(ct
 // !!! FIXME:  ...maybe we can rip these out of the grammar and just create
 // !!! FIXME:  them at startup?
 %type datatype_vector { const char * }
-datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = stringcache_fmt(ctx->strcache, "v%d%s", (int) C.i64, B); }
+datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = stringcache_fmt(ctx->strcache, "V{%d,%s}", (int) C.i64, B); }
 
 %type datatype_matrix { const char * }
-datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = stringcache_fmt(ctx->strcache, "m%d%d%s", (int) C.i64, (int) D.i64, B); }
+datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = stringcache_fmt(ctx->strcache, "M{%d,%d,%s}", (int) C.i64, (int) D.i64, B); }
 
 %type statement_block { Statement * }
 %destructor statement_block { delete_statement(ctx, $$); }

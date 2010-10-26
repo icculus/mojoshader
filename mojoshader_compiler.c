@@ -596,6 +596,7 @@ typedef struct Context
     //  with the rest of the context. This makes it so we can compare common
     //  strings by pointer without having to hash them every time, so long as
     //  we're comparing a string pointer we know came from this string cache.
+    // The first batch are simplifed datatype strings ("b" == bool, etc).
     const char *str_b;  // "b"
     const char *str_f;  // "f"
     const char *str_i;  // "i"
@@ -603,6 +604,17 @@ typedef struct Context
     const char *str_h;  // "h"
     const char *str_d;  // "d"
     const char *str_s;  // "s"
+    const char *str_S;  // "S"
+    const char *str_s1;  // "s1"
+    const char *str_s2;  // "s2"
+    const char *str_s3;  // "s3"
+    const char *str_sc;  // "sc"
+    const char *str_ss;  // "ss"
+    const char *str_sS;  // "sS"
+    const char *str_Fs;  // "Fs"
+    const char *str_Fu;  // "Fu"
+    const char *str_ns;  // "ns"
+    const char *str_nu;  // "nu"
 } Context;
 
 
@@ -666,6 +678,9 @@ static int create_symbolmap(Context *ctx, SymbolMap *map)
 static void push_symbol(Context *ctx, SymbolMap *map,
                         const char *sym, const char *datatype)
 {
+    // !!! FIXME: decide if this symbol is defined, and if so, if it's in
+    // !!! FIXME:  the current scope.
+
     SymbolScope *item = (SymbolScope *) Malloc(ctx, sizeof (SymbolScope));
     if (item == NULL)
         return;
@@ -676,7 +691,7 @@ static void push_symbol(Context *ctx, SymbolMap *map,
         {
             Free(ctx, item);
             return;
-        }
+        } // if
     } // if
 
     item->symbol = sym;  // cached strings, don't copy.
@@ -728,6 +743,23 @@ static inline void pop_scope(Context *ctx)
     pop_symbol_scope(ctx, &ctx->usertypes);
     pop_symbol_scope(ctx, &ctx->variables);
 } // push_scope
+
+static const char *find_symbol(Context *ctx, SymbolMap *map, const char *sym)
+{
+    const void *value = NULL;
+    hash_find(map->hash, sym, &value);
+    return (const char *) value;
+} // find_symbol
+
+static inline const char *find_usertype(Context *ctx, const char *sym)
+{
+    return find_symbol(ctx, &ctx->usertypes, sym);
+} // find_usertype
+
+static inline const char *find_variable(Context *ctx, const char *sym)
+{
+    return find_symbol(ctx, &ctx->variables, sym);
+} // find_variable
 
 static void destroy_symbolmap(Context *ctx, SymbolMap *map)
 {
@@ -1010,6 +1042,7 @@ static void delete_scalar_or_array(Context *ctx, ScalarOrArray *soa)
 static Typedef *new_typedef(Context *ctx, int isconst, const char *datatype,
                             ScalarOrArray *soa)
 {
+    // we correct this datatype to the final string during semantic analysis.
     NEW_AST_NODE(retval, Typedef, AST_TYPEDEF);
     retval->isconst = isconst;
     retval->datatype = datatype;
@@ -1550,11 +1583,13 @@ static void delete_statement(Context *ctx, Statement *stmt)
     // don't free (stmt) here, the class-specific functions do it.
 } // delete_statement
 
-static int is_usertype(const Context *ctx, const char *token)
+static const char *get_usertype(const Context *ctx, const char *token)
 {
     const void *value;  // search all scopes.
-    return hash_find(ctx->usertypes.hash, token, &value);
-} // is_usertype
+    if (!hash_find(ctx->usertypes.hash, token, &value))
+        return NULL;
+    return (const char *) value;
+} // get_usertype
 
 
 // This is where the actual parsing happens. It's Lemon-generated!
@@ -2312,6 +2347,780 @@ static void print_ast(const int substmt, void *ast)
 } // print_ast
 
 
+/*
+ * datatype strings...
+ *
+ * "v" == void
+ * "b" == bool
+ * "i" == int
+ * "u" == uint
+ * "h" == half
+ * "f" == float
+ * "ns" == snorm float
+ * "nu" == unorm float
+ * "B{*}" == buffer
+ * "V{#,*}" == vector
+ * "M{#,#,*}" == matrix
+ * "d" == double
+ * "a{#,*}" == array
+ * "S" == string
+ * "X{*}" == struct
+ * "s1" == sampler1D
+ * "s2" == sampler2D
+ * "s3" == sampler3D
+ * "sc" == samplerCUBE
+ * "ss" == sampler_state
+ * "sS" == SamplerComparisonState
+ * "U{*}" == user type.
+ * "F{*,*}" == function
+ */
+
+
+static void require_numeric_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype == ctx->str_f) return;  // float
+    if (datatype == ctx->str_i) return;  // int
+    if (datatype == ctx->str_b) return;  // bool
+    if (datatype == ctx->str_u) return;  // uint
+    if (datatype == ctx->str_h) return;  // half
+    if (datatype == ctx->str_d) return;  // double
+    fail(ctx, "Expected numeric type");  // !!! FIXME: fmt.
+    // !!! FIXME: replace AST node with an AST_OP_INT_LITERAL zero, keep going.
+} // require_numeric_datatype
+
+static void require_integer_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype == ctx->str_i) return;  // int
+    if (datatype == ctx->str_u) return;  // uint
+    fail(ctx, "Expected integer type");  // !!! FIXME: fmt.
+    // !!! FIXME: replace AST node with an AST_OP_INT_LITERAL zero, keep going.
+} // require_integer_datatype
+
+static void require_boolean_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype == ctx->str_b) return;  // bool
+    if (datatype == ctx->str_i) return;  // int
+    if (datatype == ctx->str_u) return;  // uint
+    fail(ctx, "Expected boolean type");  // !!! FIXME: fmt.
+    // !!! FIXME: replace AST node with an AST_OP_BOOLEAN_LITERAL false, keep going.
+} // require_numeric_datatype
+
+
+static void require_array_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype[0] != 'a')
+        fail(ctx, "expected array");
+        // !!! FIXME: delete array dereference for further processing.
+} // require_array_datatype
+
+
+static void require_struct_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype[0] != 'X')
+        fail(ctx, "expected struct");
+        // !!! FIXME: delete struct dereference for further processing.
+} // require_array_datatype
+
+
+static const char *require_function_datatype(Context *ctx, const char *datatype)
+{
+    if (datatype[0] != 'F')
+    {
+        fail(ctx, "expected function");
+        // !!! FIXME: delete function call for further processing.
+        return ctx->str_i;
+    } // if
+
+    assert(datatype[1] == '{');
+    datatype += 2;
+    const char *ptr = strchr(datatype, ',');
+    assert(ptr != NULL);
+    return stringcache_len(ctx->strcache, datatype, (unsigned int) (ptr-datatype));
+} // require_function_datatype
+
+
+// Extract the individual element type from an array datatype.
+static const char *array_element_datatype(Context *ctx, const char *datatype)
+{
+    const char *ptr;
+    const char *ptr2;
+    unsigned int depth = 1;
+    assert(datatype[0] == 'a');
+    assert(datatype[1] == '{');
+    ptr = strchr(datatype+2, ',');
+    assert(ptr != NULL);
+    ptr++;
+    for (ptr2 = ptr; depth > 0; ptr2++)
+    {
+        const char ch = *ptr2;
+        assert(ch != '\0');
+        if (ch == '{')
+            depth++;
+        else if (ch == '}')
+            depth--;
+    } // for
+
+    return stringcache_len(ctx->strcache, ptr, (unsigned int) (ptr2 - ptr));
+} // array_element_datatype
+
+
+// This tests two datatypes to see if they are compatible, and adds cast
+//  operator nodes to the AST if the program was relying on implicit
+//  casts between then. Will fail() if the datatypes can't be coerced
+//  with a cast at all. (left) can be NULL to say that its datatype is
+//  set in stone (an lvalue, for example). No other NULLs are allowed.
+// Returns final datatype used once implicit casting is complete.
+// The datatypes must be pointers from the string cache.
+static const char *add_type_coercion(Context *ctx,
+                                     Expression **left, const char *ldatatype,
+                                     Expression **right, const char *rdatatype)
+{
+    // !!! FIXME: this whole function is probably naive at best.
+
+    if (ldatatype == rdatatype)
+        return ldatatype;   // they already match, so we're done.
+
+    struct {
+        const char *datatype;
+        const int bits;
+        const int is_unsigned;
+        const int floating;
+    } typeinf[] = {
+        { ctx->str_b,  1, 1, 0 },
+        { ctx->str_h, 16, 0, 1 },
+        { ctx->str_i, 32, 0, 0 },
+        { ctx->str_u, 32, 1, 0 },
+        { ctx->str_f, 32, 0, 1 },
+        { ctx->str_d, 64, 0, 1 },
+    };
+
+    int l, r;
+    for (l = 0; l < STATICARRAYLEN(typeinf); l++)
+    {
+        if (typeinf[l].datatype == ldatatype)
+            break;
+    } // for
+    for (r = 0; r < STATICARRAYLEN(typeinf); r++)
+    {
+        if (typeinf[r].datatype == rdatatype)
+            break;
+    } // for
+
+    enum { CHOOSE_NEITHER, CHOOSE_LEFT, CHOOSE_RIGHT } choice = CHOOSE_NEITHER;
+    if ((l < STATICARRAYLEN(typeinf)) && (r < STATICARRAYLEN(typeinf)))
+    {
+        if (left == NULL)
+            choice = CHOOSE_LEFT;  // we need to force to the lvalue.
+        else if (typeinf[l].bits > typeinf[r].bits)
+            choice = CHOOSE_LEFT;
+        else if (typeinf[l].bits < typeinf[r].bits)
+            choice = CHOOSE_RIGHT;
+        else if (typeinf[l].floating && !typeinf[r].floating)
+            choice = CHOOSE_LEFT;
+        else if (!typeinf[l].floating && typeinf[r].floating)
+            choice = CHOOSE_RIGHT;
+        else if (typeinf[l].is_unsigned && !typeinf[r].is_unsigned)
+            choice = CHOOSE_LEFT;
+        else if (!typeinf[l].is_unsigned && typeinf[r].is_unsigned)
+            choice = CHOOSE_RIGHT;
+    } // if
+
+    if (choice == CHOOSE_LEFT)
+    {
+        *right = new_cast_expr(ctx, ldatatype, *right);
+        return ldatatype;
+    } // if
+    else if (choice == CHOOSE_RIGHT)
+    {
+        *left = new_cast_expr(ctx, rdatatype, *left);
+        return rdatatype;
+    } // else if
+
+    assert(choice == CHOOSE_NEITHER);
+    fail(ctx, "incompatible data types");
+    // Ditch original (*right), force a literal value that matches
+    //  ldatatype, so further processing is normalized.
+    // !!! FIXME: force (right) to match (left).
+    delete_expr(ctx, *right);
+    *right = new_cast_expr(ctx, ldatatype, new_literal_int_expr(ctx, 0));
+    return ldatatype;
+} // add_type_coercion
+
+
+// Go through the AST and make sure all datatypes check out okay. For datatypes
+//  that are compatible but are relying on an implicit cast, we add explicit
+//  casts to the AST here, so further processing doesn't have to worry about
+//  type coercion.
+// For things that are incompatible, we generate errors and
+//  then replace them with reasonable defaults so further processing can
+//  continue (but code generation will be skipped due to errors).
+// This means further processing can assume the AST is sane and not have to
+//  spend effort verifying it again.
+static const char *type_check_ast(Context *ctx, void *ast)
+{
+    if (!ast)
+        return NULL;
+
+    // upkeep so we report correct error locations...
+    ctx->sourcefile = ((ASTGeneric *) ast)->ast.filename;
+    ctx->sourceline = ((ASTGeneric *) ast)->ast.line;
+
+    switch ( ((ASTGeneric *) ast)->ast.type )
+    {
+        case AST_OP_POSTINCREMENT:
+        case AST_OP_POSTDECREMENT:
+        case AST_OP_PREINCREMENT:
+        case AST_OP_PREDECREMENT:
+        case AST_OP_COMPLEMENT:
+        case AST_OP_NEGATE:
+        {
+            ExpressionUnary *expr = (ExpressionUnary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->operand);
+            require_numeric_datatype(ctx, datatype);
+            return datatype;
+        } // case
+
+        case AST_OP_NOT:
+        {
+            ExpressionUnary *expr = (ExpressionUnary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->operand);
+            require_boolean_datatype(ctx, datatype);
+            return datatype;
+        } // case
+
+        case AST_OP_DEREF_ARRAY:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            require_array_datatype(ctx, datatype);
+            require_numeric_datatype(ctx, datatype2);
+            add_type_coercion(ctx, NULL, ctx->str_i, &expr->right, datatype2);
+            return array_element_datatype(ctx, datatype);
+        } // case
+
+        case AST_OP_DEREF_STRUCT:
+        {
+            ExpressionDerefStruct *expr = (ExpressionDerefStruct *) ast;
+            const char *datatype = type_check_ast(ctx, expr->identifier);
+            require_struct_datatype(ctx, datatype);
+// !!! FIXME: map member to datatype
+datatype = "!!! FIXME";
+            return datatype;
+        } // case
+
+        case AST_OP_COMMA:
+        {
+            // evaluate and throw away left, return right.
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            type_check_ast(ctx, expr->left);
+            return type_check_ast(ctx, expr->right);
+        } // case
+
+        case AST_OP_MULTIPLY:
+        case AST_OP_DIVIDE:
+        case AST_OP_MODULO:
+        case AST_OP_ADD:
+        case AST_OP_SUBTRACT:
+        case AST_OP_LSHIFT:
+        case AST_OP_RSHIFT:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            require_numeric_datatype(ctx, datatype);
+            require_numeric_datatype(ctx, datatype2);
+            return add_type_coercion(ctx, &expr->left, datatype,
+                                     &expr->right, datatype2);
+        } // case
+
+        case AST_OP_LESSTHAN:
+        case AST_OP_GREATERTHAN:
+        case AST_OP_LESSTHANOREQUAL:
+        case AST_OP_GREATERTHANOREQUAL:
+        case AST_OP_NOTEQUAL:
+        case AST_OP_EQUAL:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            add_type_coercion(ctx, &expr->left, datatype,
+                              &expr->right, datatype2);
+            return ctx->str_b;
+        } // case
+
+        case AST_OP_BINARYAND:
+        case AST_OP_BINARYXOR:
+        case AST_OP_BINARYOR:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            require_integer_datatype(ctx, datatype);
+            require_integer_datatype(ctx, datatype2);
+            return add_type_coercion(ctx, &expr->left, datatype,
+                                     &expr->right, datatype2);
+        } // case
+
+        case AST_OP_LOGICALAND:
+        case AST_OP_LOGICALOR:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            require_boolean_datatype(ctx, datatype);
+            require_boolean_datatype(ctx, datatype2);
+            add_type_coercion(ctx, &expr->left, datatype,
+                              &expr->right, datatype2);
+            return ctx->str_b;
+        } // case
+
+        case AST_OP_ASSIGN:
+        case AST_OP_MULASSIGN:
+        case AST_OP_DIVASSIGN:
+        case AST_OP_MODASSIGN:
+        case AST_OP_ADDASSIGN:
+        case AST_OP_SUBASSIGN:
+        case AST_OP_LSHIFTASSIGN:
+        case AST_OP_RSHIFTASSIGN:
+        case AST_OP_ANDASSIGN:
+        case AST_OP_XORASSIGN:
+        case AST_OP_ORASSIGN:
+        {
+            ExpressionBinary *expr = (ExpressionBinary *) ast;
+            const char *datatype = type_check_ast(ctx, expr->left);
+            const char *datatype2 = type_check_ast(ctx, expr->right);
+            add_type_coercion(ctx, NULL, datatype, &expr->right, datatype2);
+            return datatype;
+        } // case
+
+        case AST_OP_CONDITIONAL:
+        {
+            ExpressionTernary *tern = (ExpressionTernary *) ast;
+            const char *datatype = type_check_ast(ctx, tern->left);
+            const char *datatype2 = type_check_ast(ctx, tern->center);
+            const char *datatype3 = type_check_ast(ctx, tern->right);
+            require_boolean_datatype(ctx, datatype);
+            return add_type_coercion(ctx, &tern->center, datatype2,
+                                     &tern->right, datatype3);
+        } // case
+
+        case AST_OP_IDENTIFIER:
+        {
+            ExpressionIdentifier *expr = (ExpressionIdentifier *) ast;
+            const char *datatype = find_variable(ctx, expr->identifier);
+            if (datatype == NULL)
+            {
+                fail(ctx, "Unknown identifier");
+                // !!! FIXME: replace with a sane default, move on.
+                datatype = ctx->str_i;
+            } // if
+            return datatype;
+        } // case
+
+        case AST_OP_INT_LITERAL:
+            return ctx->str_i;
+
+        case AST_OP_FLOAT_LITERAL:
+            return ctx->str_f;
+
+        case AST_OP_STRING_LITERAL:
+            return ctx->str_S;
+
+        case AST_OP_BOOLEAN_LITERAL:
+            return ctx->str_b;
+
+        case AST_ARGUMENTS:
+        {
+            Arguments *arguments = (Arguments *) ast;
+            const char *datatype = type_check_ast(ctx, arguments->argument);
+            if (arguments->next != NULL)
+            {
+                const char *datatype2 = type_check_ast(ctx, arguments->next);
+                datatype = stringcache_fmt(ctx->strcache, "%s%s",
+                                           datatype, datatype2);
+            } // if
+            return datatype;
+        } // case
+
+        case AST_OP_CALLFUNC:
+        {
+            ExpressionCallFunction *expr = (ExpressionCallFunction *) ast;
+            const char *datatype = type_check_ast(ctx, expr->identifier);
+            /*const char *datatype2 =*/ type_check_ast(ctx, expr->args);
+            const char *retval = require_function_datatype(ctx, datatype);
+// !!! FIXME: test each arg against function datatype.
+            return retval;  // this is the datatype of the func's return value.
+        } // case
+
+        case AST_OP_CONSTRUCTOR:
+        {
+            ExpressionConstructor *expr = (ExpressionConstructor *) ast;
+// !!! FIXME: test each arg against constructor datatype.
+            type_check_ast(ctx, expr->args);
+            return expr->datatype;
+        } // case
+
+        case AST_OP_CAST:
+        {
+            ExpressionCast *expr = (ExpressionCast *) ast;
+            const char *datatype = expr->datatype;
+            const char *datatype2 = type_check_ast(ctx, expr->operand);
+            // you still need type coercion, since you could do a wrong cast,
+            //  like "int x = (short) mychar;"
+            add_type_coercion(ctx, NULL, datatype, &expr->operand, datatype2);
+            return datatype;
+        } // case
+
+        case AST_STATEMENT_BREAK:
+        case AST_STATEMENT_CONTINUE:
+        case AST_STATEMENT_DISCARD:
+        case AST_STATEMENT_EMPTY:
+        {
+            type_check_ast(ctx, ((Statement *) ast)->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_EXPRESSION:
+        {
+            ExpressionStatement *stmt = (ExpressionStatement *) ast;
+            // !!! FIXME: warn about expressions without a side-effect here?
+            type_check_ast(ctx, stmt->expr);  // !!! FIXME: This is named badly...
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_IF:
+        {
+            IfStatement *stmt = (IfStatement *) ast;
+            push_scope(ctx);  // new scope for "if ((int x = blah()) != 0)"
+            type_check_ast(ctx, stmt->expr);
+            type_check_ast(ctx, stmt->statement);
+            pop_scope(ctx);
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_TYPEDEF:
+        {
+            TypedefStatement *stmt = (TypedefStatement *) ast;
+            type_check_ast(ctx, stmt->type_info);
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_SWITCH:
+        {
+            SwitchStatement *stmt = (SwitchStatement *) ast;
+            SwitchCases *cases = stmt->cases;
+            const char *datatype = type_check_ast(ctx, stmt->expr);
+            while (cases)
+            {
+                const char *datatype2 = type_check_ast(ctx, cases->expr);
+                add_type_coercion(ctx, NULL, datatype,
+                                  &cases->expr, datatype2);
+                type_check_ast(ctx, cases->statement);
+                cases = cases->next;
+            } // while
+            return NULL;
+        } // case
+
+        case AST_SWITCH_CASE:
+        {
+            assert(0 && "Should have been handled by AST_STATEMENT_SWITCH.");
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_STRUCT:
+        {
+            StructStatement *stmt = (StructStatement *) ast;
+            type_check_ast(ctx, stmt->struct_info);
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_VARDECL:
+        {
+            VarDeclStatement *stmt = (VarDeclStatement *) ast;
+            type_check_ast(ctx, stmt->declaration);
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_BLOCK:
+        {
+            BlockStatement *bs = (BlockStatement *) ast;
+            push_scope(ctx);  // new vars declared here live until '}'.
+            type_check_ast(ctx, bs->statements);
+            pop_scope(ctx);
+            type_check_ast(ctx, bs->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_FOR:
+        {
+            ForStatement *fs = (ForStatement *) ast;
+            push_scope(ctx);  // new scope for "for (int x = 0; ...)"
+            type_check_ast(ctx, fs->var_decl);
+            type_check_ast(ctx, fs->initializer);
+            type_check_ast(ctx, fs->looptest);
+            type_check_ast(ctx, fs->counter);
+            type_check_ast(ctx, fs->statement);
+            pop_scope(ctx);
+            type_check_ast(ctx, fs->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_DO:
+        {
+            DoStatement *ds = (DoStatement *) ast;
+            type_check_ast(ctx, ds->statement);
+            push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
+            type_check_ast(ctx, ds->expr);
+            pop_scope(ctx);
+            type_check_ast(ctx, ds->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_WHILE:
+        {
+            WhileStatement *ws = (WhileStatement *) ast;
+            push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
+            type_check_ast(ctx, ws->expr);
+            type_check_ast(ctx, ws->statement);
+            pop_scope(ctx);
+            type_check_ast(ctx, ws->next);
+            return NULL;
+        } // case
+
+        case AST_STATEMENT_RETURN:
+        {
+            ReturnStatement *stmt = (ReturnStatement *) ast;
+            type_check_ast(ctx, stmt->expr);
+            type_check_ast(ctx, stmt->next);
+            return NULL;
+        } // case
+
+        case AST_COMPUNIT_FUNCTION:
+        {
+            CompilationUnitFunction *unit = (CompilationUnitFunction *) ast;
+            const char *sig = get_usertype(ctx, unit->declaration->identifier);
+            if (sig == NULL)
+            {
+                // add function declaration if we've not seen it.
+                sig = unit->declaration->datatype;
+                push_usertype(ctx, unit->declaration->identifier, sig);
+            } // if
+
+            // declarations can be done multiple times if they match.
+            else if (sig != unit->declaration->datatype)
+            {
+                fail(ctx, "function sigs don't match");
+            } // else
+
+            push_scope(ctx);  // so function params are in function scope.
+            type_check_ast(ctx, unit->declaration);
+            if (unit->definition == NULL)
+                pop_scope(ctx);
+            else
+            {
+                type_check_ast(ctx, unit->definition);
+                pop_scope(ctx);
+                push_variable(ctx, unit->declaration->identifier, sig);
+            } // else
+
+            type_check_ast(ctx, unit->next);
+            return NULL;
+        } // case
+
+        case AST_COMPUNIT_TYPEDEF:
+        {
+            CompilationUnitTypedef *unit = (CompilationUnitTypedef *) ast;
+            type_check_ast(ctx, unit->type_info);
+            type_check_ast(ctx, unit->next);
+            return NULL;
+        } // case
+
+        case AST_COMPUNIT_STRUCT:
+        {
+            CompilationUnitStruct *unit = (CompilationUnitStruct *) ast;
+            type_check_ast(ctx, unit->struct_info);
+            type_check_ast(ctx, unit->next);
+            return NULL;
+        } // case
+
+        case AST_COMPUNIT_VARIABLE:
+        {
+            CompilationUnitVariable *unit = (CompilationUnitVariable *) ast;
+            type_check_ast(ctx, unit->declaration);
+            type_check_ast(ctx, unit->next);
+            return NULL;
+        } // case
+
+        case AST_SCALAR_OR_ARRAY:
+        {
+            ScalarOrArray *soa = (ScalarOrArray *) ast;
+            const char *datatype = type_check_ast(ctx, soa->dimension);
+            require_integer_datatype(ctx, datatype);
+            assert(0); // !!! FIXME: figure out datatype of identifier.
+            return NULL;
+        } // case
+
+        case AST_TYPEDEF:
+        {
+            ScalarOrArray *soa = ((Typedef *) ast)->details;
+            const char *datatype = get_usertype(ctx, soa->identifier);
+            if (datatype != NULL)
+            {
+                fail(ctx, "typedef already defined");
+                return datatype;
+            } // if
+
+            datatype = ((Typedef *) ast)->datatype;
+
+            // don't walk into AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
+            // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
+            // !!! FIXME: this part is cut and paste.
+            assert( (soa->isarray && soa->dimension) ||
+                    (!soa->isarray && !soa->dimension) );
+
+            if (soa->isarray)
+            {
+                if (soa->dimension->ast.type != AST_OP_INT_LITERAL)
+                {
+                    fail(ctx, "Expected integer");
+                    delete_expr(ctx, soa->dimension);  // make sane.
+                    soa->dimension = new_literal_int_expr(ctx, 1);
+                } // if
+
+                int64 dim = ((ExpressionIntLiteral *) soa->dimension)->value;
+                datatype = stringcache_fmt(ctx->strcache, "a{%lld,%s}",
+                                           (long long) dim, datatype);
+            } // if
+
+            ((Typedef *) ast)->datatype = datatype;  // make sane.
+            push_usertype(ctx, soa->identifier, datatype);
+            return datatype;
+        } // case
+
+        case AST_FUNCTION_PARAMS:
+        {
+            FunctionParameters *params = (FunctionParameters *) ast;
+            push_variable(ctx, params->identifier, params->datatype);
+            type_check_ast(ctx, params->initializer);
+            type_check_ast(ctx, params->next);
+            return NULL;
+        } // case
+
+        case AST_FUNCTION_SIGNATURE:
+        {
+            FunctionSignature *sig = (FunctionSignature *) ast;
+            type_check_ast(ctx, sig->params);
+            return sig->datatype;
+        } // case
+
+        case AST_STRUCT_DECLARATION:
+        {
+            StructDeclaration *decl = (StructDeclaration *) ast;
+            const char *datatype = type_check_ast(ctx, decl->members);
+            datatype = stringcache_fmt(ctx->strcache, "X{%s}", datatype);
+            push_usertype(ctx, decl->name, datatype);
+            return stringcache_fmt(ctx->strcache, "U{%s}", decl->name);
+        } // case
+
+        case AST_STRUCT_MEMBER:
+        {
+            StructMembers *members = (StructMembers *) ast;
+            const char *dtype = type_check_ast(ctx, members->details);
+            const char *dtype2 = type_check_ast(ctx, members->next);
+            if (dtype2)
+                return stringcache_fmt(ctx->strcache, "%s%s", dtype, dtype2);
+            return dtype;
+        } // case
+
+        case AST_VARIABLE_DECLARATION:
+        {
+            VariableDeclaration *decl = (VariableDeclaration *) ast;
+            ScalarOrArray *soa = decl->details;
+            const char *datatype;
+            const char *datatype2;
+
+            // this is true now, but we'll fill in ->datatype no matter what.
+            assert( (decl->datatype && !decl->anonymous_datatype) ||
+                    (!decl->datatype && decl->anonymous_datatype) );
+
+            // fix up if necessary.
+            if (decl->anonymous_datatype != NULL)
+                decl->datatype = type_check_ast(ctx, decl->anonymous_datatype);
+            datatype = decl->datatype;
+
+            // don't walk into AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
+            // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
+            // !!! FIXME: this part is cut and paste.
+            assert( (soa->isarray && soa->dimension) ||
+                    (!soa->isarray && !soa->dimension) );
+
+            if (soa->isarray)
+            {
+                if (soa->dimension->ast.type != AST_OP_INT_LITERAL)
+                {
+                    fail(ctx, "Expected integer");
+                    delete_expr(ctx, soa->dimension);  // make sane.
+                    soa->dimension = new_literal_int_expr(ctx, 1);
+                } // if
+
+                int64 dim = ((ExpressionIntLiteral *) soa->dimension)->value;
+                datatype = stringcache_fmt(ctx->strcache, "a{%lld,%s}",
+                                           (long long) dim, datatype);
+            } // if
+
+            decl->datatype = datatype;  // make sane.
+            push_variable(ctx, soa->identifier, datatype);
+            datatype2 = type_check_ast(ctx, decl->initializer);
+            add_type_coercion(ctx, NULL, datatype, &decl->initializer, datatype2);
+
+            type_check_ast(ctx, decl->annotations);
+            type_check_ast(ctx, decl->lowlevel);
+
+            datatype2 = type_check_ast(ctx, decl->next);
+            assert(datatype == datatype2);
+            return datatype;
+        } // case
+
+        case AST_ANNOTATION:
+        {
+            Annotations *anno = (Annotations *) ast;
+            while (anno)
+            {
+                type_check_ast(ctx, anno->initializer);
+                anno = anno->next;
+            } // while
+            return NULL;
+        } // case
+
+        case AST_PACK_OFFSET:
+        case AST_VARIABLE_LOWLEVEL:
+            return NULL;  // no-op (for now, at least).
+
+        default:
+            assert(0 && "unexpected type");
+    } // switch
+
+    return NULL;
+} // type_check_ast
+
+
+
+static inline void semantic_analysis(Context *ctx)
+{
+    type_check_ast(ctx, ctx->ast);
+    // !!! FIXME: build an IR here.
+    delete_compilation_unit(ctx, ctx->ast);  // done with the AST, nuke it.
+    ctx->ast = NULL;
+    // !!! FIXME: do everything else.  :)
+} // semantic_analysis
+
+
 static inline int64 strtoi64(const char *str, unsigned int len)
 {
     int64 retval = 0;
@@ -2522,12 +3331,11 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
             if (tokencmp("noExpressionOptimizations")) return TOKEN_HLSL_NOEXPRESSIONOPTIMIZATIONS;
             if (tokencmp("unused")) return TOKEN_HLSL_UNUSED;
             if (tokencmp("xps")) return TOKEN_HLSL_XPS;
-
             #undef tokencmp
 
             // get a canonical copy of the string now, as we'll need it.
             token = stringcache_len(ctx->strcache, token, tokenlen);
-            if (is_usertype(ctx, token))
+            if (get_usertype(ctx, token) != NULL)
                 return TOKEN_HLSL_USERTYPE;
             return TOKEN_HLSL_IDENTIFIER;
 
@@ -2583,6 +3391,17 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     ctx->str_h = stringcache(ctx->strcache, "h");
     ctx->str_d = stringcache(ctx->strcache, "d");
     ctx->str_s = stringcache(ctx->strcache, "s");
+    ctx->str_S = stringcache(ctx->strcache, "S");
+    ctx->str_s1 = stringcache(ctx->strcache, "s1");
+    ctx->str_s2 = stringcache(ctx->strcache, "s2");
+    ctx->str_s3 = stringcache(ctx->strcache, "s3");
+    ctx->str_sc = stringcache(ctx->strcache, "sc");
+    ctx->str_ss = stringcache(ctx->strcache, "ss");
+    ctx->str_sS = stringcache(ctx->strcache, "sS");
+    ctx->str_Fs = stringcache(ctx->strcache, "Fs");
+    ctx->str_Fu = stringcache(ctx->strcache, "Fu");
+    ctx->str_ns = stringcache(ctx->strcache, "ns");
+    ctx->str_nu = stringcache(ctx->strcache, "nu");
 
     return ctx;
 } // build_context
@@ -2750,6 +3569,8 @@ void MOJOSHADER_compile(const char *filename,
     // !!! FIXME: check (ctx->ast != NULL), and maybe isfail().
 
     print_ast(0, ctx->ast);
+
+    semantic_analysis(ctx);
 
     destroy_context(ctx);
 
