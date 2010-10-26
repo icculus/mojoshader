@@ -59,7 +59,6 @@ typedef enum ASTNodeType
 
     AST_OP_START_RANGE_BINARY,
     AST_OP_DEREF_ARRAY,
-    AST_OP_DEREF_STRUCT,
     AST_OP_COMMA,
     AST_OP_MULTIPLY,
     AST_OP_DIVIDE,
@@ -105,6 +104,7 @@ typedef enum ASTNodeType
     AST_OP_END_RANGE_DATA,
 
     AST_OP_START_RANGE_MISC,
+    AST_OP_DEREF_STRUCT,
     AST_OP_CALLFUNC,
     AST_OP_CONSTRUCTOR,
     AST_OP_CAST,
@@ -280,6 +280,13 @@ typedef struct ExpressionConstructor
     const char *datatype;
     Arguments *args;
 } ExpressionConstructor;
+
+typedef struct ExpressionDerefStruct
+{
+    ASTNode ast;  // Always AST_OP_DEREF_STRUCT
+    Expression *identifier;
+    const char *member;
+} ExpressionDerefStruct;
 
 typedef struct ExpressionCallFunction
 {
@@ -809,6 +816,15 @@ static Expression *new_ternary_expr(Context *ctx, const ASTNodeType op,
     return (Expression *) retval;
 } // new_ternary_expr
 
+static Expression *new_deref_struct_expr(Context *ctx, Expression *identifier,
+                                         const char *member)
+{
+    NEW_AST_NODE(retval, ExpressionDerefStruct, AST_OP_DEREF_STRUCT);
+    retval->identifier = identifier;
+    retval->member = member;  // cached; don't copy string.
+    return (Expression *) retval;
+} // new_deref_struct_expr
+
 static Expression *new_identifier_expr(Context *ctx, const char *string)
 {
     NEW_AST_NODE(retval, ExpressionIdentifier, AST_OP_IDENTIFIER);
@@ -874,6 +890,10 @@ static void delete_expr(Context *ctx, Expression *expr)
     else if (expr->ast.type == AST_OP_CONSTRUCTOR)
     {
         delete_arguments(ctx, ((ExpressionConstructor *) expr)->args);
+    } // else if
+    else if (expr->ast.type == AST_OP_DEREF_STRUCT)
+    {
+        delete_expr(ctx, ((ExpressionDerefStruct *) expr)->identifier);
     } // else if
     else if (expr->ast.type == AST_OP_CALLFUNC)
     {
@@ -1601,9 +1621,9 @@ static void print_ast(const int substmt, void *ast)
             break;
 
         case AST_OP_DEREF_STRUCT:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
+            print_ast(0, ((ExpressionDerefStruct *) ast)->identifier);
             printf(".");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
+            printf("%s", ((ExpressionDerefStruct *) ast)->member);
             break;
 
         case AST_OP_COMMA:

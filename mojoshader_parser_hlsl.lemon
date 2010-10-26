@@ -470,7 +470,7 @@ postfix_expr(A) ::= primary_expr(B). { A = B; }
 postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, AST_OP_DEREF_ARRAY, B, C); }
 postfix_expr(A) ::= postfix_expr(B) arguments(C). { A = new_callfunc_expr(ctx, B, C); }
 postfix_expr(A) ::= datatype(B) arguments(C). { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
-postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_binary_expr(ctx, AST_OP_DEREF_STRUCT, B, new_identifier_expr(ctx, C.string)); }
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_deref_struct_expr(ctx, B, C.string); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, AST_OP_POSTINCREMENT, B); }
 postfix_expr(A) ::= postfix_expr(B) MINUSMINUS. { A = new_unary_expr(ctx, AST_OP_POSTDECREMENT, B); }
 
