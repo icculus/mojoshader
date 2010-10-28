@@ -34,527 +34,31 @@
     } \
 }
 
+static inline int operator_is_unary(const MOJOSHADER_astNodeType op)
+{
+    return ( (op > MOJOSHADER_AST_OP_START_RANGE_UNARY) &&
+             (op < MOJOSHADER_AST_OP_END_RANGE_UNARY) );
+} // operator_is_unary
+
+static inline int operator_is_binary(const MOJOSHADER_astNodeType op)
+{
+    return ( (op > MOJOSHADER_AST_OP_START_RANGE_BINARY) &&
+             (op < MOJOSHADER_AST_OP_END_RANGE_BINARY) );
+} // operator_is_binary
+
+static inline int operator_is_ternary(const MOJOSHADER_astNodeType op)
+{
+    return ( (op > MOJOSHADER_AST_OP_START_RANGE_TERNARY) &&
+             (op < MOJOSHADER_AST_OP_END_RANGE_TERNARY) );
+} // operator_is_ternary
+
+
 typedef union TokenData
 {
     int64 i64;
     double dbl;
     const char *string;
 } TokenData;
-
-
-// Structures that make up the parse tree...
-
-typedef enum ASTNodeType
-{
-    AST_OP_START_RANGE,
-    AST_OP_START_RANGE_UNARY,
-    AST_OP_POSTINCREMENT,
-    AST_OP_POSTDECREMENT,
-    AST_OP_PREINCREMENT,
-    AST_OP_PREDECREMENT,
-    AST_OP_NEGATE,
-    AST_OP_COMPLEMENT,
-    AST_OP_NOT,
-    AST_OP_END_RANGE_UNARY,
-
-    AST_OP_START_RANGE_BINARY,
-    AST_OP_DEREF_ARRAY,
-    AST_OP_COMMA,
-    AST_OP_MULTIPLY,
-    AST_OP_DIVIDE,
-    AST_OP_MODULO,
-    AST_OP_ADD,
-    AST_OP_SUBTRACT,
-    AST_OP_LSHIFT,
-    AST_OP_RSHIFT,
-    AST_OP_LESSTHAN,
-    AST_OP_GREATERTHAN,
-    AST_OP_LESSTHANOREQUAL,
-    AST_OP_GREATERTHANOREQUAL,
-    AST_OP_EQUAL,
-    AST_OP_NOTEQUAL,
-    AST_OP_BINARYAND,
-    AST_OP_BINARYXOR,
-    AST_OP_BINARYOR,
-    AST_OP_LOGICALAND,
-    AST_OP_LOGICALOR,
-    AST_OP_ASSIGN,
-    AST_OP_MULASSIGN,
-    AST_OP_DIVASSIGN,
-    AST_OP_MODASSIGN,
-    AST_OP_ADDASSIGN,
-    AST_OP_SUBASSIGN,
-    AST_OP_LSHIFTASSIGN,
-    AST_OP_RSHIFTASSIGN,
-    AST_OP_ANDASSIGN,
-    AST_OP_XORASSIGN,
-    AST_OP_ORASSIGN,
-    AST_OP_END_RANGE_BINARY,
-
-    AST_OP_START_RANGE_TERNARY,
-    AST_OP_CONDITIONAL,
-    AST_OP_END_RANGE_TERNARY,
-
-    AST_OP_START_RANGE_DATA,
-    AST_OP_IDENTIFIER,
-    AST_OP_INT_LITERAL,
-    AST_OP_FLOAT_LITERAL,
-    AST_OP_STRING_LITERAL,
-    AST_OP_BOOLEAN_LITERAL,
-    AST_OP_END_RANGE_DATA,
-
-    AST_OP_START_RANGE_MISC,
-    AST_OP_DEREF_STRUCT,
-    AST_OP_CALLFUNC,
-    AST_OP_CONSTRUCTOR,
-    AST_OP_CAST,
-    AST_OP_END_RANGE_MISC,
-    AST_OP_END_RANGE,
-
-    AST_COMPUNIT_START_RANGE,
-    AST_COMPUNIT_FUNCTION,    // function declaration or definition
-    AST_COMPUNIT_TYPEDEF,     // typedef or struct
-    AST_COMPUNIT_STRUCT,      // global struct
-    AST_COMPUNIT_VARIABLE,    // global variable
-    AST_COMPUNIT_END_RANGE,
-
-    AST_STATEMENT_START_RANGE,
-    AST_STATEMENT_BLOCK,
-    AST_STATEMENT_EMPTY,
-    AST_STATEMENT_EXPRESSION,
-    AST_STATEMENT_IF,
-    AST_STATEMENT_SWITCH,
-    AST_STATEMENT_FOR,
-    AST_STATEMENT_DO,
-    AST_STATEMENT_WHILE,
-    AST_STATEMENT_RETURN,
-    AST_STATEMENT_BREAK,
-    AST_STATEMENT_CONTINUE,
-    AST_STATEMENT_DISCARD,
-    AST_STATEMENT_TYPEDEF,
-    AST_STATEMENT_STRUCT,
-    AST_STATEMENT_VARDECL,
-    AST_STATEMENT_END_RANGE,
-
-    AST_MISC_START_RANGE,
-    AST_FUNCTION_PARAMS,
-    AST_FUNCTION_SIGNATURE,
-    AST_SCALAR_OR_ARRAY,
-    AST_TYPEDEF,
-    AST_PACK_OFFSET,
-    AST_VARIABLE_LOWLEVEL,
-    AST_ANNOTATION,
-    AST_VARIABLE_DECLARATION,
-    AST_STRUCT_DECLARATION,
-    AST_STRUCT_MEMBER,
-    AST_SWITCH_CASE,
-    AST_ARGUMENTS,
-    AST_MISC_END_RANGE,
-
-    AST_END_RANGE
-} ASTNodeType;
-
-typedef struct ASTNode
-{
-    ASTNodeType type;
-    const char *filename;
-    uint32 line;
-} ASTNode;
-
-typedef enum VariableAttributes
-{
-    VARATTR_EXTERN = (1 << 0),
-    VARATTR_NOINTERPOLATION = (1 << 1),
-    VARATTR_SHARED = (1 << 2),
-    VARATTR_STATIC = (1 << 3),
-    VARATTR_UNIFORM = (1 << 4),
-    VARATTR_VOLATILE = (1 << 5),
-    VARATTR_CONST = (1 << 6),
-    VARATTR_ROWMAJOR = (1 << 7),
-    VARATTR_COLUMNMAJOR = (1 << 8)
-} VariableAttributes;
-
-typedef enum IfAttributes
-{
-    IFATTR_NONE,
-    IFATTR_BRANCH,
-    IFATTR_FLATTEN,
-    IFATTR_IFALL,
-    IFATTR_IFANY,
-    IFATTR_PREDICATE,
-    IFATTR_PREDICATEBLOCK,
-} IfAttributes;
-
-typedef enum SwitchAttributes
-{
-    SWITCHATTR_NONE,
-    SWITCHATTR_FLATTEN,
-    SWITCHATTR_BRANCH,
-    SWITCHATTR_FORCECASE,
-    SWITCHATTR_CALL
-} SwitchAttributes;
-
-static inline int operator_is_unary(const ASTNodeType op)
-{
-    return ((op > AST_OP_START_RANGE_UNARY) && (op < AST_OP_END_RANGE_UNARY));
-} // operator_is_unary
-
-static inline int operator_is_binary(const ASTNodeType op)
-{
-    return ((op > AST_OP_START_RANGE_BINARY) && (op < AST_OP_END_RANGE_BINARY));
-} // operator_is_binary
-
-static inline int operator_is_ternary(const ASTNodeType op)
-{
-    return ((op > AST_OP_START_RANGE_TERNARY) && (op < AST_OP_END_RANGE_TERNARY));
-} // operator_is_ternary
-
-typedef struct ASTGeneric
-{
-    ASTNode ast;
-} ASTGeneric;
-
-typedef ASTGeneric Expression;
-
-typedef struct Arguments
-{
-    ASTNode ast;  // Always AST_ARGUMENTS
-    Expression *argument;
-    struct Arguments *next;
-} Arguments;
-
-typedef struct ExpressionUnary
-{
-    ASTNode ast;
-    Expression *operand;
-} ExpressionUnary;
-
-typedef struct ExpressionBinary
-{
-    ASTNode ast;
-    Expression *left;
-    Expression *right;
-} ExpressionBinary;
-
-typedef struct ExpressionTernary
-{
-    ASTNode ast;
-    Expression *left;
-    Expression *center;
-    Expression *right;
-} ExpressionTernary;
-
-typedef struct ExpressionIdentifier
-{
-    ASTNode ast;  // Always AST_OP_IDENTIFIER
-    const char *identifier;
-} ExpressionIdentifier;
-
-typedef struct ExpressionIntLiteral
-{
-    ASTNode ast;  // Always AST_OP_INT_LITERAL
-    int64 value;
-} ExpressionIntLiteral;
-
-typedef struct ExpressionFloatLiteral
-{
-    ASTNode ast;  // Always AST_OP_FLOAT_LITERAL
-    double value;
-} ExpressionFloatLiteral;
-
-typedef struct ExpressionStringLiteral
-{
-    ASTNode ast;  // Always AST_OP_STRING_LITERAL
-    const char *string;
-} ExpressionStringLiteral;
-
-typedef struct ExpressionBooleanLiteral
-{
-    ASTNode ast;  // Always AST_OP_BOOLEAN_LITERAL
-    int value;  // Always 1 or 0.
-} ExpressionBooleanLiteral;
-
-typedef struct ExpressionConstructor
-{
-    ASTNode ast;  // Always AST_OP_CONSTRUCTOR
-    const char *datatype;
-    Arguments *args;
-} ExpressionConstructor;
-
-typedef struct ExpressionDerefStruct
-{
-    ASTNode ast;  // Always AST_OP_DEREF_STRUCT
-    Expression *identifier;
-    const char *member;
-} ExpressionDerefStruct;
-
-typedef struct ExpressionCallFunction
-{
-    ASTNode ast;  // Always AST_OP_CALLFUNC
-    Expression *identifier;
-    Arguments *args;
-} ExpressionCallFunction;
-
-typedef struct ExpressionCast
-{
-    ASTNode ast;  // Always AST_OP_CAST
-    const char *datatype;
-    Expression *operand;
-} ExpressionCast;
-
-typedef struct CompilationUnit
-{
-    ASTNode ast;
-    struct CompilationUnit *next;
-} CompilationUnit;
-
-typedef enum FunctionStorageClass
-{
-    FNSTORECLS_NONE,
-    FNSTORECLS_INLINE
-} FunctionStorageClass;
-
-typedef enum InputModifier
-{
-    INPUTMOD_NONE,
-    INPUTMOD_IN,
-    INPUTMOD_OUT,
-    INPUTMOD_INOUT,
-    INPUTMOD_UNIFORM
-} InputModifier;
-
-typedef enum InterpolationModifier
-{
-    INTERPMOD_NONE,
-    INTERPMOD_LINEAR,
-    INTERPMOD_CENTROID,
-    INTERPMOD_NOINTERPOLATION,
-    INTERPMOD_NOPERSPECTIVE,
-    INTERPMOD_SAMPLE
-} InterpolationModifier;
-
-typedef struct FunctionParameters
-{
-    ASTNode ast;
-    InputModifier input_modifier;
-    const char *datatype;
-    const char *identifier;
-    const char *semantic;
-    InterpolationModifier interpolation_modifier;
-    Expression *initializer;
-    struct FunctionParameters *next;
-} FunctionParameters;
-
-typedef struct FunctionSignature
-{
-    ASTNode ast;
-    const char *datatype;
-    const char *identifier;
-    FunctionParameters *params;
-    FunctionStorageClass storage_class;
-    const char *semantic;
-} FunctionSignature;
-
-typedef struct ScalarOrArray
-{
-    ASTNode ast;
-    const char *identifier;
-    int isarray;
-    Expression *dimension;
-} ScalarOrArray;
-
-typedef struct Annotations
-{
-    ASTNode ast;
-    const char *datatype;
-    Expression *initializer;
-    struct Annotations *next;
-} Annotations;
-
-typedef struct PackOffset
-{
-    ASTNode ast;
-    const char *ident1;   // !!! FIXME: rename this.
-    const char *ident2;
-} PackOffset;
-
-typedef struct VariableLowLevel
-{
-    ASTNode ast;
-    PackOffset *packoffset;
-    const char *register_name;
-} VariableLowLevel;
-
-typedef struct StructMembers
-{
-    ASTNode ast;
-    const char *datatype;
-    const char *semantic;
-    ScalarOrArray *details;
-    InterpolationModifier interpolation_mod;
-    struct StructMembers *next;
-} StructMembers;
-
-typedef struct StructDeclaration
-{
-    ASTNode ast;
-    const char *name;
-    StructMembers *members;
-} StructDeclaration;
-
-typedef struct VariableDeclaration
-{
-    ASTNode ast;
-    int attributes;
-    const char *datatype;
-    StructDeclaration *anonymous_datatype;
-    ScalarOrArray *details;
-    const char *semantic;
-    Annotations *annotations;
-    Expression *initializer;
-    VariableLowLevel *lowlevel;
-    struct VariableDeclaration *next;
-} VariableDeclaration;
-
-typedef struct Statement
-{
-    ASTNode ast;
-    struct Statement *next;
-} Statement;
-
-typedef Statement EmptyStatement;
-typedef Statement BreakStatement;
-typedef Statement ContinueStatement;
-typedef Statement DiscardStatement;
-
-typedef struct BlockStatement  // something enclosed in "{}" braces.
-{
-    ASTNode ast;
-    struct Statement *next;
-    Statement *statements;  // list of statements enclosed by this block.
-} BlockStatement;
-
-typedef struct ReturnStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    Expression *expr;
-} ReturnStatement;
-
-typedef struct ExpressionStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    Expression *expr;
-} ExpressionStatement;
-
-typedef struct IfStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    int attributes;
-    Expression *expr;
-    Statement *statement;
-    Statement *else_statement;
-} IfStatement;
-
-typedef struct SwitchCases
-{
-    ASTNode ast;
-    Expression *expr;
-    Statement *statement;
-    struct SwitchCases *next;
-} SwitchCases;
-
-typedef struct SwitchStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    int attributes;
-    Expression *expr;
-    SwitchCases *cases;
-} SwitchStatement;
-
-typedef struct WhileStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    int64 unroll;  // # times to unroll, 0 to loop, negative for compiler's choice.
-    Expression *expr;
-    Statement *statement;
-} WhileStatement;
-
-typedef WhileStatement DoStatement;
-
-typedef struct ForStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    int64 unroll;  // # times to unroll, 0 to loop, negative for compiler's choice.
-    VariableDeclaration *var_decl;
-    Expression *initializer;
-    Expression *looptest;
-    Expression *counter;
-    Statement *statement;
-} ForStatement;
-
-typedef struct Typedef
-{
-    ASTNode ast;
-    int isconst;
-    const char *datatype;
-    ScalarOrArray *details;
-} Typedef;
-
-typedef struct TypedefStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    Typedef *type_info;
-} TypedefStatement;
-
-typedef struct VarDeclStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    VariableDeclaration *declaration;
-} VarDeclStatement;
-
-typedef struct StructStatement
-{
-    ASTNode ast;
-    struct Statement *next;
-    StructDeclaration *struct_info;
-} StructStatement;
-
-typedef struct CompilationUnitFunction
-{
-    ASTNode ast;
-    struct CompilationUnit *next;
-    FunctionSignature *declaration;
-    Statement *definition;
-} CompilationUnitFunction;
-
-typedef struct CompilationUnitTypedef
-{
-    ASTNode ast;
-    struct CompilationUnit *next;
-    Typedef *type_info;
-} CompilationUnitTypedef;
-
-typedef struct CompilationUnitStruct
-{
-    ASTNode ast;
-    struct CompilationUnit *next;
-    StructDeclaration *struct_info;
-} CompilationUnitStruct;
-
-typedef struct CompilationUnitVariable
-{
-    ASTNode ast;
-    struct CompilationUnit *next;
-    VariableDeclaration *declaration;
-} CompilationUnitVariable;
 
 
 // This tracks data types and variables, and notes when they enter/leave scope.
@@ -589,7 +93,7 @@ typedef struct Context
     unsigned int sourceline; // current line in sourcefile that we're parsing.
     SymbolMap usertypes;
     SymbolMap variables;
-    CompilationUnit *ast;  // Abstract Syntax Tree
+    MOJOSHADER_astNode *ast;  // Abstract Syntax Tree
 
     // These are entries allocated in the strcache, so these pointers are
     //  valid from shortly after we create the cache until we destroy it
@@ -787,150 +291,170 @@ static void destroy_symbolmap(Context *ctx, SymbolMap *map)
     if (!cls) return; \
 } while (0)
 
-static void delete_compilation_unit(Context *ctx, CompilationUnit *unit);
-static void delete_statement(Context *ctx, Statement *stmt);
+static void delete_compilation_unit(Context*, MOJOSHADER_astCompilationUnit*);
+static void delete_statement(Context *ctx, MOJOSHADER_astStatement *stmt);
 
-static Expression *new_callfunc_expr(Context *ctx, Expression *identifier,
-                                     Arguments *args)
+static MOJOSHADER_astExpression *new_callfunc_expr(Context *ctx,
+                                        MOJOSHADER_astExpression *identifier,
+                                        MOJOSHADER_astArguments *args)
 {
-    NEW_AST_NODE(retval, ExpressionCallFunction, AST_OP_CALLFUNC);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionCallFunction,
+                 MOJOSHADER_AST_OP_CALLFUNC);
     retval->identifier = identifier;
     retval->args = args;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_callfunc_expr
 
-static Expression *new_constructor_expr(Context *ctx, const char *datatype,
-                                        Arguments *args)
+static MOJOSHADER_astExpression *new_constructor_expr(Context *ctx,
+                                                const char *datatype,
+                                                MOJOSHADER_astArguments *args)
 {
-    NEW_AST_NODE(retval, ExpressionConstructor, AST_OP_CONSTRUCTOR);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionConstructor,
+                 MOJOSHADER_AST_OP_CONSTRUCTOR);
     retval->datatype = datatype;
     retval->args = args;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_constructor_expr
 
-static Expression *new_cast_expr(Context *ctx, const char *datatype,
-                                 Expression *operand)
+static MOJOSHADER_astExpression *new_cast_expr(Context *ctx,
+                                            const char *datatype,
+                                            MOJOSHADER_astExpression *operand)
 {
-    NEW_AST_NODE(retval, ExpressionCast, AST_OP_CAST);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionCast, MOJOSHADER_AST_OP_CAST);
     retval->datatype = datatype;
     retval->operand = operand;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_cast_expr
 
-static Expression *new_unary_expr(Context *ctx, const ASTNodeType op,
-                                  Expression *operand)
+static MOJOSHADER_astExpression *new_unary_expr(Context *ctx,
+                                            const MOJOSHADER_astNodeType op,
+                                            MOJOSHADER_astExpression *operand)
 {
-    NEW_AST_NODE(retval, ExpressionUnary, op);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionUnary, op);
     assert(operator_is_unary(op));
     retval->operand = operand;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_unary_expr
 
-static Expression *new_binary_expr(Context *ctx, const ASTNodeType op,
-                                   Expression *left, Expression *right)
+static MOJOSHADER_astExpression *new_binary_expr(Context *ctx,
+                                            const MOJOSHADER_astNodeType op,
+                                            MOJOSHADER_astExpression *left,
+                                            MOJOSHADER_astExpression *right)
 {
-    NEW_AST_NODE(retval, ExpressionBinary, op);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionBinary, op);
     assert(operator_is_binary(op));
     retval->left = left;
     retval->right = right;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_binary_expr
 
-static Expression *new_ternary_expr(Context *ctx, const ASTNodeType op,
-                                    Expression *left, Expression *center,
-                                    Expression *right)
+static MOJOSHADER_astExpression *new_ternary_expr(Context *ctx,
+                                            const MOJOSHADER_astNodeType op,
+                                            MOJOSHADER_astExpression *left,
+                                            MOJOSHADER_astExpression *center,
+                                            MOJOSHADER_astExpression *right)
 {
-    NEW_AST_NODE(retval, ExpressionTernary, op);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionTernary, op);
     assert(operator_is_ternary(op));
     retval->left = left;
     retval->center = center;
     retval->right = right;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_ternary_expr
 
-static Expression *new_deref_struct_expr(Context *ctx, Expression *identifier,
-                                         const char *member)
+static MOJOSHADER_astExpression *new_deref_struct_expr(Context *ctx,
+                                        MOJOSHADER_astExpression *identifier,
+                                        const char *member)
 {
-    NEW_AST_NODE(retval, ExpressionDerefStruct, AST_OP_DEREF_STRUCT);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionDerefStruct,
+                 MOJOSHADER_AST_OP_DEREF_STRUCT);
     retval->identifier = identifier;
     retval->member = member;  // cached; don't copy string.
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_deref_struct_expr
 
-static Expression *new_identifier_expr(Context *ctx, const char *string)
+static MOJOSHADER_astExpression *new_identifier_expr(Context *ctx,
+                                                     const char *string)
 {
-    NEW_AST_NODE(retval, ExpressionIdentifier, AST_OP_IDENTIFIER);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionIdentifier,
+                 MOJOSHADER_AST_OP_IDENTIFIER);
     retval->identifier = string;  // cached; don't copy string.
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_identifier_expr
 
-static Expression *new_literal_int_expr(Context *ctx, const int64 value)
+static MOJOSHADER_astExpression *new_literal_int_expr(Context *ctx,
+                                                       const int value)
 {
-    NEW_AST_NODE(retval, ExpressionIntLiteral, AST_OP_INT_LITERAL);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionIntLiteral,
+                 MOJOSHADER_AST_OP_INT_LITERAL);
     retval->value = value;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_literal_int_expr
 
-static Expression *new_literal_float_expr(Context *ctx, const double dbl)
+static MOJOSHADER_astExpression *new_literal_float_expr(Context *ctx,
+                                                        const double dbl)
 {
-    NEW_AST_NODE(retval, ExpressionFloatLiteral, AST_OP_FLOAT_LITERAL);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionFloatLiteral,
+                 MOJOSHADER_AST_OP_FLOAT_LITERAL);
     retval->value = dbl;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_literal_float_expr
 
-static Expression *new_literal_string_expr(Context *ctx, const char *string)
+static MOJOSHADER_astExpression *new_literal_string_expr(Context *ctx,
+                                                         const char *string)
 {
-    NEW_AST_NODE(retval, ExpressionStringLiteral, AST_OP_STRING_LITERAL);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionStringLiteral,
+                 MOJOSHADER_AST_OP_STRING_LITERAL);
     retval->string = string;  // cached; don't copy string.
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_literal_string_expr
 
-static Expression *new_literal_boolean_expr(Context *ctx, const int value)
+static MOJOSHADER_astExpression *new_literal_boolean_expr(Context *ctx,
+                                                          const int value)
 {
-    NEW_AST_NODE(retval, ExpressionBooleanLiteral, AST_OP_BOOLEAN_LITERAL);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionBooleanLiteral,
+                 MOJOSHADER_AST_OP_BOOLEAN_LITERAL);
     retval->value = value;
-    return (Expression *) retval;
+    return (MOJOSHADER_astExpression *) retval;
 } // new_literal_boolean_expr
 
-static void delete_arguments(Context *ctx, Arguments *args);
+static void delete_arguments(Context *ctx, MOJOSHADER_astArguments *args);
 
-static void delete_expr(Context *ctx, Expression *expr)
+static void delete_expr(Context *ctx, MOJOSHADER_astExpression *_expr)
 {
+    MOJOSHADER_astNode *expr = (MOJOSHADER_astNode *) _expr;
+
     DELETE_AST_NODE(expr);
-    if (operator_is_unary(expr->ast.type))
-    {
-        const ExpressionUnary *unary = (const ExpressionUnary *) expr;
-        delete_expr(ctx, unary->operand);
-    } // if
+
+    if (expr->ast.type == MOJOSHADER_AST_OP_CAST)
+        delete_expr(ctx, expr->cast.operand);
+
+    else if (expr->ast.type == MOJOSHADER_AST_OP_CONSTRUCTOR)
+        delete_arguments(ctx, expr->constructor.args);
+
+    else if (expr->ast.type == MOJOSHADER_AST_OP_DEREF_STRUCT)
+        delete_expr(ctx, expr->derefstruct.identifier);
+
+    else if (operator_is_unary(expr->ast.type))
+        delete_expr(ctx, expr->unary.operand);
+
     else if (operator_is_binary(expr->ast.type))
     {
-        const ExpressionBinary *binary = (const ExpressionBinary *) expr;
-        delete_expr(ctx, binary->left);
-        delete_expr(ctx, binary->right);
+        delete_expr(ctx, expr->binary.left);
+        delete_expr(ctx, expr->binary.right);
     } // else if
+
     else if (operator_is_ternary(expr->ast.type))
     {
-        const ExpressionTernary *ternary = (const ExpressionTernary *) expr;
-        delete_expr(ctx, ternary->left);
-        delete_expr(ctx, ternary->center);
-        delete_expr(ctx, ternary->right);
+        delete_expr(ctx, expr->ternary.left);
+        delete_expr(ctx, expr->ternary.center);
+        delete_expr(ctx, expr->ternary.right);
     } // else if
-    else if (expr->ast.type == AST_OP_CAST)
+
+    else if (expr->ast.type == MOJOSHADER_AST_OP_CALLFUNC)
     {
-        delete_expr(ctx, ((ExpressionCast *) expr)->operand);
-    } // else if
-    else if (expr->ast.type == AST_OP_CONSTRUCTOR)
-    {
-        delete_arguments(ctx, ((ExpressionConstructor *) expr)->args);
-    } // else if
-    else if (expr->ast.type == AST_OP_DEREF_STRUCT)
-    {
-        delete_expr(ctx, ((ExpressionDerefStruct *) expr)->identifier);
-    } // else if
-    else if (expr->ast.type == AST_OP_CALLFUNC)
-    {
-        delete_expr(ctx, ((ExpressionCallFunction *) expr)->identifier);
-        delete_arguments(ctx, ((ExpressionCallFunction *) expr)->args);
+        delete_expr(ctx, expr->callfunc.identifier);
+        delete_arguments(ctx, expr->callfunc.args);
     } // else if
 
     // rest of operators don't have extra data to free.
@@ -938,15 +462,16 @@ static void delete_expr(Context *ctx, Expression *expr)
     Free(ctx, expr);
 } // delete_expr
 
-static Arguments *new_argument(Context *ctx, Expression *argument)
+static MOJOSHADER_astArguments *new_argument(Context *ctx,
+                                             MOJOSHADER_astExpression *arg)
 {
-    NEW_AST_NODE(retval, Arguments, AST_ARGUMENTS);
-    retval->argument = argument;
+    NEW_AST_NODE(retval, MOJOSHADER_astArguments, MOJOSHADER_AST_ARGUMENTS);
+    retval->argument = arg;
     retval->next = NULL;
     return retval;
 } // new_argument
 
-static void delete_arguments(Context *ctx, Arguments *args)
+static void delete_arguments(Context *ctx, MOJOSHADER_astArguments *args)
 {
     DELETE_AST_NODE(args);
     delete_arguments(ctx, args->next);
@@ -954,15 +479,15 @@ static void delete_arguments(Context *ctx, Arguments *args)
     Free(ctx, args);
 } // delete_arguments
 
-static FunctionParameters *new_function_param(Context *ctx,
-                                        const InputModifier inputmod,
-                                        const char *datatype,
-                                        const char *identifier,
-                                        const char *semantic,
-                                        const InterpolationModifier interpmod,
-                                        Expression *initializer)
+static MOJOSHADER_astFunctionParameters *new_function_param(Context *ctx,
+                        const MOJOSHADER_astInputModifier inputmod,
+                        const char *datatype, const char *identifier,
+                        const char *semantic,
+                        const MOJOSHADER_astInterpolationModifier interpmod,
+                        MOJOSHADER_astExpression *initializer)
 {
-    NEW_AST_NODE(retval, FunctionParameters, AST_FUNCTION_PARAMS);
+    NEW_AST_NODE(retval, MOJOSHADER_astFunctionParameters,
+                 MOJOSHADER_AST_FUNCTION_PARAMS);
     retval->input_modifier = inputmod;
     retval->datatype = datatype;
     retval->identifier = identifier;
@@ -973,7 +498,8 @@ static FunctionParameters *new_function_param(Context *ctx,
     return retval;
 } // new_function_param
 
-static void delete_function_params(Context *ctx, FunctionParameters *params)
+static void delete_function_params(Context *ctx,
+                                   MOJOSHADER_astFunctionParameters *params)
 {
     DELETE_AST_NODE(params);
     delete_function_params(ctx, params->next);
@@ -981,39 +507,43 @@ static void delete_function_params(Context *ctx, FunctionParameters *params)
     Free(ctx, params);
 } // delete_function_params
 
-static FunctionSignature *new_function_signature(Context *ctx,
-                                                 const char *datatype,
-                                                 const char *identifier,
-                                                 FunctionParameters *params)
+static MOJOSHADER_astFunctionSignature *new_function_signature(Context *ctx,
+                                    const char *datatype,
+                                    const char *identifier,
+                                    MOJOSHADER_astFunctionParameters *params)
 {
-    NEW_AST_NODE(retval, FunctionSignature, AST_FUNCTION_SIGNATURE);
+    NEW_AST_NODE(retval, MOJOSHADER_astFunctionSignature,
+                 MOJOSHADER_AST_FUNCTION_SIGNATURE);
     retval->datatype = datatype;
     retval->identifier = identifier;
     retval->params = params;
-    retval->storage_class = FNSTORECLS_NONE;
+    retval->storage_class = MOJOSHADER_AST_FNSTORECLS_NONE;
     retval->semantic = NULL;
     return retval;
 } // new_function_signature
 
-static void delete_function_signature(Context *ctx, FunctionSignature *sig)
+static void delete_function_signature(Context *ctx,
+                                      MOJOSHADER_astFunctionSignature *sig)
 {
     DELETE_AST_NODE(sig);
     delete_function_params(ctx, sig->params);
     Free(ctx, sig);
 } // delete_function_signature
 
-static CompilationUnit *new_function(Context *ctx,
-                                     FunctionSignature *declaration,
-                                     Statement *definition)
+static MOJOSHADER_astCompilationUnit *new_function(Context *ctx,
+                                MOJOSHADER_astFunctionSignature *declaration,
+                                MOJOSHADER_astStatement *definition)
 {
-    NEW_AST_NODE(retval, CompilationUnitFunction, AST_COMPUNIT_FUNCTION);
+    NEW_AST_NODE(retval, MOJOSHADER_astCompilationUnitFunction,
+                 MOJOSHADER_AST_COMPUNIT_FUNCTION);
     retval->next = NULL;
     retval->declaration = declaration;
     retval->definition = definition;
-    return (CompilationUnit *) retval;
+    return (MOJOSHADER_astCompilationUnit *) retval;
 } // new_function
 
-static void delete_function(Context *ctx, CompilationUnitFunction *unitfn)
+static void delete_function(Context *ctx,
+                            MOJOSHADER_astCompilationUnitFunction *unitfn)
 {
     DELETE_AST_NODE(unitfn);
     delete_compilation_unit(ctx, unitfn->next);
@@ -1022,95 +552,106 @@ static void delete_function(Context *ctx, CompilationUnitFunction *unitfn)
     Free(ctx, unitfn);
 } // delete_function
 
-static ScalarOrArray *new_scalar_or_array(Context *ctx, const char *ident,
-                                          const int isvec, Expression *dim)
+static MOJOSHADER_astScalarOrArray *new_scalar_or_array(Context *ctx,
+                                          const char *ident, const int isvec,
+                                          MOJOSHADER_astExpression *dim)
 {
-    NEW_AST_NODE(retval, ScalarOrArray, AST_SCALAR_OR_ARRAY);
+    NEW_AST_NODE(retval, MOJOSHADER_astScalarOrArray,
+                 MOJOSHADER_AST_SCALAR_OR_ARRAY);
     retval->identifier = ident;
     retval->isarray = isvec;
     retval->dimension = dim;
     return retval;
 } // new_scalar_or_array
 
-static void delete_scalar_or_array(Context *ctx, ScalarOrArray *soa)
+static void delete_scalar_or_array(Context *ctx,MOJOSHADER_astScalarOrArray *s)
 {
-    DELETE_AST_NODE(soa);
-    delete_expr(ctx, soa->dimension);
-    Free(ctx, soa);
+    DELETE_AST_NODE(s);
+    delete_expr(ctx, s->dimension);
+    Free(ctx, s);
 } // delete_scalar_or_array
 
-static Typedef *new_typedef(Context *ctx, int isconst, const char *datatype,
-                            ScalarOrArray *soa)
+static MOJOSHADER_astTypedef *new_typedef(Context *ctx, const int isconst,
+                                          const char *datatype,
+                                          MOJOSHADER_astScalarOrArray *soa)
 {
     // we correct this datatype to the final string during semantic analysis.
-    NEW_AST_NODE(retval, Typedef, AST_TYPEDEF);
+    NEW_AST_NODE(retval, MOJOSHADER_astTypedef, MOJOSHADER_AST_TYPEDEF);
     retval->isconst = isconst;
     retval->datatype = datatype;
     retval->details = soa;
     return retval;
 } // new_typedef
 
-static void delete_typedef(Context *ctx, Typedef *td)
+static void delete_typedef(Context *ctx, MOJOSHADER_astTypedef *td)
 {
     DELETE_AST_NODE(td);
     delete_scalar_or_array(ctx, td->details);
     Free(ctx, td);
 } // delete_typedef
 
-static PackOffset *new_pack_offset(Context *ctx, const char *a, const char *b)
+static MOJOSHADER_astPackOffset *new_pack_offset(Context *ctx,
+                                                 const char *a, const char *b)
 {
-    NEW_AST_NODE(retval, PackOffset, AST_PACK_OFFSET);
+    NEW_AST_NODE(retval, MOJOSHADER_astPackOffset, MOJOSHADER_AST_PACK_OFFSET);
     retval->ident1 = a;
     retval->ident2 = b;
     return retval;
 } // new_pack_offset
 
-static void delete_pack_offset(Context *ctx, PackOffset *o)
+static void delete_pack_offset(Context *ctx, MOJOSHADER_astPackOffset *o)
 {
     DELETE_AST_NODE(o);
     Free(ctx, o);
 } // delete_pack_offset
 
-static VariableLowLevel *new_variable_lowlevel(Context *ctx, PackOffset *po,
+static MOJOSHADER_astVariableLowLevel *new_variable_lowlevel(Context *ctx,
+                                               MOJOSHADER_astPackOffset *po,
                                                const char *reg)
 {
-    NEW_AST_NODE(retval, VariableLowLevel, AST_VARIABLE_LOWLEVEL);
+    NEW_AST_NODE(retval, MOJOSHADER_astVariableLowLevel,
+                 MOJOSHADER_AST_VARIABLE_LOWLEVEL);
     retval->packoffset = po;
     retval->register_name = reg;
     return retval;
 } // new_variable_lowlevel
 
-static void delete_variable_lowlevel(Context *ctx, VariableLowLevel *vll)
+static void delete_variable_lowlevel(Context *ctx,
+                                     MOJOSHADER_astVariableLowLevel *vll)
 {
     DELETE_AST_NODE(vll);
     delete_pack_offset(ctx, vll->packoffset);
     Free(ctx, vll);
 } // delete_variable_lowlevel
 
-static Annotations *new_annotation(Context *ctx, const char *datatype,
-                                   Expression *initializer)
+static MOJOSHADER_astAnnotations *new_annotation(Context *ctx,
+                                        const char *datatype,
+                                        MOJOSHADER_astExpression *initializer)
 {
-    NEW_AST_NODE(retval, Annotations, AST_ANNOTATION);
+    NEW_AST_NODE(retval, MOJOSHADER_astAnnotations, MOJOSHADER_AST_ANNOTATION);
     retval->datatype = datatype;
     retval->initializer = initializer;
     retval->next = NULL;
     return retval;
 } // new_annotation
 
-static void delete_annotation(Context *ctx, Annotations *annotations)
+static void delete_annotation(Context *ctx, MOJOSHADER_astAnnotations *annos)
 {
-    DELETE_AST_NODE(annotations);
-    delete_annotation(ctx, annotations->next);
-    delete_expr(ctx, annotations->initializer);
-    Free(ctx, annotations);
+    DELETE_AST_NODE(annos);
+    delete_annotation(ctx, annos->next);
+    delete_expr(ctx, annos->initializer);
+    Free(ctx, annos);
 } // delete_annotation
 
-static VariableDeclaration *new_variable_declaration(Context *ctx,
-                                    ScalarOrArray *soa, const char *semantic,
-                                    Annotations *annotations, Expression *init,
-                                    VariableLowLevel *vll)
+static MOJOSHADER_astVariableDeclaration *new_variable_declaration(
+                            Context *ctx, MOJOSHADER_astScalarOrArray *soa,
+                            const char *semantic,
+                            MOJOSHADER_astAnnotations *annotations,
+                            MOJOSHADER_astExpression *init,
+                            MOJOSHADER_astVariableLowLevel *vll)
 {
-    NEW_AST_NODE(retval, VariableDeclaration, AST_VARIABLE_DECLARATION);
+    NEW_AST_NODE(retval, MOJOSHADER_astVariableDeclaration,
+                 MOJOSHADER_AST_VARIABLE_DECLARATION);
     retval->attributes = 0;
     retval->datatype = NULL;
     retval->anonymous_datatype = NULL;
@@ -1123,7 +664,8 @@ static VariableDeclaration *new_variable_declaration(Context *ctx,
     return retval;
 } // new_variable_declaration
 
-static void delete_variable_declaration(Context *ctx, VariableDeclaration *dcl)
+static void delete_variable_declaration(Context *ctx,
+                                        MOJOSHADER_astVariableDeclaration *dcl)
 {
     DELETE_AST_NODE(dcl);
     delete_variable_declaration(ctx, dcl->next);
@@ -1134,16 +676,18 @@ static void delete_variable_declaration(Context *ctx, VariableDeclaration *dcl)
     Free(ctx, dcl);
 } // delete_variable_declaration
 
-static CompilationUnit *new_global_variable(Context *ctx,
-                                            VariableDeclaration *decl)
+static MOJOSHADER_astCompilationUnit *new_global_variable(Context *ctx,
+                                      MOJOSHADER_astVariableDeclaration *decl)
 {
-    NEW_AST_NODE(retval, CompilationUnitVariable, AST_COMPUNIT_VARIABLE);
+    NEW_AST_NODE(retval, MOJOSHADER_astCompilationUnitVariable,
+                 MOJOSHADER_AST_COMPUNIT_VARIABLE);
     retval->next = NULL;
     retval->declaration = decl;
-    return (CompilationUnit *) retval;
+    return (MOJOSHADER_astCompilationUnit *) retval;
 } // new_global_variable
 
-static void delete_global_variable(Context *ctx, CompilationUnitVariable *var)
+static void delete_global_variable(Context *ctx,
+                                   MOJOSHADER_astCompilationUnitVariable *var)
 {
     DELETE_AST_NODE(var);
     delete_compilation_unit(ctx, var->next);
@@ -1151,15 +695,18 @@ static void delete_global_variable(Context *ctx, CompilationUnitVariable *var)
     Free(ctx, var);
 } // delete_global_variable
 
-static CompilationUnit *new_global_typedef(Context *ctx, Typedef *td)
+static MOJOSHADER_astCompilationUnit *new_global_typedef(Context *ctx,
+                                                     MOJOSHADER_astTypedef *td)
 {
-    NEW_AST_NODE(retval, CompilationUnitTypedef, AST_COMPUNIT_TYPEDEF);
+    NEW_AST_NODE(retval, MOJOSHADER_astCompilationUnitTypedef,
+                 MOJOSHADER_AST_COMPUNIT_TYPEDEF);
     retval->next = NULL;
     retval->type_info = td;
-    return (CompilationUnit *) retval;
+    return (MOJOSHADER_astCompilationUnit *) retval;
 } // new_global_typedef
 
-static void delete_global_typedef(Context *ctx, CompilationUnitTypedef *unit)
+static void delete_global_typedef(Context *ctx,
+                                  MOJOSHADER_astCompilationUnitTypedef *unit)
 {
     DELETE_AST_NODE(unit);
     delete_compilation_unit(ctx, unit->next);
@@ -1167,19 +714,22 @@ static void delete_global_typedef(Context *ctx, CompilationUnitTypedef *unit)
     Free(ctx, unit);
 } // delete_global_typedef
 
-static StructMembers *new_struct_member(Context *ctx, ScalarOrArray *soa,
-                                        const char *semantic)
+static MOJOSHADER_astStructMembers *new_struct_member(Context *ctx,
+                                            MOJOSHADER_astScalarOrArray *soa,
+                                            const char *semantic)
 {
-    NEW_AST_NODE(retval, StructMembers, AST_STRUCT_MEMBER);
+    NEW_AST_NODE(retval, MOJOSHADER_astStructMembers,
+                 MOJOSHADER_AST_STRUCT_MEMBER);
     retval->datatype = NULL;
     retval->semantic = semantic;
     retval->details = soa;
-    retval->interpolation_mod = INTERPMOD_NONE;
+    retval->interpolation_mod = MOJOSHADER_AST_INTERPMOD_NONE;
     retval->next = NULL;
     return retval;
 } // new_struct_member
 
-static void delete_struct_member(Context *ctx, StructMembers *member)
+static void delete_struct_member(Context *ctx,
+                                 MOJOSHADER_astStructMembers *member)
 {
     DELETE_AST_NODE(member);
     delete_struct_member(ctx, member->next);
@@ -1187,31 +737,37 @@ static void delete_struct_member(Context *ctx, StructMembers *member)
     Free(ctx, member);
 } // delete_struct_member
 
-static StructDeclaration *new_struct_declaration(Context *ctx,
-                                    const char *name, StructMembers *members)
+static MOJOSHADER_astStructDeclaration *new_struct_declaration(Context *ctx,
+                                        const char *name,
+                                        MOJOSHADER_astStructMembers *members)
 {
-    NEW_AST_NODE(retval, StructDeclaration, AST_STRUCT_DECLARATION);
+    NEW_AST_NODE(retval, MOJOSHADER_astStructDeclaration,
+                 MOJOSHADER_AST_STRUCT_DECLARATION);
     retval->name = name;
     retval->members = members;
     return retval;
 } // new_struct_declaration
 
-static void delete_struct_declaration(Context *ctx, StructDeclaration *decl)
+static void delete_struct_declaration(Context *ctx,
+                                      MOJOSHADER_astStructDeclaration *decl)
 {
     DELETE_AST_NODE(decl);
     delete_struct_member(ctx, decl->members);
     Free(ctx, decl);
 } // delete_struct_declaration
 
-static CompilationUnit *new_global_struct(Context *ctx, StructDeclaration *sd)
+static MOJOSHADER_astCompilationUnit *new_global_struct(Context *ctx,
+                                           MOJOSHADER_astStructDeclaration *sd)
 {
-    NEW_AST_NODE(retval, CompilationUnitStruct, AST_COMPUNIT_STRUCT);
+    NEW_AST_NODE(retval, MOJOSHADER_astCompilationUnitStruct,
+                 MOJOSHADER_AST_COMPUNIT_STRUCT);
     retval->next = NULL;
     retval->struct_info = sd;
-    return (CompilationUnit *) retval;
+    return (MOJOSHADER_astCompilationUnit *) retval;
 } // new_global_struct
 
-static void delete_global_struct(Context *ctx, CompilationUnitStruct *unit)
+static void delete_global_struct(Context *ctx,
+                                 MOJOSHADER_astCompilationUnitStruct *unit)
 {
     DELETE_AST_NODE(unit);
     delete_compilation_unit(ctx, unit->next);
@@ -1219,7 +775,8 @@ static void delete_global_struct(Context *ctx, CompilationUnitStruct *unit)
     Free(ctx, unit);
 } // delete_global_struct
 
-static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
+static void delete_compilation_unit(Context *ctx,
+                                    MOJOSHADER_astCompilationUnit *unit)
 {
     if (!unit) return;
 
@@ -1231,11 +788,11 @@ static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
     // Please note that everyone should _try_ to delete their "next" member,
     //  just in case, but hopefully this cleaned it out.
 
-    CompilationUnit *i = unit->next;
+    MOJOSHADER_astCompilationUnit *i = unit->next;
     unit->next = NULL;
     while (i)
     {
-        CompilationUnit *next = i->next;
+        MOJOSHADER_astCompilationUnit *next = i->next;
         i->next = NULL;
         delete_compilation_unit(ctx, i);
         i = next;
@@ -1244,11 +801,11 @@ static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
     switch (unit->ast.type)
     {
         #define DELETE_UNIT(typ, cls, fn) \
-            case AST_COMPUNIT_##typ: delete_##fn(ctx, (cls *) unit); break;
-        DELETE_UNIT(FUNCTION, CompilationUnitFunction, function);
-        DELETE_UNIT(TYPEDEF, CompilationUnitTypedef, global_typedef);
-        DELETE_UNIT(VARIABLE, CompilationUnitVariable, global_variable);
-        DELETE_UNIT(STRUCT, CompilationUnitStruct, global_struct);
+            case MOJOSHADER_AST_COMPUNIT_##typ: delete_##fn(ctx, (cls *) unit); break;
+        DELETE_UNIT(FUNCTION, MOJOSHADER_astCompilationUnitFunction, function);
+        DELETE_UNIT(TYPEDEF, MOJOSHADER_astCompilationUnitTypedef, global_typedef);
+        DELETE_UNIT(VARIABLE, MOJOSHADER_astCompilationUnitVariable, global_variable);
+        DELETE_UNIT(STRUCT, MOJOSHADER_astCompilationUnitStruct, global_struct);
         #undef DELETE_UNIT
         default: assert(0 && "missing cleanup code"); break;
     } // switch
@@ -1256,15 +813,18 @@ static void delete_compilation_unit(Context *ctx, CompilationUnit *unit)
     // don't free (unit) here, the class-specific functions do it.
 } // delete_compilation_unit
 
-static Statement *new_typedef_statement(Context *ctx, Typedef *td)
+static MOJOSHADER_astStatement *new_typedef_statement(Context *ctx,
+                                                      MOJOSHADER_astTypedef *td)
 {
-    NEW_AST_NODE(retval, TypedefStatement, AST_STATEMENT_TYPEDEF);
+    NEW_AST_NODE(retval, MOJOSHADER_astTypedefStatement,
+                 MOJOSHADER_AST_STATEMENT_TYPEDEF);
     retval->next = NULL;
     retval->type_info = td;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_typedef_statement
 
-static void delete_typedef_statement(Context *ctx, TypedefStatement *stmt)
+static void delete_typedef_statement(Context *ctx,
+                                     MOJOSHADER_astTypedefStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1272,15 +832,18 @@ static void delete_typedef_statement(Context *ctx, TypedefStatement *stmt)
     Free(ctx, stmt);
 } // delete_typedef_statement
 
-static Statement *new_return_statement(Context *ctx, Expression *expr)
+static MOJOSHADER_astStatement *new_return_statement(Context *ctx,
+                                                MOJOSHADER_astExpression *expr)
 {
-    NEW_AST_NODE(retval, ReturnStatement, AST_STATEMENT_RETURN);
+    NEW_AST_NODE(retval, MOJOSHADER_astReturnStatement,
+                 MOJOSHADER_AST_STATEMENT_RETURN);
     retval->next = NULL;
     retval->expr = expr;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_return_statement
 
-static void delete_return_statement(Context *ctx, ReturnStatement *stmt)
+static void delete_return_statement(Context *ctx,
+                                    MOJOSHADER_astReturnStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1288,15 +851,18 @@ static void delete_return_statement(Context *ctx, ReturnStatement *stmt)
     Free(ctx, stmt);
 } // delete_return_statement
 
-static Statement *new_block_statement(Context *ctx, Statement *statements)
+static MOJOSHADER_astStatement *new_block_statement(Context *ctx,
+                                               MOJOSHADER_astStatement *stmts)
 {
-    NEW_AST_NODE(retval, BlockStatement, AST_STATEMENT_BLOCK);
+    NEW_AST_NODE(retval, MOJOSHADER_astBlockStatement,
+                 MOJOSHADER_AST_STATEMENT_BLOCK);
     retval->next = NULL;
-    retval->statements = statements;
-    return (Statement *) retval;
+    retval->statements = stmts;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_block_statement
 
-static void delete_block_statement(Context *ctx, BlockStatement *stmt)
+static void delete_block_statement(Context *ctx,
+                                   MOJOSHADER_astBlockStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->statements);
@@ -1304,12 +870,15 @@ static void delete_block_statement(Context *ctx, BlockStatement *stmt)
     Free(ctx, stmt);
 } // delete_statement_block
 
-static Statement *new_for_statement(Context *ctx, VariableDeclaration *decl,
-                                    Expression *initializer,
-                                    Expression *looptest, Expression *counter,
-                                    Statement *statement)
+static MOJOSHADER_astStatement *new_for_statement(Context *ctx,
+                                    MOJOSHADER_astVariableDeclaration *decl,
+                                    MOJOSHADER_astExpression *initializer,
+                                    MOJOSHADER_astExpression *looptest,
+                                    MOJOSHADER_astExpression *counter,
+                                    MOJOSHADER_astStatement *statement)
 {
-    NEW_AST_NODE(retval, ForStatement, AST_STATEMENT_FOR);
+    NEW_AST_NODE(retval, MOJOSHADER_astForStatement,
+                 MOJOSHADER_AST_STATEMENT_FOR);
     retval->next = NULL;
     retval->unroll = -1;
     retval->var_decl = decl;
@@ -1317,10 +886,10 @@ static Statement *new_for_statement(Context *ctx, VariableDeclaration *decl,
     retval->looptest = looptest;
     retval->counter = counter;
     retval->statement = statement;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_for_statement
 
-static void delete_for_statement(Context *ctx, ForStatement *stmt)
+static void delete_for_statement(Context *ctx,MOJOSHADER_astForStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1332,18 +901,20 @@ static void delete_for_statement(Context *ctx, ForStatement *stmt)
     Free(ctx, stmt);
 } // delete_for_statement
 
-static Statement *new_do_statement(Context *ctx, int64 unroll,
-                                   Statement *stmt, Expression *expr)
+static MOJOSHADER_astStatement *new_do_statement(Context *ctx,
+                                                const int unroll,
+                                                MOJOSHADER_astStatement *stmt,
+                                                MOJOSHADER_astExpression *expr)
 {
-    NEW_AST_NODE(retval, DoStatement, AST_STATEMENT_DO);
+    NEW_AST_NODE(retval,MOJOSHADER_astDoStatement,MOJOSHADER_AST_STATEMENT_DO);
     retval->next = NULL;
     retval->unroll = unroll;
     retval->expr = expr;
     retval->statement = stmt;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_do_statement
 
-static void delete_do_statement(Context *ctx, DoStatement *stmt)
+static void delete_do_statement(Context *ctx, MOJOSHADER_astDoStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1352,18 +923,22 @@ static void delete_do_statement(Context *ctx, DoStatement *stmt)
     Free(ctx, stmt);
 } // delete_do_statement
 
-static Statement *new_while_statement(Context *ctx, int64 unroll,
-                                      Expression *expr, Statement *stmt)
+static MOJOSHADER_astStatement *new_while_statement(Context *ctx,
+                                                const int unroll,
+                                                MOJOSHADER_astExpression *expr,
+                                                MOJOSHADER_astStatement *stmt)
 {
-    NEW_AST_NODE(retval, WhileStatement, AST_STATEMENT_WHILE);
+    NEW_AST_NODE(retval, MOJOSHADER_astWhileStatement,
+                 MOJOSHADER_AST_STATEMENT_WHILE);
     retval->next = NULL;
     retval->unroll = unroll;
     retval->expr = expr;
     retval->statement = stmt;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_while_statement
 
-static void delete_while_statement(Context *ctx, WhileStatement *stmt)
+static void delete_while_statement(Context *ctx,
+                                   MOJOSHADER_astWhileStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1372,19 +947,22 @@ static void delete_while_statement(Context *ctx, WhileStatement *stmt)
     Free(ctx, stmt);
 } // delete_while_statement
 
-static Statement *new_if_statement(Context *ctx, int attr, Expression *expr,
-                                   Statement *stmt, Statement *elsestmt)
+static MOJOSHADER_astStatement *new_if_statement(Context *ctx,
+                                            const int attr,
+                                            MOJOSHADER_astExpression *expr,
+                                            MOJOSHADER_astStatement *stmt,
+                                            MOJOSHADER_astStatement *elsestmt)
 {
-    NEW_AST_NODE(retval, IfStatement, AST_STATEMENT_IF);
+    NEW_AST_NODE(retval,MOJOSHADER_astIfStatement,MOJOSHADER_AST_STATEMENT_IF);
     retval->next = NULL;
     retval->attributes = attr;
     retval->expr = expr;
     retval->statement = stmt;
     retval->else_statement = elsestmt;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_if_statement
 
-static void delete_if_statement(Context *ctx, IfStatement *stmt)
+static void delete_if_statement(Context *ctx, MOJOSHADER_astIfStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1394,17 +972,18 @@ static void delete_if_statement(Context *ctx, IfStatement *stmt)
     Free(ctx, stmt);
 } // delete_if_statement
 
-static SwitchCases *new_switch_case(Context *ctx, Expression *expr,
-                                    Statement *stmt)
+static MOJOSHADER_astSwitchCases *new_switch_case(Context *ctx,
+                                                MOJOSHADER_astExpression *expr,
+                                                MOJOSHADER_astStatement *stmt)
 {
-    NEW_AST_NODE(retval, SwitchCases, AST_SWITCH_CASE);
+    NEW_AST_NODE(retval, MOJOSHADER_astSwitchCases, MOJOSHADER_AST_SWITCH_CASE);
     retval->expr = expr;
     retval->statement = stmt;
     retval->next = NULL;
     return retval;
 } // new_switch_case
 
-static void delete_switch_case(Context *ctx, SwitchCases *sc)
+static void delete_switch_case(Context *ctx, MOJOSHADER_astSwitchCases *sc)
 {
     DELETE_AST_NODE(sc);
     delete_switch_case(ctx, sc->next);
@@ -1413,71 +992,82 @@ static void delete_switch_case(Context *ctx, SwitchCases *sc)
     Free(ctx, sc);
 } // delete_switch_case
 
-static Statement *new_empty_statement(Context *ctx)
+static MOJOSHADER_astStatement *new_empty_statement(Context *ctx)
 {
-    NEW_AST_NODE(retval, EmptyStatement, AST_STATEMENT_EMPTY);
+    NEW_AST_NODE(retval, MOJOSHADER_astEmptyStatement,
+                 MOJOSHADER_AST_STATEMENT_EMPTY);
     retval->next = NULL;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_empty_statement
 
-static void delete_empty_statement(Context *ctx, EmptyStatement *stmt)
+static void delete_empty_statement(Context *ctx,
+                                   MOJOSHADER_astEmptyStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
     Free(ctx, stmt);
 } // delete_empty_statement
 
-static Statement *new_break_statement(Context *ctx)
+static MOJOSHADER_astStatement *new_break_statement(Context *ctx)
 {
-    NEW_AST_NODE(retval, BreakStatement, AST_STATEMENT_BREAK);
+    NEW_AST_NODE(retval, MOJOSHADER_astBreakStatement,
+                 MOJOSHADER_AST_STATEMENT_BREAK);
     retval->next = NULL;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_break_statement
 
-static void delete_break_statement(Context *ctx, BreakStatement *stmt)
+static void delete_break_statement(Context *ctx,
+                                   MOJOSHADER_astBreakStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
     Free(ctx, stmt);
 } // delete_break_statement
 
-static Statement *new_continue_statement(Context *ctx)
+static MOJOSHADER_astStatement *new_continue_statement(Context *ctx)
 {
-    NEW_AST_NODE(retval, ContinueStatement, AST_STATEMENT_CONTINUE);
+    NEW_AST_NODE(retval, MOJOSHADER_astContinueStatement,
+                 MOJOSHADER_AST_STATEMENT_CONTINUE);
     retval->next = NULL;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_continue_statement
 
-static void delete_continue_statement(Context *ctx, ContinueStatement *stmt)
+static void delete_continue_statement(Context *ctx,
+                                      MOJOSHADER_astContinueStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
     Free(ctx, stmt);
 } // delete_continue_statement
 
-static Statement *new_discard_statement(Context *ctx)
+static MOJOSHADER_astStatement *new_discard_statement(Context *ctx)
 {
-    NEW_AST_NODE(retval, DiscardStatement, AST_STATEMENT_DISCARD);
+    NEW_AST_NODE(retval, MOJOSHADER_astDiscardStatement,
+                 MOJOSHADER_AST_STATEMENT_DISCARD);
     retval->next = NULL;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_discard_statement
 
-static void delete_discard_statement(Context *ctx, DiscardStatement *stmt)
+static void delete_discard_statement(Context *ctx,
+                                     MOJOSHADER_astDiscardStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
     Free(ctx, stmt);
 } // delete_discard_statement
 
-static Statement *new_expr_statement(Context *ctx, Expression *expr)
+static MOJOSHADER_astStatement *new_expr_statement(Context *ctx,
+                                                MOJOSHADER_astExpression *expr)
 {
-    NEW_AST_NODE(retval, ExpressionStatement, AST_STATEMENT_EXPRESSION);
+    NEW_AST_NODE(retval, MOJOSHADER_astExpressionStatement,
+                 MOJOSHADER_AST_STATEMENT_EXPRESSION);
     retval->next = NULL;
     retval->expr = expr;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_expr_statement
 
-static void delete_expr_statement(Context *ctx, ExpressionStatement *stmt)
+static void delete_expr_statement(Context *ctx,
+                                  MOJOSHADER_astExpressionStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1485,18 +1075,22 @@ static void delete_expr_statement(Context *ctx, ExpressionStatement *stmt)
     Free(ctx, stmt);
 } // delete_expr_statement
 
-static Statement *new_switch_statement(Context *ctx, int attr,
-                                       Expression *expr, SwitchCases *cases)
+static MOJOSHADER_astStatement *new_switch_statement(Context *ctx,
+                                            const int attr,
+                                            MOJOSHADER_astExpression *expr,
+                                            MOJOSHADER_astSwitchCases *cases)
 {
-    NEW_AST_NODE(retval, SwitchStatement, AST_STATEMENT_SWITCH);
+    NEW_AST_NODE(retval, MOJOSHADER_astSwitchStatement,
+                 MOJOSHADER_AST_STATEMENT_SWITCH);
     retval->next = NULL;
     retval->attributes = attr;
     retval->expr = expr;
     retval->cases = cases;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_switch_statement
 
-static void delete_switch_statement(Context *ctx, SwitchStatement *stmt)
+static void delete_switch_statement(Context *ctx,
+                                    MOJOSHADER_astSwitchStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_expr(ctx, stmt->expr);
@@ -1504,15 +1098,18 @@ static void delete_switch_statement(Context *ctx, SwitchStatement *stmt)
     Free(ctx, stmt);
 } // delete_switch_statement
 
-static Statement *new_struct_statement(Context *ctx, StructDeclaration *sd)
+static MOJOSHADER_astStatement *new_struct_statement(Context *ctx,
+                                        MOJOSHADER_astStructDeclaration *sd)
 {
-    NEW_AST_NODE(retval, StructStatement, AST_STATEMENT_STRUCT);
+    NEW_AST_NODE(retval, MOJOSHADER_astStructStatement,
+                 MOJOSHADER_AST_STATEMENT_STRUCT);
     retval->next = NULL;
     retval->struct_info = sd;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_struct_statement
 
-static void delete_struct_statement(Context *ctx, StructStatement *stmt)
+static void delete_struct_statement(Context *ctx,
+                                    MOJOSHADER_astStructStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1520,15 +1117,18 @@ static void delete_struct_statement(Context *ctx, StructStatement *stmt)
     Free(ctx, stmt);
 } // delete_struct_statement
 
-static Statement *new_vardecl_statement(Context *ctx, VariableDeclaration *vd)
+static MOJOSHADER_astStatement *new_vardecl_statement(Context *ctx,
+                                        MOJOSHADER_astVariableDeclaration *vd)
 {
-    NEW_AST_NODE(retval, VarDeclStatement, AST_STATEMENT_VARDECL);
+    NEW_AST_NODE(retval, MOJOSHADER_astVarDeclStatement,
+                 MOJOSHADER_AST_STATEMENT_VARDECL);
     retval->next = NULL;
     retval->declaration = vd;
-    return (Statement *) retval;
+    return (MOJOSHADER_astStatement *) retval;
 } // new_vardecl_statement
 
-static void delete_vardecl_statement(Context *ctx, VarDeclStatement *stmt)
+static void delete_vardecl_statement(Context *ctx,
+                                     MOJOSHADER_astVarDeclStatement *stmt)
 {
     DELETE_AST_NODE(stmt);
     delete_statement(ctx, stmt->next);
@@ -1536,7 +1136,7 @@ static void delete_vardecl_statement(Context *ctx, VarDeclStatement *stmt)
     Free(ctx, stmt);
 } // delete_vardecl_statement
 
-static void delete_statement(Context *ctx, Statement *stmt)
+static void delete_statement(Context *ctx, MOJOSHADER_astStatement *stmt)
 {
     if (!stmt) return;
 
@@ -1548,11 +1148,11 @@ static void delete_statement(Context *ctx, Statement *stmt)
     // Please note that everyone should _try_ to delete their "next" member,
     //  just in case, but hopefully this cleaned it out.
 
-    Statement *i = stmt->next;
+    MOJOSHADER_astStatement *i = stmt->next;
     stmt->next = NULL;
     while (i)
     {
-        Statement *next = i->next;
+        MOJOSHADER_astStatement *next = i->next;
         i->next = NULL;
         delete_statement(ctx, i);
         i = next;
@@ -1560,23 +1160,24 @@ static void delete_statement(Context *ctx, Statement *stmt)
 
     switch (stmt->ast.type)
     {
-        #define DELETE_STATEMENT(typ, cls, fn) case AST_STATEMENT_##typ: \
-            delete_##fn##_statement(ctx, (cls *) stmt); break;
-        DELETE_STATEMENT(BLOCK, BlockStatement, block);
-        DELETE_STATEMENT(EMPTY, EmptyStatement, empty);
-        DELETE_STATEMENT(IF, IfStatement, if);
-        DELETE_STATEMENT(SWITCH, SwitchStatement, switch);
-        DELETE_STATEMENT(EXPRESSION, ExpressionStatement, expr);
-        DELETE_STATEMENT(FOR, ForStatement, for);
-        DELETE_STATEMENT(DO, DoStatement, do);
-        DELETE_STATEMENT(WHILE, WhileStatement, while);
-        DELETE_STATEMENT(RETURN, ReturnStatement, return);
-        DELETE_STATEMENT(BREAK, BreakStatement, break);
-        DELETE_STATEMENT(CONTINUE, ContinueStatement, continue);
-        DELETE_STATEMENT(DISCARD, DiscardStatement, discard);
-        DELETE_STATEMENT(TYPEDEF, TypedefStatement, typedef);
-        DELETE_STATEMENT(STRUCT, StructStatement, struct);
-        DELETE_STATEMENT(VARDECL, VarDeclStatement, vardecl);
+        #define DELETE_STATEMENT(typ, cls, fn) \
+            case MOJOSHADER_AST_STATEMENT_##typ: \
+                delete_##fn##_statement(ctx, (cls *) stmt); break;
+        DELETE_STATEMENT(BLOCK, MOJOSHADER_astBlockStatement, block);
+        DELETE_STATEMENT(EMPTY, MOJOSHADER_astEmptyStatement, empty);
+        DELETE_STATEMENT(IF, MOJOSHADER_astIfStatement, if);
+        DELETE_STATEMENT(SWITCH, MOJOSHADER_astSwitchStatement, switch);
+        DELETE_STATEMENT(EXPRESSION, MOJOSHADER_astExpressionStatement, expr);
+        DELETE_STATEMENT(FOR, MOJOSHADER_astForStatement, for);
+        DELETE_STATEMENT(DO, MOJOSHADER_astDoStatement, do);
+        DELETE_STATEMENT(WHILE, MOJOSHADER_astWhileStatement, while);
+        DELETE_STATEMENT(RETURN, MOJOSHADER_astReturnStatement, return);
+        DELETE_STATEMENT(BREAK, MOJOSHADER_astBreakStatement, break);
+        DELETE_STATEMENT(CONTINUE, MOJOSHADER_astContinueStatement, continue);
+        DELETE_STATEMENT(DISCARD, MOJOSHADER_astDiscardStatement, discard);
+        DELETE_STATEMENT(TYPEDEF, MOJOSHADER_astTypedefStatement, typedef);
+        DELETE_STATEMENT(STRUCT, MOJOSHADER_astStructStatement, struct);
+        DELETE_STATEMENT(VARDECL, MOJOSHADER_astVarDeclStatement, vardecl);
         #undef DELETE_STATEMENT
         default: assert(0 && "missing cleanup code"); break;
     } // switch
@@ -1595,756 +1196,6 @@ static const char *get_usertype(const Context *ctx, const char *token)
 // This is where the actual parsing happens. It's Lemon-generated!
 #define __MOJOSHADER_HLSL_COMPILER__ 1
 #include "mojoshader_parser_hlsl.h"
-
-
-// !!! FIXME: this screws up on order of operations.
-static void print_ast(const int substmt, void *ast)
-{
-    const char *nl = substmt ? "" : "\n";
-    static int indent = 0;
-    int isblock = 0;
-    int i;
-
-    if (!ast) return;
-
-    #define DO_INDENT do { \
-        if (!substmt) { for (i = 0; i < indent; i++) printf("    "); } \
-    } while (0)
-
-    switch ( ((ASTGeneric *) ast)->ast.type )
-    {
-        case AST_OP_POSTINCREMENT:
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            printf("++");
-            break;
-
-        case AST_OP_POSTDECREMENT:
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            printf("--");
-            break;
-
-        case AST_OP_PREINCREMENT:
-            printf("++");
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            break;
-
-        case AST_OP_PREDECREMENT:
-            printf("--");
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            break;
-
-        case AST_OP_NEGATE:
-            printf("-");
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            break;
-
-        case AST_OP_COMPLEMENT:
-            printf("~");
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            break;
-
-        case AST_OP_NOT:
-            printf("!");
-            print_ast(0, ((ExpressionUnary *) ast)->operand);
-            break;
-
-        case AST_OP_DEREF_ARRAY:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf("[");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            printf("]");
-            break;
-
-        case AST_OP_DEREF_STRUCT:
-            print_ast(0, ((ExpressionDerefStruct *) ast)->identifier);
-            printf(".");
-            printf("%s", ((ExpressionDerefStruct *) ast)->member);
-            break;
-
-        case AST_OP_COMMA:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(", ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_MULTIPLY:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" * ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_DIVIDE:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" / ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_MODULO:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" %% ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_ADD:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" + ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_SUBTRACT:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" - ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LSHIFT:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" << ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_RSHIFT:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" >> ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LESSTHAN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" < ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_GREATERTHAN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" > ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LESSTHANOREQUAL:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" <= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_GREATERTHANOREQUAL:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" >= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_EQUAL:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" == ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_NOTEQUAL:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" != ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_BINARYAND:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" & ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_BINARYXOR:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" ^ ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_BINARYOR:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" | ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LOGICALAND:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" && ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LOGICALOR:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" || ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_ASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" = ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_MULASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" *= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_DIVASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" /= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_MODASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" %%= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_ADDASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" += ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_SUBASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" -= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_LSHIFTASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" <<= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_RSHIFTASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" >>= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_ANDASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" &= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_XORASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" ^= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_ORASSIGN:
-            print_ast(0, ((ExpressionBinary *) ast)->left);
-            printf(" |= ");
-            print_ast(0, ((ExpressionBinary *) ast)->right);
-            break;
-
-        case AST_OP_CONDITIONAL:
-            print_ast(0, ((ExpressionTernary *) ast)->left);
-            printf(" ? ");
-            print_ast(0, ((ExpressionTernary *) ast)->center);
-            printf(" : ");
-            print_ast(0, ((ExpressionTernary *) ast)->right);
-            break;
-
-        case AST_OP_IDENTIFIER:
-            printf("%s", ((ExpressionIdentifier *) ast)->identifier);
-            break;
-
-        case AST_OP_INT_LITERAL:
-            printf("%lld", (long long) ((ExpressionIntLiteral *) ast)->value);
-            break;
-
-        case AST_OP_FLOAT_LITERAL:
-        {
-            const float f = ((ExpressionFloatLiteral *) ast)->value;
-            const long long flr = (long long) f;
-            if (((float) flr) == f)
-                printf("%lld.0", flr);
-            else
-                printf("%.16g", f);
-            break;
-        } // case
-
-        case AST_OP_STRING_LITERAL:
-            printf("\"%s\"", ((ExpressionStringLiteral *) ast)->string);
-            break;
-
-        case AST_OP_BOOLEAN_LITERAL:
-            printf("%s", ((ExpressionBooleanLiteral *) ast)->value ? "true" : "false");
-            break;
-
-        case AST_ARGUMENTS:
-            print_ast(0, ((Arguments *) ast)->argument);
-            if (((Arguments *) ast)->next != NULL)
-            {
-                printf(", ");
-                print_ast(0, ((Arguments *) ast)->next);
-            } // if
-            break;
-
-        case AST_OP_CALLFUNC:
-            print_ast(0, ((ExpressionCallFunction *) ast)->identifier);
-            printf("(");
-            print_ast(0, ((ExpressionCallFunction *) ast)->args);
-            printf(")");
-            break;
-
-        case AST_OP_CONSTRUCTOR:
-            printf("%s(", ((ExpressionConstructor *) ast)->datatype);
-            print_ast(0, ((ExpressionConstructor *) ast)->args);
-            printf(")");
-            break;
-
-        case AST_OP_CAST:
-            printf("(%s) (", ((ExpressionCast *) ast)->datatype);
-            print_ast(0, ((ExpressionCast *) ast)->operand);
-            printf(")");
-            break;
-
-        case AST_STATEMENT_EMPTY:
-            DO_INDENT;
-            printf(";%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_EXPRESSION:
-            DO_INDENT;
-            print_ast(0, ((ExpressionStatement *) ast)->expr);  // !!! FIXME: This is named badly...
-            printf(";%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_IF:
-            DO_INDENT;
-            printf("if (");
-            print_ast(0, ((IfStatement *) ast)->expr);
-            printf(")\n");
-            isblock = ((IfStatement *) ast)->statement->ast.type == AST_STATEMENT_BLOCK;
-            if (!isblock) indent++;
-            print_ast(0, ((IfStatement *) ast)->statement);
-            if (!isblock) indent--;
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_TYPEDEF:
-            DO_INDENT;
-            print_ast(1, ((TypedefStatement *) ast)->type_info);
-            printf("%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_SWITCH:
-            DO_INDENT;
-            switch ( ((SwitchStatement *) ast)->attributes )
-            {
-                case SWITCHATTR_NONE: break;
-                case SWITCHATTR_FLATTEN: printf("[flatten] "); break;
-                case SWITCHATTR_BRANCH: printf("[branch] "); break;
-                case SWITCHATTR_FORCECASE: printf("[forcecase] "); break;
-                case SWITCHATTR_CALL: printf("[call] "); break;
-            } // switch
-
-            printf("switch (");
-            print_ast(0, ((SwitchStatement *) ast)->expr);
-            printf(")\n");
-            DO_INDENT;
-            printf("{\n");
-            indent++;
-            print_ast(0, ((SwitchStatement *) ast)->cases);
-            indent--;
-            printf("\n");
-            DO_INDENT;
-            printf("}\n");
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_SWITCH_CASE:
-            DO_INDENT;
-            printf("case ");
-            print_ast(0, ((SwitchCases *) ast)->expr);
-            printf(":\n");
-            isblock = ((SwitchCases *) ast)->statement->ast.type == AST_STATEMENT_BLOCK;
-            if (!isblock) indent++;
-            print_ast(0, ((SwitchCases *) ast)->statement);
-            if (!isblock) indent--;
-            print_ast(0, ((SwitchCases *) ast)->next);
-            break;
-
-        case AST_STATEMENT_STRUCT:
-            DO_INDENT;
-            print_ast(0, ((CompilationUnitStruct *) ast)->struct_info);
-            printf(";%s%s", nl, nl);  // always space these out.
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_VARDECL:
-            DO_INDENT;
-            print_ast(1, ((VarDeclStatement *) ast)->declaration);
-            printf(";%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_BLOCK:
-            DO_INDENT;
-            printf("{\n");
-            indent++;
-            print_ast(0, ((BlockStatement *) ast)->statements);
-            indent--;
-            DO_INDENT;
-            printf("}\n");
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_FOR:
-            DO_INDENT;
-            if (((ForStatement *) ast)->unroll == 0)
-                printf("[loop] ");
-            else if (((ForStatement *) ast)->unroll == -1)
-                printf("[unroll] ");
-            else if (((ForStatement *) ast)->unroll > 0)
-            {
-                printf("[unroll(%lld)] ",
-                        (long long) (((ForStatement *) ast)->unroll) );
-            } // else if
-
-            printf("for (");
-            print_ast(1, ((ForStatement *) ast)->var_decl);
-            if (((ForStatement *) ast)->initializer != NULL)
-            {
-                printf(" = ");
-                print_ast(1, ((ForStatement *) ast)->initializer);
-            } // if
-            printf("; ");
-            print_ast(1, ((ForStatement *) ast)->looptest);
-            printf("; ");
-            print_ast(1, ((ForStatement *) ast)->counter);
-
-            printf(")\n");
-            isblock = ((ForStatement *) ast)->statement->ast.type == AST_STATEMENT_BLOCK;
-            if (!isblock) indent++;
-            print_ast(0, ((ForStatement *) ast)->statement);
-            if (!isblock) indent--;
-
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_DO:
-            DO_INDENT;
-            if (((DoStatement *) ast)->unroll == 0)
-                printf("[loop] ");
-            else if (((DoStatement *) ast)->unroll == -1)
-                printf("[unroll] ");
-            else if (((DoStatement *) ast)->unroll > 0)
-            {
-                printf("[unroll(%lld)] ",
-                        (long long) (((DoStatement *) ast)->unroll) );
-            } // else if
-
-            printf("do\n");
-
-            isblock = ((DoStatement *) ast)->statement->ast.type == AST_STATEMENT_BLOCK;
-            if (!isblock) indent++;
-            print_ast(0, ((DoStatement *) ast)->statement);
-            if (!isblock) indent--;
-
-            DO_INDENT;
-            printf("while (");
-            print_ast(0, ((DoStatement *) ast)->expr);
-            printf(");\n");
-
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_WHILE:
-            DO_INDENT;
-            if (((WhileStatement *) ast)->unroll == 0)
-                printf("[loop] ");
-            else if (((WhileStatement *) ast)->unroll == -1)
-                printf("[unroll] ");
-            else if (((WhileStatement *) ast)->unroll > 0)
-            {
-                printf("[unroll(%lld)] ",
-                        (long long) (((WhileStatement *) ast)->unroll) );
-            } // else if
-
-            printf("while (");
-            print_ast(0, ((WhileStatement *) ast)->expr);
-            printf(")\n");
-
-            isblock = ((WhileStatement *) ast)->statement->ast.type == AST_STATEMENT_BLOCK;
-            if (!isblock) indent++;
-            print_ast(0, ((WhileStatement *) ast)->statement);
-            if (!isblock) indent--;
-
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_RETURN:
-            DO_INDENT;
-            printf("return");
-            if (((ReturnStatement *) ast)->expr)
-            {
-                printf(" ");
-                print_ast(0, ((ReturnStatement *) ast)->expr);
-            } // if
-            printf(";%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_BREAK:
-            DO_INDENT;
-            printf("break;%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_CONTINUE:
-            DO_INDENT;
-            printf("continue;%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_STATEMENT_DISCARD:
-            DO_INDENT;
-            printf("discard;%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_COMPUNIT_FUNCTION:
-            DO_INDENT;
-            print_ast(0, ((CompilationUnitFunction *) ast)->declaration);
-            if (((CompilationUnitFunction *) ast)->definition == NULL)
-                printf(";%s", nl);
-            else
-            {
-                printf("%s", nl);
-                print_ast(0, ((CompilationUnitFunction *) ast)->definition);
-                printf("%s", nl);
-            } // else
-            print_ast(0, ((CompilationUnit *) ast)->next);
-            break;
-
-        case AST_COMPUNIT_TYPEDEF:
-            DO_INDENT;
-            print_ast(0, ((CompilationUnitTypedef *) ast)->type_info);
-            printf("%s", nl);
-            print_ast(0, ((Statement *) ast)->next);
-            break;
-
-        case AST_COMPUNIT_STRUCT:
-            DO_INDENT;
-            print_ast(0, ((CompilationUnitStruct *) ast)->struct_info);
-            printf(";%s%s", nl, nl);  // always space these out.
-            print_ast(0, ((CompilationUnit *) ast)->next);
-            break;
-
-        case AST_COMPUNIT_VARIABLE:
-            DO_INDENT;
-            print_ast(1, ((CompilationUnitVariable *) ast)->declaration);
-            printf(";%s", nl);
-            if (((CompilationUnit *) ast)->next && ((CompilationUnit *) ast)->next->ast.type != AST_COMPUNIT_VARIABLE)
-                printf("%s", nl);  // group vars together, and space out other things.
-            print_ast(0, ((CompilationUnit *) ast)->next);
-            break;
-
-        case AST_SCALAR_OR_ARRAY:
-            printf("%s", ((ScalarOrArray*) ast)->identifier);
-            if (((ScalarOrArray*) ast)->isarray)
-            {
-                printf("[");
-                print_ast(0, ((ScalarOrArray*) ast)->dimension);
-                printf("]");
-            } // if
-            break;
-
-        case AST_TYPEDEF:
-            DO_INDENT;
-            printf("typedef %s%s ",
-                    (((Typedef *) ast)->isconst) ? "const " : "",
-                    (((Typedef *) ast)->datatype));
-            print_ast(0, ((Typedef *) ast)->details);
-            printf(";%s", nl);
-            break;
-
-        case AST_FUNCTION_PARAMS:
-            switch (((FunctionParameters *) ast)->input_modifier)
-            {
-                case INPUTMOD_NONE: break;
-                case INPUTMOD_IN: printf("in "); break;
-                case INPUTMOD_OUT: printf("out "); break;
-                case INPUTMOD_INOUT: printf("in out "); break;
-                case INPUTMOD_UNIFORM: printf("uniform "); break;
-            } // switch
-
-            printf("%s %s", (((FunctionParameters *) ast)->datatype),
-                   (((FunctionParameters *) ast)->identifier));
-            if (((FunctionParameters *) ast)->semantic)
-                printf(" : %s", ((FunctionParameters *) ast)->semantic);
-
-            switch (((FunctionParameters *) ast)->interpolation_modifier)
-            {
-                case INTERPMOD_NONE: break;
-                case INTERPMOD_LINEAR: printf(" linear"); break;
-                case INTERPMOD_CENTROID: printf(" centroid"); break;
-                case INTERPMOD_NOINTERPOLATION: printf(" nointerpolation"); break;
-                case INTERPMOD_NOPERSPECTIVE: printf(" noperspective"); break;
-                case INTERPMOD_SAMPLE: printf(" sample"); break;
-            } // switch
-
-            if (((FunctionParameters *) ast)->initializer)
-            {
-                printf(" = ");
-                print_ast(0, ((FunctionParameters *) ast)->initializer);
-            } // if
-
-            if (((FunctionParameters *) ast)->next)
-            {
-                printf(", ");
-                print_ast(0, ((FunctionParameters *) ast)->next);
-            } // if
-            break;
-
-        case AST_FUNCTION_SIGNATURE:
-            switch (((FunctionSignature *) ast)->storage_class)
-            {
-                case FNSTORECLS_NONE: break;
-                case FNSTORECLS_INLINE: printf("inline "); break;
-            } // switch
-            printf("%s %s(",
-                    ((FunctionSignature *) ast)->datatype ?
-                        ((FunctionSignature *) ast)->datatype : "void",
-                    ((FunctionSignature *) ast)->identifier);
-            print_ast(0, ((FunctionSignature *) ast)->params);
-            printf(")");
-            if (((FunctionSignature *) ast)->semantic)
-                printf(" : %s", ((FunctionSignature *) ast)->semantic);
-            break;
-
-        case AST_STRUCT_DECLARATION:
-            printf("struct %s\n", ((StructDeclaration *) ast)->name);
-            DO_INDENT;
-            printf("{\n");
-            indent++;
-            print_ast(0, ((StructDeclaration *) ast)->members);
-            indent--;
-            DO_INDENT;
-            printf("}");
-            break;
-
-        case AST_STRUCT_MEMBER:
-            DO_INDENT;
-            switch (((StructMembers *) ast)->interpolation_mod)
-            {
-                case INTERPMOD_NONE: break;
-                case INTERPMOD_LINEAR: printf("linear "); break;
-                case INTERPMOD_CENTROID: printf("centroid "); break;
-                case INTERPMOD_NOINTERPOLATION: printf("nointerpolation "); break;
-                case INTERPMOD_NOPERSPECTIVE: printf("noperspective "); break;
-                case INTERPMOD_SAMPLE: printf("sample "); break;
-            } // switch
-            printf("%s ", ((StructMembers *) ast)->datatype);
-            print_ast(0, ((StructMembers *) ast)->details);
-            if (((StructMembers *) ast)->semantic)
-                printf(" : %s", ((StructMembers *) ast)->semantic);
-            printf(";%s", nl);
-            print_ast(0, ((StructMembers *) ast)->next);
-            break;
-
-        case AST_VARIABLE_DECLARATION:
-            DO_INDENT;
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_EXTERN)
-                printf("extern ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_NOINTERPOLATION)
-                printf("nointerpolation ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_SHARED)
-                printf("shared");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_STATIC)
-                printf("static ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_UNIFORM)
-                printf("uniform ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_VOLATILE)
-                printf("nointerpolation ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_CONST)
-                printf("const ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_ROWMAJOR)
-                printf("rowmajor ");
-            if (((VariableDeclaration *) ast)->attributes & VARATTR_COLUMNMAJOR)
-                printf("columnmajor ");
-
-            if (((VariableDeclaration *) ast)->datatype)
-                printf("%s", ((VariableDeclaration *) ast)->datatype);
-            else
-                print_ast(0, ((VariableDeclaration *) ast)->anonymous_datatype);
-            printf(" ");
-            print_ast(0, ((VariableDeclaration *) ast)->details);
-            if (((VariableDeclaration *) ast)->semantic)
-                printf(" : %s", ((VariableDeclaration *) ast)->semantic);
-            if (((VariableDeclaration *) ast)->annotations)
-            {
-                printf(" ");
-                print_ast(0, ((VariableDeclaration *) ast)->annotations);
-            } // if
-            if (((VariableDeclaration *) ast)->initializer != NULL)
-            {
-                printf(" = ");
-                print_ast(0, ((VariableDeclaration *) ast)->initializer);
-            } // if
-            print_ast(0, ((VariableDeclaration *) ast)->lowlevel);
-
-            if (((VariableDeclaration *) ast)->next == NULL)
-                printf("%s", nl);
-            else
-            {
-                int attr = (((VariableDeclaration *) ast)->next)->attributes;
-                printf(", ");
-                (((VariableDeclaration *) ast)->next)->attributes = 0;
-                print_ast(1, ((VariableDeclaration *) ast)->next);
-                (((VariableDeclaration *) ast)->next)->attributes = attr;
-            } // if
-            break;
-
-        case AST_PACK_OFFSET:
-            printf(" : packoffset(%s%s%s)",
-                    ((PackOffset *) ast)->ident1,
-                    ((PackOffset *) ast)->ident2 ? "." : "",
-                    ((PackOffset *) ast)->ident2 ? ((PackOffset *) ast)->ident2 : "");
-            break;
-
-        case AST_VARIABLE_LOWLEVEL:
-            print_ast(0, ((VariableLowLevel *) ast)->packoffset);
-            if (((VariableLowLevel *) ast)->register_name)
-                printf(" : register(%s)", ((VariableLowLevel *) ast)->register_name);
-            break;
-
-        case AST_ANNOTATION:
-        {
-            const Annotations *a = (Annotations *) ast;
-            printf("<");
-            while (a)
-            {
-                printf(" %s ", a->datatype);
-                if (a->initializer != NULL)
-                {
-                    printf(" = ");
-                    print_ast(0, a->initializer);
-                } // if
-                if (a->next)
-                    printf(",");
-                a = a->next;
-            } // while
-            printf(" >");
-            break;
-        } // case
-
-        default:
-            assert(0 && "unexpected type");
-            break;
-    } // switch
-
-    #undef DO_INDENT
-} // print_ast
 
 
 /*
@@ -2472,8 +1323,10 @@ static const char *array_element_datatype(Context *ctx, const char *datatype)
 // Returns final datatype used once implicit casting is complete.
 // The datatypes must be pointers from the string cache.
 static const char *add_type_coercion(Context *ctx,
-                                     Expression **left, const char *ldatatype,
-                                     Expression **right, const char *rdatatype)
+                                     MOJOSHADER_astExpression **left,
+                                     const char *ldatatype,
+                                     MOJOSHADER_astExpression **right,
+                                     const char *rdatatype)
 {
     // !!! FIXME: this whole function is probably naive at best.
 
@@ -2556,159 +1409,129 @@ static const char *add_type_coercion(Context *ctx,
 //  continue (but code generation will be skipped due to errors).
 // This means further processing can assume the AST is sane and not have to
 //  spend effort verifying it again.
-static const char *type_check_ast(Context *ctx, void *ast)
+static const char *type_check_ast(Context *ctx, void *_ast)
 {
+    MOJOSHADER_astNode *ast = (MOJOSHADER_astNode *) _ast;
+    const char *datatype;
+    const char *datatype2;
+    const char *datatype3;
+
     if (!ast)
         return NULL;
 
     // upkeep so we report correct error locations...
-    ctx->sourcefile = ((ASTGeneric *) ast)->ast.filename;
-    ctx->sourceline = ((ASTGeneric *) ast)->ast.line;
+    ctx->sourcefile = ast->ast.filename;
+    ctx->sourceline = ast->ast.line;
 
-    switch ( ((ASTGeneric *) ast)->ast.type )
+    switch (ast->ast.type)
     {
-        case AST_OP_POSTINCREMENT:
-        case AST_OP_POSTDECREMENT:
-        case AST_OP_PREINCREMENT:
-        case AST_OP_PREDECREMENT:
-        case AST_OP_COMPLEMENT:
-        case AST_OP_NEGATE:
-        {
-            ExpressionUnary *expr = (ExpressionUnary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->operand);
+        case MOJOSHADER_AST_OP_POSTINCREMENT:
+        case MOJOSHADER_AST_OP_POSTDECREMENT:
+        case MOJOSHADER_AST_OP_PREINCREMENT:
+        case MOJOSHADER_AST_OP_PREDECREMENT:
+        case MOJOSHADER_AST_OP_COMPLEMENT:
+        case MOJOSHADER_AST_OP_NEGATE:
+            datatype = type_check_ast(ctx, ast->unary.operand);
             require_numeric_datatype(ctx, datatype);
             return datatype;
-        } // case
 
-        case AST_OP_NOT:
-        {
-            ExpressionUnary *expr = (ExpressionUnary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->operand);
+        case MOJOSHADER_AST_OP_NOT:
+            datatype = type_check_ast(ctx, ast->unary.operand);
             require_boolean_datatype(ctx, datatype);
             return datatype;
-        } // case
 
-        case AST_OP_DEREF_ARRAY:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
+        case MOJOSHADER_AST_OP_DEREF_ARRAY:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
             require_array_datatype(ctx, datatype);
             require_numeric_datatype(ctx, datatype2);
-            add_type_coercion(ctx, NULL, ctx->str_i, &expr->right, datatype2);
+            add_type_coercion(ctx, NULL, ctx->str_i, &ast->binary.right, datatype2);
             return array_element_datatype(ctx, datatype);
-        } // case
 
-        case AST_OP_DEREF_STRUCT:
-        {
-            ExpressionDerefStruct *expr = (ExpressionDerefStruct *) ast;
-            const char *datatype = type_check_ast(ctx, expr->identifier);
+        case MOJOSHADER_AST_OP_DEREF_STRUCT:
+            datatype = type_check_ast(ctx, ast->derefstruct.identifier);
             require_struct_datatype(ctx, datatype);
 // !!! FIXME: map member to datatype
 datatype = "!!! FIXME";
             return datatype;
-        } // case
 
-        case AST_OP_COMMA:
-        {
+        case MOJOSHADER_AST_OP_COMMA:
             // evaluate and throw away left, return right.
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            type_check_ast(ctx, expr->left);
-            return type_check_ast(ctx, expr->right);
-        } // case
+            type_check_ast(ctx, ast->binary.left);
+            return type_check_ast(ctx, ast->binary.right);
 
-        case AST_OP_MULTIPLY:
-        case AST_OP_DIVIDE:
-        case AST_OP_MODULO:
-        case AST_OP_ADD:
-        case AST_OP_SUBTRACT:
-        case AST_OP_LSHIFT:
-        case AST_OP_RSHIFT:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
+        case MOJOSHADER_AST_OP_MULTIPLY:
+        case MOJOSHADER_AST_OP_DIVIDE:
+        case MOJOSHADER_AST_OP_MODULO:
+        case MOJOSHADER_AST_OP_ADD:
+        case MOJOSHADER_AST_OP_SUBTRACT:
+        case MOJOSHADER_AST_OP_LSHIFT:
+        case MOJOSHADER_AST_OP_RSHIFT:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
             require_numeric_datatype(ctx, datatype);
             require_numeric_datatype(ctx, datatype2);
-            return add_type_coercion(ctx, &expr->left, datatype,
-                                     &expr->right, datatype2);
-        } // case
+            return add_type_coercion(ctx, &ast->binary.left, datatype,
+                                     &ast->binary.right, datatype2);
 
-        case AST_OP_LESSTHAN:
-        case AST_OP_GREATERTHAN:
-        case AST_OP_LESSTHANOREQUAL:
-        case AST_OP_GREATERTHANOREQUAL:
-        case AST_OP_NOTEQUAL:
-        case AST_OP_EQUAL:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
-            add_type_coercion(ctx, &expr->left, datatype,
-                              &expr->right, datatype2);
+        case MOJOSHADER_AST_OP_LESSTHAN:
+        case MOJOSHADER_AST_OP_GREATERTHAN:
+        case MOJOSHADER_AST_OP_LESSTHANOREQUAL:
+        case MOJOSHADER_AST_OP_GREATERTHANOREQUAL:
+        case MOJOSHADER_AST_OP_NOTEQUAL:
+        case MOJOSHADER_AST_OP_EQUAL:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
+            add_type_coercion(ctx, &ast->binary.left, datatype,
+                              &ast->binary.right, datatype2);
             return ctx->str_b;
-        } // case
 
-        case AST_OP_BINARYAND:
-        case AST_OP_BINARYXOR:
-        case AST_OP_BINARYOR:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
+        case MOJOSHADER_AST_OP_BINARYAND:
+        case MOJOSHADER_AST_OP_BINARYXOR:
+        case MOJOSHADER_AST_OP_BINARYOR:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
             require_integer_datatype(ctx, datatype);
             require_integer_datatype(ctx, datatype2);
-            return add_type_coercion(ctx, &expr->left, datatype,
-                                     &expr->right, datatype2);
-        } // case
+            return add_type_coercion(ctx, &ast->binary.left, datatype,
+                                     &ast->binary.right, datatype2);
 
-        case AST_OP_LOGICALAND:
-        case AST_OP_LOGICALOR:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
+        case MOJOSHADER_AST_OP_LOGICALAND:
+        case MOJOSHADER_AST_OP_LOGICALOR:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
             require_boolean_datatype(ctx, datatype);
             require_boolean_datatype(ctx, datatype2);
-            add_type_coercion(ctx, &expr->left, datatype,
-                              &expr->right, datatype2);
+            add_type_coercion(ctx, &ast->binary.left, datatype,
+                              &ast->binary.right, datatype2);
             return ctx->str_b;
-        } // case
 
-        case AST_OP_ASSIGN:
-        case AST_OP_MULASSIGN:
-        case AST_OP_DIVASSIGN:
-        case AST_OP_MODASSIGN:
-        case AST_OP_ADDASSIGN:
-        case AST_OP_SUBASSIGN:
-        case AST_OP_LSHIFTASSIGN:
-        case AST_OP_RSHIFTASSIGN:
-        case AST_OP_ANDASSIGN:
-        case AST_OP_XORASSIGN:
-        case AST_OP_ORASSIGN:
-        {
-            ExpressionBinary *expr = (ExpressionBinary *) ast;
-            const char *datatype = type_check_ast(ctx, expr->left);
-            const char *datatype2 = type_check_ast(ctx, expr->right);
-            add_type_coercion(ctx, NULL, datatype, &expr->right, datatype2);
+        case MOJOSHADER_AST_OP_ASSIGN:
+        case MOJOSHADER_AST_OP_MULASSIGN:
+        case MOJOSHADER_AST_OP_DIVASSIGN:
+        case MOJOSHADER_AST_OP_MODASSIGN:
+        case MOJOSHADER_AST_OP_ADDASSIGN:
+        case MOJOSHADER_AST_OP_SUBASSIGN:
+        case MOJOSHADER_AST_OP_LSHIFTASSIGN:
+        case MOJOSHADER_AST_OP_RSHIFTASSIGN:
+        case MOJOSHADER_AST_OP_ANDASSIGN:
+        case MOJOSHADER_AST_OP_XORASSIGN:
+        case MOJOSHADER_AST_OP_ORASSIGN:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
+            add_type_coercion(ctx, NULL, datatype, &ast->binary.right, datatype2);
             return datatype;
-        } // case
 
-        case AST_OP_CONDITIONAL:
-        {
-            ExpressionTernary *tern = (ExpressionTernary *) ast;
-            const char *datatype = type_check_ast(ctx, tern->left);
-            const char *datatype2 = type_check_ast(ctx, tern->center);
-            const char *datatype3 = type_check_ast(ctx, tern->right);
+        case MOJOSHADER_AST_OP_CONDITIONAL:
+            type_check_ast(ctx, ast->ternary.left);
+            type_check_ast(ctx, ast->ternary.center);
+            type_check_ast(ctx, ast->ternary.right);
             require_boolean_datatype(ctx, datatype);
-            return add_type_coercion(ctx, &tern->center, datatype2,
-                                     &tern->right, datatype3);
-        } // case
+            return add_type_coercion(ctx, &ast->ternary.center, datatype2,
+                                     &ast->ternary.right, datatype3);
 
-        case AST_OP_IDENTIFIER:
-        {
-            ExpressionIdentifier *expr = (ExpressionIdentifier *) ast;
-            const char *datatype = find_variable(ctx, expr->identifier);
+        case MOJOSHADER_AST_OP_IDENTIFIER:
+            datatype = find_variable(ctx, ast->identifier.identifier);
             if (datatype == NULL)
             {
                 fail(ctx, "Unknown identifier");
@@ -2716,107 +1539,82 @@ datatype = "!!! FIXME";
                 datatype = ctx->str_i;
             } // if
             return datatype;
-        } // case
 
-        case AST_OP_INT_LITERAL:
+        case MOJOSHADER_AST_OP_INT_LITERAL:
             return ctx->str_i;
 
-        case AST_OP_FLOAT_LITERAL:
+        case MOJOSHADER_AST_OP_FLOAT_LITERAL:
             return ctx->str_f;
 
-        case AST_OP_STRING_LITERAL:
+        case MOJOSHADER_AST_OP_STRING_LITERAL:
             return ctx->str_S;
 
-        case AST_OP_BOOLEAN_LITERAL:
+        case MOJOSHADER_AST_OP_BOOLEAN_LITERAL:
             return ctx->str_b;
 
-        case AST_ARGUMENTS:
-        {
-            Arguments *arguments = (Arguments *) ast;
-            const char *datatype = type_check_ast(ctx, arguments->argument);
-            if (arguments->next != NULL)
+        case MOJOSHADER_AST_ARGUMENTS:
+            datatype = type_check_ast(ctx, ast->arguments.argument);
+            if (ast->arguments.next != NULL)
             {
-                const char *datatype2 = type_check_ast(ctx, arguments->next);
+                datatype2 = type_check_ast(ctx, ast->arguments.next);
                 datatype = stringcache_fmt(ctx->strcache, "%s%s",
                                            datatype, datatype2);
             } // if
             return datatype;
-        } // case
 
-        case AST_OP_CALLFUNC:
-        {
-            ExpressionCallFunction *expr = (ExpressionCallFunction *) ast;
-            const char *datatype = type_check_ast(ctx, expr->identifier);
-            /*const char *datatype2 =*/ type_check_ast(ctx, expr->args);
-            const char *retval = require_function_datatype(ctx, datatype);
+        case MOJOSHADER_AST_OP_CALLFUNC:
+            datatype = type_check_ast(ctx, ast->callfunc.identifier);
+            datatype2 = type_check_ast(ctx, ast->callfunc.args);
+            return require_function_datatype(ctx, datatype);
 // !!! FIXME: test each arg against function datatype.
-            return retval;  // this is the datatype of the func's return value.
-        } // case
+            //return retval;  // this is the datatype of the func's return value.
 
-        case AST_OP_CONSTRUCTOR:
-        {
-            ExpressionConstructor *expr = (ExpressionConstructor *) ast;
+        case MOJOSHADER_AST_OP_CONSTRUCTOR:
 // !!! FIXME: test each arg against constructor datatype.
-            type_check_ast(ctx, expr->args);
-            return expr->datatype;
-        } // case
+            type_check_ast(ctx, ast->constructor.args);
+            return ast->constructor.datatype;
 
-        case AST_OP_CAST:
-        {
-            ExpressionCast *expr = (ExpressionCast *) ast;
-            const char *datatype = expr->datatype;
-            const char *datatype2 = type_check_ast(ctx, expr->operand);
+        case MOJOSHADER_AST_OP_CAST:
+            datatype = ast->cast.datatype;
+            datatype2 = type_check_ast(ctx, ast->cast.operand);
             // you still need type coercion, since you could do a wrong cast,
             //  like "int x = (short) mychar;"
-            add_type_coercion(ctx, NULL, datatype, &expr->operand, datatype2);
+            add_type_coercion(ctx, NULL, datatype, &ast->cast.operand, datatype2);
             return datatype;
-        } // case
 
-        case AST_STATEMENT_BREAK:
-        case AST_STATEMENT_CONTINUE:
-        case AST_STATEMENT_DISCARD:
-        case AST_STATEMENT_EMPTY:
-        {
-            type_check_ast(ctx, ((Statement *) ast)->next);
+        case MOJOSHADER_AST_STATEMENT_BREAK:
+        case MOJOSHADER_AST_STATEMENT_CONTINUE:
+        case MOJOSHADER_AST_STATEMENT_DISCARD:
+        case MOJOSHADER_AST_STATEMENT_EMPTY:
+            type_check_ast(ctx, ast->stmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_EXPRESSION:
-        {
-            ExpressionStatement *stmt = (ExpressionStatement *) ast;
+        case MOJOSHADER_AST_STATEMENT_EXPRESSION:
             // !!! FIXME: warn about expressions without a side-effect here?
-            type_check_ast(ctx, stmt->expr);  // !!! FIXME: This is named badly...
-            type_check_ast(ctx, stmt->next);
+            type_check_ast(ctx, ast->exprstmt.expr);  // !!! FIXME: This is named badly...
+            type_check_ast(ctx, ast->exprstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_IF:
-        {
-            IfStatement *stmt = (IfStatement *) ast;
+        case MOJOSHADER_AST_STATEMENT_IF:
             push_scope(ctx);  // new scope for "if ((int x = blah()) != 0)"
-            type_check_ast(ctx, stmt->expr);
-            type_check_ast(ctx, stmt->statement);
+            type_check_ast(ctx, ast->ifstmt.expr);
+            type_check_ast(ctx, ast->ifstmt.statement);
             pop_scope(ctx);
-            type_check_ast(ctx, stmt->next);
+            type_check_ast(ctx, ast->ifstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_TYPEDEF:
-        {
-            TypedefStatement *stmt = (TypedefStatement *) ast;
-            type_check_ast(ctx, stmt->type_info);
-            type_check_ast(ctx, stmt->next);
+        case MOJOSHADER_AST_STATEMENT_TYPEDEF:
+            type_check_ast(ctx, ast->typedefstmt.type_info);
+            type_check_ast(ctx, ast->typedefstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_SWITCH:
+        case MOJOSHADER_AST_STATEMENT_SWITCH:
         {
-            SwitchStatement *stmt = (SwitchStatement *) ast;
-            SwitchCases *cases = stmt->cases;
-            const char *datatype = type_check_ast(ctx, stmt->expr);
+            MOJOSHADER_astSwitchCases *cases = ast->switchstmt.cases;
+            datatype = type_check_ast(ctx, ast->switchstmt.expr);
             while (cases)
             {
-                const char *datatype2 = type_check_ast(ctx, cases->expr);
+                datatype2 = type_check_ast(ctx, cases->expr);
                 add_type_coercion(ctx, NULL, datatype,
                                   &cases->expr, datatype2);
                 type_check_ast(ctx, cases->statement);
@@ -2825,161 +1623,122 @@ datatype = "!!! FIXME";
             return NULL;
         } // case
 
-        case AST_SWITCH_CASE:
-        {
-            assert(0 && "Should have been handled by AST_STATEMENT_SWITCH.");
+        case MOJOSHADER_AST_SWITCH_CASE:
+            assert(0 && "Should be done by MOJOSHADER_AST_STATEMENT_SWITCH.");
             return NULL;
-        } // case
 
-        case AST_STATEMENT_STRUCT:
-        {
-            StructStatement *stmt = (StructStatement *) ast;
-            type_check_ast(ctx, stmt->struct_info);
-            type_check_ast(ctx, stmt->next);
+        case MOJOSHADER_AST_STATEMENT_STRUCT:
+            type_check_ast(ctx, ast->structstmt.struct_info);
+            type_check_ast(ctx, ast->structstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_VARDECL:
-        {
-            VarDeclStatement *stmt = (VarDeclStatement *) ast;
-            type_check_ast(ctx, stmt->declaration);
-            type_check_ast(ctx, stmt->next);
+        case MOJOSHADER_AST_STATEMENT_VARDECL:
+            type_check_ast(ctx, ast->vardeclstmt.declaration);
+            type_check_ast(ctx, ast->vardeclstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_BLOCK:
-        {
-            BlockStatement *bs = (BlockStatement *) ast;
+        case MOJOSHADER_AST_STATEMENT_BLOCK:
             push_scope(ctx);  // new vars declared here live until '}'.
-            type_check_ast(ctx, bs->statements);
+            type_check_ast(ctx, ast->blockstmt.statements);
             pop_scope(ctx);
-            type_check_ast(ctx, bs->next);
+            type_check_ast(ctx, ast->blockstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_FOR:
-        {
-            ForStatement *fs = (ForStatement *) ast;
+        case MOJOSHADER_AST_STATEMENT_FOR:
             push_scope(ctx);  // new scope for "for (int x = 0; ...)"
-            type_check_ast(ctx, fs->var_decl);
-            type_check_ast(ctx, fs->initializer);
-            type_check_ast(ctx, fs->looptest);
-            type_check_ast(ctx, fs->counter);
-            type_check_ast(ctx, fs->statement);
+            type_check_ast(ctx, ast->forstmt.var_decl);
+            type_check_ast(ctx, ast->forstmt.initializer);
+            type_check_ast(ctx, ast->forstmt.looptest);
+            type_check_ast(ctx, ast->forstmt.counter);
+            type_check_ast(ctx, ast->forstmt.statement);
             pop_scope(ctx);
-            type_check_ast(ctx, fs->next);
+            type_check_ast(ctx, ast->forstmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_DO:
-        {
-            DoStatement *ds = (DoStatement *) ast;
-            type_check_ast(ctx, ds->statement);
+        case MOJOSHADER_AST_STATEMENT_DO:
+            type_check_ast(ctx, ast->dostmt.statement);
             push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
-            type_check_ast(ctx, ds->expr);
+            type_check_ast(ctx, ast->dostmt.expr);
             pop_scope(ctx);
-            type_check_ast(ctx, ds->next);
+            type_check_ast(ctx, ast->dostmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_WHILE:
-        {
-            WhileStatement *ws = (WhileStatement *) ast;
+        case MOJOSHADER_AST_STATEMENT_WHILE:
             push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
-            type_check_ast(ctx, ws->expr);
-            type_check_ast(ctx, ws->statement);
+            type_check_ast(ctx, ast->whilestmt.expr);
+            type_check_ast(ctx, ast->whilestmt.statement);
             pop_scope(ctx);
-            type_check_ast(ctx, ws->next);
+            type_check_ast(ctx, ast->whilestmt.next);
             return NULL;
-        } // case
 
-        case AST_STATEMENT_RETURN:
-        {
-            ReturnStatement *stmt = (ReturnStatement *) ast;
-            type_check_ast(ctx, stmt->expr);
-            type_check_ast(ctx, stmt->next);
-            return NULL;
-        } // case
+        case MOJOSHADER_AST_STATEMENT_RETURN:
+            type_check_ast(ctx, ast->returnstmt.expr);
+            type_check_ast(ctx, ast->returnstmt.next);
 
-        case AST_COMPUNIT_FUNCTION:
-        {
-            CompilationUnitFunction *unit = (CompilationUnitFunction *) ast;
-            const char *sig = get_usertype(ctx, unit->declaration->identifier);
-            if (sig == NULL)
+        case MOJOSHADER_AST_COMPUNIT_FUNCTION:
+            datatype = get_usertype(ctx, ast->funcunit.declaration->identifier);
+            if (datatype == NULL)
             {
                 // add function declaration if we've not seen it.
-                sig = unit->declaration->datatype;
-                push_usertype(ctx, unit->declaration->identifier, sig);
+                datatype = ast->funcunit.declaration->datatype;
+                push_usertype(ctx, ast->funcunit.declaration->identifier, datatype);
             } // if
 
             // declarations can be done multiple times if they match.
-            else if (sig != unit->declaration->datatype)
+            else if (datatype != ast->funcunit.declaration->datatype)
             {
                 // !!! FIXME: function overloading is legal.
                 fail(ctx, "function sigs don't match");
             } // else
 
             push_scope(ctx);  // so function params are in function scope.
-            type_check_ast(ctx, unit->declaration);
-            if (unit->definition == NULL)
+            type_check_ast(ctx, ast->funcunit.declaration);
+            if (ast->funcunit.definition == NULL)
                 pop_scope(ctx);
             else
             {
-                type_check_ast(ctx, unit->definition);
+                type_check_ast(ctx, ast->funcunit.definition);
                 pop_scope(ctx);
-                push_variable(ctx, unit->declaration->identifier, sig);
+                push_variable(ctx, ast->funcunit.declaration->identifier, datatype);
             } // else
 
-            type_check_ast(ctx, unit->next);
+            type_check_ast(ctx, ast->funcunit.next);
             return NULL;
-        } // case
 
-        case AST_COMPUNIT_TYPEDEF:
-        {
-            CompilationUnitTypedef *unit = (CompilationUnitTypedef *) ast;
-            type_check_ast(ctx, unit->type_info);
-            type_check_ast(ctx, unit->next);
+        case MOJOSHADER_AST_COMPUNIT_TYPEDEF:
+            type_check_ast(ctx, ast->typedefunit.type_info);
+            type_check_ast(ctx, ast->typedefunit.next);
             return NULL;
-        } // case
 
-        case AST_COMPUNIT_STRUCT:
-        {
-            CompilationUnitStruct *unit = (CompilationUnitStruct *) ast;
-            type_check_ast(ctx, unit->struct_info);
-            type_check_ast(ctx, unit->next);
+        case MOJOSHADER_AST_COMPUNIT_STRUCT:
+            type_check_ast(ctx, ast->structunit.struct_info);
+            type_check_ast(ctx, ast->structunit.next);
             return NULL;
-        } // case
 
-        case AST_COMPUNIT_VARIABLE:
-        {
-            CompilationUnitVariable *unit = (CompilationUnitVariable *) ast;
-            type_check_ast(ctx, unit->declaration);
-            type_check_ast(ctx, unit->next);
+        case MOJOSHADER_AST_COMPUNIT_VARIABLE:
+            type_check_ast(ctx, ast->varunit.declaration);
+            type_check_ast(ctx, ast->varunit.next);
             return NULL;
-        } // case
 
-        case AST_SCALAR_OR_ARRAY:
-        {
-            ScalarOrArray *soa = (ScalarOrArray *) ast;
-            const char *datatype = type_check_ast(ctx, soa->dimension);
+        case MOJOSHADER_AST_SCALAR_OR_ARRAY:
+            datatype = type_check_ast(ctx, ast->soa.dimension);
             require_integer_datatype(ctx, datatype);
-            assert(0); // !!! FIXME: figure out datatype of identifier.
+assert(0); // !!! FIXME: figure out datatype of identifier.
             return NULL;
-        } // case
 
-        case AST_TYPEDEF:
+        case MOJOSHADER_AST_TYPEDEF:
         {
-            ScalarOrArray *soa = ((Typedef *) ast)->details;
-            const char *datatype = get_usertype(ctx, soa->identifier);
+            MOJOSHADER_astScalarOrArray *soa = ast->typdef.details;
+            datatype = get_usertype(ctx, soa->identifier);
             if (datatype != NULL)
             {
                 fail(ctx, "typedef already defined");
                 return datatype;
             } // if
 
-            datatype = ((Typedef *) ast)->datatype;
+            datatype = ast->typdef.datatype;
 
-            // don't walk into AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
+            // don't walk into MOJOSHADER_AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
             // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
             // !!! FIXME: this part is cut and paste.
             assert( (soa->isarray && soa->dimension) ||
@@ -2987,110 +1746,97 @@ datatype = "!!! FIXME";
 
             if (soa->isarray)
             {
-                if (soa->dimension->ast.type != AST_OP_INT_LITERAL)
+                if (soa->dimension->ast.type != MOJOSHADER_AST_OP_INT_LITERAL)
                 {
                     fail(ctx, "Expected integer");
                     delete_expr(ctx, soa->dimension);  // make sane.
                     soa->dimension = new_literal_int_expr(ctx, 1);
                 } // if
 
-                int64 dim = ((ExpressionIntLiteral *) soa->dimension)->value;
-                datatype = stringcache_fmt(ctx->strcache, "a{%lld,%s}",
-                                           (long long) dim, datatype);
+                const int dim = ((MOJOSHADER_astExpressionIntLiteral *) soa->dimension)->value;
+                datatype = stringcache_fmt(ctx->strcache, "a{%d,%s}",
+                                           dim, datatype);
             } // if
 
-            ((Typedef *) ast)->datatype = datatype;  // make sane.
+            ast->typdef.datatype = datatype;  // make sane.
             push_usertype(ctx, soa->identifier, datatype);
             return datatype;
         } // case
 
-        case AST_FUNCTION_PARAMS:
-        {
-            FunctionParameters *params = (FunctionParameters *) ast;
-            push_variable(ctx, params->identifier, params->datatype);
-            type_check_ast(ctx, params->initializer);
-            type_check_ast(ctx, params->next);
+        case MOJOSHADER_AST_FUNCTION_PARAMS:
+            push_variable(ctx, ast->params.identifier, ast->params.datatype);
+            type_check_ast(ctx, ast->params.initializer);
+            type_check_ast(ctx, ast->params.next);
             return NULL;
-        } // case
 
-        case AST_FUNCTION_SIGNATURE:
-        {
-            FunctionSignature *sig = (FunctionSignature *) ast;
-            type_check_ast(ctx, sig->params);
-            return sig->datatype;
-        } // case
+        case MOJOSHADER_AST_FUNCTION_SIGNATURE:
+            type_check_ast(ctx, ast->funcsig.params);
+            return ast->funcsig.datatype;
 
-        case AST_STRUCT_DECLARATION:
-        {
-            StructDeclaration *decl = (StructDeclaration *) ast;
-            const char *datatype = type_check_ast(ctx, decl->members);
+        case MOJOSHADER_AST_STRUCT_DECLARATION:
+            datatype = type_check_ast(ctx, ast->structdecl.members);
             datatype = stringcache_fmt(ctx->strcache, "X{%s}", datatype);
-            push_usertype(ctx, decl->name, datatype);
-            return stringcache_fmt(ctx->strcache, "U{%s}", decl->name);
-        } // case
+            push_usertype(ctx, ast->structdecl.name, datatype);
+            return stringcache_fmt(ctx->strcache, "U{%s}", ast->structdecl.name);
 
-        case AST_STRUCT_MEMBER:
-        {
-            StructMembers *members = (StructMembers *) ast;
-            const char *dtype = type_check_ast(ctx, members->details);
-            const char *dtype2 = type_check_ast(ctx, members->next);
-            if (dtype2)
-                return stringcache_fmt(ctx->strcache, "%s%s", dtype, dtype2);
-            return dtype;
-        } // case
+        case MOJOSHADER_AST_STRUCT_MEMBER:
+            datatype = type_check_ast(ctx, ast->structmembers.details);
+            datatype2 = type_check_ast(ctx, ast->structmembers.next);
+            if (datatype2)
+            {
+                return stringcache_fmt(ctx->strcache, "%s%s",
+                                       datatype, datatype2);
+            } // if
+            return datatype;
 
-        case AST_VARIABLE_DECLARATION:
-        {
-            VariableDeclaration *decl = (VariableDeclaration *) ast;
-            ScalarOrArray *soa = decl->details;
-            const char *datatype;
-            const char *datatype2;
-
+        case MOJOSHADER_AST_VARIABLE_DECLARATION:
             // this is true now, but we'll fill in ->datatype no matter what.
-            assert( (decl->datatype && !decl->anonymous_datatype) ||
-                    (!decl->datatype && decl->anonymous_datatype) );
+            assert((ast->vardecl.datatype && !ast->vardecl.anonymous_datatype) ||
+                   (!ast->vardecl.datatype && ast->vardecl.anonymous_datatype));
 
             // fix up if necessary.
-            if (decl->anonymous_datatype != NULL)
-                decl->datatype = type_check_ast(ctx, decl->anonymous_datatype);
-            datatype = decl->datatype;
+            if (ast->vardecl.anonymous_datatype != NULL)
+                ast->vardecl.datatype = type_check_ast(ctx, ast->vardecl.anonymous_datatype);
+            datatype = ast->vardecl.datatype;
 
-            // don't walk into AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
+            // don't walk into MOJOSHADER_AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
             // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
             // !!! FIXME: this part is cut and paste.
-            assert( (soa->isarray && soa->dimension) ||
-                    (!soa->isarray && !soa->dimension) );
+            assert( (ast->vardecl.details->isarray &&
+                     ast->vardecl.details->dimension) ||
+                     (!ast->vardecl.details->isarray &&
+                      !ast->vardecl.details->dimension) );
 
-            if (soa->isarray)
+            if (ast->vardecl.details->isarray)
             {
-                if (soa->dimension->ast.type != AST_OP_INT_LITERAL)
+                MOJOSHADER_astScalarOrArray *soa = ast->vardecl.details;
+                if (soa->dimension->ast.type != MOJOSHADER_AST_OP_INT_LITERAL)
                 {
                     fail(ctx, "Expected integer");
                     delete_expr(ctx, soa->dimension);  // make sane.
                     soa->dimension = new_literal_int_expr(ctx, 1);
                 } // if
 
-                int64 dim = ((ExpressionIntLiteral *) soa->dimension)->value;
-                datatype = stringcache_fmt(ctx->strcache, "a{%lld,%s}",
-                                           (long long) dim, datatype);
+                const int dim = ((MOJOSHADER_astExpressionIntLiteral *) soa->dimension)->value;
+                datatype = stringcache_fmt(ctx->strcache, "a{%d,%s}",
+                                           dim, datatype);
             } // if
 
-            decl->datatype = datatype;  // make sane.
-            push_variable(ctx, soa->identifier, datatype);
-            datatype2 = type_check_ast(ctx, decl->initializer);
-            add_type_coercion(ctx, NULL, datatype, &decl->initializer, datatype2);
+            ast->vardecl.datatype = datatype;  // make sane.
+            push_variable(ctx, ast->vardecl.details->identifier, datatype);
+            datatype2 = type_check_ast(ctx, ast->vardecl.initializer);
+            add_type_coercion(ctx, NULL, datatype, &ast->vardecl.initializer, datatype2);
 
-            type_check_ast(ctx, decl->annotations);
-            type_check_ast(ctx, decl->lowlevel);
+            type_check_ast(ctx, ast->vardecl.annotations);
+            type_check_ast(ctx, ast->vardecl.lowlevel);
 
-            datatype2 = type_check_ast(ctx, decl->next);
+            datatype2 = type_check_ast(ctx, ast->vardecl.next);
             assert(datatype == datatype2);
             return datatype;
-        } // case
 
-        case AST_ANNOTATION:
+        case MOJOSHADER_AST_ANNOTATION:
         {
-            Annotations *anno = (Annotations *) ast;
+            MOJOSHADER_astAnnotations *anno = &ast->annotations;
             while (anno)
             {
                 type_check_ast(ctx, anno->initializer);
@@ -3099,8 +1845,8 @@ datatype = "!!! FIXME";
             return NULL;
         } // case
 
-        case AST_PACK_OFFSET:
-        case AST_VARIABLE_LOWLEVEL:
+        case MOJOSHADER_AST_PACK_OFFSET:
+        case MOJOSHADER_AST_VARIABLE_LOWLEVEL:
             return NULL;  // no-op (for now, at least).
 
         default:
@@ -3115,9 +1861,13 @@ datatype = "!!! FIXME";
 static inline void semantic_analysis(Context *ctx)
 {
     type_check_ast(ctx, ctx->ast);
+
     // !!! FIXME: build an IR here.
-    delete_compilation_unit(ctx, ctx->ast);  // done with the AST, nuke it.
+
+    // done with the AST, nuke it.
+    delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit *) ctx->ast);
     ctx->ast = NULL;
+
     // !!! FIXME: do everything else.  :)
 } // semantic_analysis
 
@@ -3355,7 +2105,7 @@ static void destroy_context(Context *ctx)
         void *d = ctx->malloc_data;
 
         // !!! FIXME: free ctx->errors
-        delete_compilation_unit(ctx, ctx->ast);
+        delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit*)ctx->ast);
         destroy_symbolmap(ctx, &ctx->usertypes);
         destroy_symbolmap(ctx, &ctx->variables);
 
@@ -3552,30 +2302,115 @@ static void parse_source(Context *ctx, const char *filename,
 } // parse_source
 
 
-void MOJOSHADER_compile(const char *filename,
-                        const char *source, unsigned int sourcelen,
-                        const MOJOSHADER_preprocessorDefine *defines,
-                        unsigned int define_count,
-                        MOJOSHADER_includeOpen include_open,
-                        MOJOSHADER_includeClose include_close,
-                        MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+#if 0
+/* !!! FIXME: most of these ints should be unsigned. */
+typedef struct MOJOSHADER_astData
+{
+    /*
+     * The number of elements pointed to by (errors).
+     */
+    int error_count;
+
+    /*
+     * (error_count) elements of data that specify errors that were generated
+     *  by parsing this shader.
+     * This can be NULL if there were no errors or if (error_count) is zero.
+     *  Note that this will only produce errors for syntax problems. Most of
+     *  the things we expect a compiler to produce errors for--incompatible
+     *  types, unknown identifiers, etc--are not checked at all during
+     *  initial generation of the syntax tree...bogus programs that would
+     *  fail to compile will pass here without error, if they are syntactically
+     *  correct!
+     */
+    MOJOSHADER_error *errors;
+
+    /*
+     * The name of the source profile used to parse the shader. Will be NULL
+     *  on error.
+     */
+    const char *source_profile;
+
+    /*
+     * The actual syntax tree. You are responsible for walking it yourself.
+     *  CompilationUnits are always the top of the tree (functions, typedefs,
+     *  global variables, etc).
+     */
+    const MOJOSHADER_astNode *ast;
+
+    /*
+     * This is the malloc implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_malloc malloc;
+
+    /*
+     * This is the free implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_free free;
+
+    /*
+     * This is the pointer you passed as opaque data for your allocator.
+     */
+    void *malloc_data;
+} MOJOSHADER_astData;
+#endif
+
+
+// !!! FIXME: move this (and a lot of other things) to mojoshader_ast.c.
+const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
+                                    const char *filename, const char *source,
+                                    unsigned int sourcelen,
+                                    const MOJOSHADER_preprocessorDefine *defs,
+                                    unsigned int define_count,
+                                    MOJOSHADER_includeOpen include_open,
+                                    MOJOSHADER_includeClose include_close,
+                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                    void *d)
 {
     Context *ctx = build_context(m, f, d);
     if (!ctx)
-        return;  // !!! FIXME: report error.
+        return NULL;  // !!! FIXME: report error.
 
-    parse_source(ctx, filename, source, sourcelen, defines, define_count,
+    parse_source(ctx, filename, source, sourcelen, defs, define_count,
+                 include_open, include_close);
+
+    destroy_context(ctx);
+
+    // !!! FIXME: report success/error.
+    return NULL;
+} // MOJOSHADER_ast
+
+
+void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data)
+{
+} // MOJOSHADER_freeAstData
+
+
+
+const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
+                                    const char *filename, const char *source,
+                                    unsigned int sourcelen,
+                                    const MOJOSHADER_preprocessorDefine *defs,
+                                    unsigned int define_count,
+                                    MOJOSHADER_includeOpen include_open,
+                                    MOJOSHADER_includeClose include_close,
+                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                    void *d)
+{
+    Context *ctx = build_context(m, f, d);
+    if (!ctx)
+        return NULL;  // !!! FIXME: report error.
+
+    parse_source(ctx, filename, source, sourcelen, defs, define_count,
                  include_open, include_close);
 
     // !!! FIXME: check (ctx->ast != NULL), and maybe isfail().
-
-    print_ast(0, ctx->ast);
 
     semantic_analysis(ctx);
 
     destroy_context(ctx);
 
     // !!! FIXME: report success/error.
+    return NULL;
 } // MOJOSHADER_compile
 
 // end of mojoshader_compiler.c ...

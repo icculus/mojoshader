@@ -882,6 +882,865 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 
+/* High level shading language support... */
+
+/*
+ * Source profile strings for HLSL: Direct3D High Level Shading Language.
+ */
+#define MOJOSHADER_SRC_PROFILE_HLSL_VS_1_1 "hlsl_vs_1_1"
+#define MOJOSHADER_SRC_PROFILE_HLSL_VS_2_0 "hlsl_vs_2_0"
+#define MOJOSHADER_SRC_PROFILE_HLSL_VS_3_0 "hlsl_vs_3_0"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_1_1 "hlsl_ps_1_1"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_1_2 "hlsl_ps_1_2"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_1_3 "hlsl_ps_1_3"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_1_4 "hlsl_ps_1_4"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_2_0 "hlsl_ps_2_0"
+#define MOJOSHADER_SRC_PROFILE_HLSL_PS_3_0 "hlsl_ps_3_0"
+
+
+/* Abstract Syntax Tree interface... */
+
+/*
+ * ATTENTION: This adds a lot of stuff to the API, but almost everyone can
+ *  ignore this section. Seriously, go ahead and skip over anything that has
+ *  "AST" in it, unless you know why you'd want to use it.
+ *
+ * ALSO: This API is still evolving! We make no promises at this time to keep
+ *  source or binary compatibility for the AST pieces.
+ */
+
+/* Structures that make up the parse tree... */
+
+typedef enum MOJOSHADER_astNodeType
+{
+    MOJOSHADER_AST_OP_START_RANGE,         /* expression operators. */
+
+    MOJOSHADER_AST_OP_START_RANGE_UNARY,   /* unary operators. */
+    MOJOSHADER_AST_OP_PREINCREMENT,
+    MOJOSHADER_AST_OP_PREDECREMENT,
+    MOJOSHADER_AST_OP_NEGATE,
+    MOJOSHADER_AST_OP_COMPLEMENT,
+    MOJOSHADER_AST_OP_NOT,
+    MOJOSHADER_AST_OP_POSTINCREMENT,
+    MOJOSHADER_AST_OP_POSTDECREMENT,
+    MOJOSHADER_AST_OP_END_RANGE_UNARY,
+
+    MOJOSHADER_AST_OP_START_RANGE_BINARY,  /* binary operators. */
+    MOJOSHADER_AST_OP_COMMA,
+    MOJOSHADER_AST_OP_MULTIPLY,
+    MOJOSHADER_AST_OP_DIVIDE,
+    MOJOSHADER_AST_OP_MODULO,
+    MOJOSHADER_AST_OP_ADD,
+    MOJOSHADER_AST_OP_SUBTRACT,
+    MOJOSHADER_AST_OP_LSHIFT,
+    MOJOSHADER_AST_OP_RSHIFT,
+    MOJOSHADER_AST_OP_LESSTHAN,
+    MOJOSHADER_AST_OP_GREATERTHAN,
+    MOJOSHADER_AST_OP_LESSTHANOREQUAL,
+    MOJOSHADER_AST_OP_GREATERTHANOREQUAL,
+    MOJOSHADER_AST_OP_EQUAL,
+    MOJOSHADER_AST_OP_NOTEQUAL,
+    MOJOSHADER_AST_OP_BINARYAND,
+    MOJOSHADER_AST_OP_BINARYXOR,
+    MOJOSHADER_AST_OP_BINARYOR,
+    MOJOSHADER_AST_OP_LOGICALAND,
+    MOJOSHADER_AST_OP_LOGICALOR,
+    MOJOSHADER_AST_OP_ASSIGN,
+    MOJOSHADER_AST_OP_MULASSIGN,
+    MOJOSHADER_AST_OP_DIVASSIGN,
+    MOJOSHADER_AST_OP_MODASSIGN,
+    MOJOSHADER_AST_OP_ADDASSIGN,
+    MOJOSHADER_AST_OP_SUBASSIGN,
+    MOJOSHADER_AST_OP_LSHIFTASSIGN,
+    MOJOSHADER_AST_OP_RSHIFTASSIGN,
+    MOJOSHADER_AST_OP_ANDASSIGN,
+    MOJOSHADER_AST_OP_XORASSIGN,
+    MOJOSHADER_AST_OP_ORASSIGN,
+    MOJOSHADER_AST_OP_DEREF_ARRAY,
+    MOJOSHADER_AST_OP_END_RANGE_BINARY,
+
+    MOJOSHADER_AST_OP_START_RANGE_TERNARY,  /* ternary operators. */
+    MOJOSHADER_AST_OP_CONDITIONAL,
+    MOJOSHADER_AST_OP_END_RANGE_TERNARY,
+
+    MOJOSHADER_AST_OP_START_RANGE_DATA,     /* expression operands. */
+    MOJOSHADER_AST_OP_IDENTIFIER,
+    MOJOSHADER_AST_OP_INT_LITERAL,
+    MOJOSHADER_AST_OP_FLOAT_LITERAL,
+    MOJOSHADER_AST_OP_STRING_LITERAL,
+    MOJOSHADER_AST_OP_BOOLEAN_LITERAL,
+    MOJOSHADER_AST_OP_END_RANGE_DATA,
+
+    MOJOSHADER_AST_OP_START_RANGE_MISC,     /* other expression things. */
+    MOJOSHADER_AST_OP_DEREF_STRUCT,
+    MOJOSHADER_AST_OP_CALLFUNC,
+    MOJOSHADER_AST_OP_CONSTRUCTOR,
+    MOJOSHADER_AST_OP_CAST,
+    MOJOSHADER_AST_OP_END_RANGE_MISC,
+    MOJOSHADER_AST_OP_END_RANGE,
+
+    MOJOSHADER_AST_COMPUNIT_START_RANGE,    /* things in global scope. */
+    MOJOSHADER_AST_COMPUNIT_FUNCTION,
+    MOJOSHADER_AST_COMPUNIT_TYPEDEF,
+    MOJOSHADER_AST_COMPUNIT_STRUCT,
+    MOJOSHADER_AST_COMPUNIT_VARIABLE,
+    MOJOSHADER_AST_COMPUNIT_END_RANGE,
+
+    MOJOSHADER_AST_STATEMENT_START_RANGE,   /* statements in function scope. */
+    MOJOSHADER_AST_STATEMENT_EMPTY,
+    MOJOSHADER_AST_STATEMENT_BREAK,
+    MOJOSHADER_AST_STATEMENT_CONTINUE,
+    MOJOSHADER_AST_STATEMENT_DISCARD,
+    MOJOSHADER_AST_STATEMENT_BLOCK,
+    MOJOSHADER_AST_STATEMENT_EXPRESSION,
+    MOJOSHADER_AST_STATEMENT_IF,
+    MOJOSHADER_AST_STATEMENT_SWITCH,
+    MOJOSHADER_AST_STATEMENT_FOR,
+    MOJOSHADER_AST_STATEMENT_DO,
+    MOJOSHADER_AST_STATEMENT_WHILE,
+    MOJOSHADER_AST_STATEMENT_RETURN,
+    MOJOSHADER_AST_STATEMENT_TYPEDEF,
+    MOJOSHADER_AST_STATEMENT_STRUCT,
+    MOJOSHADER_AST_STATEMENT_VARDECL,
+    MOJOSHADER_AST_STATEMENT_END_RANGE,
+
+    MOJOSHADER_AST_MISC_START_RANGE,        /* misc. syntactic glue. */
+    MOJOSHADER_AST_FUNCTION_PARAMS,
+    MOJOSHADER_AST_FUNCTION_SIGNATURE,
+    MOJOSHADER_AST_SCALAR_OR_ARRAY,
+    MOJOSHADER_AST_TYPEDEF,
+    MOJOSHADER_AST_PACK_OFFSET,
+    MOJOSHADER_AST_VARIABLE_LOWLEVEL,
+    MOJOSHADER_AST_ANNOTATION,
+    MOJOSHADER_AST_VARIABLE_DECLARATION,
+    MOJOSHADER_AST_STRUCT_DECLARATION,
+    MOJOSHADER_AST_STRUCT_MEMBER,
+    MOJOSHADER_AST_SWITCH_CASE,
+    MOJOSHADER_AST_ARGUMENTS,
+    MOJOSHADER_AST_MISC_END_RANGE,
+
+    MOJOSHADER_AST_END_RANGE
+} MOJOSHADER_astNodeType;
+
+typedef struct MOJOSHADER_astNodeInfo
+{
+    MOJOSHADER_astNodeType type;
+    const char *filename;
+    unsigned int line;
+} MOJOSHADER_astNodeInfo;
+
+typedef enum MOJOSHADER_astVariableAttributes
+{
+    MOJOSHADER_AST_VARATTR_EXTERN = (1 << 0),
+    MOJOSHADER_AST_VARATTR_NOINTERPOLATION = (1 << 1),
+    MOJOSHADER_AST_VARATTR_SHARED = (1 << 2),
+    MOJOSHADER_AST_VARATTR_STATIC = (1 << 3),
+    MOJOSHADER_AST_VARATTR_UNIFORM = (1 << 4),
+    MOJOSHADER_AST_VARATTR_VOLATILE = (1 << 5),
+    MOJOSHADER_AST_VARATTR_CONST = (1 << 6),
+    MOJOSHADER_AST_VARATTR_ROWMAJOR = (1 << 7),
+    MOJOSHADER_AST_VARATTR_COLUMNMAJOR = (1 << 8)
+} MOJOSHADER_astVariableAttributes;
+
+typedef enum MOJOSHADER_astIfAttributes
+{
+    MOJOSHADER_AST_IFATTR_NONE,
+    MOJOSHADER_AST_IFATTR_BRANCH,
+    MOJOSHADER_AST_IFATTR_FLATTEN,
+    MOJOSHADER_AST_IFATTR_IFALL,
+    MOJOSHADER_AST_IFATTR_IFANY,
+    MOJOSHADER_AST_IFATTR_PREDICATE,
+    MOJOSHADER_AST_IFATTR_PREDICATEBLOCK,
+} MOJOSHADER_astIfAttributes;
+
+typedef enum MOJOSHADER_astSwitchAttributes
+{
+    MOJOSHADER_AST_SWITCHATTR_NONE,
+    MOJOSHADER_AST_SWITCHATTR_FLATTEN,
+    MOJOSHADER_AST_SWITCHATTR_BRANCH,
+    MOJOSHADER_AST_SWITCHATTR_FORCECASE,
+    MOJOSHADER_AST_SWITCHATTR_CALL
+} MOJOSHADER_astSwitchAttributes;
+
+/* You can cast any AST node pointer to this. */
+typedef struct MOJOSHADER_astGeneric
+{
+    MOJOSHADER_astNodeInfo ast;
+} MOJOSHADER_astGeneric;
+
+typedef MOJOSHADER_astGeneric MOJOSHADER_astExpression;
+
+typedef struct MOJOSHADER_astArguments
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_ARGUMENTS */
+    MOJOSHADER_astExpression *argument;
+    struct MOJOSHADER_astArguments *next;
+} MOJOSHADER_astArguments;
+
+typedef struct MOJOSHADER_astExpressionUnary
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astExpression *operand;
+} MOJOSHADER_astExpressionUnary;
+
+typedef struct MOJOSHADER_astExpressionBinary
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astExpression *left;
+    MOJOSHADER_astExpression *right;
+} MOJOSHADER_astExpressionBinary;
+
+typedef struct MOJOSHADER_astExpressionTernary
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astExpression *left;
+    MOJOSHADER_astExpression *center;
+    MOJOSHADER_astExpression *right;
+} MOJOSHADER_astExpressionTernary;
+
+typedef struct MOJOSHADER_astExpressionIdentifier
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_IDENTIFIER */
+    const char *identifier;
+} MOJOSHADER_astExpressionIdentifier;
+
+typedef struct MOJOSHADER_astExpressionIntLiteral
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_INT_LITERAL */
+    int value;
+} MOJOSHADER_astExpressionIntLiteral;
+
+typedef struct MOJOSHADER_astExpressionFloatLiteral
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_FLOAT_LITERAL */
+    double value;
+} MOJOSHADER_astExpressionFloatLiteral;
+
+typedef struct MOJOSHADER_astExpressionStringLiteral
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_STRING_LITERAL */
+    const char *string;
+} MOJOSHADER_astExpressionStringLiteral;
+
+typedef struct MOJOSHADER_astExpressionBooleanLiteral
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_BOOLEAN_LITERAL */
+    int value;  /* Always 1 or 0. */
+} MOJOSHADER_astExpressionBooleanLiteral;
+
+typedef struct MOJOSHADER_astExpressionConstructor
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CONSTRUCTOR */
+    const char *datatype;
+    MOJOSHADER_astArguments *args;
+} MOJOSHADER_astExpressionConstructor;
+
+typedef struct MOJOSHADER_astExpressionDerefStruct
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_DEREF_STRUCT */
+    MOJOSHADER_astExpression *identifier;
+    const char *member;
+} MOJOSHADER_astExpressionDerefStruct;
+
+typedef struct MOJOSHADER_astExpressionCallFunction
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CALLFUNC */
+    MOJOSHADER_astExpression *identifier;
+    MOJOSHADER_astArguments *args;
+} MOJOSHADER_astExpressionCallFunction;
+
+typedef struct MOJOSHADER_astExpressionCast
+{
+    MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CAST */
+    const char *datatype;
+    MOJOSHADER_astExpression *operand;
+} MOJOSHADER_astExpressionCast;
+
+typedef struct MOJOSHADER_astCompilationUnit
+{
+    MOJOSHADER_astNodeInfo ast;
+    struct MOJOSHADER_astCompilationUnit *next;
+} MOJOSHADER_astCompilationUnit;
+
+typedef enum MOJOSHADER_astFunctionStorageClass
+{
+    MOJOSHADER_AST_FNSTORECLS_NONE,
+    MOJOSHADER_AST_FNSTORECLS_INLINE
+} MOJOSHADER_astFunctionStorageClass;
+
+typedef enum MOJOSHADER_astInputModifier
+{
+    MOJOSHADER_AST_INPUTMOD_NONE,
+    MOJOSHADER_AST_INPUTMOD_IN,
+    MOJOSHADER_AST_INPUTMOD_OUT,
+    MOJOSHADER_AST_INPUTMOD_INOUT,
+    MOJOSHADER_AST_INPUTMOD_UNIFORM
+} MOJOSHADER_astInputModifier;
+
+typedef enum MOJOSHADER_astInterpolationModifier
+{
+    MOJOSHADER_AST_INTERPMOD_NONE,
+    MOJOSHADER_AST_INTERPMOD_LINEAR,
+    MOJOSHADER_AST_INTERPMOD_CENTROID,
+    MOJOSHADER_AST_INTERPMOD_NOINTERPOLATION,
+    MOJOSHADER_AST_INTERPMOD_NOPERSPECTIVE,
+    MOJOSHADER_AST_INTERPMOD_SAMPLE
+} MOJOSHADER_astInterpolationModifier;
+
+typedef struct MOJOSHADER_astFunctionParameters
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astInputModifier input_modifier;
+    const char *datatype;
+    const char *identifier;
+    const char *semantic;
+    MOJOSHADER_astInterpolationModifier interpolation_modifier;
+    MOJOSHADER_astExpression *initializer;
+    struct MOJOSHADER_astFunctionParameters *next;
+} MOJOSHADER_astFunctionParameters;
+
+typedef struct MOJOSHADER_astFunctionSignature
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *datatype;
+    const char *identifier;
+    MOJOSHADER_astFunctionParameters *params;
+    MOJOSHADER_astFunctionStorageClass storage_class;
+    const char *semantic;
+} MOJOSHADER_astFunctionSignature;
+
+typedef struct MOJOSHADER_astScalarOrArray
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *identifier;
+    int isarray;  /* boolean: 1 or 0 */
+    MOJOSHADER_astExpression *dimension;
+} MOJOSHADER_astScalarOrArray;
+
+typedef struct MOJOSHADER_astAnnotations
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *datatype;
+    MOJOSHADER_astExpression *initializer;
+    struct MOJOSHADER_astAnnotations *next;
+} MOJOSHADER_astAnnotations;
+
+typedef struct MOJOSHADER_astPackOffset
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *ident1;   /* !!! FIXME: rename this. */
+    const char *ident2;
+} MOJOSHADER_astPackOffset;
+
+typedef struct MOJOSHADER_astVariableLowLevel
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astPackOffset *packoffset;
+    const char *register_name;
+} MOJOSHADER_astVariableLowLevel;
+
+typedef struct MOJOSHADER_astStructMembers
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *datatype;
+    const char *semantic;
+    MOJOSHADER_astScalarOrArray *details;
+    MOJOSHADER_astInterpolationModifier interpolation_mod;
+    struct MOJOSHADER_astStructMembers *next;
+} MOJOSHADER_astStructMembers;
+
+typedef struct MOJOSHADER_astStructDeclaration
+{
+    MOJOSHADER_astNodeInfo ast;
+    const char *name;
+    MOJOSHADER_astStructMembers *members;
+} MOJOSHADER_astStructDeclaration;
+
+typedef struct MOJOSHADER_astVariableDeclaration
+{
+    MOJOSHADER_astNodeInfo ast;
+    int attributes;
+    const char *datatype;
+    MOJOSHADER_astStructDeclaration *anonymous_datatype;
+    MOJOSHADER_astScalarOrArray *details;
+    const char *semantic;
+    MOJOSHADER_astAnnotations *annotations;
+    MOJOSHADER_astExpression *initializer;
+    MOJOSHADER_astVariableLowLevel *lowlevel;
+    struct MOJOSHADER_astVariableDeclaration *next;
+} MOJOSHADER_astVariableDeclaration;
+
+typedef struct MOJOSHADER_astStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    struct MOJOSHADER_astStatement *next;
+} MOJOSHADER_astStatement;
+
+typedef MOJOSHADER_astStatement MOJOSHADER_astEmptyStatement;
+typedef MOJOSHADER_astStatement MOJOSHADER_astBreakStatement;
+typedef MOJOSHADER_astStatement MOJOSHADER_astContinueStatement;
+typedef MOJOSHADER_astStatement MOJOSHADER_astDiscardStatement;
+
+/* something enclosed in "{}" braces. */
+typedef struct MOJOSHADER_astBlockStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astStatement *statements;  /* list of child statements. */
+} MOJOSHADER_astBlockStatement;
+
+typedef struct MOJOSHADER_astReturnStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astExpression *expr;
+} MOJOSHADER_astReturnStatement;
+
+typedef struct MOJOSHADER_astExpressionStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astExpression *expr;
+} MOJOSHADER_astExpressionStatement;
+
+typedef struct MOJOSHADER_astIfStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    int attributes;
+    MOJOSHADER_astExpression *expr;
+    MOJOSHADER_astStatement *statement;
+    MOJOSHADER_astStatement *else_statement;
+} MOJOSHADER_astIfStatement;
+
+typedef struct MOJOSHADER_astSwitchCases
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astExpression *expr;
+    MOJOSHADER_astStatement *statement;
+    struct MOJOSHADER_astSwitchCases *next;
+} MOJOSHADER_astSwitchCases;
+
+typedef struct MOJOSHADER_astSwitchStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    int attributes;
+    MOJOSHADER_astExpression *expr;
+    MOJOSHADER_astSwitchCases *cases;
+} MOJOSHADER_astSwitchStatement;
+
+typedef struct MOJOSHADER_astWhileStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    int unroll;  /* # times to unroll, 0 to loop, < 0 == compiler's choice. */
+    MOJOSHADER_astExpression *expr;
+    MOJOSHADER_astStatement *statement;
+} MOJOSHADER_astWhileStatement;
+
+typedef MOJOSHADER_astWhileStatement MOJOSHADER_astDoStatement;
+
+typedef struct MOJOSHADER_astForStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    int unroll;  /* # times to unroll, 0 to loop, < 0 == compiler's choice. */
+    MOJOSHADER_astVariableDeclaration *var_decl;
+    MOJOSHADER_astExpression *initializer;
+    MOJOSHADER_astExpression *looptest;
+    MOJOSHADER_astExpression *counter;
+    MOJOSHADER_astStatement *statement;
+} MOJOSHADER_astForStatement;
+
+typedef struct MOJOSHADER_astTypedef
+{
+    MOJOSHADER_astNodeInfo ast;
+    int isconst;  /* boolean: 1 or 0 */
+    const char *datatype;
+    MOJOSHADER_astScalarOrArray *details;
+} MOJOSHADER_astTypedef;
+
+typedef struct MOJOSHADER_astTypedefStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astTypedef *type_info;
+} MOJOSHADER_astTypedefStatement;
+
+typedef struct MOJOSHADER_astVarDeclStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astVariableDeclaration *declaration;
+} MOJOSHADER_astVarDeclStatement;
+
+typedef struct MOJOSHADER_astStructStatement
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astStatement *next;
+    MOJOSHADER_astStructDeclaration *struct_info;
+} MOJOSHADER_astStructStatement;
+
+typedef struct MOJOSHADER_astCompilationUnitFunction
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astCompilationUnit *next;
+    MOJOSHADER_astFunctionSignature *declaration;
+    MOJOSHADER_astStatement *definition;
+} MOJOSHADER_astCompilationUnitFunction;
+
+typedef struct MOJOSHADER_astCompilationUnitTypedef
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astCompilationUnit *next;
+    MOJOSHADER_astTypedef *type_info;
+} MOJOSHADER_astCompilationUnitTypedef;
+
+typedef struct MOJOSHADER_astCompilationUnitStruct
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astCompilationUnit *next;
+    MOJOSHADER_astStructDeclaration *struct_info;
+} MOJOSHADER_astCompilationUnitStruct;
+
+typedef struct MOJOSHADER_astCompilationUnitVariable
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astCompilationUnit *next;
+    MOJOSHADER_astVariableDeclaration *declaration;
+} MOJOSHADER_astCompilationUnitVariable;
+
+
+/* this is way cleaner than all the nasty typecasting. */
+typedef union MOJOSHADER_astNode
+{
+    MOJOSHADER_astNodeInfo ast;
+    MOJOSHADER_astGeneric generic;
+    MOJOSHADER_astExpression expression;
+    MOJOSHADER_astArguments arguments;
+    MOJOSHADER_astExpressionUnary unary;
+    MOJOSHADER_astExpressionBinary binary;
+    MOJOSHADER_astExpressionTernary ternary;
+    MOJOSHADER_astExpressionIdentifier identifier;
+    MOJOSHADER_astExpressionIntLiteral intliteral;
+    MOJOSHADER_astExpressionFloatLiteral floatliteral;
+    MOJOSHADER_astExpressionStringLiteral stringliteral;
+    MOJOSHADER_astExpressionBooleanLiteral boolliteral;
+    MOJOSHADER_astExpressionConstructor constructor;
+    MOJOSHADER_astExpressionDerefStruct derefstruct;
+    MOJOSHADER_astExpressionCallFunction callfunc;
+    MOJOSHADER_astExpressionCast cast;
+    MOJOSHADER_astCompilationUnit compunit;
+    MOJOSHADER_astFunctionParameters params;
+    MOJOSHADER_astFunctionSignature funcsig;
+    MOJOSHADER_astScalarOrArray soa;
+    MOJOSHADER_astAnnotations annotations;
+    MOJOSHADER_astPackOffset packoffset;
+    MOJOSHADER_astVariableLowLevel varlowlevel;
+    MOJOSHADER_astStructMembers structmembers;
+    MOJOSHADER_astStructDeclaration structdecl;
+    MOJOSHADER_astVariableDeclaration vardecl;
+    MOJOSHADER_astStatement stmt;
+    MOJOSHADER_astEmptyStatement emptystmt;
+    MOJOSHADER_astBreakStatement breakstmt;
+    MOJOSHADER_astContinueStatement contstmt;
+    MOJOSHADER_astDiscardStatement discardstmt;
+    MOJOSHADER_astBlockStatement blockstmt;
+    MOJOSHADER_astReturnStatement returnstmt;
+    MOJOSHADER_astExpressionStatement exprstmt;
+    MOJOSHADER_astIfStatement ifstmt;
+    MOJOSHADER_astSwitchCases cases;
+    MOJOSHADER_astSwitchStatement switchstmt;
+    MOJOSHADER_astWhileStatement whilestmt;
+    MOJOSHADER_astDoStatement dostmt;
+    MOJOSHADER_astForStatement forstmt;
+    MOJOSHADER_astTypedef typdef;
+    MOJOSHADER_astTypedefStatement typedefstmt;
+    MOJOSHADER_astVarDeclStatement vardeclstmt;
+    MOJOSHADER_astStructStatement structstmt;
+    MOJOSHADER_astCompilationUnitFunction funcunit;
+    MOJOSHADER_astCompilationUnitTypedef typedefunit;
+    MOJOSHADER_astCompilationUnitStruct structunit;
+    MOJOSHADER_astCompilationUnitVariable varunit;
+} MOJOSHADER_astNode;
+
+
+/*
+ * Structure used to return data from parsing of a shader into an AST...
+ */
+/* !!! FIXME: most of these ints should be unsigned. */
+typedef struct MOJOSHADER_astData
+{
+    /*
+     * The number of elements pointed to by (errors).
+     */
+    int error_count;
+
+    /*
+     * (error_count) elements of data that specify errors that were generated
+     *  by parsing this shader.
+     * This can be NULL if there were no errors or if (error_count) is zero.
+     *  Note that this will only produce errors for syntax problems. Most of
+     *  the things we expect a compiler to produce errors for--incompatible
+     *  types, unknown identifiers, etc--are not checked at all during
+     *  initial generation of the syntax tree...bogus programs that would
+     *  fail to compile will pass here without error, if they are syntactically
+     *  correct!
+     */
+    MOJOSHADER_error *errors;
+
+    /*
+     * The name of the source profile used to parse the shader. Will be NULL
+     *  on error.
+     */
+    const char *source_profile;
+
+    /*
+     * The actual syntax tree. You are responsible for walking it yourself.
+     *  CompilationUnits are always the top of the tree (functions, typedefs,
+     *  global variables, etc).
+     */
+    const MOJOSHADER_astNode *ast;
+
+    /*
+     * This is the malloc implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_malloc malloc;
+
+    /*
+     * This is the free implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_free free;
+
+    /*
+     * This is the pointer you passed as opaque data for your allocator.
+     */
+    void *malloc_data;
+} MOJOSHADER_astData;
+
+
+/*
+ * You almost certainly don't need this function, unless you absolutely know
+ *  why you need it without hesitation. This is almost certainly only good for
+ *  building code analysis tools on top of.
+ *
+ * This is intended to parse HLSL source code, turning it into an abstract
+ *  syntax tree.
+ *
+ * (srcprofile) specifies the source language of the shader. You can specify
+ *  a shader model with this, too. See MOJOSHADER_SRC_PROFILE_* constants.
+ *
+ * (filename) is a NULL-terminated UTF-8 filename. It can be NULL. We do not
+ *  actually access this file, as we obtain our data from (source). This
+ *  string is copied when we need to report errors while processing (source),
+ *  as opposed to errors in a file referenced via the #include directive in
+ *  (source). If this is NULL, then errors will report the filename as NULL,
+ *  too.
+ *
+ * (source) is an UTF-8 string of valid high-level shader source code.
+ *  It does not need to be NULL-terminated.
+ *
+ * (sourcelen) is the length of the string pointed to by (source), in bytes.
+ *
+ * (defines) points to (define_count) preprocessor definitions, and can be
+ *  NULL. These are treated by the preprocessor as if the source code started
+ *  with one #define for each entry you pass in here.
+ *
+ * (include_open) and (include_close) let the app control the preprocessor's
+ *  behaviour for #include statements. Both are optional and can be NULL, but
+ *  both must be specified if either is specified.
+ *
+ * This will return a MOJOSHADER_astData. The data supplied here gives the
+ *  application a tree-like structure they can walk to see the layout of
+ *  a given program. When you are done with this data, pass it to
+ *  MOJOSHADER_freeCompileData() to deallocate resources.
+ *
+ * This function will never return NULL, even if the system is completely
+ *  out of memory upon entry (in which case, this function returns a static
+ *  MOJOSHADER_astData object, which is still safe to pass to
+ *  MOJOSHADER_freeAstData()).
+ *
+ * As parsing requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
+ *
+ * This function is thread safe, so long as the various callback functions
+ *  are, too, and that the parameters remains intact for the duration of the
+ *  call. This allows you to parse several shaders on separate CPU cores
+ *  at the same time.
+ */
+const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
+                                    const char *filename, const char *source,
+                                    unsigned int sourcelen,
+                                    const MOJOSHADER_preprocessorDefine *defs,
+                                    unsigned int define_count,
+                                    MOJOSHADER_includeOpen include_open,
+                                    MOJOSHADER_includeClose include_close,
+                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                    void *d);
+
+/*
+ * Call this to dispose of AST parsing results when you are done with them.
+ *  This will call the MOJOSHADER_free function you provided to
+ *  MOJOSHADER_parseAst() multiple times, if you provided one.
+ *  Passing a NULL here is a safe no-op.
+ *
+ * This function is thread safe, so long as any allocator you passed into
+ *  MOJOSHADER_parseAst() is, too.
+ */
+void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data);
+
+
+
+/* Compiler interface... */
+
+/*
+ * Structure used to return data from parsing of a shader...
+ */
+/* !!! FIXME: most of these ints should be unsigned. */
+typedef struct MOJOSHADER_compileData
+{
+    /*
+     * The number of elements pointed to by (errors).
+     */
+    int error_count;
+
+    /*
+     * (error_count) elements of data that specify errors that were generated
+     *  by compiling this shader.
+     * This can be NULL if there were no errors or if (error_count) is zero.
+     */
+    MOJOSHADER_error *errors;
+
+    /*
+     * The number of elements pointed to by (warnings).
+     */
+    int warning_count;
+
+    /*
+     * (warning_count) elements of data that specify errors that were
+     *  generated by compiling this shader.
+     * This can be NULL if there were no errors or if (warning_count) is zero.
+     */
+    MOJOSHADER_error *warnings;
+
+    /*
+     * The name of the source profile used to compile the shader. Will be NULL
+     *  on error.
+     */
+    const char *source_profile;
+
+    /*
+     * Bytes of output from compiling. This will be a null-terminated ASCII
+     *  string of D3D assembly source code.
+     */
+    const char *output;
+
+    /*
+     * Byte count for output, not counting any null terminator.
+     *  Will be 0 on error.
+     */
+    int output_len;
+
+    /*
+     * The number of elements pointed to by (symbols).
+     */
+    int symbol_count;
+
+    /*
+     * (symbol_count) elements of data that specify high-level symbol data
+     *  for the shader. This can be used by MOJOSHADER_assemble() to
+     *  generate a CTAB section in bytecode, which is needed by
+     *  MOJOSHADER_parseData() to handle some shaders. This can be NULL on
+     *  error or if (symbol_count) is zero.
+     */
+    MOJOSHADER_symbol *symbols;
+
+    /*
+     * This is the malloc implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_malloc malloc;
+
+    /*
+     * This is the free implementation you passed to MOJOSHADER_parse().
+     */
+    MOJOSHADER_free free;
+
+    /*
+     * This is the pointer you passed as opaque data for your allocator.
+     */
+    void *malloc_data;
+} MOJOSHADER_compileData;
+
+
+/*
+ * This function is optional. Use this to compile high-level shader programs.
+ *
+ * This is intended to turn HLSL source code into D3D assembly code, which
+ *  can then be passed to MOJOSHADER_assemble() to convert it to D3D bytecode
+ *  (which can then be used with MOJOSHADER_parseData() to support other
+ *  shading targets).
+ *
+ * (srcprofile) specifies the source language of the shader. You can specify
+ *  a shader model with this, too. See MOJOSHADER_SRC_PROFILE_* constants.
+ *
+ * (filename) is a NULL-terminated UTF-8 filename. It can be NULL. We do not
+ *  actually access this file, as we obtain our data from (source). This
+ *  string is copied when we need to report errors while processing (source),
+ *  as opposed to errors in a file referenced via the #include directive in
+ *  (source). If this is NULL, then errors will report the filename as NULL,
+ *  too.
+ *
+ * (source) is an UTF-8 string of valid high-level shader source code.
+ *  It does not need to be NULL-terminated.
+ *
+ * (sourcelen) is the length of the string pointed to by (source), in bytes.
+ *
+ * (defines) points to (define_count) preprocessor definitions, and can be
+ *  NULL. These are treated by the preprocessor as if the source code started
+ *  with one #define for each entry you pass in here.
+ *
+ * (include_open) and (include_close) let the app control the preprocessor's
+ *  behaviour for #include statements. Both are optional and can be NULL, but
+ *  both must be specified if either is specified.
+ *
+ * This will return a MOJOSHADER_compileData. The data supplied here is
+ *  sufficient to supply to MOJOSHADER_assemble() for further processing.
+ *  When you are done with this data, pass it to MOJOSHADER_freeCompileData()
+ *  to deallocate resources.
+ *
+ * This function will never return NULL, even if the system is completely
+ *  out of memory upon entry (in which case, this function returns a static
+ *  MOJOSHADER_compileData object, which is still safe to pass to
+ *  MOJOSHADER_freeCompileData()).
+ *
+ * As compiling requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (d) parameter. This pointer is passed as-is to your (m) and (f) functions.
+ *
+ * This function is thread safe, so long as the various callback functions
+ *  are, too, and that the parameters remains intact for the duration of the
+ *  call. This allows you to compile several shaders on separate CPU cores
+ *  at the same time.
+ */
+const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
+                                    const char *filename, const char *source,
+                                    unsigned int sourcelen,
+                                    const MOJOSHADER_preprocessorDefine *defs,
+                                    unsigned int define_count,
+                                    MOJOSHADER_includeOpen include_open,
+                                    MOJOSHADER_includeClose include_close,
+                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                    void *d);
+
+
 /* OpenGL interface... */
 
 /*
