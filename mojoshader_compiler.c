@@ -94,6 +94,7 @@ typedef struct Context
     SymbolMap usertypes;
     SymbolMap variables;
     MOJOSHADER_astNode *ast;  // Abstract Syntax Tree
+    const char *source_profile;
 
     // These are entries allocated in the strcache, so these pointers are
     //  valid from shortly after we create the cache until we destroy it
@@ -126,7 +127,6 @@ typedef struct Context
 
 static inline void out_of_memory(Context *ctx)
 {
-    if (!ctx->out_of_memory) printf("out of memory\n");  // !!! FIXME: placeholder.
     ctx->isfail = ctx->out_of_memory = 1;
 } // out_of_memory
 
@@ -152,12 +152,70 @@ static inline void Free(Context *ctx, void *ptr)
         ctx->free(ptr, ctx->malloc_data);
 } // Free
 
-static void fail(Context *ctx, const char *str)
+static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
+static void failf(Context *ctx, const char *fmt, ...)
 {
-    // !!! FIXME: placeholder.
-    (void) ctx;
-    printf("%s:%u: %s\n", ctx->sourcefile, ctx->sourceline, str);
+    const char *fname = ctx->sourcefile;
+    const unsigned int error_position = ctx->sourceline;
+
+    ctx->isfail = 1;
+
+    const int MAX_ERROR_COUNT = 128;
+    if (ctx->error_count == (MAX_ERROR_COUNT-1))
+        fmt = "Too many errors, not reporting any more.";
+    else if (ctx->error_count >= MAX_ERROR_COUNT)
+        return;
+
+    ErrorList *error = (ErrorList *) Malloc(ctx, sizeof (ErrorList));
+    if (error == NULL)
+        return;
+
+    char scratch = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    const int len = vsnprintf(&scratch, sizeof (scratch), fmt, ap);
+    va_end(ap);
+
+    char *failstr = (char *) Malloc(ctx, len + 1);
+    if (failstr == NULL)
+        Free(ctx, error);
+    else
+    {
+        va_start(ap, fmt);
+        vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
+        va_end(ap);
+
+        error->error.error = failstr;
+        error->error.filename = fname ? StrDup(ctx, fname) : NULL;
+        error->error.error_position = error_position;
+        error->next = NULL;
+
+        ErrorList *prev = NULL;
+        ErrorList *item = ctx->errors;
+        while (item != NULL)
+        {
+            prev = item;
+            item = item->next;
+        } // while
+
+        if (prev == NULL)
+            ctx->errors = error;
+        else
+            prev->next = error;
+
+        ctx->error_count++;
+    } // else
+} // failf
+
+static inline void fail(Context *ctx, const char *reason)
+{
+    failf(ctx, "%s", reason);
 } // fail
+
+static inline int isfail(const Context *ctx)
+{
+    return ctx->isfail;
+} // isfail
 
 
 static void symbolmap_nuke(const void *k, const void *v, void *d) {/*no-op*/}
@@ -2302,58 +2360,122 @@ static void parse_source(Context *ctx, const char *filename,
 } // parse_source
 
 
-#if 0
-/* !!! FIXME: most of these ints should be unsigned. */
-typedef struct MOJOSHADER_astData
+static MOJOSHADER_astData MOJOSHADER_out_of_mem_ast_data = {
+    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0
+};
+
+// !!! FIXME: cut and paste from assembler.
+static MOJOSHADER_error *build_errors(Context *ctx)
 {
-    /*
-     * The number of elements pointed to by (errors).
-     */
-    int error_count;
+    int total = 0;
+    MOJOSHADER_error *retval = (MOJOSHADER_error *)
+            Malloc(ctx, sizeof (MOJOSHADER_error) * ctx->error_count);
+    if (retval == NULL)
+        return NULL;
 
-    /*
-     * (error_count) elements of data that specify errors that were generated
-     *  by parsing this shader.
-     * This can be NULL if there were no errors or if (error_count) is zero.
-     *  Note that this will only produce errors for syntax problems. Most of
-     *  the things we expect a compiler to produce errors for--incompatible
-     *  types, unknown identifiers, etc--are not checked at all during
-     *  initial generation of the syntax tree...bogus programs that would
-     *  fail to compile will pass here without error, if they are syntactically
-     *  correct!
-     */
-    MOJOSHADER_error *errors;
+    ErrorList *item = ctx->errors;
+    while (item != NULL)
+    {
+        ErrorList *next = item->next;
+        // reuse the string allocations
+        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
+        Free(ctx, item);
+        item = next;
+        total++;
+    } // while
+    ctx->errors = NULL;
 
-    /*
-     * The name of the source profile used to parse the shader. Will be NULL
-     *  on error.
-     */
-    const char *source_profile;
+    assert(total == ctx->error_count);
+    return retval;
+} // build_errors
 
-    /*
-     * The actual syntax tree. You are responsible for walking it yourself.
-     *  CompilationUnits are always the top of the tree (functions, typedefs,
-     *  global variables, etc).
-     */
-    const MOJOSHADER_astNode *ast;
 
-    /*
-     * This is the malloc implementation you passed to MOJOSHADER_parse().
-     */
-    MOJOSHADER_malloc malloc;
+// !!! FIXME: cut and paste from assembler.
+static const MOJOSHADER_astData *build_failed_ast(Context *ctx)
+{
+    assert(isfail(ctx));
 
-    /*
-     * This is the free implementation you passed to MOJOSHADER_parse().
-     */
-    MOJOSHADER_free free;
+    if (ctx->out_of_memory)
+        return &MOJOSHADER_out_of_mem_ast_data;
+        
+    MOJOSHADER_astData *retval = NULL;
+    retval = (MOJOSHADER_astData *) Malloc(ctx, sizeof (MOJOSHADER_astData));
+    if (retval == NULL)
+        return &MOJOSHADER_out_of_mem_ast_data;
 
-    /*
-     * This is the pointer you passed as opaque data for your allocator.
-     */
-    void *malloc_data;
-} MOJOSHADER_astData;
-#endif
+    memset(retval, '\0', sizeof (MOJOSHADER_astData));
+    retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
+    retval->malloc_data = ctx->malloc_data;
 
+    retval->error_count = ctx->error_count;
+    retval->errors = build_errors(ctx);
+    if ((retval->errors == NULL) && (ctx->error_count > 0))
+    {
+        Free(ctx, retval);
+        return &MOJOSHADER_out_of_mem_ast_data;
+    } // if
+
+    return retval;
+} // build_failed_ast
+
+
+static const MOJOSHADER_astData *build_astdata(Context *ctx)
+{
+    MOJOSHADER_astData *retval = NULL;
+
+    if (ctx->out_of_memory)
+        return &MOJOSHADER_out_of_mem_ast_data;
+
+    retval = (MOJOSHADER_astData *) Malloc(ctx, sizeof (MOJOSHADER_astData));
+    if (retval == NULL)
+        return &MOJOSHADER_out_of_mem_ast_data;
+
+    memset(retval, '\0', sizeof (MOJOSHADER_astData));
+
+    if (!isfail(ctx))
+    {
+        retval->source_profile = ctx->source_profile;
+        ctx->source_profile = NULL;  // don't free this with the context, now.
+        retval->ast = ctx->ast;
+        ctx->ast = NULL;  // don't free this with the context, now.
+    } // if
+
+    retval->error_count = ctx->error_count;
+    retval->errors = build_errors(ctx);
+    retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
+    retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
+    retval->malloc_data = ctx->malloc_data;
+
+    return retval;
+} // build_astdata
+
+static void choose_src_profile(Context *ctx, const char *srcprofile)
+{
+    #define TEST_PROFILE(x) do { \
+        if (strcmp(srcprofile, x) == 0) { \
+            ctx->source_profile = x; \
+            return; \
+        } \
+    } while (0)
+
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_VS_1_1);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_VS_2_0);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_VS_3_0);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_1);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_2);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_3);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_4);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_2_0);
+    TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_PS_3_0);
+
+    #undef TEST_PROFILE
+
+    fail(ctx, "Unknown profile");
+} // choose_src_profile
+
+
+// API entry point...
 
 // !!! FIXME: move this (and a lot of other things) to mojoshader_ast.c.
 const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
@@ -2366,22 +2488,72 @@ const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
                                     void *d)
 {
-    Context *ctx = build_context(m, f, d);
-    if (!ctx)
-        return NULL;  // !!! FIXME: report error.
+    const MOJOSHADER_astData *retval = NULL;
+    Context *ctx = NULL;
 
-    parse_source(ctx, filename, source, sourcelen, defs, define_count,
-                 include_open, include_close);
+    if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
+        return &MOJOSHADER_out_of_mem_ast_data;  // supply both or neither.
+
+    ctx = build_context(m, f, d);
+    if (ctx == NULL)
+        return &MOJOSHADER_out_of_mem_ast_data;
+
+    choose_src_profile(ctx, srcprofile);
+
+    if (!isfail(ctx))
+    {
+        parse_source(ctx, filename, source, sourcelen, defs, define_count,
+                     include_open, include_close);
+    } // if
+
+    if (isfail(ctx))
+        retval = (MOJOSHADER_astData *) build_failed_ast(ctx);
+    else
+        retval = build_astdata(ctx);
 
     destroy_context(ctx);
-
-    // !!! FIXME: report success/error.
-    return NULL;
-} // MOJOSHADER_ast
+    return retval;
+} // MOJOSHADER_parseAst
 
 
-void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data)
+void MOJOSHADER_freeAstData(const MOJOSHADER_astData *_data)
 {
+    MOJOSHADER_astData *data = (MOJOSHADER_astData *) _data;
+    if ((data == NULL) || (data == &MOJOSHADER_out_of_mem_ast_data))
+        return;  // no-op.
+
+    MOJOSHADER_free f = (data->free == NULL) ? MOJOSHADER_internal_free : data->free;
+    void *d = data->malloc_data;
+    int i;
+
+    // we don't f(data->source_profile), because that's internal static data.
+
+    // check for NULL in case of dumb free() impl.
+    if (data->errors != NULL)
+    {
+        for (i = 0; i < data->error_count; i++)
+        {
+            if (data->errors[i].error != NULL)
+                f((void *) data->errors[i].error, d);
+            if (data->errors[i].filename != NULL)
+                f((void *) data->errors[i].filename, d);
+        } // for
+        f((void *) data->errors, d);
+    } // if
+
+    if (data->ast != NULL)
+    {
+        // !!! FIXME: make this not require a Context.
+        Context ctx;
+        memset(&ctx, '\0', sizeof (Context));
+        ctx.malloc = data->malloc;
+        ctx.free = f;
+        ctx.malloc_data = d;
+        delete_compilation_unit(&ctx,
+                    (MOJOSHADER_astCompilationUnit *) &data->ast->compunit);
+    } // if
+
+    f(data, d);
 } // MOJOSHADER_freeAstData
 
 

@@ -1499,7 +1499,7 @@ typedef struct MOJOSHADER_astData
     /*
      * The actual syntax tree. You are responsible for walking it yourself.
      *  CompilationUnits are always the top of the tree (functions, typedefs,
-     *  global variables, etc).
+     *  global variables, etc). Will be NULL on error.
      */
     const MOJOSHADER_astNode *ast;
 
