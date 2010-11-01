@@ -777,6 +777,7 @@ static int ast(const char *fname, const char *buf, int len,
         else
             retval = 1;
     } // else
+    MOJOSHADER_freeAstData(ad);
 
     return retval;
 } // ast
