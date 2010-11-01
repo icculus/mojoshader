@@ -54,18 +54,18 @@ static void fail(const char *err)
     exit(1);
 } // fail
 
-static void print_unroll_attr(const int unroll)
+static void print_unroll_attr(FILE *io, const int unroll)
 {
     if (unroll == 0)
-        printf("[loop] ");
+        fprintf(io, "[loop] ");
     else if (unroll < 0)
-        printf("[unroll] ");
+        fprintf(io, "[unroll] ");
     else
-        printf("[unroll(%d)] ", unroll);
+        fprintf(io, "[unroll(%d)] ", unroll);
 } // print_unroll_attr
 
 // !!! FIXME: this screws up on order of operations.
-static void print_ast(const int substmt, const void *_ast)
+static void print_ast(FILE *io, const int substmt, const void *_ast)
 {
     const MOJOSHADER_astNode *ast = (const MOJOSHADER_astNode *) _ast;
     const char *nl = substmt ? "" : "\n";
@@ -98,7 +98,7 @@ static void print_ast(const int substmt, const void *_ast)
     typeint = (int) ast->ast.type;
 
     #define DO_INDENT do { \
-        if (!substmt) { for (i = 0; i < indent; i++) printf("    "); } \
+        if (!substmt) { for (i = 0; i < indent; i++) fprintf(io, "    "); } \
     } while (0)
 
     switch (ast->ast.type)
@@ -108,14 +108,14 @@ static void print_ast(const int substmt, const void *_ast)
         case MOJOSHADER_AST_OP_NEGATE:
         case MOJOSHADER_AST_OP_COMPLEMENT:
         case MOJOSHADER_AST_OP_NOT:
-            printf("%s", pre_unary[(typeint-MOJOSHADER_AST_OP_START_RANGE_UNARY)-1]);
-            print_ast(0, ast->unary.operand);
+            fprintf(io, "%s", pre_unary[(typeint-MOJOSHADER_AST_OP_START_RANGE_UNARY)-1]);
+            print_ast(io, 0, ast->unary.operand);
             break;
 
         case MOJOSHADER_AST_OP_POSTINCREMENT:
         case MOJOSHADER_AST_OP_POSTDECREMENT:
-            print_ast(0, ast->unary.operand);
-            printf("%s", post_unary[typeint-MOJOSHADER_AST_OP_POSTINCREMENT]);
+            print_ast(io, 0, ast->unary.operand);
+            fprintf(io, "%s", post_unary[typeint-MOJOSHADER_AST_OP_POSTINCREMENT]);
             break;
 
         case MOJOSHADER_AST_OP_MULTIPLY:
@@ -147,41 +147,41 @@ static void print_ast(const int substmt, const void *_ast)
         case MOJOSHADER_AST_OP_ANDASSIGN:
         case MOJOSHADER_AST_OP_XORASSIGN:
         case MOJOSHADER_AST_OP_ORASSIGN:
-            printf(" ");  // then fall through! (no space before the comma).
+            fprintf(io, " ");  // then fall through! (no space before the comma).
         case MOJOSHADER_AST_OP_COMMA:
-            print_ast(0, ast->binary.left);
-            printf("%s ", binary[
+            print_ast(io, 0, ast->binary.left);
+            fprintf(io, "%s ", binary[
                 (typeint - MOJOSHADER_AST_OP_START_RANGE_BINARY) - 1]);
-            print_ast(0, ast->binary.right);
+            print_ast(io, 0, ast->binary.right);
             break;
 
         case MOJOSHADER_AST_OP_DEREF_ARRAY:
-            print_ast(0, ast->binary.left);
-            printf("[");
-            print_ast(0, ast->binary.right);
-            printf("]");
+            print_ast(io, 0, ast->binary.left);
+            fprintf(io, "[");
+            print_ast(io, 0, ast->binary.right);
+            fprintf(io, "]");
             break;
 
         case MOJOSHADER_AST_OP_DEREF_STRUCT:
-            print_ast(0, ast->derefstruct.identifier);
-            printf(".");
-            printf("%s", ast->derefstruct.member);
+            print_ast(io, 0, ast->derefstruct.identifier);
+            fprintf(io, ".");
+            fprintf(io, "%s", ast->derefstruct.member);
             break;
 
         case MOJOSHADER_AST_OP_CONDITIONAL:
-            print_ast(0, ast->ternary.left);
-            printf(" ? ");
-            print_ast(0, ast->ternary.center);
-            printf(" : ");
-            print_ast(0, ast->ternary.right);
+            print_ast(io, 0, ast->ternary.left);
+            fprintf(io, " ? ");
+            print_ast(io, 0, ast->ternary.center);
+            fprintf(io, " : ");
+            print_ast(io, 0, ast->ternary.right);
             break;
 
         case MOJOSHADER_AST_OP_IDENTIFIER:
-            printf("%s", ast->identifier.identifier);
+            fprintf(io, "%s", ast->identifier.identifier);
             break;
 
         case MOJOSHADER_AST_OP_INT_LITERAL:
-            printf("%d", ast->intliteral.value);
+            fprintf(io, "%d", ast->intliteral.value);
             break;
 
         case MOJOSHADER_AST_OP_FLOAT_LITERAL:
@@ -189,72 +189,72 @@ static void print_ast(const int substmt, const void *_ast)
             const float f = ast->floatliteral.value;
             const long long flr = (long long) f;
             if (((float) flr) == f)
-                printf("%lld.0", flr);
+                fprintf(io, "%lld.0", flr);
             else
-                printf("%.16g", f);
+                fprintf(io, "%.16g", f);
             break;
         } // case
 
         case MOJOSHADER_AST_OP_STRING_LITERAL:
-            printf("\"%s\"", ast->stringliteral.string);
+            fprintf(io, "\"%s\"", ast->stringliteral.string);
             break;
 
         case MOJOSHADER_AST_OP_BOOLEAN_LITERAL:
-            printf("%s", ast->boolliteral.value ? "true" : "false");
+            fprintf(io, "%s", ast->boolliteral.value ? "true" : "false");
             break;
 
         case MOJOSHADER_AST_ARGUMENTS:
-            print_ast(0, ast->arguments.argument);
+            print_ast(io, 0, ast->arguments.argument);
             if (ast->arguments.next != NULL)
             {
-                printf(", ");
-                print_ast(0, ast->arguments.next);
+                fprintf(io, ", ");
+                print_ast(io, 0, ast->arguments.next);
             } // if
             break;
 
         case MOJOSHADER_AST_OP_CALLFUNC:
-            print_ast(0, ast->callfunc.identifier);
-            printf("(");
-            print_ast(0, ast->callfunc.args);
-            printf(")");
+            print_ast(io, 0, ast->callfunc.identifier);
+            fprintf(io, "(");
+            print_ast(io, 0, ast->callfunc.args);
+            fprintf(io, ")");
             break;
 
         case MOJOSHADER_AST_OP_CONSTRUCTOR:
-            printf("%s(", ast->constructor.datatype);
-            print_ast(0, ast->constructor.args);
-            printf(")");
+            fprintf(io, "%s(", ast->constructor.datatype);
+            print_ast(io, 0, ast->constructor.args);
+            fprintf(io, ")");
             break;
 
         case MOJOSHADER_AST_OP_CAST:
-            printf("(%s) (", ast->cast.datatype);
-            print_ast(0, ast->cast.operand);
-            printf(")");
+            fprintf(io, "(%s) (", ast->cast.datatype);
+            print_ast(io, 0, ast->cast.operand);
+            fprintf(io, ")");
             break;
 
         case MOJOSHADER_AST_STATEMENT_EXPRESSION:
             DO_INDENT;
-            print_ast(0, ast->exprstmt.expr);  // !!! FIXME: This is named badly...
-            printf(";%s", nl);
-            print_ast(0, ast->exprstmt.next);
+            print_ast(io, 0, ast->exprstmt.expr);  // !!! FIXME: This is named badly...
+            fprintf(io, ";%s", nl);
+            print_ast(io, 0, ast->exprstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_IF:
             DO_INDENT;
-            printf("if (");
-            print_ast(0, ast->ifstmt.expr);
-            printf(")\n");
+            fprintf(io, "if (");
+            print_ast(io, 0, ast->ifstmt.expr);
+            fprintf(io, ")\n");
             isblock = ast->ifstmt.statement->ast.type == MOJOSHADER_AST_STATEMENT_BLOCK;
             if (!isblock) indent++;
-            print_ast(0, ast->ifstmt.statement);
+            print_ast(io, 0, ast->ifstmt.statement);
             if (!isblock) indent--;
-            print_ast(0, ast->ifstmt.next);
+            print_ast(io, 0, ast->ifstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_TYPEDEF:
             DO_INDENT;
-            print_ast(1, ast->typedefstmt.type_info);
-            printf("%s", nl);
-            print_ast(0, ast->typedefstmt.next);
+            print_ast(io, 1, ast->typedefstmt.type_info);
+            fprintf(io, "%s", nl);
+            print_ast(io, 0, ast->typedefstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_SWITCH:
@@ -262,130 +262,130 @@ static void print_ast(const int substmt, const void *_ast)
             switch ( ast->switchstmt.attributes )
             {
                 case MOJOSHADER_AST_SWITCHATTR_NONE: break;
-                case MOJOSHADER_AST_SWITCHATTR_FLATTEN: printf("[flatten] "); break;
-                case MOJOSHADER_AST_SWITCHATTR_BRANCH: printf("[branch] "); break;
-                case MOJOSHADER_AST_SWITCHATTR_FORCECASE: printf("[forcecase] "); break;
-                case MOJOSHADER_AST_SWITCHATTR_CALL: printf("[call] "); break;
+                case MOJOSHADER_AST_SWITCHATTR_FLATTEN: fprintf(io, "[flatten] "); break;
+                case MOJOSHADER_AST_SWITCHATTR_BRANCH: fprintf(io, "[branch] "); break;
+                case MOJOSHADER_AST_SWITCHATTR_FORCECASE: fprintf(io, "[forcecase] "); break;
+                case MOJOSHADER_AST_SWITCHATTR_CALL: fprintf(io, "[call] "); break;
             } // switch
 
-            printf("switch (");
-            print_ast(0, ast->switchstmt.expr);
-            printf(")\n");
+            fprintf(io, "switch (");
+            print_ast(io, 0, ast->switchstmt.expr);
+            fprintf(io, ")\n");
             DO_INDENT;
-            printf("{\n");
+            fprintf(io, "{\n");
             indent++;
-            print_ast(0, ast->switchstmt.cases);
+            print_ast(io, 0, ast->switchstmt.cases);
             indent--;
-            printf("\n");
+            fprintf(io, "\n");
             DO_INDENT;
-            printf("}\n");
-            print_ast(0, ast->switchstmt.next);
+            fprintf(io, "}\n");
+            print_ast(io, 0, ast->switchstmt.next);
             break;
 
         case MOJOSHADER_AST_SWITCH_CASE:
             DO_INDENT;
-            printf("case ");
-            print_ast(0, ast->cases.expr);
-            printf(":\n");
+            fprintf(io, "case ");
+            print_ast(io, 0, ast->cases.expr);
+            fprintf(io, ":\n");
             isblock = ast->cases.statement->ast.type == MOJOSHADER_AST_STATEMENT_BLOCK;
             if (!isblock) indent++;
-            print_ast(0, ast->cases.statement);
+            print_ast(io, 0, ast->cases.statement);
             if (!isblock) indent--;
-            print_ast(0, ast->cases.next);
+            print_ast(io, 0, ast->cases.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_STRUCT:
             DO_INDENT;
-            print_ast(0, ast->structstmt.struct_info);
-            printf(";%s%s", nl, nl);  // always space these out.
-            print_ast(0, ast->structstmt.next);
+            print_ast(io, 0, ast->structstmt.struct_info);
+            fprintf(io, ";%s%s", nl, nl);  // always space these out.
+            print_ast(io, 0, ast->structstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_VARDECL:
             DO_INDENT;
-            print_ast(1, ast->vardeclstmt.declaration);
-            printf(";%s", nl);
-            print_ast(0, ast->vardeclstmt.next);
+            print_ast(io, 1, ast->vardeclstmt.declaration);
+            fprintf(io, ";%s", nl);
+            print_ast(io, 0, ast->vardeclstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_BLOCK:
             DO_INDENT;
-            printf("{\n");
+            fprintf(io, "{\n");
             indent++;
-            print_ast(0, ast->blockstmt.statements);
+            print_ast(io, 0, ast->blockstmt.statements);
             indent--;
             DO_INDENT;
-            printf("}\n");
-            print_ast(0, ast->blockstmt.next);
+            fprintf(io, "}\n");
+            print_ast(io, 0, ast->blockstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_FOR:
             DO_INDENT;
-            print_unroll_attr(ast->forstmt.unroll);
-            printf("for (");
-            print_ast(1, ast->forstmt.var_decl);
+            print_unroll_attr(io, ast->forstmt.unroll);
+            fprintf(io, "for (");
+            print_ast(io, 1, ast->forstmt.var_decl);
             if (ast->forstmt.initializer != NULL)
             {
-                printf(" = ");
-                print_ast(1, ast->forstmt.initializer);
+                fprintf(io, " = ");
+                print_ast(io, 1, ast->forstmt.initializer);
             } // if
-            printf("; ");
-            print_ast(1, ast->forstmt.looptest);
-            printf("; ");
-            print_ast(1, ast->forstmt.counter);
+            fprintf(io, "; ");
+            print_ast(io, 1, ast->forstmt.looptest);
+            fprintf(io, "; ");
+            print_ast(io, 1, ast->forstmt.counter);
 
-            printf(")\n");
+            fprintf(io, ")\n");
             isblock = ast->forstmt.statement->ast.type == MOJOSHADER_AST_STATEMENT_BLOCK;
             if (!isblock) indent++;
-            print_ast(0, ast->forstmt.statement);
+            print_ast(io, 0, ast->forstmt.statement);
             if (!isblock) indent--;
 
-            print_ast(0, ast->forstmt.next);
+            print_ast(io, 0, ast->forstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_DO:
             DO_INDENT;
-            print_unroll_attr(ast->dostmt.unroll);
-            printf("do\n");
+            print_unroll_attr(io, ast->dostmt.unroll);
+            fprintf(io, "do\n");
 
             isblock = ast->dostmt.statement->ast.type == MOJOSHADER_AST_STATEMENT_BLOCK;
             if (!isblock) indent++;
-            print_ast(0, ast->dostmt.statement);
+            print_ast(io, 0, ast->dostmt.statement);
             if (!isblock) indent--;
 
             DO_INDENT;
-            printf("while (");
-            print_ast(0, ast->dostmt.expr);
-            printf(");\n");
+            fprintf(io, "while (");
+            print_ast(io, 0, ast->dostmt.expr);
+            fprintf(io, ");\n");
 
-            print_ast(0, ast->dostmt.next);
+            print_ast(io, 0, ast->dostmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_WHILE:
             DO_INDENT;
-            print_unroll_attr(ast->whilestmt.unroll);
-            printf("while (");
-            print_ast(0, ast->whilestmt.expr);
-            printf(")\n");
+            print_unroll_attr(io, ast->whilestmt.unroll);
+            fprintf(io, "while (");
+            print_ast(io, 0, ast->whilestmt.expr);
+            fprintf(io, ")\n");
 
             isblock = ast->whilestmt.statement->ast.type == MOJOSHADER_AST_STATEMENT_BLOCK;
             if (!isblock) indent++;
-            print_ast(0, ast->whilestmt.statement);
+            print_ast(io, 0, ast->whilestmt.statement);
             if (!isblock) indent--;
 
-            print_ast(0, ast->whilestmt.next);
+            print_ast(io, 0, ast->whilestmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_RETURN:
             DO_INDENT;
-            printf("return");
+            fprintf(io, "return");
             if (ast->returnstmt.expr)
             {
-                printf(" ");
-                print_ast(0, ast->returnstmt.expr);
+                fprintf(io, " ");
+                print_ast(io, 0, ast->returnstmt.expr);
             } // if
-            printf(";%s", nl);
-            print_ast(0, ast->returnstmt.next);
+            fprintf(io, ";%s", nl);
+            print_ast(io, 0, ast->returnstmt.next);
             break;
 
         case MOJOSHADER_AST_STATEMENT_EMPTY:
@@ -393,205 +393,205 @@ static void print_ast(const int substmt, const void *_ast)
         case MOJOSHADER_AST_STATEMENT_CONTINUE:
         case MOJOSHADER_AST_STATEMENT_DISCARD:
             DO_INDENT;
-            printf("%s;%s",
+            fprintf(io, "%s;%s",
                 simple_stmt[(typeint-MOJOSHADER_AST_STATEMENT_START_RANGE)-1],
                 nl);
-            print_ast(0, ast->stmt.next);
+            print_ast(io, 0, ast->stmt.next);
             break;
 
         case MOJOSHADER_AST_COMPUNIT_FUNCTION:
             DO_INDENT;
-            print_ast(0, ast->funcunit.declaration);
+            print_ast(io, 0, ast->funcunit.declaration);
             if (ast->funcunit.definition == NULL)
-                printf(";%s", nl);
+                fprintf(io, ";%s", nl);
             else
             {
-                printf("%s", nl);
-                print_ast(0, ast->funcunit.definition);
-                printf("%s", nl);
+                fprintf(io, "%s", nl);
+                print_ast(io, 0, ast->funcunit.definition);
+                fprintf(io, "%s", nl);
             } // else
-            print_ast(0, ast->funcunit.next);
+            print_ast(io, 0, ast->funcunit.next);
             break;
 
         case MOJOSHADER_AST_COMPUNIT_TYPEDEF:
             DO_INDENT;
-            print_ast(0, ast->typedefunit.type_info);
-            printf("%s", nl);
-            print_ast(0, ast->typedefunit.next);
+            print_ast(io, 0, ast->typedefunit.type_info);
+            fprintf(io, "%s", nl);
+            print_ast(io, 0, ast->typedefunit.next);
             break;
 
         case MOJOSHADER_AST_COMPUNIT_STRUCT:
             DO_INDENT;
-            print_ast(0, ast->structunit.struct_info);
-            printf(";%s%s", nl, nl);  // always space these out.
-            print_ast(0, ast->structunit.next);
+            print_ast(io, 0, ast->structunit.struct_info);
+            fprintf(io, ";%s%s", nl, nl);  // always space these out.
+            print_ast(io, 0, ast->structunit.next);
             break;
 
         case MOJOSHADER_AST_COMPUNIT_VARIABLE:
             DO_INDENT;
-            print_ast(1, ast->varunit.declaration);
-            printf(";%s", nl);
+            print_ast(io, 1, ast->varunit.declaration);
+            fprintf(io, ";%s", nl);
             if (ast->varunit.next &&
                 ast->varunit.next->ast.type!=MOJOSHADER_AST_COMPUNIT_VARIABLE)
             {
-                printf("%s", nl);  // group vars together, and space out other things.
+                fprintf(io, "%s", nl);  // group vars together, and space out other things.
             } // if
-            print_ast(0, ast->varunit.next);
+            print_ast(io, 0, ast->varunit.next);
             break;
 
         case MOJOSHADER_AST_SCALAR_OR_ARRAY:
-            printf("%s", ast->soa.identifier);
+            fprintf(io, "%s", ast->soa.identifier);
             if (ast->soa.isarray)
             {
-                printf("[");
-                print_ast(0, ast->soa.dimension);
-                printf("]");
+                fprintf(io, "[");
+                print_ast(io, 0, ast->soa.dimension);
+                fprintf(io, "]");
             } // if
             break;
 
         case MOJOSHADER_AST_TYPEDEF:
             DO_INDENT;
-            printf("typedef %s%s ",
+            fprintf(io, "typedef %s%s ",
                    ast->typdef.isconst ? "const " : "", ast->typdef.datatype);
-            print_ast(0, ast->typdef.details);
-            printf(";%s", nl);
+            print_ast(io, 0, ast->typdef.details);
+            fprintf(io, ";%s", nl);
             break;
 
         case MOJOSHADER_AST_FUNCTION_PARAMS:
-            printf("%s", inpmod[(int) ast->params.input_modifier]);
-            printf("%s %s", ast->params.datatype, ast->params.identifier);
+            fprintf(io, "%s", inpmod[(int) ast->params.input_modifier]);
+            fprintf(io, "%s %s", ast->params.datatype, ast->params.identifier);
             if (ast->params.semantic)
-                printf(" : %s", ast->params.semantic);
-            printf("%s", interpmod[(int) ast->params.interpolation_modifier]);
+                fprintf(io, " : %s", ast->params.semantic);
+            fprintf(io, "%s", interpmod[(int) ast->params.interpolation_modifier]);
 
             if (ast->params.initializer)
             {
-                printf(" = ");
-                print_ast(0, ast->params.initializer);
+                fprintf(io, " = ");
+                print_ast(io, 0, ast->params.initializer);
             } // if
 
             if (ast->params.next)
             {
-                printf(", ");
-                print_ast(0, ast->params.next);
+                fprintf(io, ", ");
+                print_ast(io, 0, ast->params.next);
             } // if
             break;
 
         case MOJOSHADER_AST_FUNCTION_SIGNATURE:
-            printf("%s", fnstorage[(int) ast->funcsig.storage_class]);
-            printf("%s %s(",
+            fprintf(io, "%s", fnstorage[(int) ast->funcsig.storage_class]);
+            fprintf(io, "%s %s(",
                     ast->funcsig.datatype ? ast->funcsig.datatype : "void",
                     ast->funcsig.identifier);
-            print_ast(0, ast->funcsig.params);
-            printf(")");
+            print_ast(io, 0, ast->funcsig.params);
+            fprintf(io, ")");
             if (ast->funcsig.semantic)
-                printf(" : %s", ast->funcsig.semantic);
+                fprintf(io, " : %s", ast->funcsig.semantic);
             break;
 
         case MOJOSHADER_AST_STRUCT_DECLARATION:
-            printf("struct %s\n", ast->structdecl.name);
+            fprintf(io, "struct %s\n", ast->structdecl.name);
             DO_INDENT;
-            printf("{\n");
+            fprintf(io, "{\n");
             indent++;
-            print_ast(0, ast->structdecl.members);
+            print_ast(io, 0, ast->structdecl.members);
             indent--;
             DO_INDENT;
-            printf("}");
+            fprintf(io, "}");
             break;
 
         case MOJOSHADER_AST_STRUCT_MEMBER:
             DO_INDENT;
-            printf("%s", interpmod[(int)ast->structmembers.interpolation_mod]);
-            printf("%s ", ast->structmembers.datatype);
-            print_ast(0, ast->structmembers.details);
+            fprintf(io, "%s", interpmod[(int)ast->structmembers.interpolation_mod]);
+            fprintf(io, "%s ", ast->structmembers.datatype);
+            print_ast(io, 0, ast->structmembers.details);
             if (ast->structmembers.semantic)
-                printf(" : %s", ast->structmembers.semantic);
-            printf(";%s", nl);
-            print_ast(0, ast->structmembers.next);
+                fprintf(io, " : %s", ast->structmembers.semantic);
+            fprintf(io, ";%s", nl);
+            print_ast(io, 0, ast->structmembers.next);
             break;
 
         case MOJOSHADER_AST_VARIABLE_DECLARATION:
             DO_INDENT;
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_EXTERN)
-                printf("extern ");
+                fprintf(io, "extern ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_NOINTERPOLATION)
-                printf("nointerpolation ");
+                fprintf(io, "nointerpolation ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_SHARED)
-                printf("shared");
+                fprintf(io, "shared");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_STATIC)
-                printf("static ");
+                fprintf(io, "static ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_UNIFORM)
-                printf("uniform ");
+                fprintf(io, "uniform ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_VOLATILE)
-                printf("nointerpolation ");
+                fprintf(io, "nointerpolation ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_CONST)
-                printf("const ");
+                fprintf(io, "const ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_ROWMAJOR)
-                printf("rowmajor ");
+                fprintf(io, "rowmajor ");
             if (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_COLUMNMAJOR)
-                printf("columnmajor ");
+                fprintf(io, "columnmajor ");
 
             if (ast->vardecl.datatype)
-                printf("%s", ast->vardecl.datatype);
+                fprintf(io, "%s", ast->vardecl.datatype);
             else
-                print_ast(0, ast->vardecl.anonymous_datatype);
-            printf(" ");
-            print_ast(0, ast->vardecl.details);
+                print_ast(io, 0, ast->vardecl.anonymous_datatype);
+            fprintf(io, " ");
+            print_ast(io, 0, ast->vardecl.details);
             if (ast->vardecl.semantic)
-                printf(" : %s", ast->vardecl.semantic);
+                fprintf(io, " : %s", ast->vardecl.semantic);
             if (ast->vardecl.annotations)
             {
-                printf(" ");
-                print_ast(0, ast->vardecl.annotations);
+                fprintf(io, " ");
+                print_ast(io, 0, ast->vardecl.annotations);
             } // if
             if (ast->vardecl.initializer != NULL)
             {
-                printf(" = ");
-                print_ast(0, ast->vardecl.initializer);
+                fprintf(io, " = ");
+                print_ast(io, 0, ast->vardecl.initializer);
             } // if
-            print_ast(0, ast->vardecl.lowlevel);
+            print_ast(io, 0, ast->vardecl.lowlevel);
 
             if (ast->vardecl.next == NULL)
-                printf("%s", nl);
+                fprintf(io, "%s", nl);
             else
             {
                 const int attr = ast->vardecl.next->attributes;
-                printf(", ");
+                fprintf(io, ", ");
                 ast->vardecl.next->attributes = 0;
-                print_ast(1, ast->vardecl.next);
+                print_ast(io, 1, ast->vardecl.next);
                 ast->vardecl.next->attributes = attr;
             } // if
             break;
 
         case MOJOSHADER_AST_PACK_OFFSET:
-            printf(" : packoffset(%s%s%s)", ast->packoffset.ident1,
+            fprintf(io, " : packoffset(%s%s%s)", ast->packoffset.ident1,
                     ast->packoffset.ident2 ? "." : "",
                     ast->packoffset.ident2 ? ast->packoffset.ident2 : "");
             break;
 
         case MOJOSHADER_AST_VARIABLE_LOWLEVEL:
-            print_ast(0, ast->varlowlevel.packoffset);
+            print_ast(io, 0, ast->varlowlevel.packoffset);
             if (ast->varlowlevel.register_name)
-                printf(" : register(%s)", ast->varlowlevel.register_name);
+                fprintf(io, " : register(%s)", ast->varlowlevel.register_name);
             break;
 
         case MOJOSHADER_AST_ANNOTATION:
         {
             const MOJOSHADER_astAnnotations *a = &ast->annotations;
-            printf("<");
+            fprintf(io, "<");
             while (a)
             {
-                printf(" %s ", a->datatype);
+                fprintf(io, " %s ", a->datatype);
                 if (a->initializer != NULL)
                 {
-                    printf(" = ");
-                    print_ast(0, a->initializer);
+                    fprintf(io, " = ");
+                    print_ast(io, 0, a->initializer);
                 } // if
                 if (a->next)
-                    printf(",");
+                    fprintf(io, ",");
                 a = a->next;
             } // while
-            printf(" >");
+            fprintf(io, " >");
             break;
         } // case
 
@@ -751,14 +751,34 @@ static int ast(const char *fname, const char *buf, int len,
                const char *outfile, const MOJOSHADER_preprocessorDefine *defs,
                unsigned int defcount, FILE *io)
 {
-    // !!! FIXME: write me.
-    //const MOJOSHADER_parseData *pd;
-    //int retval = 0;
+    const MOJOSHADER_astData *ad;
+    int retval = 0;
 
-    MOJOSHADER_parseAst(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_1,  // !!! FIXME
+    ad = MOJOSHADER_parseAst(MOJOSHADER_SRC_PROFILE_HLSL_PS_1_1,  // !!! FIXME
                         fname, buf, len, defs, defcount,
                         open_include, close_include, Malloc, Free, NULL);
-    return 1;
+    
+    if (ad->error_count > 0)
+    {
+        int i;
+        for (i = 0; i < ad->error_count; i++)
+        {
+            fprintf(stderr, "%s:%d: ERROR: %s\n",
+                    ad->errors[i].filename ? ad->errors[i].filename : "???",
+                    ad->errors[i].error_position,
+                    ad->errors[i].error);
+        } // for
+    } // if
+    else
+    {
+        print_ast(io, 0, ad->ast);
+        if ((outfile != NULL) && (fclose(io) == EOF))
+            printf(" ... fclose('%s') failed.\n", outfile);
+        else
+            retval = 1;
+    } // else
+
+    return retval;
 } // ast
 
 static int compile(const char *fname, const char *buf, int len,
