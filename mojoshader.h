@@ -1517,6 +1517,11 @@ typedef struct MOJOSHADER_astData
      * This is the pointer you passed as opaque data for your allocator.
      */
     void *malloc_data;
+
+    /*
+     * This is internal data, and not for the application to touch.
+     */
+    void *strcache;
 } MOJOSHADER_astData;
 
 

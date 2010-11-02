@@ -2365,7 +2365,7 @@ static void parse_source(Context *ctx, const char *filename,
 
 
 static MOJOSHADER_astData MOJOSHADER_out_of_mem_ast_data = {
-    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0
+    1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0
 };
 
 // !!! FIXME: cut and paste from assembler.
@@ -2458,6 +2458,9 @@ static const MOJOSHADER_astData *build_astdata(Context *ctx)
     retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
+
+    retval->strcache = ctx->strcache;
+    ctx->strcache = NULL;
 
     return retval;
 } // build_astdata
@@ -2664,6 +2667,9 @@ void MOJOSHADER_freeAstData(const MOJOSHADER_astData *_data)
         delete_compilation_unit(&ctx,
                     (MOJOSHADER_astCompilationUnit *) &data->ast->compunit);
     } // if
+
+    if (data->strcache != NULL)
+        stringcache_destroy((StringCache *) data->strcache);
 
     f(data, d);
 } // MOJOSHADER_freeAstData
