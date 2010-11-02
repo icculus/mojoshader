@@ -147,9 +147,10 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
         case MOJOSHADER_AST_OP_ANDASSIGN:
         case MOJOSHADER_AST_OP_XORASSIGN:
         case MOJOSHADER_AST_OP_ORASSIGN:
-            fprintf(io, " ");  // then fall through! (no space before the comma).
         case MOJOSHADER_AST_OP_COMMA:
             print_ast(io, 0, ast->binary.left);
+            if (ast->ast.type != MOJOSHADER_AST_OP_COMMA)
+                fprintf(io, " ");  // no space before the comma.
             fprintf(io, "%s ", binary[
                 (typeint - MOJOSHADER_AST_OP_START_RANGE_BINARY) - 1]);
             print_ast(io, 0, ast->binary.right);
