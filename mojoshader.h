@@ -1741,6 +1741,18 @@ const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
                                     void *d);
 
 
+/*
+ * Call this to dispose of compile results when you are done with them.
+ *  This will call the MOJOSHADER_free function you provided to
+ *  MOJOSHADER_compile() multiple times, if you provided one.
+ *  Passing a NULL here is a safe no-op.
+ *
+ * This function is thread safe, so long as any allocator you passed into
+ *  MOJOSHADER_compile() is, too.
+ */
+void MOJOSHADER_freeCompileData(const MOJOSHADER_compileData *data);
+
+
 /* OpenGL interface... */
 
 /*
