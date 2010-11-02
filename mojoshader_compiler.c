@@ -328,7 +328,7 @@ static inline const char *find_variable(Context *ctx, const char *sym)
 static void destroy_symbolmap(Context *ctx, SymbolMap *map)
 {
     while (map->scope)
-        pop_symbol_scope(ctx, map);
+        pop_symbol(ctx, map);
     hash_destroy(map->hash);
 } // destroy_symbolmap
 
@@ -2265,13 +2265,13 @@ static void parse_source(Context *ctx, const char *filename,
         {
             // "float2"
             int len = snprintf(buf, sizeof (buf), "%s%d", types[i], j);
-            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), NULL);
+            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), "?");
             int k;
             for (k = 1; k <= 4; k++)
             {
                 // "float2x2"
                 len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i], j, k);
-                push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), NULL);
+                push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), "?");
             } // for
         } // for
     } // for
