@@ -1756,6 +1756,7 @@ static long interpret_rpn(const RpnTokens *tokens, int tokencount, int *error)
 // returns 1 (true), 0 (false), or -1 (error)
 static int reduce_pp_expression(Context *ctx)
 {
+    IncludeState *orig_state = ctx->include_stack;
     RpnTokens output[128];
     Token stack[64];
     Token previous_token = TOKEN_UNKNOWN;
@@ -1801,6 +1802,14 @@ static int reduce_pp_expression(Context *ctx)
         switch (token)
         {
             case TOKEN_EOI:
+                if (state != orig_state)  // end of a substate, or the expr?
+                {
+                    pop_source(ctx);
+                    continue;  // substate, go again with the parent state.
+                } // if
+                done = 1;  // the expression itself is done.
+                break;
+
             case ((Token) '\n'):
                 done = 1;
                 break;  // we're done!
