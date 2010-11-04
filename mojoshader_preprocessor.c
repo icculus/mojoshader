@@ -78,8 +78,7 @@ static inline void *Malloc(Context *ctx, const size_t len)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
-        ctx->free(ptr, ctx->malloc_data);
+    ctx->free(ptr, ctx->malloc_data);
 } // Free
 
 static inline char *StrDup(Context *ctx, const char *str)
@@ -2253,47 +2252,6 @@ const char *preprocessor_sourcepos(Preprocessor *_ctx, unsigned int *pos)
 } // preprocessor_sourcepos
 
 
-// !!! FIXME: cut and paste.
-static void free_error_list(ErrorList *item, MOJOSHADER_free f, void *d)
-{
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        f((void *) item->error.error, d);
-        f((void *) item->error.filename, d);
-        f(item, d);
-        item = next;
-    } // while
-} // free_error_list
-
-
-// !!! FIXME: cut and paste.
-static MOJOSHADER_error *build_errors(ErrorList **errors, const int count,
-                         MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
-{
-    int total = 0;
-    MOJOSHADER_error *retval = (MOJOSHADER_error *)
-                                m(sizeof (MOJOSHADER_error) * count, d);
-    if (retval == NULL)
-        return NULL;
-
-    ErrorList *item = *errors;
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        // reuse the string allocations
-        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
-        f(item, d);
-        item = next;
-        total++;
-    } // while
-    *errors = NULL;
-
-    assert(total == count);
-    return retval;
-} // build_errors
-
-
 static int indent_buffer(Buffer *buffer, int n, int newline,
                          MOJOSHADER_malloc m, void *d)
 {
@@ -2336,23 +2294,24 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     static const char endline[] = { '\n' };
     #endif
 
-    ErrorList *errors = NULL;
-    int error_count = 0;
-
     if (!m) m = MOJOSHADER_internal_malloc;
     if (!f) f = MOJOSHADER_internal_free;
-
-#if !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
     if (!include_open) include_open = MOJOSHADER_internal_include_open;
     if (!include_close) include_close = MOJOSHADER_internal_include_close;
-#endif
+
+    ErrorList *errors = errorlist_create(m, f, d);
+    if (errors == NULL)
+        return &out_of_mem_data_preprocessor;
 
     Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
                                           defines, define_count, 0, m, f, d);
 
     if (pp == NULL)
+    {
+        errorlist_destroy(errors);
         return &out_of_mem_data_preprocessor;
+    } // if
 
     Token token = TOKEN_UNKNOWN;
     const char *tokstr = NULL;
@@ -2421,51 +2380,10 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         {
             if (!out_of_memory)
             {
-                ErrorList *error = (ErrorList *) m(sizeof (ErrorList), d);
                 unsigned int pos = 0;
-                char *fname = NULL;
-                const char *str = preprocessor_sourcepos(pp, &pos);
-                if (str != NULL)
-                {
-                    fname = (char *) m(strlen(str) + 1, d);
-                    if (fname != NULL)
-                        strcpy(fname, str);
-                } // if
-
-                // !!! FIXME: cut and paste with other error handlers.
-                char *errstr = (char *) m(len + 1, d);
-                if (errstr != NULL)
-                    strcpy(errstr, tokstr);
-
-                out_of_memory = ((!error) || ((!fname) && (str)) || (!errstr));
-                if (out_of_memory)
-                {
-                    if (errstr) f(errstr, d);
-                    if (fname) f(fname, d);
-                    if (error) f(error, d);
-                } // if
-                else
-                {
-                    error->error.error = errstr;
-                    error->error.filename = fname;
-                    error->error.error_position = pos;
-                    error->next = NULL;
-
-                    ErrorList *prev = NULL;
-                    ErrorList *item = errors;
-                    while (item != NULL)
-                    {
-                        prev = item;
-                        item = item->next;
-                    } // while
-
-                    if (prev == NULL)
-                        errors = error;
-                    else
-                        prev->next = error;
-
-                    error_count++;
-                } // else
+                const char *fname = preprocessor_sourcepos(pp, &pos);
+                if (!errorlist_add(errors, fname, (int) pos, tokstr))
+                    out_of_memory = 1;
             } // if
         } // else if
 
@@ -2485,7 +2403,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         {
             preprocessor_end(pp);
             free_buffer(&buffer, f, d);
-            free_error_list(errors, f, d);
+            errorlist_destroy(errors);
             return &out_of_mem_data_preprocessor;
         } // if
     } // while
@@ -2499,7 +2417,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     free_buffer(&buffer, f, d);
     if (output == NULL)
     {
-        free_error_list(errors, f, d);
+        errorlist_destroy(errors);
         return &out_of_mem_data_preprocessor;
     } // if
 
@@ -2507,21 +2425,27 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                                     m(sizeof (MOJOSHADER_preprocessData), d);
     if (retval == NULL)
     {
-        free_error_list(errors, f, d);
+        errorlist_destroy(errors);
         f(output, d);
         return &out_of_mem_data_preprocessor;
     } // if
 
-    retval->errors = build_errors(&errors, error_count, m, f, d);
-    if (retval->errors == NULL)
+    memset(retval, '\0', sizeof (*retval));
+    if (errors->count > 0)
     {
-        free_error_list(errors, f, d);
-        f(retval, d);
-        f(output, d);
-        return &out_of_mem_data_preprocessor;
+        retval->error_count = errors->count;
+        retval->errors = errorlist_flatten(errors);
+        if (retval->errors == NULL)
+        {
+            errorlist_destroy(errors);
+            f(retval, d);
+            f(output, d);
+            return &out_of_mem_data_preprocessor;
+        } // if
     } // if
 
-    retval->error_count = error_count;
+    errorlist_destroy(errors);
+
     retval->output = output;
     retval->output_len = total_bytes;
     retval->malloc = m;
@@ -2541,20 +2465,14 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *_data)
     void *d = data->malloc_data;
     int i;
 
-    if (data->output != NULL)
-        f((void *) data->output, d);
+    f((void *) data->output, d);
 
-    if (data->errors != NULL)
+    for (i = 0; i < data->error_count; i++)
     {
-        for (i = 0; i < data->error_count; i++)
-        {
-            if (data->errors[i].error != NULL)
-                f((void *) data->errors[i].error, d);
-            if (data->errors[i].filename != NULL)
-                f((void *) data->errors[i].filename, d);
-        } // for
-        f(data->errors, d);
-    } // if
+        f((void *) data->errors[i].error, d);
+        f((void *) data->errors[i].filename, d);
+    } // for
+    f(data->errors, d);
 
     f(data, d);
 } // MOJOSHADER_freePreprocessData

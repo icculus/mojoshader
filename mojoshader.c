@@ -75,6 +75,7 @@ typedef struct
     const VariableList *relative_array;
 } SourceArgInfo;
 
+// !!! FIXME: can we get rid of this nonsense?
 #define SCRATCH_BUFFER_SIZE 128
 #define SCRATCH_BUFFERS 32
 
@@ -143,7 +144,6 @@ typedef struct Context
     int last_address_reg_component;
     RegisterList used_registers;
     RegisterList defined_registers;
-    int error_count;
     ErrorList *errors;
     int constant_count;
     ConstantsList *constants;
@@ -298,9 +298,18 @@ static inline char *StrDup(Context *ctx, const char *str)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
-        ctx->free(ptr, ctx->malloc_data);
+    ctx->free(ptr, ctx->malloc_data);
 } // Free
+
+static void *MallocBridge(int bytes, void *data)
+{
+    return Malloc((Context *) data, (size_t) bytes);
+} // MallocBridge
+
+static void FreeBridge(void *ptr, void *data)
+{
+    Free((Context *) data, ptr);
+} // FreeBridge
 
 
 // jump between output sections in the context...
@@ -381,68 +390,28 @@ static void failf(Context *ctx, const char *fmt, ...)
     if (ctx->out_of_memory)
         return;
 
-    int error_position = 0;
+    int errpos = 0;
     switch (ctx->parse_phase)
     {
         case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            error_position = -2;
+            errpos = -2;
             break;
         case MOJOSHADER_PARSEPHASE_WORKING:
-            error_position = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
+            errpos = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
             break;
         case MOJOSHADER_PARSEPHASE_DONE:
-            error_position = -1;
+            errpos = -1;
             break;
         default:
             assert(0 && "Unexpected value");
             return;
     } // switch
 
-    ErrorList *error = (ErrorList *) Malloc(ctx, sizeof (ErrorList));
-    if (error == NULL)
-        return;
-
-    char *scratch = get_scratch_buffer(ctx);
+    // no filename at this level (we pass a NULL to errorlist_add_va()...)
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(scratch, SCRATCH_BUFFER_SIZE, fmt, ap);
+    errorlist_add_va(ctx->errors, NULL, errpos, fmt, ap);
     va_end(ap);
-
-    char *failstr = (char *) Malloc(ctx, len + 1);
-    if (failstr == NULL)
-        Free(ctx, error);
-    else
-    {
-        // see comments about scratch buffer overflow in output_line().
-        if (len < SCRATCH_BUFFER_SIZE)
-            strcpy(failstr, scratch);  // copy it over.
-        else
-        {
-            va_start(ap, fmt);
-            vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
-            va_end(ap);
-        } // else
-
-        error->error.error = failstr;
-        error->error.filename = NULL;  // no filename at this level.
-        error->error.error_position = error_position;
-        error->next = NULL;
-
-        ErrorList *prev = NULL;
-        ErrorList *item = ctx->errors;
-        while (item != NULL)
-        {
-            prev = item;
-            item = item->next;
-        } // while
-
-        if (prev == NULL)
-            ctx->errors = error;
-        else
-            prev->next = error;
-
-        ctx->error_count++;
-    } // else
 } // failf
 
 
@@ -6940,6 +6909,13 @@ static Context *build_context(const char *profile,
     ctx->last_address_reg_component = -1;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
 
+    ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
+    if (ctx->errors == NULL)
+    {
+        f(ctx, d);
+        return NULL;
+    } // if
+
     const int profileid = find_profile_id(profile);
     ctx->profileid = profileid;
     if (profileid >= 0)
@@ -6986,19 +6962,6 @@ static void free_variable_list(MOJOSHADER_free f, void *d, VariableList *item)
 } // free_variable_list
 
 
-static void free_error_list(MOJOSHADER_free f, void *d, ErrorList *item)
-{
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        f((void *) item->error.error, d);
-        f((void *) item->error.filename, d);
-        f(item, d);
-        item = next;
-    } // while
-} // free_error_list
-
-
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -7021,7 +6984,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->attributes.next);
         free_reglist(f, d, ctx->samplers.next);
         free_variable_list(f, d, ctx->variables);
-        free_error_list(f, d, ctx->errors);
+        errorlist_destroy(ctx->errors);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -7257,31 +7220,6 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
 } // build_samplers
 
 
-static MOJOSHADER_error *build_errors(Context *ctx)
-{
-    int total = 0;
-    MOJOSHADER_error *retval = (MOJOSHADER_error *)
-            Malloc(ctx, sizeof (MOJOSHADER_error) * ctx->error_count);
-    if (retval == NULL)
-        return NULL;
-
-    ErrorList *item = ctx->errors;
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        // reuse the string allocations
-        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
-        Free(ctx, item);
-        item = next;
-        total++;
-    } // while
-    ctx->errors = NULL;
-
-    assert(total == ctx->error_count);
-    return retval;
-} // build_errors
-
-
 static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 {
     int count = 0;
@@ -7390,7 +7328,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (!isfail(ctx))
         samplers = build_samplers(ctx);
 
-    errors = build_errors(ctx);
+    const int error_count = ctx->errors->count;
+    errors = errorlist_flatten(ctx->errors);
 
     if (!isfail(ctx))
     {
@@ -7435,12 +7374,12 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
         if (ctx->out_of_memory)
         {
-            for (i = 0; i < ctx->sampler_count; i++)
+            for (i = 0; i < error_count; i++)
             {
                 Free(ctx, (void *) errors[i].filename);
                 Free(ctx, (void *) errors[i].error);
             } // for
-            Free(ctx, ctx->errors);
+            Free(ctx, errors);
             Free(ctx, retval);
             return &MOJOSHADER_out_of_mem_data;
         } // if
@@ -7466,7 +7405,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->swizzles = swizzles;
     } // else
 
-    retval->error_count = ctx->error_count;
+    retval->error_count = error_count;
     retval->errors = errors;
     retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
@@ -7749,68 +7688,35 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
 
     // we don't f(data->profile), because that's internal static data.
 
-    if (data->output != NULL)  // check for NULL in case of dumb free() impl.
-        f((void *) data->output, d);
+    f((void *) data->output, d);
+    f((void *) data->constants, d);
+    f((void *) data->swizzles, d);
 
-    if (data->constants != NULL)
-        f((void *) data->constants, d);
-
-    if (data->swizzles != NULL)
-        f((void *) data->swizzles, d);
-
-    if (data->errors != NULL)
+    for (i = 0; i < data->error_count; i++)
     {
-        for (i = 0; i < data->error_count; i++)
-        {
-            if (data->errors[i].error != NULL)
-                f((void *) data->errors[i].error, d);
-            if (data->errors[i].filename != NULL)
-                f((void *) data->errors[i].filename, d);
-        } // for
-        f((void *) data->errors, d);
-    } // if
+        f((void *) data->errors[i].error, d);
+        f((void *) data->errors[i].filename, d);
+    } // for
+    f((void *) data->errors, d);
 
-    if (data->uniforms != NULL)
-    {
-        for (i = 0; i < data->uniform_count; i++)
-        {
-            if (data->uniforms[i].name != NULL)
-                f((void *) data->uniforms[i].name, d);
-        } // for
-        f((void *) data->uniforms, d);
-    } // if
+    for (i = 0; i < data->uniform_count; i++)
+        f((void *) data->uniforms[i].name, d);
+    f((void *) data->uniforms, d);
 
-    if (data->attributes != NULL)
-    {
-        for (i = 0; i < data->attribute_count; i++)
-        {
-            if (data->attributes[i].name != NULL)
-                f((void *) data->attributes[i].name, d);
-        } // for
-        f((void *) data->attributes, d);
-    } // if
+    for (i = 0; i < data->attribute_count; i++)
+        f((void *) data->attributes[i].name, d);
+    f((void *) data->attributes, d);
 
-    if (data->samplers != NULL)
-    {
-        for (i = 0; i < data->sampler_count; i++)
-        {
-            if (data->samplers[i].name != NULL)
-                f((void *) data->samplers[i].name, d);
-        } // for
-        f((void *) data->samplers, d);
-    } // if
+    for (i = 0; i < data->sampler_count; i++)
+        f((void *) data->samplers[i].name, d);
+    f((void *) data->samplers, d);
 
-    if (data->symbols != NULL)
+    for (i = 0; i < data->symbol_count; i++)
     {
-        for (i = 0; i < data->symbol_count; i++)
-        {
-            if (data->symbols[i].name != NULL)
-                f((void *) data->symbols[i].name, d);
-            if (data->symbols[i].default_value != NULL)
-                f((void *) data->symbols[i].default_value, d);
-        } // for
-        f((void *) data->symbols, d);
-    } // if
+        f((void *) data->symbols[i].name, d);
+        f((void *) data->symbols[i].default_value, d);
+    } // for
+    f((void *) data->symbols, d);
 
     f(data, d);
 } // MOJOSHADER_freeParseData

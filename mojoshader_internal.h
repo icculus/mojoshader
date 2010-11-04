@@ -83,6 +83,7 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 
 #ifdef _MSC_VER
 #include <malloc.h>
+#define va_copy(a, b) a = b
 #define snprintf _snprintf
 #define strcasecmp stricmp
 typedef unsigned __int8 uint8;
@@ -191,6 +192,35 @@ const char *stringcache_len(StringCache *cache, const char *str,
                             const unsigned int len);
 const char *stringcache_fmt(StringCache *cache, const char *fmt, ...);
 void stringcache_destroy(StringCache *cache);
+
+
+// We chain errors as a linked list with a head/tail for easy appending.
+//  These get flattened before passing to the application.
+typedef struct ErrorItem
+{
+    MOJOSHADER_error error;
+    struct ErrorItem *next;
+} ErrorItem;
+
+typedef struct ErrorList
+{
+    ErrorItem head;
+    ErrorItem *tail;
+    int count;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
+} ErrorList;
+
+ErrorList *errorlist_create(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
+int errorlist_add(ErrorList *list, const char *fname,
+                      const int errpos, const char *str);
+int errorlist_add_fmt(ErrorList *list, const char *fname,
+                      const int errpos, const char *fmt, ...) ISPRINTF(4,5);
+int errorlist_add_va(ErrorList *list, const char *_fname,
+                     const int errpos, const char *fmt, va_list va);
+MOJOSHADER_error *errorlist_flatten(ErrorList *list); // resets the list!
+void errorlist_destroy(ErrorList *list);
 
 
 // This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.
@@ -366,13 +396,6 @@ typedef enum
 
 extern MOJOSHADER_error MOJOSHADER_out_of_mem_error;
 extern MOJOSHADER_parseData MOJOSHADER_out_of_mem_data;
-
-// !!! FIXME: unify all the routines in various modules that deal with these.
-typedef struct ErrorList
-{
-    MOJOSHADER_error error;
-    struct ErrorList *next;
-} ErrorList;
 
 
 // preprocessor stuff.

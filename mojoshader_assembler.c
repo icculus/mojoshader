@@ -40,7 +40,6 @@ typedef struct Context
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
-    int error_count;
     ErrorList *errors;
     Preprocessor *preprocessor;
     MOJOSHADER_parsePhase parse_phase;
@@ -90,75 +89,51 @@ static inline char *StrDup(Context *ctx, const char *str)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    if (ptr != NULL)  // check for NULL in case of dumb free() impl.
-        ctx->free(ptr, ctx->malloc_data);
+    ctx->free(ptr, ctx->malloc_data);
 } // Free
+
+static void *MallocBridge(int bytes, void *data)
+{
+    return Malloc((Context *) data, (size_t) bytes);
+} // MallocBridge
+
+static void FreeBridge(void *ptr, void *data)
+{
+    Free((Context *) data, ptr);
+} // FreeBridge
 
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void failf(Context *ctx, const char *fmt, ...)
 {
     const char *fname = NULL;
     unsigned int linenum = 0;
-    int error_position = 0;
 
     ctx->isfail = 1;
+    if (ctx->out_of_memory)
+        return;
 
+    int errpos = 0;
     switch (ctx->parse_phase)
     {
         case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            error_position = -2;
+            errpos = -2;
             break;
         case MOJOSHADER_PARSEPHASE_WORKING:
             fname = preprocessor_sourcepos(ctx->preprocessor, &linenum);
-            error_position = (int) linenum;
+            errpos = (int) linenum;
             break;
         case MOJOSHADER_PARSEPHASE_DONE:
-            error_position = -1;
+            errpos = -1;
             break;
         default:
             assert(0 && "Unexpected value");
             return;
     } // switch
 
-    ErrorList *error = (ErrorList *) Malloc(ctx, sizeof (ErrorList));
-    if (error == NULL)
-        return;
-
-    char scratch = 0;
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(&scratch, sizeof (scratch), fmt, ap);
+    errorlist_add_va(ctx->errors, fname, errpos, fmt, ap);
     va_end(ap);
-
-    char *failstr = (char *) Malloc(ctx, len + 1);
-    if (failstr == NULL)
-        Free(ctx, error);
-    else
-    {
-        va_start(ap, fmt);
-        vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
-        va_end(ap);
-
-        error->error.error = failstr;
-        error->error.filename = fname ? StrDup(ctx, fname) : NULL;
-        error->error.error_position = error_position;
-        error->next = NULL;
-
-        ErrorList *prev = NULL;
-        ErrorList *item = ctx->errors;
-        while (item != NULL)
-        {
-            prev = item;
-            item = item->next;
-        } // while
-
-        if (prev == NULL)
-            ctx->errors = error;
-        else
-            prev->next = error;
-
-        ctx->error_count++;
-    } // else
 } // failf
 
 static inline void fail(Context *ctx, const char *reason)
@@ -1468,12 +1443,22 @@ static Context *build_context(const char *filename,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+
+    ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
+    if (ctx->errors == NULL)
+    {
+        f(ctx, d);
+        return NULL;
+    } // if
+
     ctx->preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
-                                           defines, define_count, 1, m, f, d);
+                                           defines, define_count, 1,
+                                           MallocBridge, FreeBridge, ctx);
 
     if (ctx->preprocessor == NULL)
     {
+        errorlist_destroy(ctx->errors);
         f(ctx, d);
         return NULL;
     } // if
@@ -1482,26 +1467,14 @@ static Context *build_context(const char *filename,
 } // build_context
 
 
-static void free_error_list(MOJOSHADER_free f, void *d, ErrorList *item)
-{
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        f((void *) item->error.error, d);
-        f((void *) item->error.filename, d);
-        f(item, d);
-        item = next;
-    } // while
-} // free_error_list
-
-
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
-        free_error_list(f, d, ctx->errors);
+        if (ctx->errors != NULL)
+            errorlist_destroy(ctx->errors);
         if (ctx->preprocessor != NULL)
             preprocessor_end(ctx->preprocessor);
         if (ctx->output != NULL)
@@ -1513,31 +1486,6 @@ static void destroy_context(Context *ctx)
         f(ctx, d);
     } // if
 } // destroy_context
-
-
-static MOJOSHADER_error *build_errors(Context *ctx)
-{
-    int total = 0;
-    MOJOSHADER_error *retval = (MOJOSHADER_error *)
-            Malloc(ctx, sizeof (MOJOSHADER_error) * ctx->error_count);
-    if (retval == NULL)
-        return NULL;
-
-    ErrorList *item = ctx->errors;
-    while (item != NULL)
-    {
-        ErrorList *next = item->next;
-        // reuse the string allocations
-        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
-        Free(ctx, item);
-        item = next;
-        total++;
-    } // while
-    ctx->errors = NULL;
-
-    assert(total == ctx->error_count);
-    return retval;
-} // build_errors
 
 
 static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
@@ -1557,9 +1505,9 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
 
-    retval->error_count = ctx->error_count;
-    retval->errors = build_errors(ctx);
-    if ((retval->errors == NULL) && (ctx->error_count > 0))
+    retval->error_count = ctx->errors->count;
+    retval->errors = errorlist_flatten(ctx->errors);
+    if (ctx->out_of_memory)
     {
         Free(ctx, retval);
         return &MOJOSHADER_out_of_mem_data;

@@ -1521,7 +1521,7 @@ typedef struct MOJOSHADER_astData
     /*
      * This is internal data, and not for the application to touch.
      */
-    void *strcache;
+    void *opaque;
 } MOJOSHADER_astData;
 
 

@@ -365,6 +365,9 @@ StringCache *stringcache_create(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 
 void stringcache_destroy(StringCache *cache)
 {
+    if (cache == NULL)
+        return;
+
     MOJOSHADER_free f = cache->f;
     void *d = cache->d;
     size_t i;
@@ -385,6 +388,150 @@ void stringcache_destroy(StringCache *cache)
     f(cache->hashtable, d);
     f(cache, d);
 } // stringcache_destroy
+
+
+
+ErrorList *errorlist_create(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
+{
+    ErrorList *retval = (ErrorList *) m(sizeof (ErrorList), d);
+    if (retval != NULL)
+    {
+        memset(retval, '\0', sizeof (ErrorList));
+        retval->tail = &retval->head;
+        retval->m = m;
+        retval->f = f;
+        retval->d = d;
+    } // if
+
+    return retval;
+} // errorlist_create
+
+
+int errorlist_add(ErrorList *list, const char *fname,
+                  const int errpos, const char *str)
+{
+    return errorlist_add_fmt(list, fname, errpos, "%s", str);
+} // errorlist_add
+
+
+int errorlist_add_fmt(ErrorList *list, const char *fname,
+                      const int errpos, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = errorlist_add_va(list, fname, errpos, fmt, ap);
+    va_end(ap);
+    return retval;
+} // errorlist_add_fmt
+
+
+int errorlist_add_va(ErrorList *list, const char *_fname,
+                     const int errpos, const char *fmt, va_list va)
+{
+    ErrorItem *error = (ErrorItem *) list->m(sizeof (ErrorItem), list->d);
+    if (error == NULL)
+        return 0;
+
+    char *fname = NULL;
+    if (_fname != NULL)
+    {
+        fname = (char *) list->m(strlen(_fname) + 1, list->d);
+        if (fname == NULL)
+        {
+            list->f(error, list->d);
+            return 0;
+        } // if
+        strcpy(fname, _fname);
+    } // if
+
+    char scratch[128];
+    va_list ap;
+    va_copy(ap, va);
+    const int len = vsnprintf(scratch, sizeof (scratch), fmt, ap);
+    va_end(ap);
+
+    char *failstr = (char *) list->m(len + 1, list->d);
+    if (failstr == NULL)
+    {
+        list->f(error, list->d);
+        list->f(fname, list->d);
+        return 0;
+    } // if
+
+    // If we overflowed our scratch buffer, that's okay. We were going to
+    //  allocate anyhow...the scratch buffer just lets us avoid a second
+    //  run of vsnprintf().
+    if (len < sizeof (scratch))
+        strcpy(failstr, scratch);  // copy it over.
+    else
+    {
+        va_copy(ap, va);
+        vsnprintf(failstr, len + 1, fmt, ap);  // rebuild it.
+        va_end(ap);
+    } // else
+
+    error->error.error = failstr;
+    error->error.filename = fname;
+    error->error.error_position = errpos;
+    error->next = NULL;
+
+    list->tail->next = error;
+    list->tail = error;
+
+    list->count++;
+    return 1;
+} // errorlist_add_va
+
+
+MOJOSHADER_error *errorlist_flatten(ErrorList *list)
+{
+    if (list->count == 0)
+        return NULL;
+
+    int total = 0;
+    MOJOSHADER_error *retval = (MOJOSHADER_error *)
+            list->m(sizeof (MOJOSHADER_error) * list->count, list->d);
+    if (retval == NULL)
+        return NULL;
+
+    ErrorItem *item = list->head.next;
+    while (item != NULL)
+    {
+        ErrorItem *next = item->next;
+        // reuse the string allocations
+        memcpy(&retval[total], &item->error, sizeof (MOJOSHADER_error));
+        list->f(item, list->d);
+        item = next;
+        total++;
+    } // while
+
+    assert(total == list->count);
+    list->count = 0;
+    list->head.next = NULL;
+    list->tail = &list->head;
+    return retval;
+} // errorlist_flatten
+
+
+void errorlist_destroy(ErrorList *list)
+{
+    if (list == NULL)
+        return;
+
+    MOJOSHADER_free f = list->f;
+    void *d = list->d;
+    ErrorItem *item = list->head.next;
+    while (item != NULL)
+    {
+        ErrorItem *next = item->next;
+        f((void *) item->error.error, d);
+        f((void *) item->error.filename, d);
+        f(item, d);
+        item = next;
+    } // while
+    f(list, d);
+} // errorlist_destroy
+
 
 // end of mojoshader_common.c ...
 
