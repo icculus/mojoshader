@@ -13,6 +13,9 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
+// !!! FIXME: replace this with BufferList from the preprocessor.
+// !!! FIXME: we don't need these as a list of strings, we just need a
+// !!! FIXME:  growable buffer we can flatten at the end.
 // A simple linked list of strings, so we can build the final output without
 //  realloc()ing for each new line, and easily insert lines into the middle
 //  of the output without much trouble.
@@ -275,6 +278,11 @@ MOJOSHADER_parseData MOJOSHADER_out_of_mem_data = {
     MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
 };
 
+
+// !!! FIXME: cut and paste between every damned source file follows...
+// !!! FIXME: We need to make some sort of ContextBase that applies to all
+// !!! FIXME:  files and move this stuff to mojoshader_common.c ...
+
 static inline void out_of_memory(Context *ctx)
 {
     ctx->isfail = ctx->out_of_memory = 1;
@@ -383,6 +391,8 @@ static inline char *get_scratch_buffer(Context *ctx)
 } // get_scratch_buffer
 
 
+// !!! FIXME: move the errpos calculation into Context, and we can move this
+// !!! FIXME:  to mojoshader_common.c
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void failf(Context *ctx, const char *fmt, ...)
 {
@@ -530,6 +540,7 @@ static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
     return ( ((uint32) regtype) | (((uint32) regnum) << 16) );
 } // reg_to_uint32
 
+// !!! FIXME: ditch this for a hash table.
 static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
                                     const RegisterType regtype,
                                     const int regnum)
@@ -823,6 +834,8 @@ static const char *get_D3D_register_string(Context *ctx,
     return retval;
 } // get_D3D_register_string
 
+
+// !!! FIXME: can we split the profile code out to separate source files?
 
 #define AT_LEAST_ONE_PROFILE 0
 

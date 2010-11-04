@@ -123,6 +123,10 @@ typedef struct Context
 } Context;
 
 
+// !!! FIXME: cut and paste between every damned source file follows...
+// !!! FIXME: We need to make some sort of ContextBase that applies to all
+// !!! FIXME:  files and move this stuff to mojoshader_common.c ...
+
 // Convenience functions for allocators...
 
 static inline void out_of_memory(Context *ctx)
@@ -307,6 +311,9 @@ static void destroy_symbolmap(Context *ctx, SymbolMap *map)
     hash_destroy(map->hash);
 } // destroy_symbolmap
 
+
+// !!! FIXME: move this to to mojoshader_ast.c
+// !!! FIXME: new_* and delete_* should take an allocator, not a context.
 
 // These functions are mostly for construction and cleanup of nodes in the
 //  parse tree. Mostly this is simple allocation and initialization, so we
@@ -1906,7 +1913,7 @@ static inline void semantic_analysis(Context *ctx)
     // !!! FIXME: do everything else.  :)
 } // semantic_analysis
 
-
+// !!! FIXME: isn't this a cut-and-paste of somewhere else?
 static inline int64 strtoi64(const char *str, unsigned int len)
 {
     int64 retval = 0;
@@ -1944,6 +1951,7 @@ static inline int64 strtoi64(const char *str, unsigned int len)
     return retval;
 } // strtoi64
 
+// !!! FIXME: isn't this a cut-and-paste of somewhere else?
 static inline double strtodouble(const char *_str, unsigned int len)
 {
     // !!! FIXME: laziness prevails.

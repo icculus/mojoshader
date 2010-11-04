@@ -284,6 +284,7 @@ void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
 #endif  // !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
 
 
+// !!! FIXME: move this stuff to mojoshader_common.c ...
 // data buffer stuff...
 
 #define BUFFER_LEN (64 * 1024)
@@ -375,6 +376,7 @@ static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
 
 
 // !!! FIXME: maybe use these pool magic elsewhere?
+// !!! FIXME: maybe just get rid of this? (maybe the fragmentation isn't a big deal?)
 
 // Pool stuff...
 // ugh, I hate this macro salsa.
@@ -820,7 +822,7 @@ static int require_newline(IncludeState *state)
              (token == ((Token) '\n')) || (token == TOKEN_EOI) );
 } // require_newline
 
-
+// !!! FIXME: didn't we implement this by hand elsewhere?
 static int token_to_int(IncludeState *state)
 {
     assert(state->tokenval == TOKEN_INT_LITERAL);

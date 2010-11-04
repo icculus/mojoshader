@@ -64,6 +64,10 @@ typedef struct Context
 } Context;
 
 
+// !!! FIXME: cut and paste between every damned source file follows...
+// !!! FIXME: We need to make some sort of ContextBase that applies to all
+// !!! FIXME:  files and move this stuff to mojoshader_common.c ...
+
 // Convenience functions for allocators...
 
 static inline void out_of_memory(Context *ctx)
@@ -102,6 +106,9 @@ static void FreeBridge(void *ptr, void *data)
     Free((Context *) data, ptr);
 } // FreeBridge
 
+
+// !!! FIXME: move the errpos calculation into Context, and we can move this
+// !!! FIXME:  to mojoshader_common.c
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void failf(Context *ctx, const char *fmt, ...)
 {
@@ -221,7 +228,7 @@ static Token nexttoken(Context *ctx)
     return ctx->tokenval;
 } // nexttoken
 
-
+// !!! FIXME: hashmap?
 static inline void add_token_sourcepos(Context *ctx, const size_t idx)
 {
     unsigned int pos = 0;
@@ -231,6 +238,7 @@ static inline void add_token_sourcepos(Context *ctx, const size_t idx)
 } // add_token_sourcepos
 
 
+// !!! FIXME: use BufferList.
 static void output_token_noswap(Context *ctx, const uint32 token)
 {
     if (isfail(ctx))
@@ -281,6 +289,8 @@ static void output_comment_bytes(Context *ctx, const uint8 *buf, size_t len)
     {
         const uint32 tokencount = (len / 4) + ((len % 4) ? 1 : 0);
         output_token(ctx, 0xFFFE | (tokencount << 16));
+        // !!! FIXME: we can probably just use use modulo and do this without
+        // !!! FIXME:  a tight loop with BufferList.
         while (len >= 4)
         {
             output_token_noswap(ctx, *((const uint32 *) buf));
