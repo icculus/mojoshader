@@ -78,14 +78,6 @@ typedef struct
     const VariableList *relative_array;
 } SourceArgInfo;
 
-// !!! FIXME: can we get rid of this nonsense?
-#define SCRATCH_BUFFER_SIZE 128
-#define SCRATCH_BUFFERS 32
-
-// !!! FIXME: the scratch buffers make Context pretty big.
-// !!! FIXME:  might be worth having one set of static scratch buffers that
-// !!! FIXME:  are mutex protected?
-
 struct Profile;  // predeclare.
 
 // Context...this is state that changes as we parse through a shader...
@@ -119,8 +111,6 @@ typedef struct Context
     const char *shader_type_str;
     const char *endline;
     int endline_len;
-    char scratch[SCRATCH_BUFFERS][SCRATCH_BUFFER_SIZE];
-    int scratchidx;  // current scratch buffer.
     int profileid;
     const struct Profile *profile;
     MOJOSHADER_shaderType shader_type;
@@ -383,14 +373,6 @@ static inline int isfail(const Context *ctx)
 } // isfail
 
 
-static inline char *get_scratch_buffer(Context *ctx)
-{
-    assert(ctx->scratchidx < SCRATCH_BUFFERS);
-    ctx->scratchidx = (ctx->scratchidx + 1) % SCRATCH_BUFFERS;
-    return ctx->scratch[ctx->scratchidx];
-} // get_scratch_buffer
-
-
 // !!! FIXME: move the errpos calculation into Context, and we can move this
 // !!! FIXME:  to mojoshader_common.c
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
@@ -439,7 +421,7 @@ static void output_line(Context *ctx, const char *fmt, ...)
     if (isfail(ctx) || ctx->out_of_memory)
         return;  // we failed previously, don't go on...
 
-    char *scratch = get_scratch_buffer(ctx);
+    char scratch[128];
 
     const int indent = ctx->indent;
     if (indent > 0)
@@ -447,7 +429,7 @@ static void output_line(Context *ctx, const char *fmt, ...)
 
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(scratch+indent, SCRATCH_BUFFER_SIZE-indent, fmt, ap) + indent;
+    const int len = vsnprintf(scratch+indent, sizeof (scratch)-indent, fmt, ap) + indent;
     va_end(ap);
 
     item = (OutputListNode *) Malloc(ctx, sizeof (OutputListNode));
@@ -464,7 +446,7 @@ static void output_line(Context *ctx, const char *fmt, ...)
     // If we overflowed our scratch buffer, that's okay. We were going to
     //  allocate anyhow...the scratch buffer just lets us avoid a second
     //  run of vsnprintf().
-    if (len < SCRATCH_BUFFER_SIZE)
+    if (len < sizeof (scratch))
         strcpy(item->str, scratch);  // copy it over.
     else
     {
@@ -847,8 +829,8 @@ static const char *get_D3D_register_string(Context *ctx,
 #define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 
 static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
-                                                    const SourceArgInfo *arg,
-                                                    char *buf, size_t buflen)
+                                                 const SourceArgInfo *arg,
+                                                 char *buf, size_t buflen)
 {
     const char *premod_str = "";
     const char *postmod_str = "";
@@ -916,7 +898,8 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown source register type.");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const char *rel_lbracket = "";
@@ -939,7 +922,8 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
         if (regtype_str == NULL)
         {
             fail(ctx, "Unknown relative source register type.");
-            return "";
+            *buf = '\0';
+            return buf;
         } // if
     } // if
 
@@ -971,7 +955,8 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 } // make_D3D_srcarg_string_in_buf
 
 
-static const char *make_D3D_destarg_string(Context *ctx)
+static const char *make_D3D_destarg_string(Context *ctx, char *buf,
+                                           const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
 
@@ -997,7 +982,8 @@ static const char *make_D3D_destarg_string(Context *ctx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     char writemask_str[6];
@@ -1022,50 +1008,58 @@ static const char *make_D3D_destarg_string(Context *ctx)
         pred_left = "(";
         pred_right = ") ";
         make_D3D_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
-                                         pred, sizeof (pred));
+                                      pred, sizeof (pred));
     } // if
 
     // may turn out something like "_x2_sat_pp_centroid (!p0.x) r0.xyzw" ...
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s %s%s%s%s%s%s",
+    snprintf(buf, buflen, "%s%s%s%s %s%s%s%s%s%s",
              result_shift_str, sat_str, pp_str, cent_str,
              pred_left, pred, pred_right,
              regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
-    return retval;
+    return buf;
 } // make_D3D_destarg_string
 
 
-static const char *make_D3D_srcarg_string(Context *ctx, const size_t idx)
+static const char *make_D3D_srcarg_string(Context *ctx, const size_t idx,
+                                          char *buf, size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
-    char *buf = get_scratch_buffer(ctx);
-    return make_D3D_srcarg_string_in_buf(ctx, arg, buf, SCRATCH_BUFFER_SIZE);
+    return make_D3D_srcarg_string_in_buf(ctx, arg, buf, buflen);
 } // make_D3D_srcarg_string
 
-
-static const char *get_D3D_varname(Context *ctx, RegisterType rt, int regnum)
+static const char *get_D3D_varname_in_buf(Context *ctx, RegisterType rt,
+                                           int regnum, char *buf,
+                                           const size_t len)
 {
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
+    snprintf(buf,len,"%s%s", regtype_str, regnum_str);
+    return buf;
+} // get_D3D_varname_in_buf
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
-    return retval;
+
+static const char *get_D3D_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char buf[64];
+    get_D3D_varname_in_buf(ctx, rt, regnum, buf, sizeof (buf));
+    return StrDup(ctx, buf);
 } // get_D3D_varname
+
 
 static const char *get_D3D_const_array_varname(Context *ctx, int base, int size)
 {
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "c_array_%d_%d", base, size);
-    return retval;
+    char buf[64];
+    snprintf(buf, sizeof (buf), "c_array_%d_%d", base, size);
+    return StrDup(ctx, buf);
 } // get_D3D_const_array_varname
 
 
@@ -1167,74 +1161,74 @@ static char *lowercase(char *dst, const char *src)
 
 static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
-    output_line(ctx, "%s%s", opcode, dst0);
+    char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
+    output_line(ctx, "%s%s", opcode, dst);
 } // emit_D3D_opcode_d
 
 
 static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
     output_line(ctx, "%s %s", opcode, src0);
 } // emit_D3D_opcode_s
 
 
 static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
 {
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    const char *src1 = make_D3D_srcarg_string(ctx, 1);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
     output_line(ctx, "%s %s, %s", opcode, src0, src1);
 } // emit_D3D_opcode_ss
 
 
 static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
-    output_line(ctx, "%s%s, %s", opcode, dst0, src0);
+    char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
+    output_line(ctx, "%s%s, %s", opcode, dst, src0);
 } // emit_D3D_opcode_ds
 
 
 static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    const char *src1 = make_D3D_srcarg_string(ctx, 1);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
-    output_line(ctx, "%s%s, %s, %s", opcode, dst0, src0, src1);
+    char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
+    output_line(ctx, "%s%s, %s, %s", opcode, dst, src0, src1);
 } // emit_D3D_opcode_dss
 
 
 static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    const char *src1 = make_D3D_srcarg_string(ctx, 1);
-    const char *src2 = make_D3D_srcarg_string(ctx, 2);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
-    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst0, src0, src1, src2);
+    char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_D3D_srcarg_string(ctx, 2, src2, sizeof (src2));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
+    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst, src0, src1, src2);
 } // emit_D3D_opcode_dsss
 
 
 static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    const char *src0 = make_D3D_srcarg_string(ctx, 0);
-    const char *src1 = make_D3D_srcarg_string(ctx, 1);
-    const char *src2 = make_D3D_srcarg_string(ctx, 2);
-    const char *src3 = make_D3D_srcarg_string(ctx, 3);
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
-    output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst0,src0,src1,src2,src3);
+    char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_D3D_srcarg_string(ctx, 2, src2, sizeof (src2));
+    char src3[64]; make_D3D_srcarg_string(ctx, 3, src3, sizeof (src3));
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
+    output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst,src0,src1,src2,src3);
 } // emit_D3D_opcode_dssss
 
 
 static void emit_D3D_opcode(Context *ctx, const char *opcode)
 {
-    opcode = lowercase(get_scratch_buffer(ctx), opcode);
+    opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
     output_line(ctx, "%s", opcode);
 } // emit_D3D_opcode_dssss
 
@@ -1383,7 +1377,8 @@ static void emit_D3D_SETP(Context *ctx)
 
 static void emit_D3D_DEF(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
+    char dst[64];
+    make_D3D_destarg_string(ctx, dst, sizeof (dst));
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
     char val0[32];
     char val1[32];
@@ -1393,27 +1388,30 @@ static void emit_D3D_DEF(Context *ctx)
     floatstr(ctx, val1, sizeof (val1), val[1], 0);
     floatstr(ctx, val2, sizeof (val2), val[2], 0);
     floatstr(ctx, val3, sizeof (val3), val[3], 0);
-    output_line(ctx, "def%s, %s, %s, %s, %s", dst0, val0, val1, val2, val3);
+    output_line(ctx, "def%s, %s, %s, %s, %s", dst, val0, val1, val2, val3);
 } // emit_D3D_DEF
 
 static void emit_D3D_DEFI(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
+    char dst[64];
+    make_D3D_destarg_string(ctx, dst, sizeof (dst));
     const int32 *x = (const int32 *) ctx->dwords;
-    output_line(ctx, "defi%s, %d, %d, %d, %d", dst0,
+    output_line(ctx, "defi%s, %d, %d, %d, %d", dst,
                 (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
 } // emit_D3D_DEFI
 
 static void emit_D3D_DEFB(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
-    output_line(ctx, "defb%s, %s", dst0, ctx->dwords[0] ? "true" : "false");
+    char dst[64];
+    make_D3D_destarg_string(ctx, dst, sizeof (dst));
+    output_line(ctx, "defb%s, %s", dst, ctx->dwords[0] ? "true" : "false");
 } // emit_D3D_DEFB
 
 
 static void emit_D3D_DCL(Context *ctx)
 {
-    const char *dst0 = make_D3D_destarg_string(ctx);
+    char dst[64];
+    make_D3D_destarg_string(ctx, dst, sizeof (dst));
     const DestArgInfo *arg = &ctx->dest_arg;
     const char *usage_str = "";
     char index_str[16] = { '\0' };
@@ -1450,7 +1448,7 @@ static void emit_D3D_DCL(Context *ctx)
             snprintf(index_str, sizeof (index_str), "%u", (uint) index);
     } // else
 
-    output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst0);
+    output_line(ctx, "dcl%s%s%s", usage_str, index_str, dst);
 } // emit_D3D_DCL
 
 
@@ -1548,17 +1546,16 @@ static const char *get_BYTECODE_varname(Context *ctx, RegisterType rt, int regnu
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
-
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
-    return retval;
+    char buf[64];
+    snprintf(buf, sizeof (buf), "%s%s", regtype_str, regnum_str);
+    return StrDup(ctx, buf);
 } // get_BYTECODE_varname
 
 static const char *get_BYTECODE_const_array_varname(Context *ctx, int base, int size)
 {
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "c_array_%d_%d", base, size);
-    return retval;
+    char buf[64];
+    snprintf(buf, sizeof (buf), "c_array_%d_%d", base, size);
+    return StrDup(ctx, buf);
 } // get_BYTECODE_const_array_varname
 
 #define EMIT_BYTECODE_OPCODE_FUNC(op) \
@@ -1664,18 +1661,12 @@ EMIT_BYTECODE_OPCODE_FUNC(TEXLD)
         fail(ctx, #op " unimplemented in glsl profile"); \
     }
 
-static const char *get_GLSL_register_string(Context *ctx, RegisterType regtype,
-                                     int regnum, char *regnum_str, int len)
+static inline const char *get_GLSL_register_string(Context *ctx,
+                        const RegisterType regtype, const int regnum,
+                        char *regnum_str, const size_t regnum_size)
 {
-    const char *retval = get_D3D_register_string(ctx, regtype, regnum,
-                                                 regnum_str, len);
-    if (retval == NULL)
-    {
-        fail(ctx, "Unknown D3D register type.");
-        return "";
-    } // if
-
-    return retval;
+    // turns out these are identical at the moment.
+    return get_D3D_register_string(ctx,regtype,regnum,regnum_str,regnum_size);
 } // get_GLSL_register_string
 
 static const char *get_GLSL_uniform_type(Context *ctx, const RegisterType rtype)
@@ -1691,72 +1682,97 @@ static const char *get_GLSL_uniform_type(Context *ctx, const RegisterType rtype)
     return NULL;
 } // get_GLSL_uniform_type
 
-static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
+static const char *get_GLSL_varname_in_buf(Context *ctx, RegisterType rt,
+                                           int regnum, char *buf,
+                                           const size_t len)
 {
     char regnum_str[16];
     const char *regtype_str = get_GLSL_register_string(ctx, rt, regnum,
                                               regnum_str, sizeof (regnum_str));
+    snprintf(buf,len,"%s_%s%s", ctx->shader_type_str, regtype_str, regnum_str);
+    return buf;
+} // get_GLSL_varname_in_buf
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s", ctx->shader_type_str,
-             regtype_str, regnum_str);
-    return retval;
+
+static const char *get_GLSL_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char buf[64];
+    get_GLSL_varname_in_buf(ctx, rt, regnum, buf, sizeof (buf));
+    return StrDup(ctx, buf);
 } // get_GLSL_varname
 
 
+static inline const char *get_GLSL_const_array_varname_in_buf(Context *ctx,
+                                                const int base, const int size,
+                                                char *buf, const size_t buflen)
+{
+    const char *type = ctx->shader_type_str;
+    snprintf(buf, buflen, "%s_const_array_%d_%d", type, base, size);
+    return buf;
+} // get_GLSL_const_array_varname_in_buf
+
 static const char *get_GLSL_const_array_varname(Context *ctx, int base, int size)
 {
-    const char *shader_type_str = ctx->shader_type_str;
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_const_array_%d_%d",
-             shader_type_str, base, size);
-    return retval;
+    char buf[64];
+    get_GLSL_const_array_varname_in_buf(ctx, base, size, buf, sizeof (buf));
+    return StrDup(ctx, buf);
 } // get_GLSL_const_array_varname
 
 
-static const char *get_GLSL_input_array_varname(Context *ctx)
+static inline const char *get_GLSL_input_array_varname(Context *ctx,
+                                                char *buf, const size_t buflen)
 {
-    return "vertex_input_array";
+    snprintf(buf, buflen, "%s", "vertex_input_array");
+    return buf;
 } // get_GLSL_input_array_varname
 
 
 static const char *get_GLSL_uniform_array_varname(Context *ctx,
-                                                  const RegisterType regtype)
+                                                  const RegisterType regtype,
+                                                  char *buf, const size_t len)
 {
-    char *retval = get_scratch_buffer(ctx);
     const char *shadertype = ctx->shader_type_str;
     const char *type = get_GLSL_uniform_type(ctx, regtype);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_uniforms_%s", shadertype, type);
-    return retval;
+    snprintf(buf, len, "%s_uniforms_%s", shadertype, type);
+    return buf;
 } // get_GLSL_uniform_array_varname
 
-static const char *get_GLSL_destarg_varname(Context *ctx)
+static const char *get_GLSL_destarg_varname(Context *ctx, char *buf, size_t len)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
-    return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+    return get_GLSL_varname_in_buf(ctx, arg->regtype, arg->regnum, buf, len);
 } // get_GLSL_destarg_varname
 
-static const char *get_GLSL_srcarg_varname(Context *ctx, const size_t idx)
+static const char *get_GLSL_srcarg_varname(Context *ctx, const size_t idx,
+                                           char *buf, size_t len)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
-    return get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+    return get_GLSL_varname_in_buf(ctx, arg->regtype, arg->regnum, buf, len);
 } // get_GLSL_srcarg_varname
 
 
-static const char *make_GLSL_destarg_assign(Context *, const char *, ...) ISPRINTF(2,3);
-static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
+static const char *make_GLSL_destarg_assign(Context *, char *, const size_t,
+                                            const char *, ...) ISPRINTF(4,5);
+
+static const char *make_GLSL_destarg_assign(Context *ctx, char *buf,
+                                            const size_t buflen,
+                                            const char *fmt, ...)
 {
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_arg;
 
     if (arg->writemask == 0)
-        return "";  // no writemask? It's a no-op.
+    {
+        *buf = '\0';
+        return buf;  // no writemask? It's a no-op.
+    } // if
 
     char clampbuf[32] = { '\0' };
     const char *clampleft = "";
@@ -1783,18 +1799,20 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     if (ctx->predicated)
     {
         fail(ctx, "predicated destinations unsupported");  // !!! FIXME
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
-    char *operation = get_scratch_buffer(ctx);
+    char operation[128];
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(operation, SCRATCH_BUFFER_SIZE, fmt, ap);
+    const int len = vsnprintf(operation, sizeof (operation), fmt, ap);
     va_end(ap);
-    if (len >= SCRATCH_BUFFER_SIZE)
+    if (len >= sizeof (operation))
     {
         fail(ctx, "operation string too large");  // I'm lazy.  :P
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const char *result_shift_str = "";
@@ -1830,13 +1848,12 @@ static const char *make_GLSL_destarg_assign(Context *ctx, const char *fmt, ...)
     const char *leftparen = (need_parens) ? "(" : "";
     const char *rightparen = (need_parens) ? ")" : "";
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s_%s%s%s = %s%s%s%s%s%s;",
+    snprintf(buf, buflen, "%s_%s%s%s = %s%s%s%s%s%s;",
              ctx->shader_type_str, regtype_str, regnum_str, writemask_str,
              clampleft, leftparen, operation, rightparen, result_shift_str,
              clampright);
     // !!! FIXME: make sure the scratch buffer was large enough.
-    return retval;
+    return buf;
 } // make_GLSL_destarg_assign
 
 
@@ -1869,12 +1886,15 @@ static char *make_GLSL_swizzle_string(char *swiz_str, const size_t strsize,
 
 
 static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
-                                           const int writemask)
+                                           const int writemask, char *buf,
+                                           const size_t buflen)
 {
+    *buf = '\0';
+
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        return buf;
     } // if
 
 // !!! FIXME: not right.
@@ -1892,7 +1912,7 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_BIAS:
-            fail(ctx, "SRCMOD_BIAS unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_BIAS unsupported"); return buf; // !!! FIXME
             postmod_str = "_bias";
             break;
 
@@ -1900,35 +1920,35 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
             premod_str = "-";
             // fall through.
         case SRCMOD_SIGN:
-            fail(ctx, "SRCMOD_SIGN unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_SIGN unsupported"); return buf; // !!! FIXME
             postmod_str = "_bx2";
             break;
 
         case SRCMOD_COMPLEMENT:
-            fail(ctx, "SRCMOD_COMPLEMENT unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_COMPLEMENT unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
             premod_str = "(1.0 - (";
             postmod_str = "))";
             break;
 
         case SRCMOD_X2NEGATE:
-            fail(ctx, "SRCMOD_X2NEGATE unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_X2NEGATE unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
             premod_str = "-(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_X2:
-            fail(ctx, "SRCMOD_X2 unsupported"); return ""; // !!! FIXME  (need to handle vecsize)
+            fail(ctx, "SRCMOD_X2 unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
             premod_str = "(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_DZ:
-            fail(ctx, "SRCMOD_DZ unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_DZ unsupported"); return buf; // !!! FIXME
             postmod_str = "_dz";
             break;
 
         case SRCMOD_DW:
-            fail(ctx, "SRCMOD_DW unsupported"); return ""; // !!! FIXME
+            fail(ctx, "SRCMOD_DW unsupported"); return buf; // !!! FIXME
             postmod_str = "_dw";
             break;
 
@@ -1954,7 +1974,10 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
     const char *regtype_str = NULL;
 
     if (!arg->relative)
-        regtype_str = get_GLSL_varname(ctx, arg->regtype, arg->regnum);
+    {
+        regtype_str = get_GLSL_varname_in_buf(ctx, arg->regtype, arg->regnum,
+                                              (char *) alloca(64), 64);
+    } // if
 
     const char *rel_lbracket = "";
     char rel_offset[32] = { '\0' };
@@ -1964,7 +1987,7 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
     if (arg->relative)
     {
         if (arg->regtype == REG_TYPE_INPUT)
-            regtype_str = get_GLSL_input_array_varname(ctx);
+            regtype_str=get_GLSL_input_array_varname(ctx,(char*)alloca(64),64);
         else
         {
             assert(arg->regtype == REG_TYPE_CONST);
@@ -1974,13 +1997,15 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
             if (arg->relative_array->constant)
             {
                 const int arraysize = arg->relative_array->count;
-                regtype_str = get_GLSL_const_array_varname(ctx, arrayidx, arraysize);
+                regtype_str = get_GLSL_const_array_varname_in_buf(ctx,
+                                arrayidx, arraysize, (char *) alloca(64), 64);
                 if (offset != 0)
                     snprintf(rel_offset, sizeof (rel_offset), "%d + ", offset);
             } // if
             else
             {
-                regtype_str = get_GLSL_uniform_array_varname(ctx,arg->regtype);
+                regtype_str = get_GLSL_uniform_array_varname(ctx, arg->regtype,
+                                                      (char *) alloca(64), 64);
                 if (offset == 0)
                 {
                     snprintf(rel_offset, sizeof (rel_offset),
@@ -1996,8 +2021,9 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
 
         rel_lbracket = "[";
 
-        rel_regtype_str = get_GLSL_varname(ctx, arg->relative_regtype,
-                                           arg->relative_regnum);
+        rel_regtype_str = get_GLSL_varname_in_buf(ctx, arg->relative_regtype,
+                                                  arg->relative_regnum,
+                                                  (char *) alloca(64), 64);
         rel_swizzle[0] = '.';
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
         rel_swizzle[2] = '\0';
@@ -2014,63 +2040,34 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown source register type.");
-        return "";
+        return buf;
     } // if
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s%s%s%s%s%s%s%s",
+    snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s",
              premod_str, regtype_str, rel_lbracket, rel_offset,
              rel_regtype_str, rel_swizzle, rel_rbracket, swiz_str,
              postmod_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
-    return retval;
+    return buf;
 } // make_GLSL_srcarg_string
 
-static inline const char *make_GLSL_srcarg_string_x(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, (1 << 0));
-} // make_GLSL_srcarg_string_x
-
-static inline const char *make_GLSL_srcarg_string_y(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, (1 << 1));
-} // make_GLSL_srcarg_string_y
-
-static inline const char *make_GLSL_srcarg_string_z(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, (1 << 2));
-} // make_GLSL_srcarg_string_z
-
-static inline const char *make_GLSL_srcarg_string_w(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, (1 << 3));
-} // make_GLSL_srcarg_string_w
-
-static inline const char *make_GLSL_srcarg_string_scalar(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string_x(ctx, idx);
-} // make_GLSL_srcarg_string_scalar
-
-static inline const char *make_GLSL_srcarg_string_full(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, 0xF);
-} // make_GLSL_srcarg_string_full
-
-static inline const char *make_GLSL_srcarg_string_masked(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, ctx->dest_arg.writemask);
-} // make_GLSL_srcarg_string_masked
-
-static inline const char *make_GLSL_srcarg_string_vec3(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, 0x7);
-} // make_GLSL_srcarg_string_vec3
-
-static inline const char *make_GLSL_srcarg_string_vec2(Context *ctx, const size_t idx)
-{
-    return make_GLSL_srcarg_string(ctx, idx, 0x3);
-} // make_GLSL_srcarg_string_vec2
-
+// generate some convenience functions.
+#define MAKE_GLSL_SRCARG_STRING_(mask, bitmask) \
+    static inline const char *make_GLSL_srcarg_string_##mask(Context *ctx, \
+                                                const size_t idx, char *buf, \
+                                                const size_t buflen) { \
+        return make_GLSL_srcarg_string(ctx, idx, bitmask, buf, buflen); \
+    }
+MAKE_GLSL_SRCARG_STRING_(x, (1 << 0))
+MAKE_GLSL_SRCARG_STRING_(y, (1 << 1))
+MAKE_GLSL_SRCARG_STRING_(z, (1 << 2))
+MAKE_GLSL_SRCARG_STRING_(w, (1 << 3))
+MAKE_GLSL_SRCARG_STRING_(scalar, (1 << 0))
+MAKE_GLSL_SRCARG_STRING_(full, 0xF)
+MAKE_GLSL_SRCARG_STRING_(masked, ctx->dest_arg.writemask)
+MAKE_GLSL_SRCARG_STRING_(vec3, 0x7)
+MAKE_GLSL_SRCARG_STRING_(vec2, 0x3)
+#undef MAKE_GLSL_SRCARG_STRING_
 
 // special cases for comparison opcodes...
 
@@ -2156,8 +2153,9 @@ static void output_GLSL_uniform_array(Context *ctx, const RegisterType regtype,
 {
     if (size > 0)
     {
-        const char *arrayname = get_GLSL_uniform_array_varname(ctx, regtype);
-        output_line(ctx, "uniform vec4 %s[%d];", arrayname, size);
+        char buf[64];
+        get_GLSL_uniform_array_varname(ctx, regtype, buf, sizeof (buf));
+        output_line(ctx, "uniform vec4 %s[%d];", buf, size);
     } // if
 } // output_GLSL_uniform_array
 
@@ -2184,7 +2182,8 @@ static void emit_GLSL_finalize(Context *ctx)
 
 static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
 {
-    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
+    char varname[64];
+    get_GLSL_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
 
     push_output(ctx, &ctx->globals);
     switch (regtype)
@@ -2228,7 +2227,8 @@ static void emit_GLSL_array(Context *ctx, VariableList *var)
 static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
                                   int base, int size)
 {
-    const char *varname = get_GLSL_const_array_varname(ctx, base, size);
+    char varname[64];
+    get_GLSL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
 
 #if 0
     // !!! FIXME: fails on Nvidia's and Apple's GL, even with #version 120.
@@ -2237,7 +2237,6 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
     {
         // GLSL 1.20 can do constant arrays.
         const char *cstr = NULL;
-        const int origscratch = ctx->scratchidx;
         push_output(ctx, &ctx->globals);
         output_line(ctx, "const vec4 %s[%d] = vec4[%d](", varname, size, size);
         ctx->indent++;
@@ -2261,7 +2260,6 @@ static void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
             output_line(ctx, "vec4(%s, %s, %s, %s)%s", val0, val1, val2, val3,
                         (i < (size-1)) ? "," : "");
 
-            ctx->scratchidx = origscratch;
             clist = clist->next;
         } // for
 
@@ -2289,15 +2287,17 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
     //  glsl_uniforms_vec4[0]. As we push one big array, this will prevent
     //  uploading unused data.
 
-    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
-    const char *arrayname = NULL;
+    char varname[64];
+    char name[64];
     int index = 0;
+
+    get_GLSL_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
 
     push_output(ctx, &ctx->globals);
 
     if (var == NULL)
     {
-        arrayname = get_GLSL_uniform_array_varname(ctx, regtype);
+        get_GLSL_uniform_array_varname(ctx, regtype, name, sizeof (name));
 
         if (regtype == REG_TYPE_CONST)
             index = ctx->uniform_float4_count;
@@ -2308,7 +2308,7 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
         else  // get_GLSL_uniform_array_varname() would have called fail().
             assert(isfail(ctx));
 
-        output_line(ctx, "#define %s %s[%d]", varname, arrayname, index);
+        output_line(ctx, "#define %s %s[%d]", varname, name, index);
     } // if
 
     else
@@ -2316,18 +2316,18 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
         const int arraybase = var->index;
         if (var->constant)
         {
-            const int arraysize = var->count;
-            arrayname = get_GLSL_const_array_varname(ctx, arraybase, arraysize);
+            get_GLSL_const_array_varname_in_buf(ctx, arraybase, var->count,
+                                                name, sizeof (name));
             index = (regnum - arraybase);
         } // if
         else
         {
             assert(var->emit_position != -1);
-            arrayname = get_GLSL_uniform_array_varname(ctx, regtype);
+            get_GLSL_uniform_array_varname(ctx, regtype, name, sizeof (name));
             index = (regnum - arraybase) + var->emit_position;
         } // else
 
-        output_line(ctx, "#define %s %s[%d]", varname, arrayname, index);
+        output_line(ctx, "#define %s %s[%d]", varname, name, index);
     } // else
 
     pop_output(ctx);
@@ -2335,8 +2335,7 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
 
 static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
 {
-    const char *varname = get_GLSL_varname(ctx, REG_TYPE_SAMPLER, stage);
-    const char *type = NULL;
+    const char *type = "";
     switch (ttype)
     {
         case TEXTURE_TYPE_2D: type = "sampler2D"; break;
@@ -2345,8 +2344,11 @@ static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
         default: fail(ctx, "BUG: used a sampler we don't know how to define.");
     } // switch
 
+    char var[64];
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, stage, var, sizeof (var));
+
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "uniform %s %s;", type, varname);
+    output_line(ctx, "uniform %s %s;", type, var);
     pop_output(ctx);
 } // emit_GLSL_sampler
 
@@ -2355,11 +2357,13 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                                 int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
-    const char *varname = get_GLSL_varname(ctx, regtype, regnum);
     const char *usage_str = NULL;
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
+    char var[64];
+
+    get_GLSL_varname_in_buf(ctx, regtype, regnum, var, sizeof (var));
 
     //assert((flags & MOD_PP) == 0);  // !!! FIXME: is PP allowed?
 
@@ -2418,7 +2422,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         if (regtype == REG_TYPE_INPUT)
         {
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "attribute vec4 %s;", varname);
+            output_line(ctx, "attribute vec4 %s;", var);
             pop_output(ctx);
         } // if
 
@@ -2458,10 +2462,10 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->globals);
             // no mapping to built-in var? Just make it a regular global, pray.
             if (usage_str == NULL)
-                output_line(ctx, "vec4 %s;", varname);
+                output_line(ctx, "vec4 %s;", var);
             else
             {
-                output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+                output_line(ctx, "#define %s %s%s%s%s", var, usage_str,
                             arrayleft, index_str, arrayright);
             } // else
             pop_output(ctx);
@@ -2518,8 +2522,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             if (mt == MISCTYPE_TYPE_FACE)
             {
                 push_output(ctx, &ctx->globals);
-                output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;",
-                            varname);
+                output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;", var);
                 pop_output(ctx);
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
@@ -2541,7 +2544,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         if (usage_str != NULL)
         {
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "#define %s %s%s%s%s", varname, usage_str,
+            output_line(ctx, "#define %s %s%s%s%s", var, usage_str,
                         arrayleft, index_str, arrayright);
             pop_output(ctx);
         } // if
@@ -2560,55 +2563,62 @@ static void emit_GLSL_NOP(Context *ctx)
 
 static void emit_GLSL_MOV(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "%s", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MOV
 
 static void emit_GLSL_ADD(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "%s + %s", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s + %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_ADD
 
 static void emit_GLSL_SUB(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "%s - %s", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s - %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SUB
 
 static void emit_GLSL_MAD(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *src2 = make_GLSL_srcarg_string_masked(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, "(%s * %s) + %s", src0, src1, src2);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_GLSL_srcarg_string_masked(ctx, 2, src2, sizeof (src2));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "(%s * %s) + %s", src0, src1, src2);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MAD
 
 static void emit_GLSL_MUL(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "%s * %s", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s * %s", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MUL
 
 static void emit_GLSL_RCP(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "1.0 / %s", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "1.0 / %s", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RCP
 
 static void emit_GLSL_RSQ(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "inversesqrt(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "inversesqrt(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
@@ -2624,55 +2634,59 @@ static void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1,
         castright = ")";
     } // if
 
-    const char *code = make_GLSL_destarg_assign(ctx, "%sdot(%s, %s)%s%s",
-                        castleft, src0, src1, extra, castright);
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%sdot(%s, %s)%s%s",
+                             castleft, src0, src1, extra, castright);
     output_line(ctx, "%s", code);
 } // emit_GLSL_dotprod
 
 static void emit_GLSL_DP3(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_vec3(ctx, 1);
+    char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_vec3(ctx, 1, src1, sizeof (src1));
     emit_GLSL_dotprod(ctx, src0, src1, "");
 } // emit_GLSL_DP3
 
 static void emit_GLSL_DP4(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_full(ctx, 1);
+    char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_full(ctx, 1, src1, sizeof (src1));
     emit_GLSL_dotprod(ctx, src0, src1, "");
 } // emit_GLSL_DP4
 
 static void emit_GLSL_MIN(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "min(%s, %s)", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "min(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MIN
 
 static void emit_GLSL_MAX(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "max(%s, %s)", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "max(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_MAX
 
 static void emit_GLSL_SLT(Context *ctx)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = NULL;
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
 
     // float(bool) or vec(bvec) results in 0.0 or 1.0, like SLT wants.
     if (vecsize == 1)
-        code = make_GLSL_destarg_assign(ctx, "float(%s < %s)", src0, src1);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code), "float(%s < %s)", src0, src1);
     else
     {
-        code = make_GLSL_destarg_assign(ctx, "vec%d(lessThan(%s, %s))",
-                                        vecsize, src0, src1);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "vec%d(lessThan(%s, %s))",
+                                 vecsize, src0, src1);
     } // else
     output_line(ctx, "%s", code);
 } // emit_GLSL_SLT
@@ -2680,32 +2694,38 @@ static void emit_GLSL_SLT(Context *ctx)
 static void emit_GLSL_SGE(Context *ctx)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = NULL;
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
 
     // float(bool) or vec(bvec) results in 0.0 or 1.0, like SGE wants.
     if (vecsize == 1)
-        code = make_GLSL_destarg_assign(ctx, "float(%s >= %s)", src0, src1);
+    {
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "float(%s >= %s)", src0, src1);
+    } // if
     else
     {
-        code = make_GLSL_destarg_assign(ctx, "vec%d(greaterThanEqual(%s, %s))",
-                                        vecsize, src0, src1);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "vec%d(greaterThanEqual(%s, %s))",
+                                 vecsize, src0, src1);
     } // else
     output_line(ctx, "%s", code);
 } // emit_GLSL_SGE
 
 static void emit_GLSL_EXP(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "exp2(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "exp2(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_EXP
 
 static void emit_GLSL_LOG(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "log2(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "log2(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_LOG
 
@@ -2737,8 +2757,9 @@ static void emit_GLSL_LIT_helper(Context *ctx)
 
 static void emit_GLSL_LIT(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "LIT(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "LIT(%s)", src0);
     output_line(ctx, "%s", code);
     emit_GLSL_LIT_helper(ctx);
 } // emit_GLSL_LIT
@@ -2746,41 +2767,47 @@ static void emit_GLSL_LIT(Context *ctx)
 static void emit_GLSL_DST(Context *ctx)
 {
     // !!! FIXME: needs to take ctx->dst_arg.writemask into account.
-    const char *src0_y = make_GLSL_srcarg_string_y(ctx, 0);
-    const char *src1_y = make_GLSL_srcarg_string_y(ctx, 1);
-    const char *src0_z = make_GLSL_srcarg_string_z(ctx, 0);
-    const char *src1_w = make_GLSL_srcarg_string_w(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx,
-                            "vec4(1.0, %s * %s, %s, %s)",
-                            src0_y, src1_y, src0_z, src1_w);
+    char src0_y[64]; make_GLSL_srcarg_string_y(ctx, 0, src0_y, sizeof (src0_y));
+    char src1_y[64]; make_GLSL_srcarg_string_y(ctx, 1, src1_y, sizeof (src1_y));
+    char src0_z[64]; make_GLSL_srcarg_string_z(ctx, 0, src0_z, sizeof (src0_z));
+    char src1_w[64]; make_GLSL_srcarg_string_w(ctx, 1, src1_w, sizeof (src1_w));
+
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                             "vec4(1.0, %s * %s, %s, %s)",
+                             src0_y, src1_y, src0_z, src1_w);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DST
 
 static void emit_GLSL_LRP(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *src2 = make_GLSL_srcarg_string_masked(ctx, 2);
-    const char *code = make_GLSL_destarg_assign(ctx, "mix(%s, %s, %s)", src2, src1, src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_GLSL_srcarg_string_masked(ctx, 2, src2, sizeof (src2));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "mix(%s, %s, %s)",
+                             src2, src1, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_LRP
 
 static void emit_GLSL_FRC(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "fract(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "fract(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_FRC
 
 static void emit_GLSL_M4X4(Context *ctx)
 {
     // !!! FIXME: d3d is row-major, glsl is column-major, I think.
-    const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
-    const char *row0 = make_GLSL_srcarg_string_full(ctx, 1);
-    const char *row1 = make_GLSL_srcarg_string_full(ctx, 2);
-    const char *row2 = make_GLSL_srcarg_string_full(ctx, 3);
-    const char *row3 = make_GLSL_srcarg_string_full(ctx, 4);
-    const char *code = make_GLSL_destarg_assign(ctx,
+    char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
+    char row0[64]; make_GLSL_srcarg_string_full(ctx, 1, row0, sizeof (row0));
+    char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
+    char row2[64]; make_GLSL_srcarg_string_full(ctx, 3, row2, sizeof (row2));
+    char row3[64]; make_GLSL_srcarg_string_full(ctx, 4, row3, sizeof (row3));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
                     "vec4(dot(%s, %s), dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                     src0, row0, src0, row1, src0, row2, src0, row3);
     output_line(ctx, "%s", code);
@@ -2789,11 +2816,12 @@ static void emit_GLSL_M4X4(Context *ctx)
 static void emit_GLSL_M4X3(Context *ctx)
 {
     // !!! FIXME: d3d is row-major, glsl is column-major, I think.
-    const char *src0 = make_GLSL_srcarg_string_full(ctx, 0);
-    const char *row0 = make_GLSL_srcarg_string_full(ctx, 1);
-    const char *row1 = make_GLSL_srcarg_string_full(ctx, 2);
-    const char *row2 = make_GLSL_srcarg_string_full(ctx, 3);
-    const char *code = make_GLSL_destarg_assign(ctx,
+    char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
+    char row0[64]; make_GLSL_srcarg_string_full(ctx, 1, row0, sizeof (row0));
+    char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
+    char row2[64]; make_GLSL_srcarg_string_full(ctx, 3, row2, sizeof (row2));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
@@ -2802,13 +2830,14 @@ static void emit_GLSL_M4X3(Context *ctx)
 static void emit_GLSL_M3X4(Context *ctx)
 {
     // !!! FIXME: d3d is row-major, glsl is column-major, I think.
-    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
-    const char *row0 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    const char *row1 = make_GLSL_srcarg_string_vec3(ctx, 2);
-    const char *row2 = make_GLSL_srcarg_string_vec3(ctx, 3);
-    const char *row3 = make_GLSL_srcarg_string_vec3(ctx, 4);
+    char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+    char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
+    char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
+    char row2[64]; make_GLSL_srcarg_string_vec3(ctx, 3, row2, sizeof (row2));
+    char row3[64]; make_GLSL_srcarg_string_vec3(ctx, 4, row3, sizeof (row3));
 
-    const char *code = make_GLSL_destarg_assign(ctx,
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec4(dot(%s, %s), dot(%s, %s), "
                                      "dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1,
@@ -2819,11 +2848,12 @@ static void emit_GLSL_M3X4(Context *ctx)
 static void emit_GLSL_M3X3(Context *ctx)
 {
     // !!! FIXME: d3d is row-major, glsl is column-major, I think.
-    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
-    const char *row0 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    const char *row1 = make_GLSL_srcarg_string_vec3(ctx, 2);
-    const char *row2 = make_GLSL_srcarg_string_vec3(ctx, 3);
-    const char *code = make_GLSL_destarg_assign(ctx,
+    char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+    char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
+    char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
+    char row2[64]; make_GLSL_srcarg_string_vec3(ctx, 3, row2, sizeof (row2));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
@@ -2832,11 +2862,12 @@ static void emit_GLSL_M3X3(Context *ctx)
 static void emit_GLSL_M3X2(Context *ctx)
 {
     // !!! FIXME: d3d is row-major, glsl is column-major, I think.
-    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
-    const char *row0 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    const char *row1 = make_GLSL_srcarg_string_vec3(ctx, 2);
+    char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+    char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
+    char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
 
-    const char *code = make_GLSL_destarg_assign(ctx,
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec2(dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1);
     output_line(ctx, "%s", code);
@@ -2844,7 +2875,7 @@ static void emit_GLSL_M3X2(Context *ctx)
 
 static void emit_GLSL_CALL(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     if (ctx->loops > 0)
         output_line(ctx, "%s(aL);", src0);
     else
@@ -2855,8 +2886,8 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 {
     // !!! FIXME: if src1 is a constbool that's true, we can remove the
     // !!! FIXME:  if. If it's false, we can make this a no-op.
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
 
     if (ctx->loops > 0)
         output_line(ctx, "if (%s) { %s(aL); }", src1, src0);
@@ -2867,13 +2898,12 @@ static void emit_GLSL_CALLNZ(Context *ctx)
 static void emit_GLSL_LOOP(Context *ctx)
 {
     // !!! FIXME: swizzle?
-    const char *varname = get_GLSL_srcarg_varname(ctx, 1);
+    char var[64]; get_GLSL_srcarg_varname(ctx, 1, var, sizeof (var));
     assert(ctx->source_args[0].regnum == 0);  // in case they add aL1 someday.
     output_line(ctx, "{");
     ctx->indent++;
-    output_line(ctx, "const int aLend = %s.x + %s.y;", varname, varname);
-    output_line(ctx, "for (int aL = %s.y; aL < aLend; aL += %s.z) {",
-                varname, varname);
+    output_line(ctx, "const int aLend = %s.x + %s.y;", var, var);
+    output_line(ctx, "for (int aL = %s.y; aL < aLend; aL += %s.z) {", var, var);
     ctx->indent++;
 } // emit_GLSL_LOOP
 
@@ -2898,7 +2928,7 @@ static void emit_GLSL_ENDLOOP(Context *ctx)
 
 static void emit_GLSL_LABEL(Context *ctx)
 {
-    const char *labelstr = make_GLSL_srcarg_string_masked(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     const int label = ctx->source_args[0].regnum;
     RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, label);
     assert(ctx->output == &ctx->subroutines);  // not mainline, etc.
@@ -2913,7 +2943,7 @@ static void emit_GLSL_LABEL(Context *ctx)
     // !!! FIXME:  only called once and, if so, forcibly inline it.
 
     const char *uses_loopreg = ((reg) && (reg->misc == 1)) ? "int aL" : "";
-    output_line(ctx, "void %s(%s)", labelstr, uses_loopreg);
+    output_line(ctx, "void %s(%s)", src0, uses_loopreg);
     output_line(ctx, "{");
     ctx->indent++;
 } // emit_GLSL_LABEL
@@ -2925,40 +2955,47 @@ static void emit_GLSL_DCL(Context *ctx)
 
 static void emit_GLSL_POW(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "pow(abs(%s), %s)", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                             "pow(abs(%s), %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_POW
 
 static void emit_GLSL_CRS(Context *ctx)
 {
     // !!! FIXME: needs to take ctx->dst_arg.writemask into account.
-    const char *src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_vec3(ctx, 1);
-    const char *code = make_GLSL_destarg_assign(ctx, "cross(%s, %s)", src0, src1);
+    char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_vec3(ctx, 1, src1, sizeof (src1));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                             "cross(%s, %s)", src0, src1);
     output_line(ctx, "%s", code);
 } // emit_GLSL_CRS
 
 static void emit_GLSL_SGN(Context *ctx)
 {
     // (we don't need the temporary registers specified for the D3D opcode.)
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "sign(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "sign(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_SGN
 
 static void emit_GLSL_ABS(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "abs(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "abs(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_ABS
 
 static void emit_GLSL_NRM(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "normalize(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "normalize(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_NRM
 
@@ -2969,15 +3006,19 @@ static void emit_GLSL_SINCOS(Context *ctx)
     //  but we just leave those all untouched with GLSL write masks (which
     //  would fulfill the "undefined" requirement, too).
     const int mask = ctx->dest_arg.writemask;
-    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
-    const char *code = NULL;
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
+    char code[128] = { '\0' };
 
     if (writemask_x(mask))
-        code = make_GLSL_destarg_assign(ctx, "cos(%s)", src0);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code), "cos(%s)", src0);
     else if (writemask_y(mask))
-        code = make_GLSL_destarg_assign(ctx, "sin(%s)", src0);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code), "sin(%s)", src0);
     else if (writemask_xy(mask))
-        code = make_GLSL_destarg_assign(ctx, "vec2(cos(%s), sin(%s))", src0, src0);
+    {
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "vec2(cos(%s), sin(%s))", src0, src0);
+    } // else if
+
     output_line(ctx, "%s", code);
 } // emit_GLSL_SINCOS
 
@@ -2988,7 +3029,7 @@ static void emit_GLSL_REP(Context *ctx)
     //  at parse time, but if they are pulling a value from a uniform, do
     //  we clamp here?
     // !!! FIXME: swizzle is legal here, right?
-    const char *src0 = make_GLSL_srcarg_string_x(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_x(ctx, 0, src0, sizeof (src0));
     const uint rep = (uint) ctx->reps;
     output_line(ctx, "for (int rep%u = 0; rep%u < %s; rep%u++) {",
                 rep, rep, src0, rep);
@@ -3003,7 +3044,7 @@ static void emit_GLSL_ENDREP(Context *ctx)
 
 static void emit_GLSL_IF(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
     output_line(ctx, "if (%s) {", src0);
     ctx->indent++;
 } // emit_GLSL_IF
@@ -3011,8 +3052,8 @@ static void emit_GLSL_IF(Context *ctx)
 static void emit_GLSL_IFC(Context *ctx)
 {
     const char *comp = get_GLSL_comparison_string_scalar(ctx);
-    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_scalar(ctx, 1);
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_scalar(ctx, 1, src1, sizeof (src1));
     output_line(ctx, "if (%s %s %s) {", src0, comp, src1);
     ctx->indent++;
 } // emit_GLSL_IFC
@@ -3038,35 +3079,37 @@ static void emit_GLSL_BREAK(Context *ctx)
 static void emit_GLSL_BREAKC(Context *ctx)
 {
     const char *comp = get_GLSL_comparison_string_scalar(ctx);
-    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_scalar(ctx, 1);
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_scalar(ctx, 1, src1, sizeof (src1));
     output_line(ctx, "if (%s %s %s) { break; }", src0, comp, src1);
 } // emit_GLSL_BREAKC
 
 static void emit_GLSL_MOVA(Context *ctx)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
 
     if (vecsize == 1)
     {
-        const char *code = make_GLSL_destarg_assign(ctx,
-                            "int(floor(abs(%s) + 0.5) * sign(%s))", src0, src0);
-        output_line(ctx, "%s", code);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "int(floor(abs(%s) + 0.5) * sign(%s))",
+                                 src0, src0);
     } // if
 
     else
     {
-        const char *code = make_GLSL_destarg_assign(ctx,
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
                             "ivec%d(floor(abs(%s) + vec%d(0.5)) * sign(%s))",
                             vecsize, src0, vecsize, src0);
-        output_line(ctx, "%s", code);
     } // else
+
+    output_line(ctx, "%s", code);
 } // emit_GLSL_MOVA
 
 static void emit_GLSL_DEFB(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx);
+    char varname[64]; get_GLSL_destarg_varname(ctx, varname, sizeof (varname));
     push_output(ctx, &ctx->globals);
     output_line(ctx, "const bool %s = %s;",
                 varname, ctx->dwords[0] ? "true" : "false");
@@ -3075,7 +3118,7 @@ static void emit_GLSL_DEFB(Context *ctx)
 
 static void emit_GLSL_DEFI(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx);
+    char varname[64]; get_GLSL_destarg_varname(ctx, varname, sizeof (varname));
     const int32 *x = (const int32 *) ctx->dwords;
     push_output(ctx, &ctx->globals);
     output_line(ctx, "const ivec4 %s = ivec4(%d, %d, %d, %d);",
@@ -3087,7 +3130,7 @@ EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_GLSL_TEXKILL(Context *ctx)
 {
-    const char *dst = get_GLSL_destarg_varname(ctx);
+    char dst[64]; get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
@@ -3107,8 +3150,8 @@ static void emit_GLSL_TEXLD(Context *ctx)
         RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
                                           samp_arg->regnum);
         const char *funcname = NULL;
-        const char *src0 = NULL;
-        const char *src1 = get_GLSL_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
+        char src0[64] = { '\0' };
+        char src1[64]; get_GLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
 
         if (sreg == NULL)
         {
@@ -3118,11 +3161,11 @@ static void emit_GLSL_TEXLD(Context *ctx)
 
         // !!! FIXME: does the d3d bias value map directly to GLSL?
         const char *biassep = "";
-        const char *bias = "";
+        char bias[64] = { '\0' };
         if (ctx->instruction_controls == CONTROL_TEXLDB)
         {
             biassep = ", ";
-            bias = make_GLSL_srcarg_string_w(ctx, 0);
+            make_GLSL_srcarg_string_w(ctx, 0, bias, sizeof (bias));
         } // if
 
         switch ((const TextureType) sreg->index)
@@ -3131,30 +3174,30 @@ static void emit_GLSL_TEXLD(Context *ctx)
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                 {
                     funcname = "texture2DProj";
-                    src0 = make_GLSL_srcarg_string_full(ctx, 0);
+                    make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
                 } // if
                 else  // texld/texldb
                 {
                     funcname = "texture2D";
-                    src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
+                    make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             case TEXTURE_TYPE_CUBE:
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                     fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
                 funcname = "textureCube";
-                src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
                 break;
             case TEXTURE_TYPE_VOLUME:
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                 {
                     funcname = "texture3DProj";
-                    src0 = make_GLSL_srcarg_string_full(ctx, 0);
+                    make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
                 } // if
                 else  // texld/texldb
                 {
                     funcname = "texture3D";
-                    src0 = make_GLSL_srcarg_string_vec3(ctx, 0);
+                    make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             default:
@@ -3167,9 +3210,9 @@ static void emit_GLSL_TEXLD(Context *ctx)
         make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
 
-        const char *code = make_GLSL_destarg_assign(ctx, "%s(%s, %s%s%s)%s",
-                                                    funcname, src1, src0,
-                                                    biassep, bias, swiz_str);
+        char code[128];
+        make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s(%s, %s%s%s)%s",
+                                 funcname, src1, src0, biassep, bias, swiz_str);
         output_line(ctx, "%s", code);
     } // else
 } // emit_GLSL_TEXLD
@@ -3233,9 +3276,12 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
 
         //return make_GLSL_srcarg_string(ctx, idx, (1 << 0));
 
-        const char *src0 = make_GLSL_srcarg_string(ctx, 0, (1 << i));
-        const char *src1 = make_GLSL_srcarg_string(ctx, 1, mask);
-        const char *src2 = make_GLSL_srcarg_string(ctx, 2, mask);
+        char src0[64];
+        char src1[64];
+        char src2[64];
+        make_GLSL_srcarg_string(ctx, 0, (1 << i), src0, sizeof (src0));
+        make_GLSL_srcarg_string(ctx, 1, mask, src1, sizeof (src1));
+        make_GLSL_srcarg_string(ctx, 2, mask, src2, sizeof (src2));
 
         dst->writemask = mask;
         dst->writemask0 = ((mask >> 0) & 1);
@@ -3243,8 +3289,10 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
         dst->writemask2 = ((mask >> 2) & 1);
         dst->writemask3 = ((mask >> 3) & 1);
 
-        const char *code = make_GLSL_destarg_assign(ctx, "((%s %s) ? %s : %s)",
-                                                    src0, cmp, src1, src2);
+        char code[128];
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "((%s %s) ? %s : %s)",
+                                 src0, cmp, src1, src2);
         dst->writemask = origmask;
         dst->writemask0 = ((origmask >> 0) & 1);
         dst->writemask1 = ((origmask >> 1) & 1);
@@ -3261,16 +3309,12 @@ static void emit_GLSL_CND(Context *ctx)
 
 static void emit_GLSL_DEF(Context *ctx)
 {
-    const char *varname = get_GLSL_destarg_varname(ctx);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
-    char val0[32];
-    char val1[32];
-    char val2[32];
-    char val3[32];
-    floatstr(ctx, val0, sizeof (val0), val[0], 1);
-    floatstr(ctx, val1, sizeof (val1), val[1], 1);
-    floatstr(ctx, val2, sizeof (val2), val[2], 1);
-    floatstr(ctx, val3, sizeof (val3), val[3], 1);
+    char varname[64]; get_GLSL_destarg_varname(ctx, varname, sizeof (varname));
+    char val0[32]; floatstr(ctx, val0, sizeof (val0), val[0], 1);
+    char val1[32]; floatstr(ctx, val1, sizeof (val1), val[1], 1);
+    char val2[32]; floatstr(ctx, val2, sizeof (val2), val[2], 1);
+    char val3[32]; floatstr(ctx, val3, sizeof (val3), val[3], 1);
 
     push_output(ctx, &ctx->globals);
     output_line(ctx, "const vec4 %s = vec4(%s, %s, %s, %s);",
@@ -3294,25 +3338,26 @@ EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(BEM) // !!! FIXME
 
 static void emit_GLSL_DP2ADD(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_vec2(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_vec2(ctx, 1);
-    const char *src2 = make_GLSL_srcarg_string_scalar(ctx, 2);
-    char extra[64];
-    snprintf(extra, sizeof (extra), " + %s", src2);
+    char src0[64]; make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_vec2(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_GLSL_srcarg_string_scalar(ctx, 2, src2, sizeof (src2));
+    char extra[64]; snprintf(extra, sizeof (extra), " + %s", src2);
     emit_GLSL_dotprod(ctx, src0, src1, extra);
 } // emit_GLSL_DP2ADD
 
 static void emit_GLSL_DSX(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "dFdx(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "dFdx(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSX
 
 static void emit_GLSL_DSY(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *code = make_GLSL_destarg_assign(ctx, "dFdy(%s)", src0);
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "dFdy(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
@@ -3321,20 +3366,22 @@ EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD) // !!! FIXME
 static void emit_GLSL_SETP(Context *ctx)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
-    const char *src0 = make_GLSL_srcarg_string_masked(ctx, 0);
-    const char *src1 = make_GLSL_srcarg_string_masked(ctx, 1);
-    const char *code = NULL;
+    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_GLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
+    char code[128];
 
     // destination is always predicate register (which is type bvec4).
     if (vecsize == 1)
     {
         const char *comp = get_GLSL_comparison_string_scalar(ctx);
-        code = make_GLSL_destarg_assign(ctx, "(%s %s %s)", src0, comp, src1);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "(%s %s %s)", src0, comp, src1);
     } // if
     else
     {
         const char *comp = get_GLSL_comparison_string_vector(ctx);
-        code = make_GLSL_destarg_assign(ctx, "%s(%s, %s)", comp, src0, src1);
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "%s(%s, %s)", comp, src0, src1);
     } // else
 
     output_line(ctx, "%s", code);
@@ -3351,7 +3398,7 @@ static void emit_GLSL_TEXLDL(Context *ctx)
 
 static void emit_GLSL_BREAKP(Context *ctx)
 {
-    const char *src0 = make_GLSL_srcarg_string_scalar(ctx, 0);
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
     output_line(ctx, "if (%s) { break; }", src0);
 } // emit_GLSL_BREAKP
 
@@ -3371,52 +3418,59 @@ static void emit_GLSL_RESERVED(Context *ctx)
 #define AT_LEAST_ONE_PROFILE 1
 #define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
 
-static const char *allocate_ARB1_scratch_reg_name(Context *ctx)
+static inline const char *get_ARB1_register_string(Context *ctx,
+                        const RegisterType regtype, const int regnum,
+                        char *regnum_str, const size_t regnum_size)
 {
-    char *buf = get_scratch_buffer(ctx);
+    // turns out these are identical at the moment.
+    return get_D3D_register_string(ctx,regtype,regnum,regnum_str,regnum_size);
+} // get_ARB1_register_string
+
+static const char *allocate_ARB1_scratch_reg_name(Context *ctx, char *buf,
+                                                  const size_t buflen)
+{
     const int scratch = allocate_scratch_register(ctx);
-    snprintf(buf, SCRATCH_BUFFER_SIZE, "scratch%d", scratch);
+    snprintf(buf, buflen, "scratch%d", scratch);
     return buf;
 } // allocate_ARB1_scratch_reg_name
 
-static const char *get_ARB1_branch_label_name(Context *ctx, int id)
+static inline const char *get_ARB1_branch_label_name(Context *ctx, const int id,
+                                                char *buf, const size_t buflen)
 {
-    char *buf = get_scratch_buffer(ctx);
-    snprintf(buf, SCRATCH_BUFFER_SIZE, "branch_label%d", id);
+    snprintf(buf, buflen, "branch_label%d", id);
     return buf;
 } // get_ARB1_branch_label_name
 
-const char *get_ARB1_register_string(Context *ctx, RegisterType regtype,
-                                     int regnum, char *regnum_str, int len)
+static const char *get_ARB1_varname_in_buf(Context *ctx, const RegisterType rt,
+                                           const int regnum, char *buf,
+                                           const size_t buflen)
 {
-    const char *retval = get_D3D_register_string(ctx, regtype, regnum,
-                                                 regnum_str, len);
-    if (retval == NULL)
-    {
-        fail(ctx, "Unknown D3D register type.");
-        return "";
-    } // if
+    // turns out these are identical at the moment.
+    return get_D3D_varname_in_buf(ctx, rt, regnum, buf, buflen);
+} // get_ARB1_varname_in_buf
 
-    return retval;
-} // get_ARB1_register_string
-
-static const char *get_ARB1_varname(Context *ctx, RegisterType rt, int regnum)
+static const char *get_ARB1_varname(Context *ctx, const RegisterType rt,
+                                    const int regnum)
 {
-    char regnum_str[16];
-    const char *regtype_str = get_ARB1_register_string(ctx, rt, regnum,
-                                              regnum_str, sizeof (regnum_str));
-
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s", regtype_str, regnum_str);
-    return retval;
+    // turns out these are identical at the moment.
+    return get_D3D_varname(ctx, rt, regnum);
 } // get_ARB1_varname
+
+
+static inline const char *get_ARB1_const_array_varname_in_buf(Context *ctx,
+                                                const int base, const int size,
+                                                char *buf, const size_t buflen)
+{
+    snprintf(buf, buflen, "c_array_%d_%d", base, size);
+    return buf;
+} // get_ARB1_const_array_varname_in_buf
 
 
 static const char *get_ARB1_const_array_varname(Context *ctx, int base, int size)
 {
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "c_array_%d_%d", base, size);
-    return retval;
+    char buf[64];
+    get_ARB1_const_array_varname_in_buf(ctx, base, size, buf, sizeof (buf));
+    return StrDup(ctx, buf);
 } // get_ARB1_const_array_varname
 
 
@@ -3426,7 +3480,7 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 {
     char regnum_str[16] = { '\0' };
 
-    // !!! FIXME: use get_ARB1_varname() instead?
+    // !!! FIXME: use get_ARB1_varname_in_buf() instead?
     const char *regtype_str = NULL;
     if (!arg->relative)
     {
@@ -3442,8 +3496,9 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
-        rel_regtype_str = get_ARB1_varname(ctx, arg->relative_regtype,
-                                           arg->relative_regnum);
+        rel_regtype_str = get_ARB1_varname_in_buf(ctx, arg->relative_regtype,
+                                                  arg->relative_regnum,
+                                                  (char *) alloca(64), 64);
 
         rel_swizzle[0] = '.';
         rel_swizzle[1] = swizzle_channels[arg->relative_component];
@@ -3476,7 +3531,8 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             const int arraysize = arg->relative_array->count;
             const int offset = arg->regnum - arrayidx;
             assert(offset >= 0);
-            regtype_str = get_ARB1_const_array_varname(ctx, arrayidx, arraysize);
+            regtype_str = get_ARB1_const_array_varname_in_buf(ctx, arrayidx,
+                                           arraysize, (char *) alloca(64), 64);
             if (offset != 0)
                 snprintf(rel_offset, sizeof (rel_offset), " + %d", offset);
         } // else
@@ -3551,7 +3607,8 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             } // if
             else
             {
-                regtype_str = allocate_ARB1_scratch_reg_name(ctx);
+                regtype_str = allocate_ARB1_scratch_reg_name(ctx,
+                                                    (char *) alloca(64), 64);
                 regnum_str[0] = '\0'; // move value to scratch register.
                 rel_lbracket = "";   // scratch register won't use array.
                 rel_rbracket = "";
@@ -3614,28 +3671,34 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
     return buf;
 } // make_ARB1_srcarg_string_in_buf
 
-static const char *get_ARB1_destarg_varname(Context *ctx)
+static const char *get_ARB1_destarg_varname(Context *ctx, char *buf,
+                                            const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
-    return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
+    return get_ARB1_varname_in_buf(ctx, arg->regtype, arg->regnum, buf, buflen);
 } // get_ARB1_destarg_varname
 
-static const char *get_ARB1_srcarg_varname(Context *ctx, const size_t idx)
+static const char *get_ARB1_srcarg_varname(Context *ctx, const size_t idx,
+                                           char *buf, const size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
-    return get_ARB1_varname(ctx, arg->regtype, arg->regnum);
+    return get_ARB1_varname_in_buf(ctx, arg->regtype, arg->regnum, buf, buflen);
 } // get_ARB1_srcarg_varname
 
 
-static const char *make_ARB1_destarg_string(Context *ctx)
+static const char *make_ARB1_destarg_string(Context *ctx, char *buf,
+                                            const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
+
+    *buf = '\0';
 
     const char *sat_str = "";
     if (arg->result_mod & MOD_SATURATE)
@@ -3670,7 +3733,7 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     if (regtype_str == NULL)
     {
         fail(ctx, "Unknown destination register type.");
-        return "";
+        return buf;
     } // if
 
     char writemask_str[6];
@@ -3693,18 +3756,17 @@ static const char *make_ARB1_destarg_string(Context *ctx)
     if (ctx->predicated)
     {
         fail(ctx, "dest register predication currently unsupported in arb1");
-        return "";
+        return buf;
         pred_left = "(";
         pred_right = ") ";
         make_ARB1_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
                                        pred, sizeof (pred));
     } // if
 
-    char *retval = get_scratch_buffer(ctx);
-    snprintf(retval, SCRATCH_BUFFER_SIZE, "%s%s %s%s%s", pp_str, sat_str,
+    snprintf(buf, buflen, "%s%s %s%s%s", pp_str, sat_str,
              regtype_str, regnum_str, writemask_str);
     // !!! FIXME: make sure the scratch buffer was large enough.
-    return retval;
+    return buf;
 } // make_ARB1_destarg_string
 
 
@@ -3714,8 +3776,7 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
 
     if (arg->result_shift != 0x0)
     {
-        const char *varname = get_ARB1_destarg_varname(ctx);
-        const char *dst = make_ARB1_destarg_string(ctx);
+        char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
         const char *multiplier = NULL;
 
         switch (arg->result_shift)
@@ -3729,7 +3790,10 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
         } // switch
 
         if (multiplier != NULL)
-            output_line(ctx, "MUL%s, %s, %s;", dst, varname, multiplier);
+        {
+            char var[64]; get_ARB1_destarg_varname(ctx, var, sizeof (var));
+            output_line(ctx, "MUL%s, %s, %s;", dst, var, multiplier);
+        } // if
     } // if
 
     if (arg->result_mod & MOD_SATURATE)
@@ -3737,51 +3801,52 @@ static void emit_ARB1_dest_modifiers(Context *ctx)
         // nv4 and/or pixel shaders just used the "SAT" modifier, instead.
         if ( (!support_nv4(ctx)) && (!shader_is_pixel(ctx)) )
         {
-            const char *varname = get_ARB1_destarg_varname(ctx);
-            const char *dst = make_ARB1_destarg_string(ctx);
-            output_line(ctx, "MIN%s, %s, 1.0;", dst, varname);
-            output_line(ctx, "MAX%s, %s, 0.0;", dst, varname);
+            char var[64]; get_ARB1_destarg_varname(ctx, var, sizeof (var));
+            char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+            output_line(ctx, "MIN%s, %s, 1.0;", dst, var);
+            output_line(ctx, "MAX%s, %s, 0.0;", dst, var);
         } // if
     } // if
 } // emit_ARB1_dest_modifiers
 
 
-static const char *make_ARB1_srcarg_string(Context *ctx, const size_t idx)
+static const char *make_ARB1_srcarg_string(Context *ctx, const size_t idx,
+                                           char *buf, const size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
         fail(ctx, "Too many source args");
-        return "";
+        *buf = '\0';
+        return buf;
     } // if
 
     const SourceArgInfo *arg = &ctx->source_args[idx];
-    char *buf = get_scratch_buffer(ctx);
-    return make_ARB1_srcarg_string_in_buf(ctx, arg, buf, SCRATCH_BUFFER_SIZE);
+    return make_ARB1_srcarg_string_in_buf(ctx, arg, buf, buflen);
 } // make_ARB1_srcarg_string
 
 static void emit_ARB1_opcode_ds(Context *ctx, const char *opcode)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
     output_line(ctx, "%s%s, %s;", opcode, dst, src0);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_ds
 
 static void emit_ARB1_opcode_dss(Context *ctx, const char *opcode)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
     output_line(ctx, "%s%s, %s, %s;", opcode, dst, src0, src1);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_dss
 
 static void emit_ARB1_opcode_dsss(Context *ctx, const char *opcode)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
     output_line(ctx, "%s%s, %s, %s, %s;", opcode, dst, src0, src1, src2);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_opcode_dsss
@@ -3910,7 +3975,11 @@ static void emit_ARB1_finalize(Context *ctx)
     int i;
     push_output(ctx, &ctx->globals);
     for (i = 0; i < ctx->max_scratch_registers; i++)
-        output_line(ctx, "%s %s;", tmpstr, allocate_ARB1_scratch_reg_name(ctx));
+    {
+        char buf[64];
+        allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        output_line(ctx, "%s %s;", tmpstr, buf);
+    } // for
 
     // nv2 fragment programs (and anything nv4) have a real REP/ENDREP.
     if ( (support_nv2(ctx)) && (!shader_is_pixel(ctx)) && (!support_nv4(ctx)) )
@@ -3926,8 +3995,9 @@ static void emit_ARB1_finalize(Context *ctx)
 
 static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
 {
-    // !!! FIXME: dependency on ARB1 profile.
-    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
+    // !!! FIXME: dependency on ARB1 profile.  // !!! FIXME about FIXME: huh?
+    char varname[64];
+    get_ARB1_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
 
     push_output(ctx, &ctx->globals);
     switch (regtype)
@@ -3977,7 +4047,8 @@ static void emit_ARB1_array(Context *ctx, VariableList *var)
     const int arb1base = ctx->uniform_float4_count +
                          ctx->uniform_int4_count +
                          ctx->uniform_bool_count;
-    const char *varname = get_ARB1_const_array_varname(ctx, base, size);
+    char varname[64];
+    get_ARB1_const_array_varname_in_buf(ctx, base, size, varname, sizeof (varname));
     push_output(ctx, &ctx->globals);
     output_line(ctx, "PARAM %s[%d] = { program.local[%d..%d] };", varname,
                 size, arb1base, (arb1base + size) - 1);
@@ -3988,8 +4059,8 @@ static void emit_ARB1_array(Context *ctx, VariableList *var)
 static void emit_ARB1_const_array(Context *ctx, const ConstantsList *clist,
                                   int base, int size)
 {
-    const char *varname = get_ARB1_const_array_varname(ctx, base, size);
-    const int origscratch = ctx->scratchidx;
+    char varname[64];
+    get_ARB1_const_array_varname_in_buf(ctx, base, size, varname, sizeof (varname));
     int i;
 
     push_output(ctx, &ctx->globals);
@@ -4014,7 +4085,6 @@ static void emit_ARB1_const_array(Context *ctx, const ConstantsList *clist,
         output_line(ctx, "{ %s, %s, %s, %s }%s", val0, val1, val2, val3,
                     (i < (size-1)) ? "," : "");
 
-        ctx->scratchidx = origscratch;
         clist = clist->next;
     } // for
 
@@ -4030,9 +4100,11 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum,
     //  register c439, it'll actually map to program.local[0]. This will
     //  prevent overflows when we actually have enough resources to run.
 
-    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
     const char *arrayname = "program.local";
     int index = 0;
+
+    char varname[64];
+    get_ARB1_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
 
     push_output(ctx, &ctx->globals);
 
@@ -4049,7 +4121,8 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum,
         if (var->constant)
         {
             const int arraysize = var->count;
-            arrayname = get_ARB1_const_array_varname(ctx, arraybase, arraysize);
+            arrayname = get_ARB1_const_array_varname_in_buf(ctx, arraybase,
+                                        arraysize, (char *) alloca(64), 64);
             index = (regnum - arraybase);
         } // if
         else
@@ -4074,11 +4147,13 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
                                 int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
-    const char *varname = get_ARB1_varname(ctx, regtype, regnum);
     const char *usage_str = NULL;
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
+
+    char varname[64];
+    get_ARB1_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
 
     //assert((flags & MOD_PP) == 0);  // !!! FIXME: is PP allowed?
 
@@ -4324,16 +4399,16 @@ static void emit_ARB1_RSQ(Context *ctx)
          (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
         ctx->source_args[0].src_mod = SRCMOD_ABS;
 
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
 
     if (ctx->source_args[0].src_mod == SRCMOD_ABS)
         output_line(ctx, "RSQ%s, %s;", dst, src0);
     else
     {
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        output_line(ctx, "ABS %s, %s;", scratch, src0);
-        output_line(ctx, "RSQ%s, %s.x;", dst, scratch);
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        output_line(ctx, "ABS %s, %s;", buf, src0);
+        output_line(ctx, "RSQ%s, %s.x;", dst, buf);
     } // else
 
     emit_ARB1_dest_modifiers(ctx);
@@ -4356,16 +4431,16 @@ static void arb1_log(Context *ctx, const char *opcode)
          (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
         ctx->source_args[0].src_mod = SRCMOD_ABS;
 
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
 
     if (ctx->source_args[0].src_mod == SRCMOD_ABS)
         output_line(ctx, "%s%s, %s;", opcode, dst, src0);
     else
     {
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        output_line(ctx, "ABS %s, %s;", scratch, src0);
-        output_line(ctx, "%s%s, %s.x;", opcode, dst, scratch);
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        output_line(ctx, "ABS %s, %s;", buf, src0);
+        output_line(ctx, "%s%s, %s.x;", opcode, dst, buf);
     } // else
 
     emit_ARB1_dest_modifiers(ctx);
@@ -4387,15 +4462,15 @@ static void emit_ARB1_LRP(Context *ctx)
         emit_ARB1_opcode_dsss(ctx, "LRP");
     else
     {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-        const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+        char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
+        char src2[64]; make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
 
         // LRP is: dest = src2 + src0 * (src1 - src2)
-        output_line(ctx, "SUB %s, %s, %s;", scratch, src1, src2);
-        output_line(ctx, "MAD%s, %s, %s, %s;", dst, scratch, src0, src2);
+        output_line(ctx, "SUB %s, %s, %s;", buf, src1, src2);
+        output_line(ctx, "MAD%s, %s, %s, %s;", dst, buf, src0, src2);
         emit_ARB1_dest_modifiers(ctx);
     } // else
 } // emit_ARB1_LRP
@@ -4413,14 +4488,14 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X2)
 
 static void emit_ARB1_CALL(Context *ctx)
 {
-    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
-
     if (!support_nv2(ctx))  // no branching in stock ARB1.
     {
         failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
         return;
     } // if
 
+    char labelstr[64];
+    get_ARB1_srcarg_varname(ctx, 0, labelstr, sizeof (labelstr));
     output_line(ctx, "CAL %s;", labelstr);
 } // emit_ARB1_CALL
 
@@ -4428,15 +4503,18 @@ static void emit_ARB1_CALLNZ(Context *ctx)
 {
     // !!! FIXME: if src1 is a constbool that's true, we can remove the
     // !!! FIXME:  if. If it's false, we can make this a no-op.
-    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
 
     if (!support_nv2(ctx))  // no branching in stock ARB1.
         failf(ctx, "branching unsupported in %s profile", ctx->profile->name);
     else
     {
         // !!! FIXME: double-check this.
+        char labelstr[64];
+        char scratch[64];
+        char src1[64];
+        get_ARB1_srcarg_varname(ctx, 0, labelstr, sizeof (labelstr));
+        get_ARB1_srcarg_varname(ctx, 1, src1, sizeof (src1));
+        allocate_ARB1_scratch_reg_name(ctx, scratch, sizeof (scratch));
         output_line(ctx, "MOVC %s, %s;", scratch, src1);
         output_line(ctx, "CAL %s (NE.x);", labelstr);
     } // else
@@ -4464,7 +4542,6 @@ static void emit_ARB1_LABEL(Context *ctx)
     if (!support_nv2(ctx))  // no branching in stock ARB1.
         return;  // don't fail()...maybe we never use it, but do fail in CALL.
 
-    const char *labelstr = get_ARB1_srcarg_varname(ctx, 0);
     const int label = ctx->source_args[0].regnum;
     RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, label);
 
@@ -4477,6 +4554,8 @@ static void emit_ARB1_LABEL(Context *ctx)
     // !!! FIXME:  only called once and, if so, forcibly inline it.
 
     //const char *uses_loopreg = ((reg) && (reg->misc == 1)) ? "int aL" : "";
+    char labelstr[64];
+    get_ARB1_srcarg_varname(ctx, 0, labelstr, sizeof (labelstr));
     output_line(ctx, "%s:", labelstr);
 } // emit_ARB1_LABEL
 
@@ -4488,17 +4567,17 @@ static void emit_ARB1_POW(Context *ctx)
          (ctx->source_args[0].src_mod == SRCMOD_ABSNEGATE) )
         ctx->source_args[0].src_mod = SRCMOD_ABS;
 
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
 
     if (ctx->source_args[0].src_mod == SRCMOD_ABS)
         output_line(ctx, "POW%s, %s, %s;", dst, src0, src1);
     else
     {
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        output_line(ctx, "ABS %s, %s;", scratch, src0);
-        output_line(ctx, "POW%s, %s.x, %s;", dst, scratch, src1);
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        output_line(ctx, "ABS %s, %s;", buf, src0);
+        output_line(ctx, "POW%s, %s.x, %s;", dst, buf, src1);
     } // else
 
     emit_ARB1_dest_modifiers(ctx);
@@ -4512,10 +4591,14 @@ static void emit_ARB1_SGN(Context *ctx)
         emit_ARB1_opcode_ds(ctx, "SSG");
     else
     {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        const char *scratch1 = allocate_ARB1_scratch_reg_name(ctx);
-        const char *scratch2 = allocate_ARB1_scratch_reg_name(ctx);
+        char dst[64];
+        char src0[64];
+        char scratch1[64];
+        char scratch2[64];
+        make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+        allocate_ARB1_scratch_reg_name(ctx, scratch1, sizeof (scratch1));
+        allocate_ARB1_scratch_reg_name(ctx, scratch2, sizeof (scratch2));
         output_line(ctx, "SLT %s, %s, 0.0;", scratch1, src0);
         output_line(ctx, "SLT %s, -%s, 0.0;", scratch2, src0);
         output_line(ctx, "ADD%s -%s, %s;", dst, scratch1, scratch2);
@@ -4532,12 +4615,12 @@ static void emit_ARB1_NRM(Context *ctx)
         emit_ARB1_opcode_ds(ctx, "NRM");
     else
     {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        output_line(ctx, "DP3 %s.w, %s, %s;", scratch, src0, src0);
-        output_line(ctx, "RSQ %s.w, %s.w;", scratch, scratch);
-        output_line(ctx, "MUL%s, %s.w, %s;", dst, scratch, src0);
+        char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        output_line(ctx, "DP3 %s.w, %s, %s;", buf, src0, src0);
+        output_line(ctx, "RSQ %s.w, %s.w;", buf, buf);
+        output_line(ctx, "MUL%s, %s.w, %s;", dst, buf, src0);
         emit_ARB1_dest_modifiers(ctx);
     } // else
 } // emit_ARB1_NRM
@@ -4551,8 +4634,8 @@ static void emit_ARB1_SINCOS(Context *ctx)
     // arb1 fragment programs and everything nv4 have sin/cos/sincos opcodes.
     if ((shader_is_pixel(ctx)) || (support_nv4(ctx)))
     {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
         if (writemask_x(mask))
             output_line(ctx, "COS%s, %s;", dst, src0);
         else if (writemask_y(mask))
@@ -4564,8 +4647,8 @@ static void emit_ARB1_SINCOS(Context *ctx)
     // nv2+ profiles have sin and cos opcodes.
     else if (support_nv2(ctx))
     {
-        const char *dst = get_ARB1_destarg_varname(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+        char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+        char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
         if (writemask_x(mask))
             output_line(ctx, "COS %s.x, %s;", dst, src0);
         else if (writemask_y(mask))
@@ -4579,11 +4662,14 @@ static void emit_ARB1_SINCOS(Context *ctx)
 
     else  // big nasty.
     {
-        const char *dst = get_ARB1_destarg_varname(ctx);
-        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
+        char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+        char src0[64]; get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
         const int need_sin = (writemask_x(mask) || writemask_xy(mask));
         const int need_cos = (writemask_y(mask) || writemask_xy(mask));
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        char scratch[64];
+
+        if (need_sin || need_cos)
+            allocate_ARB1_scratch_reg_name(ctx, scratch, sizeof (scratch));
 
         // These sin() and cos() approximations originally found here:
         //    http://www.devmaster.net/forums/showthread.php?t=5784
@@ -4630,6 +4716,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
         } // if
     } // else
 
+    // !!! FIXME: might not have done anything. Don't emit if we didn't.
     if (!isfail(ctx))
         emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_SINCOS
@@ -4637,7 +4724,7 @@ static void emit_ARB1_SINCOS(Context *ctx)
 
 static void emit_ARB1_REP(Context *ctx)
 {
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
 
     // nv2 fragment programs (and everything nv4) have a real REP.
     if ( (support_nv4(ctx)) || ((support_nv2(ctx)) && (shader_is_pixel(ctx))) )
@@ -4646,10 +4733,12 @@ static void emit_ARB1_REP(Context *ctx)
     else if (support_nv2(ctx))
     {
         // no REP, but we can use branches.
+        char failbranch[32];
+        char topbranch[32];
         const int toplabel = allocate_branch_label(ctx);
         const int faillabel = allocate_branch_label(ctx);
-        const char *topbranch = get_ARB1_branch_label_name(ctx, toplabel);
-        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+        get_ARB1_branch_label_name(ctx,faillabel,failbranch,sizeof(failbranch));
+        get_ARB1_branch_label_name(ctx,toplabel,topbranch,sizeof(topbranch));
 
         assert(((size_t) ctx->branch_labels_stack_index) <
                 STATICARRAYLEN(ctx->branch_labels_stack)-1);
@@ -4681,11 +4770,13 @@ static void emit_ARB1_ENDREP(Context *ctx)
     {
         // no ENDREP, but we can use branches.
         assert(ctx->branch_labels_stack_index >= 2);
+
+        char failbranch[32];
+        char topbranch[32];
         const int faillabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
         const int toplabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
-
-        const char *topbranch = get_ARB1_branch_label_name(ctx, toplabel);
-        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+        get_ARB1_branch_label_name(ctx,faillabel,failbranch,sizeof(failbranch));
+        get_ARB1_branch_label_name(ctx,toplabel,topbranch,sizeof(topbranch));
 
         char scratch[32];
         snprintf(scratch, sizeof (scratch), "rep%d", ctx->reps);
@@ -4710,14 +4801,16 @@ static void nv2_if(Context *ctx)
     else
     {
         // there's no IF construct, but we can use a branch to a label.
+        char failbranch[32];
         const int label = allocate_branch_label(ctx);
-        const char *failbranch = get_ARB1_branch_label_name(ctx, label);
+        get_ARB1_branch_label_name(ctx, label, failbranch, sizeof (failbranch));
 
         assert(((size_t) ctx->branch_labels_stack_index)
                  < STATICARRAYLEN(ctx->branch_labels_stack));
 
         ctx->branch_labels_stack[ctx->branch_labels_stack_index++] = label;
 
+        // !!! FIXME: should this be NE? (EQ would jump to the ELSE for the IF condition, right?).
         output_line(ctx, "BRA %s (EQ.x);", failbranch);
     } // else
 } // nv2_if
@@ -4727,9 +4820,9 @@ static void emit_ARB1_IF(Context *ctx)
 {
     if (support_nv2(ctx))
     {
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
-        output_line(ctx, "MOVC %s.x, %s;", scratch, src0);
+        char buf[64]; allocate_ARB1_scratch_reg_name(ctx, buf, sizeof (buf));
+        char src0[64]; get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
+        output_line(ctx, "MOVC %s.x, %s;", buf, src0);
         nv2_if(ctx);
     } // if
 
@@ -4753,11 +4846,15 @@ static void emit_ARB1_ELSE(Context *ctx)
 
         // At the end of the IF block, unconditionally jump to the ENDIF.
         const int endlabel = allocate_branch_label(ctx);
-        output_line(ctx, "BRA %s;", get_ARB1_branch_label_name(ctx, endlabel));
+        char endbranch[32];
+        get_ARB1_branch_label_name(ctx,endlabel,endbranch,sizeof (endbranch));
+        output_line(ctx, "BRA %s;", endbranch);
 
         // Now mark the ELSE section with a lable.
         const int elselabel = ctx->branch_labels_stack[ctx->branch_labels_stack_index-1];
-        output_line(ctx, "%s:", get_ARB1_branch_label_name(ctx, elselabel));
+        char elsebranch[32];
+        get_ARB1_branch_label_name(ctx,elselabel,elsebranch,sizeof(elsebranch));
+        output_line(ctx, "%s:", elsebranch);
 
         // Replace the ELSE label with the ENDIF on the label stack.
         ctx->branch_labels_stack[ctx->branch_labels_stack_index-1] = endlabel;
@@ -4781,7 +4878,9 @@ static void emit_ARB1_ENDIF(Context *ctx)
         // there's no ENDIF construct, but we can use a branch to a label.
         assert(ctx->branch_labels_stack_index > 0);
         const int endlabel = ctx->branch_labels_stack[--ctx->branch_labels_stack_index];
-        output_line(ctx, "%s:", get_ARB1_branch_label_name(ctx, endlabel));
+        char endbranch[32];
+        get_ARB1_branch_label_name(ctx,endlabel,endbranch,sizeof (endbranch));
+        output_line(ctx, "%s:", endbranch);
     } // if
 
     else  // stock ARB1 has no branching.
@@ -4802,7 +4901,8 @@ static void emit_ARB1_BREAK(Context *ctx)
         // no BREAK, but we can use branches.
         assert(ctx->branch_labels_stack_index >= 2);
         const int faillabel = ctx->branch_labels_stack[ctx->branch_labels_stack_index];
-        const char *failbranch = get_ARB1_branch_label_name(ctx, faillabel);
+        char failbranch[32];
+        get_ARB1_branch_label_name(ctx,faillabel,failbranch,sizeof(failbranch));
         output_line(ctx, "BRA %s;", failbranch);
     } // else if
 
@@ -4823,9 +4923,12 @@ static void emit_ARB1_MOVA(Context *ctx)
         emit_ARB1_opcode_ds(ctx, "ARR");
     else
     {
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        char src0[64];
+        char scratch[64];
         char addr[32];
+
+        make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+        allocate_ARB1_scratch_reg_name(ctx, scratch, sizeof (scratch));
         snprintf(addr, sizeof (addr), "addr%d", ctx->dest_arg.regnum);
 
         // !!! FIXME: we can optimize this if src_mod is ABS or ABSNEGATE.
@@ -4862,7 +4965,9 @@ static void emit_ARB1_TEXKILL(Context *ctx)
     //  We just map the x component to w. If it's negative, the fragment
     //  would discard anyhow, otherwise, it'll pass through okay. This saves
     //  us a temp register.
-    output_line(ctx, "KIL %s.xyzx;", get_ARB1_destarg_varname(ctx));
+    char dst[64];
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+    output_line(ctx, "KIL %s.xyzx;", dst);
 } // emit_ARB1_TEXKILL
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)
@@ -4889,10 +4994,10 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH)
 
 static void emit_ARB1_CMP(Context *ctx)
 {
-    const char *dst = make_ARB1_destarg_string(ctx);
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-    const char *src2 = make_ARB1_srcarg_string(ctx, 2);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
     // D3D tests (src0 >= 0.0), but ARB1 tests (src0 < 0.0) ... so just
     //  switch src1 and src2 to get the same results.
     output_line(ctx, "CMP%s, %s, %s, %s;", dst, src0, src2, src1);
@@ -4908,14 +5013,15 @@ static void emit_ARB1_DP2ADD(Context *ctx)
         emit_ARB1_opcode_dsss(ctx, "DP2A");
     else
     {
-        const char *dst = make_ARB1_destarg_string(ctx);
-        const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-        const char *src1 = make_ARB1_srcarg_string(ctx, 1);
-        const char *src2 = make_ARB1_srcarg_string(ctx, 2);
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
+        char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+        char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
+        char src2[64]; make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
+        char scratch[64];
 
         // DP2ADD is:
         //  dst = (src0.r * src1.r) + (src0.g * src1.g) + src2.replicate_swiz
+        allocate_ARB1_scratch_reg_name(ctx, scratch, sizeof (scratch));
         output_line(ctx, "MUL %s, %s, %s;", scratch, src0, src1);
         output_line(ctx, "ADD %s, %s.x, %s.y;", scratch, scratch, scratch);
         output_line(ctx, "ADD%s, %s.x, %s;", dst, scratch, src2);
@@ -4951,13 +5057,13 @@ static void arb1_texld(Context *ctx, const char *opcode)
         ctx->dest_arg.result_mod &= ~MOD_PP;
 
     // !!! FIXME: do non-RGBA textures map to same default values as D3D?
-    const char *dst = make_ARB1_destarg_string(ctx);
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
     const SourceArgInfo *samp_arg = &ctx->source_args[1];
     RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
                                       samp_arg->regnum);
     const char *ttype = NULL;
-    const char *src0 = make_ARB1_srcarg_string(ctx, 0);
-    //const char *src1 = get_ARB1_srcarg_varname(ctx, 1); // !!! FIXME: SRC_MOD?
+    char src0[64]; get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
+    //char src1[64]; get_ARB1_srcarg_varname(ctx, 1, src1, sizeof (src1));  // !!! FIXME: SRC_MOD?
 
     // !!! FIXME: this should be in state_TEXLD, not in the arb1/glsl emitters.
     if (sreg == NULL)
@@ -5023,10 +5129,14 @@ static void emit_ARB1_IFC(Context *ctx)
             return;
         } // if
 
+        char src0[64];
+        char src1[64];
+        char scratch[64];
+
         const char *comp = comps[ctx->instruction_controls];
-        const char *scratch = allocate_ARB1_scratch_reg_name(ctx);
-        const char *src0 = get_ARB1_srcarg_varname(ctx, 0);
-        const char *src1 = get_ARB1_srcarg_varname(ctx, 1);
+        get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
+        get_ARB1_srcarg_varname(ctx, 1, src1, sizeof (src1));
+        allocate_ARB1_scratch_reg_name(ctx, scratch, sizeof (scratch));
         output_line(ctx, "%s %s.x, %s, %s;", comp, scratch, src0, src1);
         nv2_if(ctx);
     } // if
@@ -5042,38 +5152,34 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(SETP)
 
 static void emit_ARB1_DEF(Context *ctx)
 {
-    const char *varname = get_ARB1_destarg_varname(ctx);
     const float *val = (const float *) ctx->dwords; // !!! FIXME: could be int?
-    char val0[32];
-    char val1[32];
-    char val2[32];
-    char val3[32];
-    floatstr(ctx, val0, sizeof (val0), val[0], 1);
-    floatstr(ctx, val1, sizeof (val1), val[1], 1);
-    floatstr(ctx, val2, sizeof (val2), val[2], 1);
-    floatstr(ctx, val3, sizeof (val3), val[3], 1);
+    char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+    char val0[32]; floatstr(ctx, val0, sizeof (val0), val[0], 1);
+    char val1[32]; floatstr(ctx, val1, sizeof (val1), val[1], 1);
+    char val2[32]; floatstr(ctx, val2, sizeof (val2), val[2], 1);
+    char val3[32]; floatstr(ctx, val3, sizeof (val3), val[3], 1);
 
     push_output(ctx, &ctx->globals);
     output_line(ctx, "PARAM %s = { %s, %s, %s, %s };",
-                varname, val0, val1, val2, val3);
+                dst, val0, val1, val2, val3);
     pop_output(ctx);
 } // emit_ARB1_DEF
 
 static void emit_ARB1_DEFI(Context *ctx)
 {
-    const char *varname = get_ARB1_destarg_varname(ctx);
+    char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
     const int32 *x = (const int32 *) ctx->dwords;
     push_output(ctx, &ctx->globals);
     output_line(ctx, "PARAM %s = { %d, %d, %d, %d };",
-                varname, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
+                dst, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
     pop_output(ctx);
 } // emit_ARB1_DEFI
 
 static void emit_ARB1_DEFB(Context *ctx)
 {
-    const char *varname = get_ARB1_destarg_varname(ctx);
+    char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "PARAM %s = %d;", varname, ctx->dwords[0] ? 1 : 0);
+    output_line(ctx, "PARAM %s = %d;", dst, ctx->dwords[0] ? 1 : 0);
     pop_output(ctx);
 } // emit_ARB1_DEFB
 
@@ -7049,15 +7155,9 @@ static char *build_output(Context *ctx)
 } // build_output
 
 
-static char *alloc_varname(Context *ctx, const RegisterList *reg)
+static inline const char *alloc_varname(Context *ctx, const RegisterList *reg)
 {
-    const char *varname = ctx->profile->get_varname(ctx, reg->regtype,
-                                                    reg->regnum);
-    const size_t len = strlen(varname) + 1;
-    char *retval = (char *) Malloc(ctx, len);
-    if (retval != NULL)
-        strcpy(retval, varname);
-    return retval;
+    return ctx->profile->get_varname(ctx, reg->regtype, reg->regnum);
 } // alloc_varname
 
 
@@ -7088,14 +7188,13 @@ static MOJOSHADER_uniform *build_uniforms(Context *ctx)
             {
                 const char *name = ctx->profile->get_const_array_varname(ctx,
                                                       var->index, var->count);
-                char *namecpy = StrDup(ctx, name);
-                if (namecpy != NULL)
+                if (name != NULL)
                 {
                     wptr->type = MOJOSHADER_UNIFORM_FLOAT;
                     wptr->index = var->index;
                     wptr->array_count = var->count;
                     wptr->constant = (var->constant != NULL) ? 1 : 0;
-                    wptr->name = namecpy;
+                    wptr->name = name;
                     wptr++;
                     written++;
                 } // if
@@ -7656,9 +7755,6 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
             failed = 1;
             ctx->isfail = 0;
         } // if
-
-        // reset for every token, and consider an error if it ever overflows!
-        ctx->scratchidx = 0;
 
         rc = parse_token(ctx);
         if ( ((uint32) rc) > ctx->tokencount )
