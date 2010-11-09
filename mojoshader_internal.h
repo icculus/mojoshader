@@ -84,7 +84,7 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 #ifdef _MSC_VER
 #include <malloc.h>
 #define va_copy(a, b) a = b
-#define snprintf _snprintf
+#define snprintf _snprintf  // !!! FIXME: not a safe replacement!
 #define strcasecmp stricmp
 typedef unsigned __int8 uint8;
 typedef unsigned __int16 uint16;
@@ -221,6 +221,22 @@ int errorlist_add_va(ErrorList *list, const char *_fname,
                      const int errpos, const char *fmt, va_list va);
 MOJOSHADER_error *errorlist_flatten(ErrorList *list); // resets the list!
 void errorlist_destroy(ErrorList *list);
+
+
+
+// Dynamic buffers...
+
+typedef struct Buffer Buffer;
+Buffer *buffer_create(size_t blksz,MOJOSHADER_malloc m,MOJOSHADER_free f,void *d);
+int buffer_append(Buffer *buffer, const char *data, size_t len);
+int buffer_append_fmt(Buffer *buffer, const char *fmt, ...) ISPRINTF(2,3);
+int buffer_append_va(Buffer *buffer, const char *fmt, va_list va);
+size_t buffer_size(Buffer *buffer);
+void buffer_empty(Buffer *buffer);
+char *buffer_flatten(Buffer *buffer);
+char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len);
+void buffer_destroy(Buffer *buffer);
+
 
 
 // This is the ID for a D3DXSHADER_CONSTANTTABLE in the bytecode comments.

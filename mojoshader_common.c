@@ -533,5 +533,227 @@ void errorlist_destroy(ErrorList *list)
 } // errorlist_destroy
 
 
+typedef struct BufferBlock
+{
+    char *data;
+    size_t bytes;
+    struct BufferBlock *next;
+} BufferBlock;
+
+struct Buffer
+{
+    size_t total_bytes;
+    BufferBlock *head;
+    BufferBlock *tail;
+    size_t block_size;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
+};
+
+Buffer *buffer_create(size_t blksz, MOJOSHADER_malloc m,
+                      MOJOSHADER_free f, void *d)
+{
+    Buffer *buffer = (Buffer *) m(sizeof (Buffer), d);
+    if (buffer != NULL)
+    {
+        memset(buffer, '\0', sizeof (Buffer));
+        buffer->block_size = blksz;
+        buffer->m = m;
+        buffer->f = f;
+        buffer->d = d;
+    } // if
+    return buffer;
+} // buffer_create
+
+int buffer_append(Buffer *buffer, const char *data, size_t len)
+{
+    // note that we make the blocks bigger than blocksize when we have enough
+    //  data to overfill a fresh block, to reduce allocations.
+    const size_t blocksize = buffer->block_size;
+
+    if (len == 0)
+        return 1;
+
+    if (buffer->tail != NULL)
+    {
+        const size_t tailbytes = buffer->tail->bytes;
+        const size_t avail = (tailbytes >= blocksize) ? 0 : blocksize - tailbytes;
+        const size_t cpy = (avail > len) ? len : avail;
+        if (cpy > 0)
+        {
+            memcpy(buffer->tail->data + tailbytes, data, cpy);
+            len -= cpy;
+            data += cpy;
+            buffer->tail->bytes += cpy;
+            buffer->total_bytes += cpy;
+            assert(buffer->tail->bytes <= blocksize);
+        } // if
+    } // if
+
+    if (len > 0)
+    {
+        assert((!buffer->tail) || (buffer->tail->bytes == blocksize));
+        const size_t bytecount = len > blocksize ? len : blocksize;
+        const size_t malloc_len = sizeof (BufferBlock) + bytecount;
+        BufferBlock *item = (BufferBlock *) buffer->m(malloc_len, buffer->d);
+        if (item == NULL)
+            return 0;
+
+        item->data = ((char *) item) + sizeof (BufferBlock);
+        item->bytes = len;
+        item->next = NULL;
+        if (buffer->tail != NULL)
+            buffer->tail->next = item;
+        else
+            buffer->head = item;
+        buffer->tail = item;
+
+        memcpy(item->data, data, len);
+        buffer->total_bytes += len;
+    } // if
+
+    return 1;
+} // buffer_append
+
+int buffer_append_fmt(Buffer *buffer, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    const int retval = buffer_append_va(buffer, fmt, ap);
+    va_end(ap);
+    return retval;
+} // buffer_append_fmt
+
+int buffer_append_va(Buffer *buffer, const char *fmt, va_list va)
+{
+    char scratch[128];
+
+    va_list ap;
+    va_copy(ap, va);
+    const int len = vsnprintf(scratch, sizeof (scratch), fmt, ap);
+    va_end(ap);
+
+    // If we overflowed our scratch buffer, heap allocate and try again.
+
+    if (len == 0)
+        return 1;  // nothing to do.
+    else if (len < sizeof (scratch))
+        return buffer_append(buffer, scratch, len);
+
+    char *buf = (char *) buffer->m(len + 1, buffer->d);
+    if (buf == NULL)
+        return 0;
+    va_copy(ap, va);
+    vsnprintf(buf, len + 1, fmt, ap);  // rebuild it.
+    va_end(ap);
+    const int retval = buffer_append(buffer, scratch, len);
+    buffer->f(buf, buffer->d);
+    return retval;
+} // buffer_append_va
+
+size_t buffer_size(Buffer *buffer)
+{
+    return buffer->total_bytes;
+} // buffer_size
+
+void buffer_empty(Buffer *buffer)
+{
+    BufferBlock *item = buffer->head;
+    while (item != NULL)
+    {
+        BufferBlock *next = item->next;
+        buffer->f(item, buffer->d);
+        item = next;
+    } // while
+    buffer->head = buffer->tail = NULL;
+    buffer->total_bytes = 0;
+} // buffer_empty
+
+char *buffer_flatten(Buffer *buffer)
+{
+    char *retval = (char *) buffer->m(buffer->total_bytes + 1, buffer->d);
+    if (retval == NULL)
+        return NULL;
+    BufferBlock *item = buffer->head;
+    char *ptr = retval;
+    while (item != NULL)
+    {
+        BufferBlock *next = item->next;
+        memcpy(ptr, item->data, item->bytes);
+        ptr += item->bytes;
+        buffer->f(item, buffer->d);
+        item = next;
+    } // while
+    *ptr = '\0';
+
+    assert(ptr == (retval + buffer->total_bytes));
+
+    buffer->head = buffer->tail = NULL;
+    buffer->total_bytes = 0;
+
+    return retval;
+} // buffer_flatten
+
+char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len)
+{
+    Buffer *first = NULL;
+    size_t len = 0;
+    size_t i;
+    for (i = 0; i < n; i++)
+    {
+        Buffer *buffer = buffers[i];
+        if (buffer == NULL)
+            continue;
+        if (first == NULL)
+            first = buffer;
+        len += buffer->total_bytes;
+    } // for
+
+    char *retval = (char *) first ? first->m(len + 1, first->d) : NULL;
+    if (retval == NULL)
+    {
+        *_len = 0;
+        return NULL;
+    } // if
+
+    *_len = len;
+    char *ptr = retval;
+    for (i = 0; i < n; i++)
+    {
+        Buffer *buffer = buffers[i];
+        if (buffer == NULL)
+            continue;
+        BufferBlock *item = buffer->head;
+        while (item != NULL)
+        {
+            BufferBlock *next = item->next;
+            memcpy(ptr, item->data, item->bytes);
+            ptr += item->bytes;
+            buffer->f(item, buffer->d);
+            item = next;
+        } // while
+
+        buffer->head = buffer->tail = NULL;
+        buffer->total_bytes = 0;
+    } // for
+    *ptr = '\0';
+
+    assert(ptr == (retval + len));
+
+    return retval;
+} // buffer_merge
+
+void buffer_destroy(Buffer *buffer)
+{
+    if (buffer != NULL)
+    {
+        MOJOSHADER_free f = buffer->f;
+        void *d = buffer->d;
+        buffer_empty(buffer);
+        f(buffer, d);
+    } // if
+} // buffer_destroy
+
 // end of mojoshader_common.c ...
 

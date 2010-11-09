@@ -13,24 +13,6 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
-// !!! FIXME: replace this with BufferList from the preprocessor.
-// !!! FIXME: we don't need these as a list of strings, we just need a
-// !!! FIXME:  growable buffer we can flatten at the end.
-// A simple linked list of strings, so we can build the final output without
-//  realloc()ing for each new line, and easily insert lines into the middle
-//  of the output without much trouble.
-typedef struct OutputListNode
-{
-    char *str;
-    struct OutputListNode *next;
-} OutputListNode;
-
-typedef struct OutputList
-{
-    OutputListNode head;
-    OutputListNode *tail;
-} OutputList;
-
 typedef struct ConstantsList
 {
     MOJOSHADER_constant constant;
@@ -94,19 +76,17 @@ typedef struct Context
     MOJOSHADER_parsePhase parse_phase;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
-    OutputList *output;
-    OutputList preflight;
-    OutputList globals;
-    OutputList helpers;
-    OutputList subroutines;
-    OutputList mainline_intro;
-    OutputList mainline;
-    OutputList ignore;
-    OutputList *output_stack[2];
-    uint8 *output_bytes;  // can be used instead of the OutputLists.
+    Buffer *output;
+    Buffer *preflight;
+    Buffer *globals;
+    Buffer *helpers;
+    Buffer *subroutines;
+    Buffer *mainline_intro;
+    Buffer *mainline;
+    Buffer *ignore;
+    Buffer *output_stack[2];
     int indent_stack[2];
     int output_stack_len;
-    int output_len; // total strlen; prevents walking the lists just to malloc.
     int indent;
     const char *shader_type_str;
     const char *endline;
@@ -312,13 +292,28 @@ static void FreeBridge(void *ptr, void *data)
 
 // jump between output sections in the context...
 
-static inline void push_output(Context *ctx, OutputList *section)
+static int set_output(Context *ctx, Buffer **section)
+{
+    // only create output sections on first use.
+    if (*section == NULL)
+    {
+        *section = buffer_create(256, MallocBridge, FreeBridge, ctx);
+        if (*section == NULL)
+            return 0;
+    } // if
+
+    ctx->output = *section;
+    return 1;
+} // set_output
+
+static void push_output(Context *ctx, Buffer **section)
 {
     assert(ctx->output_stack_len < (int) (STATICARRAYLEN(ctx->output_stack)));
     ctx->output_stack[ctx->output_stack_len] = ctx->output;
     ctx->indent_stack[ctx->output_stack_len] = ctx->indent;
     ctx->output_stack_len++;
-    ctx->output = section;
+    if (!set_output(ctx, section))
+        return;
     ctx->indent = 0;
 } // push_output
 
@@ -416,59 +411,32 @@ static inline void fail(Context *ctx, const char *reason)
 static void output_line(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void output_line(Context *ctx, const char *fmt, ...)
 {
-    OutputListNode *item = NULL;
-
-    if (isfail(ctx) || ctx->out_of_memory)
+    assert(ctx->output != NULL);
+    if (isfail(ctx))
         return;  // we failed previously, don't go on...
-
-    char scratch[128];
 
     const int indent = ctx->indent;
     if (indent > 0)
-        memset(scratch, '\t', indent);
+    {
+        char *indentbuf = (char *) alloca(indent);
+        memset(indentbuf, '\t', indent);
+        buffer_append(ctx->output, indentbuf, indent);
+    } // if
 
     va_list ap;
     va_start(ap, fmt);
-    const int len = vsnprintf(scratch+indent, sizeof (scratch)-indent, fmt, ap) + indent;
+    buffer_append_va(ctx->output, fmt, ap);
     va_end(ap);
 
-    item = (OutputListNode *) Malloc(ctx, sizeof (OutputListNode));
-    if (item == NULL)
-        return;
-
-    item->str = (char *) Malloc(ctx, len + 1);
-    if (item->str == NULL)
-    {
-        Free(ctx, item);
-        return;
-    } // if
-
-    // If we overflowed our scratch buffer, that's okay. We were going to
-    //  allocate anyhow...the scratch buffer just lets us avoid a second
-    //  run of vsnprintf().
-    if (len < sizeof (scratch))
-        strcpy(item->str, scratch);  // copy it over.
-    else
-    {
-        if (indent > 0)
-            memset(item->str, '\t', indent);
-        va_start(ap, fmt);
-        vsnprintf(item->str+indent, len + 1, fmt, ap);  // rebuild it.
-        va_end(ap);
-    } // else
-
-    item->next = NULL;
-
-    ctx->output->tail->next = item;
-    ctx->output->tail = item;
-    ctx->output_len += len + ctx->endline_len;
+    buffer_append(ctx->output, ctx->endline, ctx->endline_len);
 } // output_line
 
 
-// this is just to stop gcc whining.
 static inline void output_blank_line(Context *ctx)
 {
-    output_line(ctx, "%s", "");
+    assert(ctx->output != NULL);
+    if (!isfail(ctx))
+        buffer_append(ctx->output, ctx->endline, ctx->endline_len);
 } // output_blank_line
 
 
@@ -1517,17 +1485,14 @@ static void emit_D3D_SINCOS(Context *ctx)
 static void emit_BYTECODE_start(Context *ctx, const char *profilestr)
 {
     // just copy the whole token stream and make all other emitters no-ops.
-    ctx->output_len = (ctx->tokencount * sizeof (uint32));
-    ctx->output_bytes = (uint8 *) Malloc(ctx, ctx->output_len);
-    if (ctx->output_bytes != NULL)
-        memcpy(ctx->output_bytes, ctx->tokens, ctx->output_len);
+    if (set_output(ctx, &ctx->mainline))
+    {
+        const size_t len = ctx->tokencount * sizeof (uint32);
+        buffer_append(ctx->mainline, (const char *) ctx->tokens, len);
+    } // if
 } // emit_BYTECODE_start
 
-static void emit_BYTECODE_end(Context *ctx)
-{
-    // no-op in this profile.
-} // emit_BYTECODE_end
-
+static void emit_BYTECODE_end(Context *ctx) {}
 static void emit_BYTECODE_phase(Context *ctx) {}
 static void emit_BYTECODE_finalize(Context *ctx) {}
 static void emit_BYTECODE_global(Context *ctx, RegisterType t, int n) {}
@@ -2109,8 +2074,6 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    ctx->output = &ctx->preflight;
-
     if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
         /* no-op. */ ;
 
@@ -2118,7 +2081,9 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL120) == 0)
     {
         ctx->profile_supports_glsl120 = 1;
+        push_output(ctx, &ctx->preflight);
         output_line(ctx, "#version 120");
+        pop_output(ctx);
     } // else if
     #endif
 
@@ -2128,10 +2093,12 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         return;
     } // else
 
-    ctx->output = &ctx->mainline_intro;
+    push_output(ctx, &ctx->mainline_intro);
     output_line(ctx, "void main()");
     output_line(ctx, "{");
-    ctx->output = &ctx->mainline;
+    pop_output(ctx);
+
+    set_output(ctx, &ctx->mainline);
     ctx->indent++;
 } // emit_GLSL_start
 
@@ -2915,7 +2882,7 @@ static void emit_GLSL_RET(Context *ctx)
     ctx->indent--;
     output_line(ctx, "}");
     output_blank_line(ctx);
-    ctx->output = &ctx->subroutines;
+    set_output(ctx, &ctx->subroutines);
 } // emit_GLSL_RET
 
 static void emit_GLSL_ENDLOOP(Context *ctx)
@@ -2931,13 +2898,13 @@ static void emit_GLSL_LABEL(Context *ctx)
     char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     const int label = ctx->source_args[0].regnum;
     RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, label);
-    assert(ctx->output == &ctx->subroutines);  // not mainline, etc.
+    assert(ctx->output == ctx->subroutines);  // not mainline, etc.
     assert(ctx->indent == 0);  // we shouldn't be in the middle of a function.
 
     // MSDN specs say CALL* has to come before the LABEL, so we know if we
     //  can ditch the entire function here as unused.
     if (reg == NULL)
-        ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
+        set_output(ctx, &ctx->ignore);  // Func not used. Parse, but don't output.
 
     // !!! FIXME: it would be nice if we could determine if a function is
     // !!! FIXME:  only called once and, if so, forcibly inline it.
@@ -3911,7 +3878,7 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    ctx->output = &ctx->globals;
+    set_output(ctx, &ctx->globals);
 
     if (strcmp(profilestr, MOJOSHADER_PROFILE_ARB1) == 0)
         output_line(ctx, "!!ARB%s1.0", shader_str);
@@ -3948,7 +3915,7 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
         failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
     } // else
 
-    ctx->output = &ctx->mainline;
+    set_output(ctx, &ctx->mainline);
 } // emit_ARB1_start
 
 static void emit_ARB1_end(Context *ctx)
@@ -4531,7 +4498,7 @@ static void emit_ARB1_RET(Context *ctx)
     //  just end up throwing all this code out.
     if (support_nv2(ctx))  // no branching in stock ARB1.
         output_line(ctx, "RET;");
-    ctx->output = &ctx->mainline;  // in case we were ignoring this function.
+    set_output(ctx, &ctx->mainline); // in case we were ignoring this function.
 } // emit_ARB1_RET
 
 
@@ -4548,7 +4515,7 @@ static void emit_ARB1_LABEL(Context *ctx)
     // MSDN specs say CALL* has to come before the LABEL, so we know if we
     //  can ditch the entire function here as unused.
     if (reg == NULL)
-        ctx->output = &ctx->ignore;  // Func not used. Parse, but don't output.
+        set_output(ctx, &ctx->ignore);  // Func not used. Parse, but don't output.
 
     // !!! FIXME: it would be nice if we could determine if a function is
     // !!! FIXME:  only called once and, if so, forcibly inline it.
@@ -7017,20 +6984,19 @@ static Context *build_context(const char *profile,
     ctx->swizzles_count = swizcount;
     ctx->endline = ENDLINE_STR;
     ctx->endline_len = strlen(ctx->endline);
-    ctx->preflight.tail = &ctx->preflight.head;
-    ctx->globals.tail = &ctx->globals.head;
-    ctx->helpers.tail = &ctx->helpers.head;
-    ctx->subroutines.tail = &ctx->subroutines.head;
-    ctx->mainline_intro.tail = &ctx->mainline_intro.head;
-    ctx->mainline.tail = &ctx->mainline.head;
-    ctx->ignore.tail = &ctx->ignore.head;
-    ctx->output = &ctx->mainline;
     ctx->last_address_reg_component = -1;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
 
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
     if (ctx->errors == NULL)
     {
+        f(ctx, d);
+        return NULL;
+    } // if
+
+    if (!set_output(ctx, &ctx->mainline))
+    {
+        errorlist_destroy(ctx->errors);
         f(ctx, d);
         return NULL;
     } // if
@@ -7044,19 +7010,6 @@ static Context *build_context(const char *profile,
 
     return ctx;
 } // build_context
-
-
-static void free_output_list(MOJOSHADER_free f, void *d, OutputListNode *item)
-{
-    while (item != NULL)
-    {
-        OutputListNode *next = item->next;
-        if (item->str != NULL)
-            f(item->str, d);
-        f(item, d);
-        item = next;
-    } // while
-} // free_output_list
 
 
 static void free_constants_list(MOJOSHADER_free f, void *d, ConstantsList *item)
@@ -7087,15 +7040,13 @@ static void destroy_context(Context *ctx)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
-        if (ctx->output_bytes != NULL)
-            f(d, ctx->output_bytes);
-        free_output_list(f, d, ctx->preflight.head.next);
-        free_output_list(f, d, ctx->globals.head.next);
-        free_output_list(f, d, ctx->helpers.head.next);
-        free_output_list(f, d, ctx->subroutines.head.next);
-        free_output_list(f, d, ctx->mainline_intro.head.next);
-        free_output_list(f, d, ctx->mainline.head.next);
-        free_output_list(f, d, ctx->ignore.head.next);
+        buffer_destroy(ctx->preflight);
+        buffer_destroy(ctx->globals);
+        buffer_destroy(ctx->helpers);
+        buffer_destroy(ctx->subroutines);
+        buffer_destroy(ctx->mainline_intro);
+        buffer_destroy(ctx->mainline);
+        buffer_destroy(ctx->ignore);
         free_constants_list(f, d, ctx->constants);
         free_reglist(f, d, ctx->used_registers.next);
         free_reglist(f, d, ctx->defined_registers.next);
@@ -7109,48 +7060,15 @@ static void destroy_context(Context *ctx)
 } // destroy_context
 
 
-static void append_list(char **_wptr, const char *endline,
-                        const size_t endline_len, OutputListNode *item)
+static char *build_output(Context *ctx, size_t *len)
 {
-    char *wptr = *_wptr;
-    while (item != NULL)
-    {
-        const size_t len = strlen(item->str);
-        memcpy(wptr, item->str, len);
-        wptr += len;
-        memcpy(wptr, endline, endline_len);
-        wptr += endline_len;
-        item = item->next;
-    } // while
-    *wptr = '\0';
-    *_wptr = wptr;
-} // append_list
-
-
-static char *build_output(Context *ctx)
-{
-    // add a byte for the null terminator if we're doing text output.
-    const int plusbytes = (ctx->output_bytes == NULL) ? 1 : 0;
-    char *retval = (char *) Malloc(ctx, ctx->output_len + plusbytes);
-    if (retval != NULL)
-    {
-        const char *endl = ctx->endline;
-        const size_t endllen = ctx->endline_len;
-        char *wptr = retval;
-        if (ctx->output_bytes != NULL)
-            memcpy(retval, ctx->output_bytes, ctx->output_len);
-        else
-        {
-            append_list(&wptr, endl, endllen, ctx->preflight.head.next);
-            append_list(&wptr, endl, endllen, ctx->globals.head.next);
-            append_list(&wptr, endl, endllen, ctx->helpers.head.next);
-            append_list(&wptr, endl, endllen, ctx->subroutines.head.next);
-            append_list(&wptr, endl, endllen, ctx->mainline_intro.head.next);
-            append_list(&wptr, endl, endllen, ctx->mainline.head.next);
-            // don't append ctx->ignore ... that's why it's called "ignore"
-        } // else
-    } // if
-
+    // add a byte for a null terminator.
+    Buffer *buffers[] = {
+        ctx->preflight, ctx->globals, ctx->helpers,
+        ctx->subroutines, ctx->mainline_intro, ctx->mainline
+        // don't append ctx->ignore ... that's why it's called "ignore"
+    };
+    char *retval = buffer_merge(buffers, STATICARRAYLEN(buffers), len);
     return retval;
 } // build_output
 
@@ -7414,6 +7332,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     MOJOSHADER_swizzle *swizzles = NULL;
     MOJOSHADER_error *errors = NULL;
     MOJOSHADER_parseData *retval = NULL;
+    size_t output_len = 0;
     int attribute_count = 0;
 
     if (ctx->out_of_memory)
@@ -7426,7 +7345,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     memset(retval, '\0', sizeof (MOJOSHADER_parseData));
 
     if (!isfail(ctx))
-        output = build_output(ctx);
+        output = build_output(ctx, &output_len);
 
     if (!isfail(ctx))
         constants = build_constants(ctx);
@@ -7500,7 +7419,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     {
         retval->profile = ctx->profile->name;
         retval->output = output;
-        retval->output_len = ctx->output_len;
+        retval->output_len = (int) output_len;
         retval->instruction_count = ctx->instruction_count;
         retval->shader_type = ctx->shader_type;
         retval->major_ver = (int) ctx->major_ver;

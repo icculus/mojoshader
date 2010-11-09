@@ -81,6 +81,16 @@ static inline void Free(Context *ctx, void *ptr)
     ctx->free(ptr, ctx->malloc_data);
 } // Free
 
+static void *MallocBridge(int bytes, void *data)
+{
+    return Malloc((Context *) data, (size_t) bytes);
+} // MallocBridge
+
+static void FreeBridge(void *ptr, void *data)
+{
+    Free((Context *) data, ptr);
+} // FreeBridge
+
 static inline char *StrDup(Context *ctx, const char *str)
 {
     char *retval = (char *) Malloc(ctx, strlen(str) + 1);
@@ -282,97 +292,6 @@ void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
     f((void *) data, d);
 } // MOJOSHADER_internal_include_close
 #endif  // !MOJOSHADER_FORCE_INCLUDE_CALLBACKS
-
-
-// !!! FIXME: move this stuff to mojoshader_common.c ...
-// data buffer stuff...
-
-#define BUFFER_LEN (64 * 1024)
-typedef struct BufferList
-{
-    char buffer[BUFFER_LEN];
-    size_t bytes;
-    struct BufferList *next;
-} BufferList;
-
-typedef struct Buffer
-{
-    size_t total_bytes;
-    BufferList head;
-    BufferList *tail;
-} Buffer;
-
-static void init_buffer(Buffer *buffer)
-{
-    buffer->total_bytes = 0;
-    buffer->head.bytes = 0;
-    buffer->head.next = NULL;
-    buffer->tail = &buffer->head;
-} // init_buffer
-
-
-static int add_to_buffer(Buffer *buffer, const char *data,
-                         size_t len, MOJOSHADER_malloc m, void *d)
-{
-    buffer->total_bytes += len;
-    while (len > 0)
-    {
-        const size_t avail = BUFFER_LEN - buffer->tail->bytes;
-        const size_t cpy = (avail > len) ? len : avail;
-        memcpy(buffer->tail->buffer + buffer->tail->bytes, data, cpy);
-        len -= cpy;
-        data += cpy;
-        buffer->tail->bytes += cpy;
-        assert(buffer->tail->bytes <= BUFFER_LEN);
-        if (buffer->tail->bytes == BUFFER_LEN)
-        {
-            BufferList *item = (BufferList *) m(sizeof (BufferList), d);
-            if (item == NULL)
-                return 0;
-            item->bytes = 0;
-            item->next = NULL;
-            buffer->tail->next = item;
-            buffer->tail = item;
-        } // if
-    } // while
-
-    return 1;
-} // add_to_buffer
-
-
-static char *flatten_buffer(Buffer *buffer, MOJOSHADER_malloc m, void *d)
-{
-    char *retval = (char *) m(buffer->total_bytes + 1, d);
-    if (retval == NULL)
-        return NULL;
-    BufferList *item = &buffer->head;
-    char *ptr = retval;
-    while (item != NULL)
-    {
-        BufferList *next = item->next;
-        memcpy(ptr, item->buffer, item->bytes);
-        ptr += item->bytes;
-        item = next;
-    } // while
-    *ptr = '\0';
-
-    assert(ptr == (retval + buffer->total_bytes));
-    return retval;
-} // flatten_buffer
-
-
-static void free_buffer(Buffer *buffer, MOJOSHADER_free f, void *d)
-{
-    // head is statically allocated, so start with head.next...
-    BufferList *item = buffer->head.next;
-    while (item != NULL)
-    {
-        BufferList *next = item->next;
-        f(item, d);
-        item = next;
-    } // while
-    init_buffer(buffer);
-} // free_buffer
 
 
 // !!! FIXME: maybe use these pool magic elsewhere?
@@ -1060,8 +979,6 @@ static void handle_pp_define(Context *ctx)
 
     int params = 0;
     char **idents = NULL;
-    MOJOSHADER_malloc m = ctx->malloc;
-    void *d = ctx->malloc_data;
     static const char space = ' ';
 
     if (state->tokenval == ((Token) ' '))
@@ -1133,8 +1050,7 @@ static void handle_pp_define(Context *ctx)
 
     pushback(state);
 
-    Buffer buffer;
-    init_buffer(&buffer);
+    Buffer *buffer = buffer_create(128, MallocBridge, FreeBridge, ctx);
 
     state->report_whitespace = 1;
     while ((!done) && (!ctx->out_of_memory))
@@ -1153,28 +1069,22 @@ static void handle_pp_define(Context *ctx)
                 break;
 
             case ((Token) ' '):  // may not actually point to ' '.
-                assert(buffer.total_bytes > 0);
-                if (!add_to_buffer(&buffer, &space, 1, m, d))
-                    out_of_memory(ctx);
+                assert(buffer_size(buffer) > 0);
+                buffer_append(buffer, &space, 1);
                 break;
 
             default:
-                if (!add_to_buffer(&buffer,state->token,state->tokenlen,m,d))
-                    out_of_memory(ctx);
+                buffer_append(buffer, state->token, state->tokenlen);
                 break;
         } // switch
     } // while
     state->report_whitespace = 0;
 
+    size_t buflen = buffer_size(buffer) + 1;
     if (!ctx->out_of_memory)
-    {
-        definition = flatten_buffer(&buffer, m, d);
-        if (definition == NULL)
-            out_of_memory(ctx);
-    } // if
+        definition = buffer_flatten(buffer);
 
-    size_t buflen = buffer.total_bytes + 1;
-    free_buffer(&buffer, ctx->free, d);
+    buffer_destroy(buffer);
 
     if (ctx->out_of_memory)
         goto handle_pp_define_failed;
@@ -1326,19 +1236,20 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
                                   const Define *params)
 {
     char *final = NULL;
-    MOJOSHADER_malloc m = ctx->malloc;
-    MOJOSHADER_free f = ctx->free;
-    void *d = ctx->malloc_data;
 
     // We push the #define and lex it, building a buffer with argument
     //  replacement, stringification, and concatenation.
+    Buffer *buffer = buffer_create(128, MallocBridge, FreeBridge, ctx);
+    if (buffer == NULL)
+        return 0;
+
     IncludeState *state = ctx->include_stack;
     if (!push_source(ctx, state->filename, def->definition,
                      strlen(def->definition), state->line, NULL))
+    {
+        buffer_destroy(buffer);
         return 0;
-
-    Buffer buffer;
-    init_buffer(&buffer);
+    } // if
 
     state = ctx->include_stack;
     while (lexer(state) != TOKEN_EOI)
@@ -1355,9 +1266,9 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
         } // if
         else
         {
-            if (buffer.total_bytes > 0)
+            if (buffer_size(buffer) > 0)
             {
-                if (!add_to_buffer(&buffer, " ", 1, m, d))
+                if (!buffer_append(buffer, " ", 1))
                     goto replace_and_push_macro_failed;
             } // if
         } // else
@@ -1370,7 +1281,7 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
             lexer(state);
             assert(state->tokenval != TOKEN_EOI);  // we checked for this.
 
-            if (!add_to_buffer(&buffer, "\"", 1, m, d))
+            if (!buffer_append(buffer, "\"", 1))
                 goto replace_and_push_macro_failed;
 
             if (state->tokenval == TOKEN_IDENTIFIER)
@@ -1383,10 +1294,10 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
                 } // if
             } // if
 
-            if (!add_to_buffer(&buffer, data, len, m, d))
+            if (!buffer_append(buffer, data, len))
                 goto replace_and_push_macro_failed;
 
-            if (!add_to_buffer(&buffer, "\"", 1, m, d))
+            if (!buffer_append(buffer, "\"", 1))
                 goto replace_and_push_macro_failed;
 
             continue;
@@ -1407,18 +1318,15 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
             } // if
         } // if
 
-        if (!add_to_buffer(&buffer, data, len, m, d))
+        if (!buffer_append(buffer, data, len))
             goto replace_and_push_macro_failed;
     } // while
 
-    final = flatten_buffer(&buffer, m, d);
+    final = buffer_flatten(buffer);
     if (!final)
-    {
-        out_of_memory(ctx);
         goto replace_and_push_macro_failed;
-    } // if
 
-    free_buffer(&buffer, f, d);
+    buffer_destroy(buffer);
     pop_source(ctx);  // ditch the macro.
     state = ctx->include_stack;
     if (!push_source(ctx, state->filename, final, strlen(final), state->line,
@@ -1432,7 +1340,7 @@ static int replace_and_push_macro(Context *ctx, const Define *def,
 
 replace_and_push_macro_failed:
     pop_source(ctx);
-    free_buffer(&buffer, f, d);
+    buffer_destroy(buffer);
     return 0;
 } // replace_and_push_macro
 
@@ -1440,9 +1348,6 @@ replace_and_push_macro_failed:
 static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
 {
     int retval = 0;
-    MOJOSHADER_malloc m = ctx->malloc;
-    MOJOSHADER_free f = ctx->free;
-    void *d = ctx->malloc_data;
     IncludeState *state = ctx->include_stack;
     Define *params = NULL;
     const int expected = (def->paramcount < 0) ? 0 : def->paramcount;
@@ -1461,10 +1366,8 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
     int paren = 1;
     while (paren > 0)
     {
-        Buffer buffer;
-        Buffer origbuffer;
-        init_buffer(&buffer);
-        init_buffer(&origbuffer);
+        Buffer *buffer = buffer_create(128, MallocBridge, FreeBridge, ctx);
+        Buffer *origbuffer = buffer_create(128, MallocBridge, FreeBridge, ctx);
 
         Token t = lexer(state);
 
@@ -1498,7 +1401,7 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
                 // don't add whitespace to the start, so we recognize
                 //  void calls correctly.
                 origexpr = expr = " ";
-                origexprlen = (buffer.total_bytes == 0) ? 0 : 1;
+                origexprlen = (buffer_size(buffer) == 0) ? 0 : 1;
             } // else if
 
             else if (t == TOKEN_IDENTIFIER)
@@ -1521,42 +1424,36 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
 
             assert(expr != NULL);
 
-            if (!add_to_buffer(&buffer, expr, exprlen, m, d))
-            {
-                out_of_memory(ctx);
+            if (!buffer_append(buffer, expr, exprlen))
                 goto handle_macro_args_failed;
-            } // if
 
-            if (!add_to_buffer(&origbuffer, origexpr, origexprlen, m, d))
-            {
-                out_of_memory(ctx);
+            if (!buffer_append(origbuffer, origexpr, origexprlen))
                 goto handle_macro_args_failed;
-            } // if
 
             t = lexer(state);
         } // while
 
-        if (buffer.total_bytes == 0)
+        if (buffer_size(buffer) == 0)
             void_call = ((saw_params == 0) && (paren == 0));
 
         if (saw_params < expected)
         {
-            char *origdefinition = flatten_buffer(&origbuffer, m, d);
-            char *definition = flatten_buffer(&buffer, m, d);
+            char *origdefinition = buffer_flatten(origbuffer);
+            char *definition = buffer_flatten(buffer);
             Define *p = get_define(ctx);
             if ((!origdefinition) || (!definition) || (!p))
             {
                 Free(ctx, origdefinition);
                 Free(ctx, definition);
-                free_buffer(&origbuffer, f, d);
-                free_buffer(&buffer, f, d);
+                buffer_destroy(origbuffer);
+                buffer_destroy(buffer);
                 free_define(ctx, p);
                 goto handle_macro_args_failed;
             } // if
 
             // trim any whitespace from the end of the string...
             int i;
-            for (i = (int) buffer.total_bytes - 1; i >= 0; i--)
+            for (i = (int) buffer_size(buffer) - 1; i >= 0; i--)
             {
                 if (definition[i] == ' ')
                     definition[i] = '\0';
@@ -1564,7 +1461,7 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
                     break;
             } // for
 
-            for (i = (int) origbuffer.total_bytes - 1; i >= 0; i--)
+            for (i = (int) buffer_size(origbuffer) - 1; i >= 0; i--)
             {
                 if (origdefinition[i] == ' ')
                     origdefinition[i] = '\0';
@@ -1579,8 +1476,8 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
             params = p;
         } // if
 
-        free_buffer(&buffer, f, d);
-        free_buffer(&origbuffer, f, d);
+        buffer_destroy(buffer);
+        buffer_destroy(origbuffer);
         saw_params++;
     } // while
 
@@ -2263,24 +2160,22 @@ const char *preprocessor_sourcepos(Preprocessor *_ctx, unsigned int *pos)
 } // preprocessor_sourcepos
 
 
-static int indent_buffer(Buffer *buffer, int n, int newline,
-                         MOJOSHADER_malloc m, void *d)
+static void indent_buffer(Buffer *buffer, int n, const int newline)
 {
     static char spaces[4] = { ' ', ' ', ' ', ' ' };
     if (newline)
     {
         while (n--)
         {
-            if (!add_to_buffer(buffer, spaces, sizeof (spaces), m, d))
-                return 0;
+            if (!buffer_append(buffer, spaces, sizeof (spaces)))
+                return;
         } // while
     } // if
     else
     {
-        if (!add_to_buffer(buffer, spaces, 1, m, d))
-            return 0;
+        if (!buffer_append(buffer, spaces, 1))
+            return;
     } // else
-    return 1;
 } // indent_buffer
 
 
@@ -2299,6 +2194,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                              MOJOSHADER_includeClose include_close,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    // !!! FIXME: what's wrong with ENDLINE_STR?
     #ifdef _WINDOWS
     static const char endline[] = { '\r', '\n' };
     #else
@@ -2310,38 +2206,47 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     if (!include_open) include_open = MOJOSHADER_internal_include_open;
     if (!include_close) include_close = MOJOSHADER_internal_include_close;
 
-    ErrorList *errors = errorlist_create(m, f, d);
-    if (errors == NULL)
-        return &out_of_mem_data_preprocessor;
-
     Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
                                           include_open, include_close,
                                           defines, define_count, 0, m, f, d);
 
     if (pp == NULL)
+        return &out_of_mem_data_preprocessor;
+
+    ErrorList *errors = errorlist_create(MallocBridge, FreeBridge, pp);
+    if (errors == NULL)
+    {
+        preprocessor_end(pp);
+        return &out_of_mem_data_preprocessor;
+    } // if
+
+    Buffer *buffer = buffer_create(4096, MallocBridge, FreeBridge, pp);
+    if (!buffer)
     {
         errorlist_destroy(errors);
+        preprocessor_end(pp);
         return &out_of_mem_data_preprocessor;
     } // if
 
     Token token = TOKEN_UNKNOWN;
     const char *tokstr = NULL;
 
-    Buffer buffer;
-    init_buffer(&buffer);
-
     int nl = 1;
     int indent = 0;
     unsigned int len = 0;
-    int out_of_memory = 0;
     while ((tokstr = preprocessor_nexttoken(pp, &len, &token)) != NULL)
     {
         int isnewline = 0;
 
         assert(token != TOKEN_EOI);
 
-        if (!out_of_memory)
-            out_of_memory = preprocessor_outofmemory(pp);
+        if (preprocessor_outofmemory(pp))
+        {
+            preprocessor_end(pp);
+            buffer_destroy(buffer);
+            errorlist_destroy(errors);
+            return &out_of_mem_data_preprocessor;
+        } // if
 
         // Microsoft's preprocessor is weird.
         // It ignores newlines, and then inserts its own around certain
@@ -2349,83 +2254,55 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         //  be mostly readable, instead of a stream of tokens.
         if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
         {
-            if (!out_of_memory)
-            {
-                if ( (token == ((Token) '}')) && (indent > 0) )
-                    indent--;
+            if ( (token == ((Token) '}')) && (indent > 0) )
+                indent--;
 
-                out_of_memory =
-                    (!indent_buffer(&buffer, indent, nl, m, d)) ||
-                    (!add_to_buffer(&buffer, tokstr, len, m, d)) ||
-                    (!add_to_buffer(&buffer, endline, sizeof (endline), m, d));
+            indent_buffer(buffer, indent, nl);
+            buffer_append(buffer, tokstr, len);
+            buffer_append(buffer, endline, sizeof (endline));
 
-                isnewline = 1;
-            } // if
+            isnewline = 1;
         } // if
 
         else if (token == ((Token) '\n'))
         {
-            if (!out_of_memory)
-            {
-                out_of_memory =
-                    (!add_to_buffer(&buffer, endline, sizeof (endline), m, d));
-            } // if
+            buffer_append(buffer, endline, sizeof (endline));
             isnewline = 1;
         } // else if
 
         else if (token == ((Token) '{'))
         {
-            if (!out_of_memory)
-            {
-                out_of_memory =
-                    (!add_to_buffer(&buffer,endline,sizeof (endline),m,d)) ||
-                    (!indent_buffer(&buffer, indent, 1, m, d)) ||
-                    (!add_to_buffer(&buffer, "{", 1, m, d)) ||
-                    (!add_to_buffer(&buffer,endline,sizeof (endline),m,d));
-                indent++;
-                isnewline = 1;
-            } // if
+            buffer_append(buffer, endline, sizeof (endline));
+            indent_buffer(buffer, indent, 1);
+            buffer_append(buffer, "{", 1);
+            buffer_append(buffer, endline, sizeof (endline));
+            indent++;
+            isnewline = 1;
         } // else if
 
         else if (token == TOKEN_PREPROCESSING_ERROR)
         {
-            if (!out_of_memory)
-            {
-                unsigned int pos = 0;
-                const char *fname = preprocessor_sourcepos(pp, &pos);
-                if (!errorlist_add(errors, fname, (int) pos, tokstr))
-                    out_of_memory = 1;
-            } // if
+            unsigned int pos = 0;
+            const char *fname = preprocessor_sourcepos(pp, &pos);
+            errorlist_add(errors, fname, (int) pos, tokstr);
         } // else if
 
         else
         {
-            if (!out_of_memory)
-            {
-                out_of_memory = (!indent_buffer(&buffer, indent, nl, m, d)) ||
-                                (!add_to_buffer(&buffer, tokstr, len, m, d));
-
-            } // if
+            indent_buffer(buffer, indent, nl);
+            buffer_append(buffer, tokstr, len);
         } // else
 
         nl = isnewline;
-
-        if (out_of_memory)
-        {
-            preprocessor_end(pp);
-            free_buffer(&buffer, f, d);
-            errorlist_destroy(errors);
-            return &out_of_mem_data_preprocessor;
-        } // if
     } // while
     
-    assert((token == TOKEN_EOI) || (out_of_memory));
+    assert(token == TOKEN_EOI);
 
     preprocessor_end(pp);
 
-    const size_t total_bytes = buffer.total_bytes;
-    char *output = flatten_buffer(&buffer, m, d);
-    free_buffer(&buffer, f, d);
+    const size_t total_bytes = buffer_size(buffer);
+    char *output = buffer_flatten(buffer);
+    buffer_destroy(buffer);
     if (output == NULL)
     {
         errorlist_destroy(errors);
