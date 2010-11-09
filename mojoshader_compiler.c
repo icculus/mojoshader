@@ -2368,7 +2368,7 @@ static const MOJOSHADER_astData *build_failed_ast(Context *ctx)
     retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
-    retval->error_count = ctx->errors->count;
+    retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
 
     if (ctx->out_of_memory)
@@ -2403,7 +2403,7 @@ static const MOJOSHADER_astData *build_astdata(Context *ctx)
         retval->ast = ctx->ast;
     } // if
 
-    retval->error_count = ctx->errors->count;
+    retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
     if (ctx->out_of_memory)
     {
@@ -2462,9 +2462,9 @@ static const MOJOSHADER_compileData *build_failed_compile(Context *ctx)
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
     retval->source_profile = ctx->source_profile;
-    retval->error_count = ctx->errors->count;
+    retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
-    retval->warning_count = ctx->warnings->count;
+    retval->warning_count = errorlist_count(ctx->warnings);
     retval->warnings = errorlist_flatten(ctx->warnings);
 
     if (ctx->out_of_memory)  // in case something failed up there.
@@ -2503,9 +2503,9 @@ static const MOJOSHADER_compileData *build_compiledata(Context *ctx)
         // !!! FIXME: build symbols and symbol_count here.
     } // if
 
-    retval->error_count = ctx->errors->count;
+    retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
-    retval->warning_count = ctx->warnings->count;
+    retval->warning_count = errorlist_count(ctx->warnings);
     retval->warnings = errorlist_flatten(ctx->warnings);
 
     if (ctx->out_of_memory)  // in case something failed up there.

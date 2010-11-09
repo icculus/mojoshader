@@ -1515,7 +1515,7 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
 
-    retval->error_count = ctx->errors->count;
+    retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
     if (ctx->out_of_memory)
     {

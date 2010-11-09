@@ -390,6 +390,23 @@ void stringcache_destroy(StringCache *cache)
 } // stringcache_destroy
 
 
+// We chain errors as a linked list with a head/tail for easy appending.
+//  These get flattened before passing to the application.
+typedef struct ErrorItem
+{
+    MOJOSHADER_error error;
+    struct ErrorItem *next;
+} ErrorItem;
+
+struct ErrorList
+{
+    ErrorItem head;
+    ErrorItem *tail;
+    int count;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
+};
 
 ErrorList *errorlist_create(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
@@ -481,6 +498,12 @@ int errorlist_add_va(ErrorList *list, const char *_fname,
     list->count++;
     return 1;
 } // errorlist_add_va
+
+
+int errorlist_count(ErrorList *list)
+{
+    return list->count;
+} // errorlist_count
 
 
 MOJOSHADER_error *errorlist_flatten(ErrorList *list)

@@ -7359,7 +7359,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     if (!isfail(ctx))
         samplers = build_samplers(ctx);
 
-    const int error_count = ctx->errors->count;
+    const int error_count = errorlist_count(ctx->errors);
     errors = errorlist_flatten(ctx->errors);
 
     if (!isfail(ctx))

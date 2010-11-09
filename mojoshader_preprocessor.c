@@ -2319,9 +2319,10 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     } // if
 
     memset(retval, '\0', sizeof (*retval));
-    if (errors->count > 0)
+    const int errcount = errorlist_count(errors);
+    if (errcount > 0)
     {
-        retval->error_count = errors->count;
+        retval->error_count = errcount;
         retval->errors = errorlist_flatten(errors);
         if (retval->errors == NULL)
         {
