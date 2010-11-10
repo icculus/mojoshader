@@ -54,13 +54,9 @@ typedef struct Context
     uint32 tokenbuf[16];    // bytecode tokens!
     int tokenbufpos;        // bytecode tokens!
     DestArgInfo dest_arg;
-    uint32 *output;
-    SourcePos *token_to_source;
-    uint8 *ctab;
-    uint32 ctab_len;
-    uint32 ctab_allocation;
-    size_t output_len;
-    size_t output_allocation;
+    Buffer *output;
+    Buffer *token_to_source;
+    Buffer *ctab;
 } Context;
 
 
@@ -228,50 +224,24 @@ static Token nexttoken(Context *ctx)
     return ctx->tokenval;
 } // nexttoken
 
-// !!! FIXME: hashmap?
-static inline void add_token_sourcepos(Context *ctx, const size_t idx)
-{
-    unsigned int pos = 0;
-    const char *fname = preprocessor_sourcepos(ctx->preprocessor, &pos);
-    ctx->token_to_source[idx].line = pos;
-    ctx->token_to_source[idx].filename = fname;  // cached in preprocessor!
-} // add_token_sourcepos
 
-
-// !!! FIXME: use BufferList.
 static void output_token_noswap(Context *ctx, const uint32 token)
 {
-    if (isfail(ctx))
-        return;
-
-    if (ctx->output_len >= ctx->output_allocation)
+    if (!isfail(ctx))
     {
-        const size_t output_alloc_bump = 1024;  // that's tokens, not bytes.
-        const size_t newsize = ctx->output_allocation + output_alloc_bump;
-        void *ptr;
+        buffer_append(ctx->output, &token, sizeof (token));
 
-        ptr = Malloc(ctx, newsize * sizeof (uint32));
-        if (ptr == NULL)
-            return;
-        if (ctx->output_len > 0)
-            memcpy(ptr, ctx->output, ctx->output_len * sizeof (uint32));
-        Free(ctx, ctx->output);
-        ctx->output = (uint32 *) ptr;
-
-        ptr = Malloc(ctx, newsize * sizeof (SourcePos));
-        if (ptr == NULL)
-            return;
-        if (ctx->output_len > 0)
-            memcpy(ptr, ctx->token_to_source, ctx->output_len * sizeof (SourcePos));
-        Free(ctx, ctx->token_to_source);
-        ctx->token_to_source = (SourcePos *) ptr;
-
-        ctx->output_allocation = newsize;
+        // We only need a list of these that grows throughout processing, and
+        //  is flattened for reference at the end of the run, so we use a
+        //  Buffer. It's sneaky!
+        unsigned int pos = 0;
+        const char *fname = preprocessor_sourcepos(ctx->preprocessor, &pos);
+        SourcePos srcpos;
+        memset(&srcpos, '\0', sizeof (SourcePos));
+        srcpos.line = pos;
+        srcpos.filename = fname;  // cached in preprocessor!
+        buffer_append(ctx->token_to_source, &srcpos, sizeof (SourcePos));
     } // if
-
-    ctx->output[ctx->output_len] = token;
-    add_token_sourcepos(ctx, ctx->output_len);
-    ctx->output_len++;
 } // output_token_noswap
 
 
@@ -289,8 +259,6 @@ static void output_comment_bytes(Context *ctx, const uint8 *buf, size_t len)
     {
         const uint32 tokencount = (len / 4) + ((len % 4) ? 1 : 0);
         output_token(ctx, 0xFFFE | (tokencount << 16));
-        // !!! FIXME: we can probably just use use modulo and do this without
-        // !!! FIXME:  a tight loop with BufferList.
         while (len >= 4)
         {
             output_token_noswap(ctx, *((const uint32 *) buf));
@@ -1431,6 +1399,22 @@ static void parse_token(Context *ctx, const Token token)
 } // parse_token
 
 
+static void destroy_context(Context *ctx)
+{
+    if (ctx != NULL)
+    {
+        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
+        void *d = ctx->malloc_data;
+        preprocessor_end(ctx->preprocessor);
+        errorlist_destroy(ctx->errors);
+        buffer_destroy(ctx->ctab);
+        buffer_destroy(ctx->token_to_source);
+        buffer_destroy(ctx->output);
+        f(ctx, d);
+    } // if
+} // destroy_context
+
+
 static Context *build_context(const char *filename,
                               const char *source, unsigned int sourcelen,
                               const MOJOSHADER_preprocessorDefine *defines,
@@ -1454,12 +1438,19 @@ static Context *build_context(const char *filename,
     ctx->malloc_data = d;
     ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
 
+    const size_t outblk = sizeof (uint32) * 4 * 64; // 64 4-token instrs.
+    ctx->output = buffer_create(outblk, MallocBridge, FreeBridge, ctx);
+    if (ctx->output == NULL)
+        goto build_context_failed;
+
+    const size_t mapblk = sizeof (SourcePos) * 4 * 64; // 64 * 4-tokens.
+    ctx->token_to_source = buffer_create(mapblk, MallocBridge, FreeBridge, ctx);
+    if (ctx->token_to_source == NULL)
+        goto build_context_failed;
+
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
     if (ctx->errors == NULL)
-    {
-        f(ctx, d);
-        return NULL;
-    } // if
+        goto build_context_failed;
 
     ctx->preprocessor = preprocessor_start(filename, source, sourcelen,
                                            include_open, include_close,
@@ -1467,35 +1458,14 @@ static Context *build_context(const char *filename,
                                            MallocBridge, FreeBridge, ctx);
 
     if (ctx->preprocessor == NULL)
-    {
-        errorlist_destroy(ctx->errors);
-        f(ctx, d);
-        return NULL;
-    } // if
+        goto build_context_failed;
 
     return ctx;
+
+build_context_failed:  // ctx is allocated and zeroed before this is called.
+    destroy_context(ctx);
+    return NULL;
 } // build_context
-
-
-static void destroy_context(Context *ctx)
-{
-    if (ctx != NULL)
-    {
-        MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
-        void *d = ctx->malloc_data;
-        if (ctx->errors != NULL)
-            errorlist_destroy(ctx->errors);
-        if (ctx->preprocessor != NULL)
-            preprocessor_end(ctx->preprocessor);
-        if (ctx->output != NULL)
-            f(ctx->output, d);
-        if (ctx->token_to_source != NULL)
-            f(ctx->token_to_source, d);
-        if (ctx->ctab != NULL)
-            f(ctx->ctab, d);
-        f(ctx, d);
-    } // if
-} // destroy_context
 
 
 static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
@@ -1517,8 +1487,10 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
 
     retval->error_count = errorlist_count(ctx->errors);
     retval->errors = errorlist_flatten(ctx->errors);
+
     if (ctx->out_of_memory)
     {
+        Free(ctx, retval->errors);
         Free(ctx, retval);
         return &MOJOSHADER_out_of_mem_data;
     } // if
@@ -1529,48 +1501,17 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
 
 static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
 {
+    if (isfail(ctx))
+        return 0;
+
     const size_t extra = CTAB_SIZE + sizeof (uint32);
-    if (len <= (ctx->ctab_len - extra))
-    {
-        uint8 *ptr = ctx->ctab + extra;
-        if (len == 0)
-            return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
-        else if ((len == 1) && ((ptr = (uint8 *) memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL))
-            return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
-        else  // search for the string of bytes...
-        {
-            while ((ptr = (uint8 *) memchr(ptr, bytes[0], ctx->ctab_len - len)) != NULL)
-            {
-                if (memcmp(ptr, bytes, len) == 0)  // this is it?
-                    return ( (uint32) (ptr - ctx->ctab) ) - sizeof (uint32);
-                ptr++;  // !!! FIXME: should this be "ptr += len;"  ?
-            } // while
-        } // else
-    } // if
+    const ssize_t pos = buffer_find(ctx->ctab, extra, bytes, len);
+    if (pos >= 0)  // blob is already in here.
+        return ((uint32) pos) - sizeof (uint32);
 
     // add it to the byte pile...
-
-    // verify allocation.
-    const size_t newsize = (ctx->ctab_len + len);
-    if (ctx->ctab_allocation < newsize)
-    {
-        const size_t additional = 4 * 1024;
-        while (ctx->ctab_allocation < newsize)
-            ctx->ctab_allocation += additional;
-        void *ptr = Malloc(ctx, ctx->ctab_allocation);
-        if (ptr == NULL)
-            return 0;
-        if (ctx->ctab != NULL)
-        {
-            memcpy(ptr, ctx->ctab, ctx->ctab_len);
-            Free(ctx, ctx->ctab);
-        } // if
-        ctx->ctab = (uint8 *) ptr;
-    } // if
-
-    const uint32 retval = ctx->ctab_len - sizeof (uint32);
-    memcpy(ctx->ctab + ctx->ctab_len, bytes, len);
-    ctx->ctab_len += len;
+    const uint32 retval = ((uint32) buffer_size(ctx->ctab)) - sizeof (uint32);
+    buffer_append(ctx->ctab, bytes, len);
     return retval;
 } // add_ctab_bytes
 
@@ -1656,10 +1597,20 @@ static uint32 add_ctab_info(Context *ctx, const MOJOSHADER_symbol *symbols,
 static void output_ctab(Context *ctx, const MOJOSHADER_symbol *symbols,
                         unsigned int symbol_count, const char *creator)
 {
-    ctx->ctab_len = CTAB_SIZE + sizeof (uint32);
+    const size_t tablelen = CTAB_SIZE + sizeof (uint32);
 
-    uint8 bytes[CTAB_SIZE + sizeof (uint32)];
-    uint32 *table = (uint32 *) bytes;
+    ctx->ctab = buffer_create(256, MallocBridge, FreeBridge, ctx);
+    if (ctx->ctab == NULL)
+        return;  // out of memory.
+
+    uint32 *table = (uint32 *) buffer_reserve(ctx->ctab, tablelen);
+    if (table == NULL)
+    {
+        buffer_destroy(ctx->ctab);
+        ctx->ctab = NULL;
+        return;  // out of memory.
+    } // if
+
     *(table++) = SWAP32(CTAB_ID);
     *(table++) = SWAP32(CTAB_SIZE);
     *(table++) = SWAP32(add_ctab_string(ctx, creator));
@@ -1668,13 +1619,17 @@ static void output_ctab(Context *ctx, const MOJOSHADER_symbol *symbols,
     *(table++) = SWAP32(add_ctab_info(ctx, symbols, symbol_count));
     *(table++) = SWAP32(0);  // build flags.
     *(table++) = SWAP32(add_ctab_string(ctx, ""));  // !!! FIXME: target?
-    memcpy(ctx->ctab, bytes, sizeof (bytes));
-    output_comment_bytes(ctx, ctx->ctab, ctx->ctab_len);
 
-    Free(ctx, ctx->ctab);
+    const size_t ctablen = buffer_size(ctx->ctab);
+    uint8 *buf = (uint8 *) buffer_flatten(ctx->ctab);
+    if (buf != NULL)
+    {
+        output_comment_bytes(ctx, buf, ctablen);
+        Free(ctx, buf);
+    } // if
+
+    buffer_destroy(ctx->ctab);
     ctx->ctab = NULL;
-    ctx->ctab_len = 0;
-    ctx->ctab_allocation = 0;
 } // output_ctab
 
 
@@ -1703,6 +1658,80 @@ static void output_comments(Context *ctx, const char **comments,
 } // output_comments
 
 
+static const MOJOSHADER_parseData *build_final_assembly(Context *ctx)
+{
+    if (isfail(ctx))
+        return build_failed_assembly(ctx);
+
+    // get the final bytecode!
+    const unsigned int output_len = (unsigned int) buffer_size(ctx->output);
+    unsigned char *bytecode = buffer_flatten(ctx->output);
+    buffer_destroy(ctx->output);
+    ctx->output = NULL;
+
+    if (bytecode == NULL)
+        return build_failed_assembly(ctx);
+
+    // This validates the shader; there are lots of things that are
+    //  invalid, but will successfully parse in the assembler,
+    //  generating bad bytecode; this will catch them without us
+    //  having to duplicate most of the validation here.
+    // It also saves us the trouble of duplicating all the other work,
+    //  like setting up the uniforms list, etc.
+    MOJOSHADER_parseData *retval = (MOJOSHADER_parseData *)
+                            MOJOSHADER_parse(MOJOSHADER_PROFILE_BYTECODE,
+                                    bytecode, output_len, NULL, 0,
+                                    ctx->malloc, ctx->free, ctx->malloc_data);
+    Free(ctx, bytecode);
+
+    SourcePos *token_to_src = NULL;
+    if (retval->error_count > 0)
+        token_to_src = (SourcePos *) buffer_flatten(ctx->token_to_source);
+    buffer_destroy(ctx->token_to_source);
+    ctx->token_to_source = NULL;
+
+    if (retval->error_count > 0)
+    {
+        if (token_to_src == NULL)
+        {
+            assert(ctx->out_of_memory);
+            MOJOSHADER_freeParseData(retval);
+            return build_failed_assembly(ctx);
+        } // if
+
+        // on error, map the bytecode back to a line number.
+        int i;
+        for (i = 0; i < retval->error_count; i++)
+        {
+            MOJOSHADER_error *error = &retval->errors[i];
+            if (error->error_position >= 0)
+            {
+                assert(retval != &MOJOSHADER_out_of_mem_data);
+                assert((error->error_position % sizeof (uint32)) == 0);
+
+                const size_t pos = error->error_position / sizeof(uint32);
+                if (pos >= output_len)
+                    error->error_position = -1;  // oh well.
+                else
+                {
+                    const SourcePos *srcpos = &token_to_src[pos];
+                    Free(ctx, (void *) error->filename);
+                    char *fname = NULL;
+                    if (srcpos->filename != NULL)
+                        fname = StrDup(ctx, srcpos->filename);
+                    error->error_position = srcpos->line;
+                    error->filename = fname;  // may be NULL, that's okay.
+                } // else
+            } // if
+        } // for
+
+        Free(ctx, token_to_src);
+    } // if
+
+    return retval;
+} // build_final_assembly
+
+
 // API entry point...
 
 const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
@@ -1716,7 +1745,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
                              MOJOSHADER_includeClose include_close,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
-    MOJOSHADER_parseData *retval = NULL;
+    const MOJOSHADER_parseData *retval = NULL;
     Context *ctx = NULL;
 
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
@@ -1739,49 +1768,7 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
 
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
-    if (isfail(ctx))
-        retval = (MOJOSHADER_parseData *) build_failed_assembly(ctx);
-    else
-    {
-        // This validates the shader; there are lots of things that are
-        //  invalid, but will successfully parse in the assembler, generating
-        //  bad bytecode; this will catch them without us having to
-        //  duplicate most of the validation here.
-        // It also saves us the trouble of duplicating all the other work,
-        //  like setting up the uniforms list, etc.
-        retval = (MOJOSHADER_parseData *)
-                        MOJOSHADER_parse(MOJOSHADER_PROFILE_BYTECODE,
-                                      (const unsigned char *) ctx->output,
-                                      ctx->output_len * sizeof (uint32),
-                                      NULL, 0, m, f, d);
-
-        // on error, map the bytecode back to a line number.
-        int i;
-        for (i = 0; i < retval->error_count; i++)
-        {
-            MOJOSHADER_error *error = &retval->errors[i];
-            if (error->error_position >= 0)
-            {
-                assert(retval != &MOJOSHADER_out_of_mem_data);
-                assert((error->error_position % sizeof (uint32)) == 0);
-
-                const size_t pos = error->error_position / sizeof (uint32);
-                if (pos >= ctx->output_len)
-                    error->error_position = -1;  // oh well.
-                else
-                {
-                    const SourcePos *srcpos = &ctx->token_to_source[pos];
-                    Free(ctx, (void *) error->filename);
-                    char *fname = NULL;
-                    if (srcpos->filename != NULL)
-                        fname = StrDup(ctx, srcpos->filename);
-                    error->error_position = srcpos->line;
-                    error->filename = fname;  // may be NULL, that's okay.
-                } // else
-            } // if
-        } // for
-    } // if
-
+    retval = build_final_assembly(ctx);
     destroy_context(ctx);
     return retval;
 } // MOJOSHADER_assemble
