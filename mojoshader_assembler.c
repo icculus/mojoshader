@@ -175,7 +175,6 @@ static Token nexttoken(Context *ctx)
 
             if (preprocessor_outofmemory(ctx->preprocessor))
             {
-                out_of_memory(ctx);  // !!! FIXME: this can go; we're bridged now!
                 ctx->tokenval = TOKEN_EOI;
                 ctx->token = NULL;
                 ctx->tokenlen = 0;
