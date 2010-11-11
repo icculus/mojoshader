@@ -533,7 +533,6 @@ static int push_source(Context *ctx, const char *fname, const char *source,
         state->filename = stringcache(ctx->filename_cache, fname);
         if (state->filename == NULL)
         {
-            out_of_memory(ctx);
             put_include(ctx, state);
             return 0;
         } // if
@@ -623,7 +622,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     ctx->close_callback = close_callback;
     ctx->asm_comments = asm_comments;
 
-    ctx->filename_cache = stringcache_create(m, f, d);
+    ctx->filename_cache = stringcache_create(MallocBridge, FreeBridge, ctx);
     okay = ((okay) && (ctx->filename_cache != NULL));
 
     ctx->file_macro = get_define(ctx);
@@ -868,9 +867,7 @@ static void handle_pp_line(Context *ctx)
     } // if
 
     const char *cached = stringcache(ctx->filename_cache, filename);
-    if (cached == NULL)
-        out_of_memory(ctx);
-    state->filename = cached;
+    state->filename = cached;  // may be NULL if stringcache() failed.
     state->line = linenum;
 } // handle_pp_line
 
