@@ -70,10 +70,10 @@ typedef struct Context
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
+    int current_position;
     const uint32 *orig_tokens;
     const uint32 *tokens;
     uint32 tokencount;
-    MOJOSHADER_parsePhase parse_phase;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
     Buffer *output;
@@ -368,8 +368,6 @@ static inline int isfail(const Context *ctx)
 } // isfail
 
 
-// !!! FIXME: move the errpos calculation into Context, and we can move this
-// !!! FIXME:  to mojoshader_common.c
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void failf(Context *ctx, const char *fmt, ...)
 {
@@ -377,27 +375,10 @@ static void failf(Context *ctx, const char *fmt, ...)
     if (ctx->out_of_memory)
         return;
 
-    int errpos = 0;
-    switch (ctx->parse_phase)
-    {
-        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            errpos = -2;
-            break;
-        case MOJOSHADER_PARSEPHASE_WORKING:
-            errpos = (ctx->tokens - ctx->orig_tokens) * sizeof (uint32);
-            break;
-        case MOJOSHADER_PARSEPHASE_DONE:
-            errpos = -1;
-            break;
-        default:
-            assert(0 && "Unexpected value");
-            return;
-    } // switch
-
     // no filename at this level (we pass a NULL to errorlist_add_va()...)
     va_list ap;
     va_start(ap, fmt);
-    errorlist_add_va(ctx->errors, NULL, errpos, fmt, ap);
+    errorlist_add_va(ctx->errors, NULL, ctx->current_position, fmt, ap);
     va_end(ap);
 } // failf
 
@@ -665,6 +646,13 @@ static int allocate_branch_label(Context *ctx)
 {
     return ctx->assigned_branch_labels++;
 } // allocate_branch_label
+
+static inline void adjust_token_position(Context *ctx, const int incr)
+{
+    ctx->tokens += incr;
+    ctx->tokencount -= incr;
+    ctx->current_position += incr * sizeof (uint32);
+} // adjust_token_position
 
 
 // D3D stuff that's used in more than just the d3d profile...
@@ -5285,8 +5273,8 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
         info->regnum += 6144;
     } // else if
 
-    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
-    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+    // swallow token for now, for multiple calls in a row.
+    adjust_token_position(ctx, 1);
 
     if (reserved1 != 0x0)
         fail(ctx, "Reserved bit #1 in destination token must be zero");
@@ -5517,8 +5505,8 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     info->swizzle_z = ((info->swizzle >> 4) & 0x3);
     info->swizzle_w = ((info->swizzle >> 6) & 0x3);
 
-    ctx->tokens++;  // swallow token for now, for multiple calls in a row.
-    ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+    // swallow token for now, for multiple calls in a row.
+    adjust_token_position(ctx, 1);
 
     if (reserved1 != 0x0)
         fail(ctx, "Reserved bits #1 in source token must be zero");
@@ -5538,8 +5526,8 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
             fail(ctx, "Relative addressing in pixel shader version < 3.0");
 
         const uint32 reltoken = SWAP32(*(ctx->tokens));
-        ctx->tokens++;  // swallow token for now, for multiple calls in a row.
-        ctx->tokencount--;  // swallow token for now, for multiple calls in a row.
+        // swallow token for now, for multiple calls in a row.
+        adjust_token_position(ctx, 1);
 
         const int relswiz = (int) ((reltoken >> 16) & 0xFF);
         info->relative_regnum = (int) (reltoken & 0x7ff);
@@ -5756,8 +5744,7 @@ static int parse_args_DCL(Context *ctx)
         fail(ctx, "Bit #31 in DCL token must be one");
 
     ctx->centroid_allowed = 1;
-    ctx->tokens++;
-    ctx->tokencount--;
+    adjust_token_position(ctx, 1);
     parse_destination_token(ctx, &ctx->dest_arg);
     ctx->centroid_allowed = 0;
 
@@ -6648,6 +6635,7 @@ static const Instruction instructions[] =
 static int parse_instruction_token(Context *ctx)
 {
     int retval = 0;
+    const int start_position = ctx->current_position;
     const uint32 *start_tokens = ctx->tokens;
     const uint32 start_tokencount = ctx->tokencount;
     const uint32 token = SWAP32(*(ctx->tokens));
@@ -6693,8 +6681,7 @@ static int parse_instruction_token(Context *ctx)
     ctx->predicated = predicated;
 
     // Update the context with instruction's arguments.
-    ctx->tokens++;
-    ctx->tokencount--;
+    adjust_token_position(ctx, 1);
     retval = instruction->parse_args(ctx);
 
     if (predicated)
@@ -6703,6 +6690,7 @@ static int parse_instruction_token(Context *ctx)
     // parse_args() moves these forward for convenience...reset them.
     ctx->tokens = start_tokens;
     ctx->tokencount = start_tokencount;
+    ctx->current_position = start_position;
 
     if (instruction->state != NULL)
         instruction->state(ctx);
@@ -6985,7 +6973,7 @@ static Context *build_context(const char *profile,
     ctx->endline = ENDLINE_STR;
     ctx->endline_len = strlen(ctx->endline);
     ctx->last_address_reg_component = -1;
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+    ctx->current_position = MOJOSHADER_POSITION_BEFORE;
 
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
     if (ctx->errors == NULL)
@@ -7644,7 +7632,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     verify_swizzles(ctx);
 
     // Version token always comes first.
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
+    ctx->current_position = 0;
     rc = parse_version_token(ctx, profile);
 
     // drop out now if this definitely isn't bytecode. Saves lots of
@@ -7662,8 +7650,7 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
         ctx->tokencount = rc;
     } // if
 
-    ctx->tokens += rc;
-    ctx->tokencount -= rc;
+    adjust_token_position(ctx, rc);
 
     // parse out the rest of the tokens after the version token...
     while (ctx->tokencount > 0)
@@ -7682,11 +7669,10 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
             break;
         } // if
 
-        ctx->tokens += rc;
-        ctx->tokencount -= rc;
+        adjust_token_position(ctx, rc);
     } // while
 
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_DONE;
+    ctx->current_position = MOJOSHADER_POSITION_AFTER;
 
     if (!failed)
     {

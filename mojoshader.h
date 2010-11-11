@@ -319,6 +319,13 @@ typedef struct MOJOSHADER_symbol
 } MOJOSHADER_symbol;
 
 
+/*
+ * These are used with MOJOSHADER_error as special case positions.
+ */
+#define MOJOSHADER_POSITION_NONE (-3)
+#define MOJOSHADER_POSITION_BEFORE (-2)
+#define MOJOSHADER_POSITION_AFTER (-1)
+
 typedef struct MOJOSHADER_error
 {
     /*
@@ -335,12 +342,14 @@ typedef struct MOJOSHADER_error
     const char *filename;
 
     /*
-     * Position of error, if there is one. Will be -3 if there was no
-     *  error, -2 if there was an error before processing started, and
-     *  -1 if there was an error during final processing. If >= 0,
-     *  MOJOSHADER_parse() sets this to the byte offset (starting at zero) into
-     *  the bytecode you supplied, and MOJOSHADER_assemble() sets this to a
-     *  a line number in the source code you supplied (starting at one).
+     * Position of error, if there is one. Will be MOJOSHADER_POSITION_NONE if
+     *  there was no error, MOJOSHADER_POSITION_BEFORE if there was an error
+     *  before processing started, and MOJOSHADER_POSITION_AFTER if there was
+     *  an error during final processing. If >= 0, MOJOSHADER_parse() sets
+     *  this to the byte offset (starting at zero) into the bytecode you
+     *  supplied, and MOJOSHADER_assemble(), MOJOSHADER_parseAst(), and
+     *  MOJOSHADER_compile() sets this to a a line number in the source code
+     *  you supplied (starting at one).
      */
     int error_position;
 } MOJOSHADER_error;

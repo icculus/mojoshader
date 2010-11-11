@@ -40,9 +40,10 @@ typedef struct Context
     MOJOSHADER_malloc malloc;
     MOJOSHADER_free free;
     void *malloc_data;
+    const char *current_file;
+    int current_position;
     ErrorList *errors;
     Preprocessor *preprocessor;
-    MOJOSHADER_parsePhase parse_phase;
     MOJOSHADER_shaderType shader_type;
     uint8 major_ver;
     uint8 minor_ver;
@@ -103,39 +104,16 @@ static void FreeBridge(void *ptr, void *data)
 } // FreeBridge
 
 
-// !!! FIXME: move the errpos calculation into Context, and we can move this
-// !!! FIXME:  to mojoshader_common.c
 static void failf(Context *ctx, const char *fmt, ...) ISPRINTF(2,3);
 static void failf(Context *ctx, const char *fmt, ...)
 {
-    const char *fname = NULL;
-    unsigned int linenum = 0;
-
     ctx->isfail = 1;
     if (ctx->out_of_memory)
         return;
 
-    int errpos = 0;
-    switch (ctx->parse_phase)
-    {
-        case MOJOSHADER_PARSEPHASE_NOTSTARTED:
-            errpos = -2;
-            break;
-        case MOJOSHADER_PARSEPHASE_WORKING:
-            fname = preprocessor_sourcepos(ctx->preprocessor, &linenum);
-            errpos = (int) linenum;
-            break;
-        case MOJOSHADER_PARSEPHASE_DONE:
-            errpos = -1;
-            break;
-        default:
-            assert(0 && "Unexpected value");
-            return;
-    } // switch
-
     va_list ap;
     va_start(ap, fmt);
-    errorlist_add_va(ctx->errors, fname, errpos, fmt, ap);
+    errorlist_add_va(ctx->errors, ctx->current_file, ctx->current_position, fmt, ap);
     va_end(ap);
 } // failf
 
@@ -197,14 +175,18 @@ static Token nexttoken(Context *ctx)
 
             if (preprocessor_outofmemory(ctx->preprocessor))
             {
-                out_of_memory(ctx);
+                out_of_memory(ctx);  // !!! FIXME: this can go; we're bridged now!
                 ctx->tokenval = TOKEN_EOI;
                 ctx->token = NULL;
                 ctx->tokenlen = 0;
                 break;
             } // if
 
-            else if (ctx->tokenval == TOKEN_BAD_CHARS)
+            unsigned int line;
+            ctx->current_file = preprocessor_sourcepos(ctx->preprocessor,&line);
+            ctx->current_position = (int) line;
+
+            if (ctx->tokenval == TOKEN_BAD_CHARS)
             {
                 fail(ctx, "Bad characters in source file");
                 continue;
@@ -1436,7 +1418,7 @@ static Context *build_context(const char *filename,
     ctx->malloc = m;
     ctx->free = f;
     ctx->malloc_data = d;
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+    ctx->current_position = MOJOSHADER_POSITION_BEFORE;
 
     const size_t outblk = sizeof (uint32) * 4 * 64; // 64 4-token instrs.
     ctx->output = buffer_create(outblk, MallocBridge, FreeBridge, ctx);
@@ -1642,7 +1624,10 @@ static void output_comments(Context *ctx, const char **comments,
         return;
 
     // make error messages sane if CTAB fails, etc.
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_NOTSTARTED;
+    const char *prev_fname = ctx->current_file;
+    const int prev_position = ctx->current_position;
+    ctx->current_file = NULL;
+    ctx->current_position = MOJOSHADER_POSITION_BEFORE;
 
     const char *creator = "MojoShader revision " MOJOSHADER_CHANGESET;
     if (symbol_count > 0)
@@ -1654,7 +1639,8 @@ static void output_comments(Context *ctx, const char **comments,
     for (i = 0; i < comment_count; i++)
         output_comment_string(ctx, comments[i]);
 
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
+    ctx->current_file = prev_fname;
+    ctx->current_position = prev_position;
 } // output_comments
 
 
@@ -1757,7 +1743,6 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
         return &MOJOSHADER_out_of_mem_data;
 
     // Version token always comes first.
-    ctx->parse_phase = MOJOSHADER_PARSEPHASE_WORKING;
     parse_version_token(ctx);
     output_comments(ctx, comments, comment_count, symbols, symbol_count);
 
@@ -1765,6 +1750,9 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
     Token token;
     while ((token = nexttoken(ctx)) != TOKEN_EOI)
         parse_token(ctx, token);
+
+    ctx->current_file = NULL;
+    ctx->current_position = MOJOSHADER_POSITION_AFTER;
 
     output_token(ctx, 0x0000FFFF);   // end token always 0x0000FFFF.
 
