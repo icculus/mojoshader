@@ -1431,7 +1431,9 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
 
         if (saw_params < expected)
         {
+            const int origdeflen = (int) buffer_size(origbuffer);
             char *origdefinition = buffer_flatten(origbuffer);
+            const int deflen = (int) buffer_size(buffer);
             char *definition = buffer_flatten(buffer);
             Define *p = get_define(ctx);
             if ((!origdefinition) || (!definition) || (!p))
@@ -1446,7 +1448,7 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
 
             // trim any whitespace from the end of the string...
             int i;
-            for (i = (int) buffer_size(buffer) - 1; i >= 0; i--)
+            for (i = deflen - 1; i >= 0; i--)
             {
                 if (definition[i] == ' ')
                     definition[i] = '\0';
@@ -1454,7 +1456,7 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
                     break;
             } // for
 
-            for (i = (int) buffer_size(origbuffer) - 1; i >= 0; i--)
+            for (i = origdeflen - 1; i >= 0; i--)
             {
                 if (origdefinition[i] == ' ')
                     origdefinition[i] = '\0';
