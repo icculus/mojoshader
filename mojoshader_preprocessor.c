@@ -640,26 +640,21 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     unsigned int define_include_len = 0;
     if ((okay) && (define_count > 0))
     {
-        for (i = 0; i < define_count; i++)
+        Buffer *predefbuf = buffer_create(256, MallocBridge, FreeBridge, ctx);
+        okay = okay && (predefbuf != NULL);
+        for (i = 0; okay && (i < define_count); i++)
         {
-            define_include_len += strlen(defines[i].identifier);
-            define_include_len += strlen(defines[i].definition);
-            define_include_len += 10;  // "#define<space><space><newline>"
+            okay = okay && buffer_append_fmt(predefbuf, "#define %s %s\n",
+                                 defines[i].identifier, defines[i].definition);
         } // for
-        define_include_len++;  // for null terminator.
 
-        define_include = (char *) Malloc(ctx, define_include_len);
-        if (define_include == NULL)
-            okay = 0;
-        else
+        define_include_len = buffer_size(predefbuf);
+        if (define_include_len > 0)
         {
-            char *ptr = define_include;
-            for (i = 0; i < define_count; i++)
-            {
-                ptr += sprintf(ptr, "#define %s %s\n", defines[i].identifier,
-                               defines[i].definition);
-            } // for
-        } // else
+            define_include = buffer_flatten(predefbuf);
+            okay = okay && (define_include != NULL);
+        } // if
+        buffer_destroy(predefbuf);
     } // if
 
     if ((okay) && (!push_source(ctx,fname,source,sourcelen,1,NULL)))
@@ -669,7 +664,7 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     {
         assert(define_include != NULL);
         okay = push_source(ctx, "<predefined macros>", define_include,
-                           define_include_len-1, 1, close_define_include);
+                           define_include_len, 1, close_define_include);
     } // if
 
     if (!okay)
