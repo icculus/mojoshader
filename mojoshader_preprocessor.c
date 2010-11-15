@@ -665,10 +665,11 @@ Preprocessor *preprocessor_start(const char *fname, const char *source,
     if ((okay) && (!push_source(ctx,fname,source,sourcelen,1,NULL)))
         okay = 0;
 
-    if ((okay) && (define_include != NULL))
+    if ((okay) && (define_include_len > 0))
     {
+        assert(define_include != NULL);
         okay = push_source(ctx, "<predefined macros>", define_include,
-                           define_include_len, 1, close_define_include);
+                           define_include_len-1, 1, close_define_include);
     } // if
 
     if (!okay)
