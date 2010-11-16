@@ -1394,7 +1394,8 @@ static int handle_macro_args(Context *ctx, const char *sym, const Define *def)
                 // don't add whitespace to the start, so we recognize
                 //  void calls correctly.
                 origexpr = expr = " ";
-                origexprlen = (buffer_size(buffer) == 0) ? 0 : 1;
+                origexprlen = (buffer_size(origbuffer) == 0) ? 0 : 1;
+                exprlen = (buffer_size(buffer) == 0) ? 0 : 1;
             } // else if
 
             else if (t == TOKEN_IDENTIFIER)
