@@ -2190,6 +2190,19 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                              MOJOSHADER_includeClose include_close,
                              MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
+    MOJOSHADER_preprocessData *retval = NULL;
+    Preprocessor *pp = NULL;
+    ErrorList *errors = NULL;
+    Buffer *buffer = NULL;
+    Token token = TOKEN_UNKNOWN;
+    const char *tokstr = NULL;
+    int nl = 1;
+    int indent = 0;
+    unsigned int len = 0;
+    char *output = NULL;
+    int errcount = 0;
+    size_t total_bytes = 0;
+
     // !!! FIXME: what's wrong with ENDLINE_STR?
     #ifdef _WINDOWS
     static const char endline[] = { '\r', '\n' };
@@ -2202,34 +2215,20 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     if (!include_open) include_open = MOJOSHADER_internal_include_open;
     if (!include_close) include_close = MOJOSHADER_internal_include_close;
 
-    Preprocessor *pp = preprocessor_start(filename, source, sourcelen,
-                                          include_open, include_close,
-                                          defines, define_count, 0, m, f, d);
-
+    pp = preprocessor_start(filename, source, sourcelen,
+                            include_open, include_close,
+                            defines, define_count, 0, m, f, d);
     if (pp == NULL)
-        return &out_of_mem_data_preprocessor;
+        goto preprocess_out_of_mem;
 
-    ErrorList *errors = errorlist_create(MallocBridge, FreeBridge, pp);
+    errors = errorlist_create(MallocBridge, FreeBridge, pp);
     if (errors == NULL)
-    {
-        preprocessor_end(pp);
-        return &out_of_mem_data_preprocessor;
-    } // if
+        goto preprocess_out_of_mem;
 
-    Buffer *buffer = buffer_create(4096, MallocBridge, FreeBridge, pp);
-    if (!buffer)
-    {
-        errorlist_destroy(errors);
-        preprocessor_end(pp);
-        return &out_of_mem_data_preprocessor;
-    } // if
+    buffer = buffer_create(4096, MallocBridge, FreeBridge, pp);
+    if (buffer == NULL)
+        goto preprocess_out_of_mem;
 
-    Token token = TOKEN_UNKNOWN;
-    const char *tokstr = NULL;
-
-    int nl = 1;
-    int indent = 0;
-    unsigned int len = 0;
     while ((tokstr = preprocessor_nexttoken(pp, &len, &token)) != NULL)
     {
         int isnewline = 0;
@@ -2237,12 +2236,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         assert(token != TOKEN_EOI);
 
         if (preprocessor_outofmemory(pp))
-        {
-            preprocessor_end(pp);
-            buffer_destroy(buffer);
-            errorlist_destroy(errors);
-            return &out_of_mem_data_preprocessor;
-        } // if
+            goto preprocess_out_of_mem;
 
         // Microsoft's preprocessor is weird.
         // It ignores newlines, and then inserts its own around certain
@@ -2294,49 +2288,47 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
     
     assert(token == TOKEN_EOI);
 
-    preprocessor_end(pp);
-
-    const size_t total_bytes = buffer_size(buffer);
-    char *output = buffer_flatten(buffer);
+    total_bytes = buffer_size(buffer);
+    output = buffer_flatten(buffer);
     buffer_destroy(buffer);
-    if (output == NULL)
-    {
-        errorlist_destroy(errors);
-        return &out_of_mem_data_preprocessor;
-    } // if
+    buffer = NULL;  // don't free this pointer again.
 
-    MOJOSHADER_preprocessData *retval = (MOJOSHADER_preprocessData *)
-                                    m(sizeof (MOJOSHADER_preprocessData), d);
+    if (output == NULL)
+        goto preprocess_out_of_mem;
+
+    retval = (MOJOSHADER_preprocessData *) m(sizeof (*retval), d);
     if (retval == NULL)
-    {
-        errorlist_destroy(errors);
-        f(output, d);
-        return &out_of_mem_data_preprocessor;
-    } // if
+        goto preprocess_out_of_mem;
 
     memset(retval, '\0', sizeof (*retval));
-    const int errcount = errorlist_count(errors);
+    errcount = errorlist_count(errors);
     if (errcount > 0)
     {
         retval->error_count = errcount;
         retval->errors = errorlist_flatten(errors);
         if (retval->errors == NULL)
-        {
-            errorlist_destroy(errors);
-            f(retval, d);
-            f(output, d);
-            return &out_of_mem_data_preprocessor;
-        } // if
+            goto preprocess_out_of_mem;
     } // if
-
-    errorlist_destroy(errors);
 
     retval->output = output;
     retval->output_len = total_bytes;
     retval->malloc = m;
     retval->free = f;
     retval->malloc_data = d;
+
+    errorlist_destroy(errors);
+    preprocessor_end(pp);
     return retval;
+
+preprocess_out_of_mem:
+    if (retval != NULL)
+        f(retval->errors, d);
+    f(retval, d);
+    f(output, d);
+    buffer_destroy(buffer);
+    errorlist_destroy(errors);
+    preprocessor_end(pp);
+    return &out_of_mem_data_preprocessor;
 } // MOJOSHADER_preprocess
 
 
