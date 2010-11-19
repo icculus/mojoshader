@@ -14,8 +14,8 @@
 
 #include "mojoshader.h"
 
-#ifndef _WIN32
-#define stricmp(a,b) strcasecmp(a,b)
+#ifdef _WIN32
+#define snprintf _snprintf   // !!! FIXME: not a safe replacement!
 #endif
 
 static const char **include_paths = NULL;

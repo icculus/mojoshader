@@ -1650,7 +1650,7 @@ static const MOJOSHADER_parseData *build_final_assembly(Context *ctx)
 
     // get the final bytecode!
     const unsigned int output_len = (unsigned int) buffer_size(ctx->output);
-    unsigned char *bytecode = buffer_flatten(ctx->output);
+    unsigned char *bytecode = (unsigned char *) buffer_flatten(ctx->output);
     buffer_destroy(ctx->output);
     ctx->output = NULL;
 

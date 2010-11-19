@@ -26,7 +26,8 @@
 #endif
 
 #ifdef __WIN32__
-extern int access();
+//extern int access();
+#include <io.h>
 #else
 #include <unistd.h>
 #endif

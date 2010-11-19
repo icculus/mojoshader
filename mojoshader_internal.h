@@ -85,13 +85,22 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 #include <malloc.h>
 #define va_copy(a, b) a = b
 #define snprintf _snprintf  // !!! FIXME: not a safe replacement!
+#define vsnprintf _vsnprintf  // !!! FIXME: not a safe replacement!
 #define strcasecmp stricmp
+#define strncasecmp strnicmp
 typedef unsigned __int8 uint8;
 typedef unsigned __int16 uint16;
 typedef unsigned __int32 uint32;
 typedef unsigned __int64 uint64;
 typedef __int32 int32;
 typedef __int64 int64;
+#ifdef _WIN64
+typedef __int64 ssize_t;
+#elif defined _WIN32
+typedef __int32 ssize_t;
+#else
+#error Please define your platform.
+#endif
 // Warning Level 4 considered harmful.  :)
 #pragma warning(disable: 4100)  // "unreferenced formal parameter"
 #pragma warning(disable: 4389)  // "signed/unsigned mismatch"
@@ -214,14 +223,14 @@ void errorlist_destroy(ErrorList *list);
 
 typedef struct Buffer Buffer;
 Buffer *buffer_create(size_t blksz,MOJOSHADER_malloc m,MOJOSHADER_free f,void *d);
-void *buffer_reserve(Buffer *buffer, const size_t len);
+char *buffer_reserve(Buffer *buffer, const size_t len);
 int buffer_append(Buffer *buffer, const void *_data, size_t len);
 int buffer_append_fmt(Buffer *buffer, const char *fmt, ...) ISPRINTF(2,3);
 int buffer_append_va(Buffer *buffer, const char *fmt, va_list va);
 size_t buffer_size(Buffer *buffer);
 void buffer_empty(Buffer *buffer);
-void *buffer_flatten(Buffer *buffer);
-void *buffer_merge(Buffer **buffers, const size_t n, size_t *_len);
+char *buffer_flatten(Buffer *buffer);
+char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len);
 void buffer_destroy(Buffer *buffer);
 ssize_t buffer_find(Buffer *buffer, const size_t start,
                     const void *data, const size_t len);

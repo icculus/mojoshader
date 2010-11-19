@@ -132,10 +132,17 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
     }
     #else
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, NULL, 0, NULL, NULL, NULL);
-    if (pd->error != NULL)
-        report("FAIL: %s (position %d) %s\n", fname, pd->error_position, pd->error);
-    else
+    if (pd->error_count == 0)
         report("PASS: %s\n", fname);
+	else
+	{
+		int i;
+		for (i = 0; i < pd->error_count; i++)
+		{
+			report("FAIL: %s (position %d) %s\n", pd->errors[i].filename,
+			       pd->errors[i].error_position, pd->errors[i].error);
+		} // for
+	} // else
     MOJOSHADER_freeParseData(pd);
     #endif
 

@@ -589,7 +589,7 @@ Buffer *buffer_create(size_t blksz, MOJOSHADER_malloc m,
     return buffer;
 } // buffer_create
 
-void *buffer_reserve(Buffer *buffer, const size_t len)
+char *buffer_reserve(Buffer *buffer, const size_t len)
 {
     // note that we make the blocks bigger than blocksize when we have enough
     //  data to overfill a fresh block, to reduce allocations.
@@ -607,7 +607,7 @@ void *buffer_reserve(Buffer *buffer, const size_t len)
             buffer->tail->bytes += len;
             buffer->total_bytes += len;
             assert(buffer->tail->bytes <= blocksize);
-            return buffer->tail->data + tailbytes;
+            return (char *) buffer->tail->data + tailbytes;
         } // if
     } // if
 
@@ -630,7 +630,7 @@ void *buffer_reserve(Buffer *buffer, const size_t len)
 
     buffer->total_bytes += len;
 
-    return item->data;
+    return (char *) item->data;
 } // buffer_reserve
 
 int buffer_append(Buffer *buffer, const void *_data, size_t len)
@@ -739,7 +739,7 @@ void buffer_empty(Buffer *buffer)
     buffer->total_bytes = 0;
 } // buffer_empty
 
-void *buffer_flatten(Buffer *buffer)
+char *buffer_flatten(Buffer *buffer)
 {
     char *retval = (char *) buffer->m(buffer->total_bytes + 1, buffer->d);
     if (retval == NULL)
@@ -764,7 +764,7 @@ void *buffer_flatten(Buffer *buffer)
     return retval;
 } // buffer_flatten
 
-void *buffer_merge(Buffer **buffers, const size_t n, size_t *_len)
+char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len)
 {
     Buffer *first = NULL;
     size_t len = 0;
@@ -779,7 +779,7 @@ void *buffer_merge(Buffer **buffers, const size_t n, size_t *_len)
         len += buffer->total_bytes;
     } // for
 
-    char *retval = (char *) first ? first->m(len + 1, first->d) : NULL;
+    char *retval = (char *) (first ? first->m(len + 1, first->d) : NULL);
     if (retval == NULL)
     {
         *_len = 0;
