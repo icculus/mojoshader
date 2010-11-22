@@ -74,7 +74,7 @@ Token preprocessor_lexer(IncludeState *s)
     L = [a-zA-Z_];
     H = [a-fA-F0-9];
     E = [Ee] [+-]? D+;
-    FS = [fFlL];
+    FS = [fFhH];
     IS = [uUlL]*;
     ESC = [\\] ([abfnrtv?'"\\] | "x" H+ | O+);
     PP = "#" [ \t]*;
