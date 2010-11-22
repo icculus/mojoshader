@@ -1504,15 +1504,22 @@ datatype = "!!! FIXME";
 
         case MOJOSHADER_AST_OP_MULTIPLY:
         case MOJOSHADER_AST_OP_DIVIDE:
-        case MOJOSHADER_AST_OP_MODULO:
         case MOJOSHADER_AST_OP_ADD:
         case MOJOSHADER_AST_OP_SUBTRACT:
-        case MOJOSHADER_AST_OP_LSHIFT:
-        case MOJOSHADER_AST_OP_RSHIFT:
             datatype = type_check_ast(ctx, ast->binary.left);
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_numeric_datatype(ctx, datatype);
             require_numeric_datatype(ctx, datatype2);
+            return add_type_coercion(ctx, &ast->binary.left, datatype,
+                                     &ast->binary.right, datatype2);
+
+        case MOJOSHADER_AST_OP_LSHIFT:
+        case MOJOSHADER_AST_OP_RSHIFT:
+        case MOJOSHADER_AST_OP_MODULO:
+            datatype = type_check_ast(ctx, ast->binary.left);
+            datatype2 = type_check_ast(ctx, ast->binary.right);
+            require_integer_datatype(ctx, datatype);
+            require_integer_datatype(ctx, datatype2);
             return add_type_coercion(ctx, &ast->binary.left, datatype,
                                      &ast->binary.right, datatype2);
 
