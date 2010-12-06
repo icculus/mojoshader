@@ -211,7 +211,7 @@ StringMap *stringmap_create(const int copy, MOJOSHADER_malloc m,
 
 void stringmap_destroy(StringMap *smap)
 {
-    return hash_destroy(smap);
+    hash_destroy(smap);
 } // stringmap_destroy
 
 int stringmap_insert(StringMap *smap, const char *key, const char *value)
