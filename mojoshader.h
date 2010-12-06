@@ -916,7 +916,117 @@ const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
  *
  * ALSO: This API is still evolving! We make no promises at this time to keep
  *  source or binary compatibility for the AST pieces.
+ *
+ * Important notes:
+ *  - ASTs are the result of parsing the source code: a program that fails to
+ *    compile will often parse successfully. Undeclared variables,
+ *    type incompatibilities, etc, aren't detected at this point.
+ *  - Vector swizzles (the ".xyzw" part of "MyVec4.xyzw") will look like
+ *    structure dereferences. We don't realize these are actually swizzles
+ *    until semantic analysis.
+ *  - MOJOSHADER_astDataType info is not reliable when returned from
+ *    MOJOSHADER_parseAst()! Most of the datatype info will be missing or have
+ *    inaccurate data types. We sort these out during semantic analysis, which
+ *    happens after the AST parsing is complete. A few are filled in, or can
+ *    be deduced fairly trivially by processing several pieces into one.
+ *    It's enough that you can reproduce the original source code, more or
+ *    less, from the AST.
  */
+
+/* High-level datatypes for AST nodes. */
+typedef enum MOJOSHADER_astDataTypeType
+{
+    MOJOSHADER_AST_DATATYPE_NONE,
+    MOJOSHADER_AST_DATATYPE_BOOL,
+    MOJOSHADER_AST_DATATYPE_INT,
+    MOJOSHADER_AST_DATATYPE_UINT,
+    MOJOSHADER_AST_DATATYPE_FLOAT,
+    MOJOSHADER_AST_DATATYPE_FLOAT_SNORM,
+    MOJOSHADER_AST_DATATYPE_FLOAT_UNORM,
+    MOJOSHADER_AST_DATATYPE_HALF,
+    MOJOSHADER_AST_DATATYPE_DOUBLE,
+    MOJOSHADER_AST_DATATYPE_STRING,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_1D,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_2D,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_3D,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_CUBE,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_STATE,
+    MOJOSHADER_AST_DATATYPE_SAMPLER_COMPARISON_STATE,
+    MOJOSHADER_AST_DATATYPE_STRUCT,
+    MOJOSHADER_AST_DATATYPE_ARRAY,
+    MOJOSHADER_AST_DATATYPE_VECTOR,
+    MOJOSHADER_AST_DATATYPE_MATRIX,
+    MOJOSHADER_AST_DATATYPE_BUFFER,
+    MOJOSHADER_AST_DATATYPE_FUNCTION,
+    MOJOSHADER_AST_DATATYPE_USER,
+} MOJOSHADER_astDataTypeType;
+#define MOJOSHADER_AST_DATATYPE_CONST (1 << 31)
+
+typedef union MOJOSHADER_astDataType MOJOSHADER_astDataType;
+
+// This is just part of DataTypeStruct, never appears outside of it.
+typedef struct MOJOSHADER_astDataTypeStructMember
+{
+    const MOJOSHADER_astDataType *datatype;
+    const char *identifier;
+} MOJOSHADER_astDataTypeStructMember;
+
+typedef struct MOJOSHADER_astDataTypeStruct
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataTypeStructMember *members;
+    int member_count;
+} MOJOSHADER_astDataTypeStruct;
+
+typedef struct MOJOSHADER_astDataTypeArray
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataType *base;
+    int elements;
+} MOJOSHADER_astDataTypeArray;
+
+typedef MOJOSHADER_astDataTypeArray MOJOSHADER_astDataTypeVector;
+
+typedef struct MOJOSHADER_astDataTypeMatrix
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataType *base;
+    int rows;
+    int columns;
+} MOJOSHADER_astDataTypeMatrix;
+
+typedef struct MOJOSHADER_astDataTypeBuffer
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataType *base;
+} MOJOSHADER_astDataTypeBuffer;
+
+typedef struct MOJOSHADER_astDataTypeFunction
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataType *retval;
+    const MOJOSHADER_astDataType *params;
+    int num_params;
+} MOJOSHADER_astDataTypeFunction;
+
+typedef struct MOJOSHADER_astDataTypeUser
+{
+    MOJOSHADER_astDataTypeType type;
+    const MOJOSHADER_astDataType *details;
+    const char *name;
+} MOJOSHADER_astDataTypeUser;
+
+union MOJOSHADER_astDataType
+{
+    MOJOSHADER_astDataTypeType type;
+    MOJOSHADER_astDataTypeArray array;
+    MOJOSHADER_astDataTypeStruct structure;
+    MOJOSHADER_astDataTypeVector vector;
+    MOJOSHADER_astDataTypeMatrix matrix;
+    MOJOSHADER_astDataTypeBuffer buffer;
+    MOJOSHADER_astDataTypeUser user;
+    MOJOSHADER_astDataTypeFunction function;
+};
 
 /* Structures that make up the parse tree... */
 
@@ -1077,7 +1187,11 @@ typedef struct MOJOSHADER_astGeneric
     MOJOSHADER_astNodeInfo ast;
 } MOJOSHADER_astGeneric;
 
-typedef MOJOSHADER_astGeneric MOJOSHADER_astExpression;
+typedef struct MOJOSHADER_astExpression
+{
+    MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
+} MOJOSHADER_astExpression;
 
 typedef struct MOJOSHADER_astArguments
 {
@@ -1089,12 +1203,14 @@ typedef struct MOJOSHADER_astArguments
 typedef struct MOJOSHADER_astExpressionUnary
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *operand;
 } MOJOSHADER_astExpressionUnary;
 
 typedef struct MOJOSHADER_astExpressionBinary
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *left;
     MOJOSHADER_astExpression *right;
 } MOJOSHADER_astExpressionBinary;
@@ -1102,6 +1218,7 @@ typedef struct MOJOSHADER_astExpressionBinary
 typedef struct MOJOSHADER_astExpressionTernary
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *left;
     MOJOSHADER_astExpression *center;
     MOJOSHADER_astExpression *right;
@@ -1110,50 +1227,58 @@ typedef struct MOJOSHADER_astExpressionTernary
 typedef struct MOJOSHADER_astExpressionIdentifier
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_IDENTIFIER */
+    const MOJOSHADER_astDataType *datatype;
     const char *identifier;
 } MOJOSHADER_astExpressionIdentifier;
 
 typedef struct MOJOSHADER_astExpressionIntLiteral
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_INT_LITERAL */
+    const MOJOSHADER_astDataType *datatype;  /* always AST_DATATYPE_INT */
     int value;
 } MOJOSHADER_astExpressionIntLiteral;
 
 typedef struct MOJOSHADER_astExpressionFloatLiteral
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_FLOAT_LITERAL */
+    const MOJOSHADER_astDataType *datatype;  /* always AST_DATATYPE_FLOAT */
     double value;
 } MOJOSHADER_astExpressionFloatLiteral;
 
 typedef struct MOJOSHADER_astExpressionStringLiteral
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_STRING_LITERAL */
+    const MOJOSHADER_astDataType *datatype;  /* always AST_DATATYPE_STRING */
     const char *string;
 } MOJOSHADER_astExpressionStringLiteral;
 
 typedef struct MOJOSHADER_astExpressionBooleanLiteral
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_BOOLEAN_LITERAL */
+    const MOJOSHADER_astDataType *datatype;  /* always AST_DATATYPE_BOOL */
     int value;  /* Always 1 or 0. */
 } MOJOSHADER_astExpressionBooleanLiteral;
 
 typedef struct MOJOSHADER_astExpressionConstructor
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CONSTRUCTOR */
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astArguments *args;
 } MOJOSHADER_astExpressionConstructor;
 
 typedef struct MOJOSHADER_astExpressionDerefStruct
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_DEREF_STRUCT */
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *identifier;
     const char *member;
+    int isswizzle;  /* Always 1 or 0. Never set by parseAst()! */
 } MOJOSHADER_astExpressionDerefStruct;
 
 typedef struct MOJOSHADER_astExpressionCallFunction
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CALLFUNC */
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *identifier;
     MOJOSHADER_astArguments *args;
 } MOJOSHADER_astExpressionCallFunction;
@@ -1161,7 +1286,7 @@ typedef struct MOJOSHADER_astExpressionCallFunction
 typedef struct MOJOSHADER_astExpressionCast
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CAST */
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *operand;
 } MOJOSHADER_astExpressionCast;
 
@@ -1199,8 +1324,8 @@ typedef enum MOJOSHADER_astInterpolationModifier
 typedef struct MOJOSHADER_astFunctionParameters
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astInputModifier input_modifier;
-    const char *datatype;
     const char *identifier;
     const char *semantic;
     MOJOSHADER_astInterpolationModifier interpolation_modifier;
@@ -1211,7 +1336,7 @@ typedef struct MOJOSHADER_astFunctionParameters
 typedef struct MOJOSHADER_astFunctionSignature
 {
     MOJOSHADER_astNodeInfo ast;
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     const char *identifier;
     MOJOSHADER_astFunctionParameters *params;
     MOJOSHADER_astFunctionStorageClass storage_class;
@@ -1229,7 +1354,7 @@ typedef struct MOJOSHADER_astScalarOrArray
 typedef struct MOJOSHADER_astAnnotations
 {
     MOJOSHADER_astNodeInfo ast;
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astExpression *initializer;
     struct MOJOSHADER_astAnnotations *next;
 } MOJOSHADER_astAnnotations;
@@ -1251,7 +1376,7 @@ typedef struct MOJOSHADER_astVariableLowLevel
 typedef struct MOJOSHADER_astStructMembers
 {
     MOJOSHADER_astNodeInfo ast;
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     const char *semantic;
     MOJOSHADER_astScalarOrArray *details;
     MOJOSHADER_astInterpolationModifier interpolation_mod;
@@ -1261,6 +1386,7 @@ typedef struct MOJOSHADER_astStructMembers
 typedef struct MOJOSHADER_astStructDeclaration
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     const char *name;
     MOJOSHADER_astStructMembers *members;
 } MOJOSHADER_astStructDeclaration;
@@ -1269,7 +1395,7 @@ typedef struct MOJOSHADER_astVariableDeclaration
 {
     MOJOSHADER_astNodeInfo ast;
     int attributes;
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     MOJOSHADER_astStructDeclaration *anonymous_datatype;
     MOJOSHADER_astScalarOrArray *details;
     const char *semantic;
@@ -1365,8 +1491,8 @@ typedef struct MOJOSHADER_astForStatement
 typedef struct MOJOSHADER_astTypedef
 {
     MOJOSHADER_astNodeInfo ast;
+    const MOJOSHADER_astDataType *datatype;
     int isconst;  /* boolean: 1 or 0 */
-    const char *datatype;
     MOJOSHADER_astScalarOrArray *details;
 } MOJOSHADER_astTypedef;
 

@@ -95,8 +95,8 @@ compilation_unit(A) ::= struct_declaration(B) SEMICOLON. { A = new_global_struct
 %type typedef { MOJOSHADER_astTypedef * }
 %destructor typedef { delete_typedef(ctx, $$); }
 // !!! FIXME: should CONST be here, or in datatype?
-typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); push_usertype(ctx, C->identifier, "?"); }
-typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); push_usertype(ctx, C->identifier, "?"); }
+typedef(A) ::= TYPEDEF CONST datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 1, B, C); push_usertype(ctx, C->identifier, A->datatype); }
+typedef(A) ::= TYPEDEF datatype(B) scalar_or_array(C). { A = new_typedef(ctx, 0, B, C); push_usertype(ctx, C->identifier, A->datatype); }
 
 %type function_signature { MOJOSHADER_astFunctionSignature * }
 %destructor function_signature { delete_function_signature(ctx, $$); }
@@ -132,6 +132,7 @@ function_parameter_list(A) ::= function_parameter(B). { A = B; }
 function_parameter_list(A) ::= function_parameter_list(B) COMMA function_parameter(C). { C->next = B; A = C; }
 
 // !!! FIXME: this is pretty unreadable.
+// !!! FIXME: CONST?
 %type function_parameter { MOJOSHADER_astFunctionParameters * }
 %destructor function_parameter { delete_function_params(ctx, $$); }
 function_parameter(A) ::= input_modifier(B) datatype(C) IDENTIFIER(D) semantic(E) interpolation_mod(F) initializer(G). { A = new_function_param(ctx, B, C, D.string, E, F, G); }
@@ -224,7 +225,7 @@ struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. {
 
 // This has to be separate from struct_declaration so that the struct is in the usertypemap when parsing its members.
 %type struct_intro { const char * }
-struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, "?"); }
+struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, &ctx->dt_int); }  // datatype is bogus until semantic analysis.
 
 %type struct_member_list { MOJOSHADER_astStructMembers * }
 %destructor struct_member_list { delete_struct_member(ctx, $$); }
@@ -300,48 +301,53 @@ initializer_block(A) ::= LBRACE initializer_block_list(B) RBRACE. { A = B; }
 initializer(A) ::= ASSIGN initializer_block(B). { A = B; }
 initializer(A) ::= ASSIGN expression(B). { A = B; }
 
-%type intrinsic_datatype { const char * }
+%type intrinsic_datatype { const MOJOSHADER_astDataType * }
 intrinsic_datatype(A) ::= datatype_vector(B). { A = B; }
 intrinsic_datatype(A) ::= datatype_matrix(B). { A = B; }
 intrinsic_datatype(A) ::= datatype_scalar(B). { A = B; }
 intrinsic_datatype(A) ::= datatype_sampler(B). { A = B; }
+intrinsic_datatype(A) ::= datatype_buffer(B). { A = B; }
 
-%type datatype { const char * }
+%type datatype { const MOJOSHADER_astDataType * }
 datatype(A) ::= intrinsic_datatype(B). { A = B; }
-datatype(A) ::= USERTYPE(B). { A = B.string; }
+datatype(A) ::= USERTYPE(B). { A = B.datatype; }
 
-%type datatype_sampler { const char * }
-datatype_sampler(A) ::= SAMPLER. { A = ctx->str_s1; }
-datatype_sampler(A) ::= SAMPLER1D. { A = ctx->str_s1; }
-datatype_sampler(A) ::= SAMPLER2D. { A = ctx->str_s2; }
-datatype_sampler(A) ::= SAMPLER3D. { A = ctx->str_s3; }
-datatype_sampler(A) ::= SAMPLERCUBE. { A = ctx->str_sc; }
-datatype_sampler(A) ::= SAMPLER_STATE. { A = ctx->str_ss; }
-datatype_sampler(A) ::= SAMPLERSTATE. { A = ctx->str_ss; }
-datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = ctx->str_sS; }
+%type datatype_sampler { const MOJOSHADER_astDataType * }
+datatype_sampler(A) ::= SAMPLER. { A = &ctx->dt_sampler2d; }
+datatype_sampler(A) ::= SAMPLER1D. { A = &ctx->dt_sampler1d; }
+datatype_sampler(A) ::= SAMPLER2D. { A = &ctx->dt_sampler2d; }
+datatype_sampler(A) ::= SAMPLER3D. { A = &ctx->dt_sampler3d; }
+datatype_sampler(A) ::= SAMPLERCUBE. { A = &ctx->dt_samplercube; }
+datatype_sampler(A) ::= SAMPLER_STATE. { A = &ctx->dt_samplerstate; }
+datatype_sampler(A) ::= SAMPLERSTATE. { A = &ctx->dt_samplerstate; }
+datatype_sampler(A) ::= SAMPLERCOMPARISONSTATE. { A = &ctx->dt_samplercompstate; }
 
-%type datatype_scalar { const char * }
-datatype_scalar(A) ::= BOOL. { A = ctx->str_b; }
-datatype_scalar(A) ::= INT. { A = ctx->str_i; }
-datatype_scalar(A) ::= UINT. { A = ctx->str_u; }
-datatype_scalar(A) ::= HALF. { A = ctx->str_h; }
-datatype_scalar(A) ::= FLOAT. { A = ctx->str_f; }
-datatype_scalar(A) ::= DOUBLE. { A = ctx->str_d; }
-datatype_scalar(A) ::= STRING. { A = ctx->str_S; } // this is for the effects framework, not HLSL.
-datatype_scalar(A) ::= SNORM FLOAT. { A = ctx->str_ns; }
-datatype_scalar(A) ::= UNORM FLOAT. { A = ctx->str_nu; }
-datatype_scalar(A) ::= BUFFER LT datatype_scalar(B) GT. { A = stringcache_fmt(ctx->strcache, "B{%s}", B); }
+%type datatype_scalar { const MOJOSHADER_astDataType * }
+datatype_scalar(A) ::= BOOL. { A = &ctx->dt_bool; }
+datatype_scalar(A) ::= INT. { A = &ctx->dt_int; }
+datatype_scalar(A) ::= UINT. { A = &ctx->dt_uint; }
+datatype_scalar(A) ::= HALF. { A = &ctx->dt_half; }
+datatype_scalar(A) ::= FLOAT. { A = &ctx->dt_float; }
+datatype_scalar(A) ::= DOUBLE. { A = &ctx->dt_double; }
+datatype_scalar(A) ::= STRING. { A = &ctx->dt_string; } // this is for the effects framework, not HLSL.
+datatype_scalar(A) ::= SNORM FLOAT. { A = &ctx->dt_float_snorm; }
+datatype_scalar(A) ::= UNORM FLOAT. { A = &ctx->dt_float_unorm; }
 
-// !!! FIXME: MSDN suggests that the matrix ones are just typedefs inserted
-// !!! FIXME:  before parsing begins, like:
-// !!! FIXME: typedef matrix <bool,4,3> bool4x3;
-// !!! FIXME:  ...maybe we can rip these out of the grammar and just create
-// !!! FIXME:  them at startup?
-%type datatype_vector { const char * }
-datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = stringcache_fmt(ctx->strcache, "V{%d,%s}", (int) C.i64, B); }
+%type datatype_buffer { const MOJOSHADER_astDataType * }
+datatype_buffer(A) ::= BUFFER LT BOOL GT. { A = &ctx->dt_buf_bool; }
+datatype_buffer(A) ::= BUFFER LT INT GT. { A = &ctx->dt_buf_int; }
+datatype_buffer(A) ::= BUFFER LT UINT GT. { A = &ctx->dt_buf_uint; }
+datatype_buffer(A) ::= BUFFER LT HALF GT. { A = &ctx->dt_buf_half; }
+datatype_buffer(A) ::= BUFFER LT FLOAT GT. { A = &ctx->dt_buf_float; }
+datatype_buffer(A) ::= BUFFER LT DOUBLE GT. { A = &ctx->dt_buf_double; }
+datatype_buffer(A) ::= BUFFER LT SNORM FLOAT GT. { A = &ctx->dt_buf_float_snorm; }
+datatype_buffer(A) ::= BUFFER LT UNORM FLOAT GT. { A = &ctx->dt_buf_float_unorm; }
 
-%type datatype_matrix { const char * }
-datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = stringcache_fmt(ctx->strcache, "M{%d,%d,%s}", (int) C.i64, (int) D.i64, B); }
+%type datatype_vector { const MOJOSHADER_astDataType * }
+datatype_vector(A) ::= VECTOR LT datatype_scalar(B) COMMA INT_CONSTANT(C) GT. { A = new_datatype_vector(ctx, B, (int) C.i64); }
+
+%type datatype_matrix { const MOJOSHADER_astDataType * }
+datatype_matrix(A) ::= MATRIX LT datatype_scalar(B) COMMA INT_CONSTANT(C) COMMA INT_CONSTANT(D) GT. { A = new_datatype_matrix(ctx, B, (int) C.i64, (int) D.i64); }
 
 %type statement_block { MOJOSHADER_astStatement * }
 %destructor statement_block { delete_statement(ctx, $$); }

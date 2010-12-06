@@ -58,6 +58,7 @@ typedef union TokenData
     int64 i64;
     double dbl;
     const char *string;
+    const MOJOSHADER_astDataType *datatype;
 } TokenData;
 
 
@@ -66,7 +67,7 @@ typedef union TokenData
 typedef struct SymbolScope
 {
     const char *symbol;
-    const char *datatype;
+    const MOJOSHADER_astDataType *datatype;
     struct SymbolScope *next;
 } SymbolScope;
 
@@ -96,30 +97,32 @@ typedef struct Context
     MOJOSHADER_astNode *ast;  // Abstract Syntax Tree
     const char *source_profile;
 
-    // These are entries allocated in the strcache, so these pointers are
-    //  valid from shortly after we create the cache until we destroy it
-    //  with the rest of the context. This makes it so we can compare common
-    //  strings by pointer without having to hash them every time, so long as
-    //  we're comparing a string pointer we know came from this string cache.
-    // The first batch are simplifed datatype strings ("b" == bool, etc).
-    const char *str_b;  // "b"
-    const char *str_f;  // "f"
-    const char *str_i;  // "i"
-    const char *str_u;  // "u"
-    const char *str_h;  // "h"
-    const char *str_d;  // "d"
-    const char *str_s;  // "s"
-    const char *str_S;  // "S"
-    const char *str_s1;  // "s1"
-    const char *str_s2;  // "s2"
-    const char *str_s3;  // "s3"
-    const char *str_sc;  // "sc"
-    const char *str_ss;  // "ss"
-    const char *str_sS;  // "sS"
-    const char *str_Fs;  // "Fs"
-    const char *str_Fu;  // "Fu"
-    const char *str_ns;  // "ns"
-    const char *str_nu;  // "nu"
+    // Cache intrinsic types for fast lookup and consistent pointer values.
+    MOJOSHADER_astDataType dt_bool;
+    MOJOSHADER_astDataType dt_int;
+    MOJOSHADER_astDataType dt_uint;
+    MOJOSHADER_astDataType dt_float;
+    MOJOSHADER_astDataType dt_float_snorm;
+    MOJOSHADER_astDataType dt_float_unorm;
+    MOJOSHADER_astDataType dt_half;
+    MOJOSHADER_astDataType dt_double;
+    MOJOSHADER_astDataType dt_string;
+    MOJOSHADER_astDataType dt_sampler1d;
+    MOJOSHADER_astDataType dt_sampler2d;
+    MOJOSHADER_astDataType dt_sampler3d;
+    MOJOSHADER_astDataType dt_samplercube;
+    MOJOSHADER_astDataType dt_samplerstate;
+    MOJOSHADER_astDataType dt_samplercompstate;
+    MOJOSHADER_astDataType dt_buf_bool;
+    MOJOSHADER_astDataType dt_buf_int;
+    MOJOSHADER_astDataType dt_buf_uint;
+    MOJOSHADER_astDataType dt_buf_half;
+    MOJOSHADER_astDataType dt_buf_float;
+    MOJOSHADER_astDataType dt_buf_double;
+    MOJOSHADER_astDataType dt_buf_float_snorm;
+    MOJOSHADER_astDataType dt_buf_float_unorm;
+
+    Buffer *garbage;  // this is sort of hacky.
 } Context;
 
 
@@ -219,7 +222,7 @@ static int create_symbolmap(Context *ctx, SymbolMap *map)
 
 
 static void push_symbol(Context *ctx, SymbolMap *map,
-                        const char *sym, const char *datatype)
+                        const char *sym, const MOJOSHADER_astDataType *dt)
 {
     // !!! FIXME: decide if this symbol is defined, and if so, if it's in
     // !!! FIXME:  the current scope.
@@ -230,7 +233,7 @@ static void push_symbol(Context *ctx, SymbolMap *map,
 
     if (sym != NULL)
     {
-        if (hash_insert(map->hash, sym, datatype) == -1)
+        if (hash_insert(map->hash, sym, dt) == -1)
         {
             Free(ctx, item);
             return;
@@ -238,17 +241,38 @@ static void push_symbol(Context *ctx, SymbolMap *map,
     } // if
 
     item->symbol = sym;  // cached strings, don't copy.
-    item->datatype = datatype;
+    item->datatype = dt;
     item->next = map->scope;
     map->scope = item;
 } // push_symbol
 
-static inline void push_usertype(Context *ctx, const char *sym, const char *dt)
+static void push_usertype(Context *ctx, const char *sym, const MOJOSHADER_astDataType *dt)
 {
+    if (sym != NULL)
+    {
+        MOJOSHADER_astDataType *userdt;
+        userdt = (MOJOSHADER_astDataType *) Malloc(ctx, sizeof (*userdt));
+        if (userdt != NULL)
+        {
+            // !!! FIXME: this is hacky.
+            if (!buffer_append(ctx->garbage, &userdt, sizeof (userdt)))
+            {
+                Free(ctx, userdt);
+                userdt = NULL;
+            } // if
+
+            userdt->type = MOJOSHADER_AST_DATATYPE_USER;
+            userdt->user.details = dt;
+            userdt->user.name = sym;
+
+            dt = userdt;
+        } // if
+    } // if
+
     push_symbol(ctx, &ctx->usertypes, sym, dt);
 } // push_usertype
 
-static inline void push_variable(Context *ctx, const char *sym, const char *dt)
+static inline void push_variable(Context *ctx, const char *sym, const MOJOSHADER_astDataType *dt)
 {
     push_symbol(ctx, &ctx->variables, sym, dt);
 } // push_variable
@@ -287,19 +311,19 @@ static inline void pop_scope(Context *ctx)
     pop_symbol_scope(ctx, &ctx->variables);
 } // push_scope
 
-static const char *find_symbol(Context *ctx, SymbolMap *map, const char *sym)
+static const MOJOSHADER_astDataType *find_symbol(Context *ctx, SymbolMap *map, const char *sym)
 {
     const void *value = NULL;
     hash_find(map->hash, sym, &value);
-    return (const char *) value;
+    return (const MOJOSHADER_astDataType *) value;
 } // find_symbol
 
-static inline const char *find_usertype(Context *ctx, const char *sym)
+static inline const MOJOSHADER_astDataType *find_usertype(Context *ctx, const char *sym)
 {
     return find_symbol(ctx, &ctx->usertypes, sym);
 } // find_usertype
 
-static inline const char *find_variable(Context *ctx, const char *sym)
+static inline const MOJOSHADER_astDataType *find_variable(Context *ctx, const char *sym)
 {
     return find_symbol(ctx, &ctx->variables, sym);
 } // find_variable
@@ -312,7 +336,64 @@ static void destroy_symbolmap(Context *ctx, SymbolMap *map)
 } // destroy_symbolmap
 
 
-// !!! FIXME: move this to to mojoshader_ast.c
+static const MOJOSHADER_astDataType *new_datatype_vector(Context *ctx,
+                                            const MOJOSHADER_astDataType *dt,
+                                            const int columns)
+{
+    MOJOSHADER_astDataType *retval;
+    retval = (MOJOSHADER_astDataType *) Malloc(ctx, sizeof (*retval));
+    if (retval == NULL)
+        return NULL;
+
+    // !!! FIXME: this is hacky.
+    // !!! FIXME:  I'd like to cache these anyhow and reuse types.
+    if (!buffer_append(ctx->garbage, &retval, sizeof (retval)))
+    {
+        Free(ctx, retval);
+        return NULL;
+    } // if
+
+    if ((columns < 1) || (columns > 4))
+        fail(ctx, "Vector must have between 1 and 4 elements");
+
+    retval->type = MOJOSHADER_AST_DATATYPE_VECTOR;
+    retval->vector.base = dt;
+    retval->vector.elements = columns;
+    return retval;
+} // new_datatype_vector
+
+static const MOJOSHADER_astDataType *new_datatype_matrix(Context *ctx,
+                                            const MOJOSHADER_astDataType *dt,
+                                            const int rows, const int columns)
+{
+    MOJOSHADER_astDataType *retval;
+    // !!! FIXME: allocate enough for a matrix, but we need to cleanup things that copy without checking for subsize.
+    retval = (MOJOSHADER_astDataType *) Malloc(ctx, sizeof (*retval));
+    if (retval == NULL)
+        return NULL;
+
+    // !!! FIXME: this is hacky.
+    // !!! FIXME:  I'd like to cache these anyhow and reuse types.
+    if (!buffer_append(ctx->garbage, &retval, sizeof (retval)))
+    {
+        Free(ctx, retval);
+        return NULL;
+    } // if
+
+    if ((rows < 1) || (rows > 4))
+        fail(ctx, "Matrix must have between 1 and 4 rows");
+    if ((columns < 1) || (columns > 4))
+        fail(ctx, "Matrix must have between 1 and 4 columns");
+
+    retval->type = MOJOSHADER_AST_DATATYPE_MATRIX;
+    retval->matrix.base = dt;
+    retval->matrix.rows = rows;
+    retval->matrix.columns = columns;
+    return retval;
+} // new_datatype_matrix
+
+
+// !!! FIXME: move this to mojoshader_ast.c
 // !!! FIXME: new_* and delete_* should take an allocator, not a context.
 
 // These functions are mostly for construction and cleanup of nodes in the
@@ -333,6 +414,7 @@ static void destroy_symbolmap(Context *ctx, SymbolMap *map)
     if (!cls) return; \
 } while (0)
 
+
 static void delete_compilation_unit(Context*, MOJOSHADER_astCompilationUnit*);
 static void delete_statement(Context *ctx, MOJOSHADER_astStatement *stmt);
 
@@ -348,22 +430,22 @@ static MOJOSHADER_astExpression *new_callfunc_expr(Context *ctx,
 } // new_callfunc_expr
 
 static MOJOSHADER_astExpression *new_constructor_expr(Context *ctx,
-                                                const char *datatype,
-                                                MOJOSHADER_astArguments *args)
+                                            const MOJOSHADER_astDataType *dt,
+                                            MOJOSHADER_astArguments *args)
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionConstructor,
                  MOJOSHADER_AST_OP_CONSTRUCTOR);
-    retval->datatype = datatype;
+    retval->datatype = dt;
     retval->args = args;
     return (MOJOSHADER_astExpression *) retval;
 } // new_constructor_expr
 
 static MOJOSHADER_astExpression *new_cast_expr(Context *ctx,
-                                            const char *datatype,
+                                            const MOJOSHADER_astDataType *dt,
                                             MOJOSHADER_astExpression *operand)
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionCast, MOJOSHADER_AST_OP_CAST);
-    retval->datatype = datatype;
+    retval->datatype = dt;
     retval->operand = operand;
     return (MOJOSHADER_astExpression *) retval;
 } // new_cast_expr
@@ -398,6 +480,8 @@ static MOJOSHADER_astExpression *new_ternary_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionTernary, op);
     assert(operator_is_ternary(op));
+    assert(op == MOJOSHADER_AST_OP_CONDITIONAL);
+    retval->datatype = &ctx->dt_bool;
     retval->left = left;
     retval->center = center;
     retval->right = right;
@@ -412,6 +496,7 @@ static MOJOSHADER_astExpression *new_deref_struct_expr(Context *ctx,
                  MOJOSHADER_AST_OP_DEREF_STRUCT);
     retval->identifier = identifier;
     retval->member = member;  // cached; don't copy string.
+    retval->isswizzle = 0;  // may change during semantic analysis.
     return (MOJOSHADER_astExpression *) retval;
 } // new_deref_struct_expr
 
@@ -429,6 +514,7 @@ static MOJOSHADER_astExpression *new_literal_int_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionIntLiteral,
                  MOJOSHADER_AST_OP_INT_LITERAL);
+    retval->datatype = &ctx->dt_int;
     retval->value = value;
     return (MOJOSHADER_astExpression *) retval;
 } // new_literal_int_expr
@@ -438,6 +524,7 @@ static MOJOSHADER_astExpression *new_literal_float_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionFloatLiteral,
                  MOJOSHADER_AST_OP_FLOAT_LITERAL);
+    retval->datatype = &ctx->dt_float;
     retval->value = dbl;
     return (MOJOSHADER_astExpression *) retval;
 } // new_literal_float_expr
@@ -447,6 +534,7 @@ static MOJOSHADER_astExpression *new_literal_string_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionStringLiteral,
                  MOJOSHADER_AST_OP_STRING_LITERAL);
+    retval->datatype = &ctx->dt_string;
     retval->string = string;  // cached; don't copy string.
     return (MOJOSHADER_astExpression *) retval;
 } // new_literal_string_expr
@@ -456,6 +544,7 @@ static MOJOSHADER_astExpression *new_literal_boolean_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionBooleanLiteral,
                  MOJOSHADER_AST_OP_BOOLEAN_LITERAL);
+    retval->datatype = &ctx->dt_bool;
     retval->value = value;
     return (MOJOSHADER_astExpression *) retval;
 } // new_literal_boolean_expr
@@ -523,15 +612,15 @@ static void delete_arguments(Context *ctx, MOJOSHADER_astArguments *args)
 
 static MOJOSHADER_astFunctionParameters *new_function_param(Context *ctx,
                         const MOJOSHADER_astInputModifier inputmod,
-                        const char *datatype, const char *identifier,
-                        const char *semantic,
+                        const MOJOSHADER_astDataType *dt,
+                        const char *identifier, const char *semantic,
                         const MOJOSHADER_astInterpolationModifier interpmod,
                         MOJOSHADER_astExpression *initializer)
 {
     NEW_AST_NODE(retval, MOJOSHADER_astFunctionParameters,
                  MOJOSHADER_AST_FUNCTION_PARAMS);
+    retval->datatype = dt;
     retval->input_modifier = inputmod;
-    retval->datatype = datatype;
     retval->identifier = identifier;
     retval->semantic = semantic;
     retval->interpolation_modifier = interpmod;
@@ -550,13 +639,13 @@ static void delete_function_params(Context *ctx,
 } // delete_function_params
 
 static MOJOSHADER_astFunctionSignature *new_function_signature(Context *ctx,
-                                    const char *datatype,
+                                    const MOJOSHADER_astDataType *dt,
                                     const char *identifier,
                                     MOJOSHADER_astFunctionParameters *params)
 {
     NEW_AST_NODE(retval, MOJOSHADER_astFunctionSignature,
                  MOJOSHADER_AST_FUNCTION_SIGNATURE);
-    retval->datatype = datatype;
+    retval->datatype = dt;
     retval->identifier = identifier;
     retval->params = params;
     retval->storage_class = MOJOSHADER_AST_FNSTORECLS_NONE;
@@ -614,13 +703,13 @@ static void delete_scalar_or_array(Context *ctx,MOJOSHADER_astScalarOrArray *s)
 } // delete_scalar_or_array
 
 static MOJOSHADER_astTypedef *new_typedef(Context *ctx, const int isconst,
-                                          const char *datatype,
+                                          const MOJOSHADER_astDataType *dt,
                                           MOJOSHADER_astScalarOrArray *soa)
 {
-    // we correct this datatype to the final string during semantic analysis.
+    // we correct this datatype to the final version during semantic analysis.
     NEW_AST_NODE(retval, MOJOSHADER_astTypedef, MOJOSHADER_AST_TYPEDEF);
+    retval->datatype = dt;
     retval->isconst = isconst;
-    retval->datatype = datatype;
     retval->details = soa;
     return retval;
 } // new_typedef
@@ -667,11 +756,11 @@ static void delete_variable_lowlevel(Context *ctx,
 } // delete_variable_lowlevel
 
 static MOJOSHADER_astAnnotations *new_annotation(Context *ctx,
-                                        const char *datatype,
+                                        const MOJOSHADER_astDataType *dt,
                                         MOJOSHADER_astExpression *initializer)
 {
     NEW_AST_NODE(retval, MOJOSHADER_astAnnotations, MOJOSHADER_AST_ANNOTATION);
-    retval->datatype = datatype;
+    retval->datatype = dt;
     retval->initializer = initializer;
     retval->next = NULL;
     return retval;
@@ -695,7 +784,6 @@ static MOJOSHADER_astVariableDeclaration *new_variable_declaration(
     NEW_AST_NODE(retval, MOJOSHADER_astVariableDeclaration,
                  MOJOSHADER_AST_VARIABLE_DECLARATION);
     retval->attributes = 0;
-    retval->datatype = NULL;
     retval->anonymous_datatype = NULL;
     retval->details = soa;
     retval->semantic = semantic;
@@ -762,7 +850,6 @@ static MOJOSHADER_astStructMembers *new_struct_member(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astStructMembers,
                  MOJOSHADER_AST_STRUCT_MEMBER);
-    retval->datatype = NULL;
     retval->semantic = semantic;
     retval->details = soa;
     retval->interpolation_mod = MOJOSHADER_AST_INTERPMOD_NONE;
@@ -785,6 +872,7 @@ static MOJOSHADER_astStructDeclaration *new_struct_declaration(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astStructDeclaration,
                  MOJOSHADER_AST_STRUCT_DECLARATION);
+    retval->datatype = NULL;
     retval->name = name;
     retval->members = members;
     return retval;
@@ -1226,12 +1314,14 @@ static void delete_statement(Context *ctx, MOJOSHADER_astStatement *stmt)
     // don't free (stmt) here, the class-specific functions do it.
 } // delete_statement
 
-static const char *get_usertype(const Context *ctx, const char *token)
+
+static const MOJOSHADER_astDataType *get_usertype(const Context *ctx,
+                                                  const char *token)
 {
     const void *value;  // search all scopes.
     if (!hash_find(ctx->usertypes.hash, token, &value))
         return NULL;
-    return (const char *) value;
+    return (MOJOSHADER_astDataType *) value;
 } // get_usertype
 
 
@@ -1240,120 +1330,506 @@ static const char *get_usertype(const Context *ctx, const char *token)
 #include "mojoshader_parser_hlsl.h"
 
 
-/*
- * datatype strings...
- *
- * "v" == void
- * "b" == bool
- * "i" == int
- * "u" == uint
- * "h" == half
- * "f" == float
- * "ns" == snorm float
- * "nu" == unorm float
- * "B{*}" == buffer
- * "V{#,*}" == vector
- * "M{#,#,*}" == matrix
- * "d" == double
- * "a{#,*}" == array
- * "S" == string
- * "X{*}" == struct
- * "s1" == sampler1D
- * "s2" == sampler2D
- * "s3" == sampler3D
- * "sc" == samplerCUBE
- * "ss" == sampler_state
- * "sS" == SamplerComparisonState
- * "U{*}" == user type.
- * "F{*,*}" == function
- */
-
-
-static void require_numeric_datatype(Context *ctx, const char *datatype)
+#if 0
+static int expr_is_constant(MOJOSHADER_astExpression *expr)
 {
-    if (datatype == ctx->str_f) return;  // float
-    if (datatype == ctx->str_i) return;  // int
-    if (datatype == ctx->str_b) return;  // bool
-    if (datatype == ctx->str_u) return;  // uint
-    if (datatype == ctx->str_h) return;  // half
-    if (datatype == ctx->str_d) return;  // double
+    const MOJOSHADER_astNodeType op = expr->ast.type;
+    if (operator_is_unary(op))
+        return expr_is_constant(expr->unary.operand);
+    else if (operator_is_binary(op))
+    {
+        return ( expr_is_constant(expr->binary.left) &&
+                 expr_is_constant(expr->binary.right) );
+    } // else if
+    else if (operator_is_ternary(op))
+    {
+        return ( expr_is_constant(expr->ternary.left) &&
+                 expr_is_constant(expr->ternary.center) &&
+                 expr_is_constant(expr->ternary.right) );
+    } // else if
+
+    return ( (op == MOJOSHADER_AST_OP_INT_LITERAL) ||
+             (op == MOJOSHADER_AST_OP_FLOAT_LITERAL) ||
+             (op == MOJOSHADER_AST_OP_STRING_LITERAL) ||
+             (op == MOJOSHADER_AST_OP_BOOLEAN_LITERAL) );
+} // expr_is_constant
+#endif
+
+typedef struct AstCalcData
+{
+    int isflt;
+    union
+    {
+        double f;
+        int64 i;
+    } value;
+} AstCalcData;
+
+// returns 0 if this expression is non-constant, 1 if it is.
+//  calculation results land in (data).
+static int calc_ast_const_expr(Context *ctx, void *_expr, AstCalcData *data)
+{
+    const MOJOSHADER_astNode *expr = (MOJOSHADER_astNode *) _expr;
+    const MOJOSHADER_astNodeType op = expr->ast.type;
+
+    ctx->sourcefile = expr->ast.filename;
+    ctx->sourceline = expr->ast.line;
+
+    if (operator_is_unary(op))
+    {
+        if (!calc_ast_const_expr(ctx, expr->unary.operand, data))
+            return 0;
+
+        if (data->isflt)
+        {
+            switch (op)
+            {
+                case MOJOSHADER_AST_OP_NEGATE:
+                    data->value.f = -data->value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_NOT:
+                    data->value.f = !data->value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_COMPLEMENT:
+                    fail(ctx, "integer operation on floating point value");
+                    return 0;
+                case MOJOSHADER_AST_OP_CAST:
+                    // !!! FIXME: this should work, but it's complicated.
+                    assert(0 && "write me");
+                    return 0;
+                default: break;
+            } // switch
+        } // if
+
+        else  // integer version
+        {
+            switch (op)
+            {
+                case MOJOSHADER_AST_OP_NEGATE:
+                    data->value.i = -data->value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_NOT:
+                    data->value.i = !data->value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_COMPLEMENT:
+                    data->value.i = ~data->value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_CAST:
+                    // !!! FIXME: this should work, but it's complicated.
+                    assert(0 && "write me");
+                    return 0;
+                default: break;
+            } // switch
+        } // else
+        assert(0 && "unhandled operation?");
+        return 0;
+    } // if
+
+    else if (operator_is_binary(op))
+    {
+        AstCalcData subdata2;
+        if ( (!calc_ast_const_expr(ctx, expr->binary.left, data)) ||
+             (!calc_ast_const_expr(ctx, expr->binary.right, &subdata2)) )
+            return 0;
+
+        // upgrade to float if either operand is float.
+        if ((data->isflt) || (subdata2.isflt))
+        {
+            if (!data->isflt) data->value.f = (double) data->value.i;
+            if (!subdata2.isflt) subdata2.value.f = (double) subdata2.value.i;
+            data->isflt = subdata2.isflt = 1;
+        } // if
+
+        switch (op)
+        {
+            // gcc doesn't handle commas here, either (fails to parse!).
+            case MOJOSHADER_AST_OP_COMMA:
+            case MOJOSHADER_AST_OP_ASSIGN:
+            case MOJOSHADER_AST_OP_MULASSIGN:
+            case MOJOSHADER_AST_OP_DIVASSIGN:
+            case MOJOSHADER_AST_OP_MODASSIGN:
+            case MOJOSHADER_AST_OP_ADDASSIGN:
+            case MOJOSHADER_AST_OP_SUBASSIGN:
+            case MOJOSHADER_AST_OP_LSHIFTASSIGN:
+            case MOJOSHADER_AST_OP_RSHIFTASSIGN:
+            case MOJOSHADER_AST_OP_ANDASSIGN:
+            case MOJOSHADER_AST_OP_XORASSIGN:
+            case MOJOSHADER_AST_OP_ORASSIGN:
+                return 0;  // assignment is non-constant.
+            default: break;
+        } // switch
+
+        if (data->isflt)
+        {
+            switch (op)
+            {
+                case MOJOSHADER_AST_OP_MULTIPLY:
+                    data->value.f *= subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_DIVIDE:
+                    data->value.f /= subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_ADD:
+                    data->value.f += subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_SUBTRACT:
+                    data->value.f -= subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_LESSTHAN:
+                    data->isflt = 0;
+                    data->value.i = data->value.f < subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_GREATERTHAN:
+                    data->isflt = 0;
+                    data->value.i = data->value.f > subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_LESSTHANOREQUAL:
+                    data->isflt = 0;
+                    data->value.i = data->value.f <= subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_GREATERTHANOREQUAL:
+                    data->isflt = 0;
+                    data->value.i = data->value.f >= subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_EQUAL:
+                    data->isflt = 0;
+                    data->value.i = data->value.f == subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_NOTEQUAL:
+                    data->isflt = 0;
+                    data->value.i = data->value.f != subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_LOGICALAND:
+                    data->isflt = 0;
+                    data->value.i = data->value.f && subdata2.value.f;
+                    return 1;
+                case MOJOSHADER_AST_OP_LOGICALOR:
+                    data->isflt = 0;
+                    data->value.i = data->value.f || subdata2.value.f;
+                    return 1;
+
+                case MOJOSHADER_AST_OP_LSHIFT:
+                case MOJOSHADER_AST_OP_RSHIFT:
+                case MOJOSHADER_AST_OP_MODULO:
+                case MOJOSHADER_AST_OP_BINARYAND:
+                case MOJOSHADER_AST_OP_BINARYXOR:
+                case MOJOSHADER_AST_OP_BINARYOR:
+                    fail(ctx, "integer operation on floating point value");
+                    return 0;
+                default: break;
+            } // switch
+        } // if
+
+        else   // integer version.
+        {
+            switch (op)
+            {
+                case MOJOSHADER_AST_OP_MULTIPLY:
+                    data->value.i *= subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_DIVIDE:
+                    data->value.i /= subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_ADD:
+                    data->value.i += subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_SUBTRACT:
+                    data->value.i -= subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_LESSTHAN:
+                    data->value.i = data->value.i < subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_GREATERTHAN:
+                    data->value.i = data->value.i > subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_LESSTHANOREQUAL:
+                    data->value.i = data->value.i <= subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_GREATERTHANOREQUAL:
+                    data->value.i = data->value.i >= subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_EQUAL:
+                    data->value.i = data->value.i == subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_NOTEQUAL:
+                    data->value.i = data->value.i != subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_LOGICALAND:
+                    data->value.i = data->value.i && subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_LOGICALOR:
+                    data->value.i = data->value.i || subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_LSHIFT:
+                    data->value.i = data->value.i << subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_RSHIFT:
+                    data->value.i = data->value.i >> subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_MODULO:
+                    data->value.i = data->value.i % subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_BINARYAND:
+                    data->value.i = data->value.i & subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_BINARYXOR:
+                    data->value.i = data->value.i ^ subdata2.value.i;
+                    return 1;
+                case MOJOSHADER_AST_OP_BINARYOR:
+                    data->value.i = data->value.i | subdata2.value.i;
+                    return 1;
+                default: break;
+            } // switch
+        } // else
+
+        assert(0 && "unhandled operation?");
+        return 0;
+    } // else if
+
+    else if (operator_is_ternary(op))
+    {
+        AstCalcData subdata2;
+        AstCalcData subdata3;
+
+        assert(op == MOJOSHADER_AST_OP_CONDITIONAL);  // only one we have.
+
+        if ( (!calc_ast_const_expr(ctx, expr->ternary.left, data)) ||
+             (!calc_ast_const_expr(ctx, expr->ternary.center, &subdata2)) ||
+             (!calc_ast_const_expr(ctx, expr->ternary.right, &subdata3)) )
+            return 0;
+
+        // first operand should be bool (for the one ternary operator we have).
+        if (data->isflt)
+        {
+            data->isflt = 0;
+            data->value.i = (int64) subdata3.value.f;
+        } // if
+
+        // upgrade to float if either operand is float.
+        if ((subdata2.isflt) || (subdata3.isflt))
+        {
+            if (!subdata2.isflt) subdata2.value.f = (double) subdata2.value.i;
+            if (!subdata3.isflt) subdata3.value.f = (double) subdata3.value.i;
+            subdata2.isflt = subdata3.isflt = 1;
+        } // if
+
+        data->isflt = subdata2.isflt;
+        if (data->isflt)
+            data->value.f = data->value.i ? subdata2.value.f : subdata3.value.f;
+        else
+            data->value.i = data->value.i ? subdata2.value.i : subdata3.value.i;
+        return 1;
+    } // else if
+
+    else  // not an operator? See if this is a literal value.
+    {
+        switch (op)
+        {
+            case MOJOSHADER_AST_OP_INT_LITERAL:
+                data->isflt = 0;
+                data->value.i = expr->intliteral.value;
+                return 1;
+
+            case MOJOSHADER_AST_OP_FLOAT_LITERAL:
+                data->isflt = 1;
+                data->value.f = expr->floatliteral.value;
+                return 1;
+
+            case MOJOSHADER_AST_OP_BOOLEAN_LITERAL:
+                data->isflt = 0;
+                data->value.i = expr->boolliteral.value ? 1 : 0;
+                return 1;
+
+            default: break;
+        } // switch
+    } // switch
+
+    return 0;  // not constant, or unhandled.
+} // calc_ast_const_expr
+
+
+static inline const MOJOSHADER_astDataType *reduce_datatype(const MOJOSHADER_astDataType *dt)
+{
+    const MOJOSHADER_astDataType *retval = dt;
+    while (retval && retval->type == MOJOSHADER_AST_DATATYPE_USER)
+        retval = retval->user.details;
+    return retval;
+} // reduce_datatype
+
+
+static const MOJOSHADER_astDataType *build_datatype(Context *ctx,
+                                            const int isconst,
+                                            const MOJOSHADER_astDataType *dt,
+                                            MOJOSHADER_astScalarOrArray *soa)
+{
+    MOJOSHADER_astDataType *retval = NULL;
+
+    assert( (soa->isarray && soa->dimension) ||
+            (!soa->isarray && !soa->dimension) );
+
+    // see if we can just reuse the exist datatype.
+    if (!soa->isarray)
+    {
+        const int c1 = (dt->type & MOJOSHADER_AST_DATATYPE_CONST) != 0;
+        const int c2 = (isconst != 0);
+        if (c1 == c2)
+            return dt;  // reuse existing datatype!
+    } // if
+
+    retval = (MOJOSHADER_astDataType *) Malloc(ctx, sizeof (*retval));
+    if (retval == NULL)
+        return NULL;
+
+    // !!! FIXME: this is hacky.
+    if (!buffer_append(ctx->garbage, &retval, sizeof (retval)))
+    {
+        Free(ctx, retval);
+        return NULL;
+    } // if
+
+    if (!soa->isarray)
+    {
+        assert(soa->dimension == NULL);
+        memcpy(retval, dt, sizeof (MOJOSHADER_astDataType));
+        if (isconst)
+            retval->type |= MOJOSHADER_AST_DATATYPE_CONST;
+        else
+            retval->type &= ~MOJOSHADER_AST_DATATYPE_CONST;
+        return retval;
+    } // if
+
+    retval->type = MOJOSHADER_AST_DATATYPE_ARRAY;
+    retval->array.base = dt;
+    if (soa->dimension == NULL)
+    {
+        retval->array.elements = -1;
+        return retval;
+    } // if
+
+    // Run the expression to verify it's constant and produces a positive int.
+    AstCalcData data;
+    data.isflt = 0;
+    data.value.i = 0;
+    retval->array.elements = 16;  // sane default for failure.
+    const int ok = calc_ast_const_expr(ctx, soa->dimension, &data);
+
+    // reset error position.
+    ctx->sourcefile = soa->ast.filename;
+    ctx->sourceline = soa->ast.line;
+
+    if (!ok)
+        fail(ctx, "array dimensions not constant");
+    else if (data.isflt)
+        fail(ctx, "array dimensions not integer");
+    else if (data.value.i < 0)
+        fail(ctx, "array dimensions negative");
+    else
+        retval->array.elements = data.value.i;
+
+    return retval;
+} // build_datatype
+
+
+static void require_numeric_datatype(Context *ctx,
+                                     const MOJOSHADER_astDataType *datatype)
+{
+    datatype = reduce_datatype(datatype);
+    switch (datatype->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL:
+        case MOJOSHADER_AST_DATATYPE_INT:
+        case MOJOSHADER_AST_DATATYPE_UINT:
+        case MOJOSHADER_AST_DATATYPE_HALF:
+        case MOJOSHADER_AST_DATATYPE_FLOAT:
+        case MOJOSHADER_AST_DATATYPE_DOUBLE:
+            return;
+        default: break;
+    } // switch
+
     fail(ctx, "Expected numeric type");  // !!! FIXME: fmt.
     // !!! FIXME: replace AST node with an AST_OP_INT_LITERAL zero, keep going.
 } // require_numeric_datatype
 
-static void require_integer_datatype(Context *ctx, const char *datatype)
+static void require_integer_datatype(Context *ctx,
+                                     const MOJOSHADER_astDataType *datatype)
 {
-    if (datatype == ctx->str_i) return;  // int
-    if (datatype == ctx->str_u) return;  // uint
+    datatype = reduce_datatype(datatype);
+    switch (datatype->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_INT:
+        case MOJOSHADER_AST_DATATYPE_UINT:
+            return;
+        default: break;
+    } // switch
+
     fail(ctx, "Expected integer type");  // !!! FIXME: fmt.
     // !!! FIXME: replace AST node with an AST_OP_INT_LITERAL zero, keep going.
 } // require_integer_datatype
 
-static void require_boolean_datatype(Context *ctx, const char *datatype)
+static void require_boolean_datatype(Context *ctx,
+                                     const MOJOSHADER_astDataType *datatype)
 {
-    if (datatype == ctx->str_b) return;  // bool
-    if (datatype == ctx->str_i) return;  // int
-    if (datatype == ctx->str_u) return;  // uint
+    datatype = reduce_datatype(datatype);
+    switch (datatype->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL:
+        case MOJOSHADER_AST_DATATYPE_INT:
+        case MOJOSHADER_AST_DATATYPE_UINT:
+            return;
+        default: break;
+    } // switch
+
     fail(ctx, "Expected boolean type");  // !!! FIXME: fmt.
     // !!! FIXME: replace AST node with an AST_OP_BOOLEAN_LITERAL false, keep going.
 } // require_numeric_datatype
 
 
-static void require_array_datatype(Context *ctx, const char *datatype)
+static void require_array_datatype(Context *ctx,
+                                   const MOJOSHADER_astDataType *datatype)
 {
-    if (datatype[0] != 'a')
-        fail(ctx, "expected array");
-        // !!! FIXME: delete array dereference for further processing.
+    datatype = reduce_datatype(datatype);
+    if (datatype->type == MOJOSHADER_AST_DATATYPE_ARRAY)
+        return;
+
+    fail(ctx, "expected array");
+    // !!! FIXME: delete array dereference for further processing.
 } // require_array_datatype
 
 
-static void require_struct_datatype(Context *ctx, const char *datatype)
+static void require_struct_datatype(Context *ctx,
+                                    const MOJOSHADER_astDataType *datatype)
 {
-    if (datatype[0] != 'X')
-        fail(ctx, "expected struct");
-        // !!! FIXME: delete struct dereference for further processing.
-} // require_array_datatype
+    datatype = reduce_datatype(datatype);
+    if (datatype->type == MOJOSHADER_AST_DATATYPE_STRUCT)
+        return;
+
+    fail(ctx, "expected struct");
+    // !!! FIXME: delete struct dereference for further processing.
+} // require_struct_datatype
 
 
-static const char *require_function_datatype(Context *ctx, const char *datatype)
+static const MOJOSHADER_astDataType *require_function_datatype(Context *ctx,
+                                        const MOJOSHADER_astDataType *datatype)
 {
-    if (datatype[0] != 'F')
+    datatype = reduce_datatype(datatype);
+    if (datatype->type != MOJOSHADER_AST_DATATYPE_FUNCTION)
     {
         fail(ctx, "expected function");
         // !!! FIXME: delete function call for further processing.
-        return ctx->str_i;
+        return &ctx->dt_int;
     } // if
 
-    assert(datatype[1] == '{');
-    datatype += 2;
-    const char *ptr = strchr(datatype, ',');
-    assert(ptr != NULL);
-    return stringcache_len(ctx->strcache, datatype, (unsigned int) (ptr-datatype));
+    return datatype->function.retval;
 } // require_function_datatype
 
 
 // Extract the individual element type from an array datatype.
-static const char *array_element_datatype(Context *ctx, const char *datatype)
+static const MOJOSHADER_astDataType *array_element_datatype(Context *ctx,
+                                        const MOJOSHADER_astDataType *datatype)
 {
-    const char *ptr;
-    const char *ptr2;
-    unsigned int depth = 1;
-    assert(datatype[0] == 'a');
-    assert(datatype[1] == '{');
-    ptr = strchr(datatype+2, ',');
-    assert(ptr != NULL);
-    ptr++;
-    for (ptr2 = ptr; depth > 0; ptr2++)
-    {
-        const char ch = *ptr2;
-        assert(ch != '\0');
-        if (ch == '{')
-            depth++;
-        else if (ch == '}')
-            depth--;
-    } // for
-
-    return stringcache_len(ctx->strcache, ptr, (unsigned int) (ptr2 - ptr));
+    datatype = reduce_datatype(datatype);
+    assert(datatype->type == MOJOSHADER_AST_DATATYPE_ARRAY);
+    return datatype->array.base;
 } // array_element_datatype
 
 
@@ -1364,42 +1840,52 @@ static const char *array_element_datatype(Context *ctx, const char *datatype)
 //  set in stone (an lvalue, for example). No other NULLs are allowed.
 // Returns final datatype used once implicit casting is complete.
 // The datatypes must be pointers from the string cache.
-static const char *add_type_coercion(Context *ctx,
+static const MOJOSHADER_astDataType *add_type_coercion(Context *ctx,
                                      MOJOSHADER_astExpression **left,
-                                     const char *ldatatype,
+                                     const MOJOSHADER_astDataType *_ldatatype,
                                      MOJOSHADER_astExpression **right,
-                                     const char *rdatatype)
+                                     const MOJOSHADER_astDataType *_rdatatype)
 {
     // !!! FIXME: this whole function is probably naive at best.
+    const MOJOSHADER_astDataType *ldatatype = reduce_datatype(_ldatatype);
+    const MOJOSHADER_astDataType *rdatatype = reduce_datatype(_rdatatype);
 
     if (ldatatype == rdatatype)
         return ldatatype;   // they already match, so we're done.
 
     struct {
-        const char *datatype;
+        const MOJOSHADER_astDataTypeType type;
         const int bits;
         const int is_unsigned;
         const int floating;
     } typeinf[] = {
-        { ctx->str_b,  1, 1, 0 },
-        { ctx->str_h, 16, 0, 1 },
-        { ctx->str_i, 32, 0, 0 },
-        { ctx->str_u, 32, 1, 0 },
-        { ctx->str_f, 32, 0, 1 },
-        { ctx->str_d, 64, 0, 1 },
+        { MOJOSHADER_AST_DATATYPE_BOOL,    1, 1, 0 },
+        { MOJOSHADER_AST_DATATYPE_HALF,   16, 0, 1 },
+        { MOJOSHADER_AST_DATATYPE_INT,    32, 0, 0 },
+        { MOJOSHADER_AST_DATATYPE_UINT,   32, 1, 0 },
+        { MOJOSHADER_AST_DATATYPE_FLOAT,  32, 0, 1 },
+        { MOJOSHADER_AST_DATATYPE_DOUBLE, 64, 0, 1 },
     };
 
-    int l, r;
-    for (l = 0; l < STATICARRAYLEN(typeinf); l++)
+    int l = STATICARRAYLEN(typeinf);
+    if (ldatatype != NULL)
     {
-        if (typeinf[l].datatype == ldatatype)
-            break;
-    } // for
-    for (r = 0; r < STATICARRAYLEN(typeinf); r++)
+        for (l = 0; l < STATICARRAYLEN(typeinf); l++)
+        {
+            if (typeinf[l].type == ldatatype->type)
+                break;
+        } // for
+    } // if
+
+    int r = STATICARRAYLEN(typeinf);
+    if (rdatatype != NULL)
     {
-        if (typeinf[r].datatype == rdatatype)
-            break;
-    } // for
+        for (r = 0; r < STATICARRAYLEN(typeinf); r++)
+        {
+            if (typeinf[r].type == rdatatype->type)
+                break;
+        } // for
+    } // if
 
     enum { CHOOSE_NEITHER, CHOOSE_LEFT, CHOOSE_RIGHT } choice = CHOOSE_NEITHER;
     if ((l < STATICARRAYLEN(typeinf)) && (r < STATICARRAYLEN(typeinf)))
@@ -1422,13 +1908,13 @@ static const char *add_type_coercion(Context *ctx,
 
     if (choice == CHOOSE_LEFT)
     {
-        *right = new_cast_expr(ctx, ldatatype, *right);
-        return ldatatype;
+        *right = new_cast_expr(ctx, _ldatatype, *right);
+        return _ldatatype;
     } // if
     else if (choice == CHOOSE_RIGHT)
     {
-        *left = new_cast_expr(ctx, rdatatype, *left);
-        return rdatatype;
+        *left = new_cast_expr(ctx, _rdatatype, *left);
+        return _rdatatype;
     } // else if
 
     assert(choice == CHOOSE_NEITHER);
@@ -1437,9 +1923,33 @@ static const char *add_type_coercion(Context *ctx,
     //  ldatatype, so further processing is normalized.
     // !!! FIXME: force (right) to match (left).
     delete_expr(ctx, *right);
-    *right = new_cast_expr(ctx, ldatatype, new_literal_int_expr(ctx, 0));
+    *right = new_cast_expr(ctx, _ldatatype, new_literal_int_expr(ctx, 0));
     return ldatatype;
 } // add_type_coercion
+
+static int is_swizzle_str(const char *str)
+{
+    int i;
+    int is_xyzw = 0;
+    int is_rgba = 0;
+
+    assert(*str != '\0');  // can this actually happen?
+
+    for (i = 0; i < 4; i++, str++)
+    {
+        const char ch = *str;
+        if (ch == '\0')
+            break;
+        else if ((ch == 'x') || (ch == 'y') || (ch == 'z') || (ch == 'w'))
+            is_xyzw = 1;
+        else if ((ch == 'r') || (ch == 'g') || (ch == 'b') || (ch == 'a'))
+            is_rgba = 1;
+    } // for
+
+    if (*str != '\0')  // must be end of string here.
+        return 0;  // not a swizzle.
+    return ((is_rgba + is_xyzw) == 1);  // can only be one or the other.
+} // is_swizzle_str
 
 
 // Go through the AST and make sure all datatypes check out okay. For datatypes
@@ -1451,14 +1961,17 @@ static const char *add_type_coercion(Context *ctx,
 //  continue (but code generation will be skipped due to errors).
 // This means further processing can assume the AST is sane and not have to
 //  spend effort verifying it again.
-static const char *type_check_ast(Context *ctx, void *_ast)
+// This stage will also set every AST node's datatype field, if it is
+//  meaningful to do so. This will allow conversion to IR to know what
+//  type/size a given node is.
+static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 {
     MOJOSHADER_astNode *ast = (MOJOSHADER_astNode *) _ast;
-    const char *datatype;
-    const char *datatype2;
-    const char *datatype3;
+    const MOJOSHADER_astDataType *datatype = NULL;
+    const MOJOSHADER_astDataType *datatype2 = NULL;
+    const MOJOSHADER_astDataType *datatype3 = NULL;
 
-    if (!ast)
+    if ((!ast) || (ctx->out_of_memory))
         return NULL;
 
     // upkeep so we report correct error locations...
@@ -1473,34 +1986,73 @@ static const char *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_OP_PREDECREMENT:
         case MOJOSHADER_AST_OP_COMPLEMENT:
         case MOJOSHADER_AST_OP_NEGATE:
-            datatype = type_check_ast(ctx, ast->unary.operand);
-            require_numeric_datatype(ctx, datatype);
-            return datatype;
-
         case MOJOSHADER_AST_OP_NOT:
             datatype = type_check_ast(ctx, ast->unary.operand);
-            require_boolean_datatype(ctx, datatype);
+            require_numeric_datatype(ctx, datatype);
+            ast->unary.datatype = datatype;
             return datatype;
 
         case MOJOSHADER_AST_OP_DEREF_ARRAY:
             datatype = type_check_ast(ctx, ast->binary.left);
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_array_datatype(ctx, datatype);
-            require_numeric_datatype(ctx, datatype2);
-            add_type_coercion(ctx, NULL, ctx->str_i, &ast->binary.right, datatype2);
-            return array_element_datatype(ctx, datatype);
+            require_integer_datatype(ctx, datatype2);
+            add_type_coercion(ctx, NULL, &ctx->dt_int, &ast->binary.right, datatype2);
+            ast->binary.datatype = array_element_datatype(ctx, datatype);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_DEREF_STRUCT:
+        {
+            const char *member = ast->derefstruct.member;
             datatype = type_check_ast(ctx, ast->derefstruct.identifier);
-            require_struct_datatype(ctx, datatype);
-// !!! FIXME: map member to datatype
-datatype = "!!! FIXME";
-            return datatype;
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(datatype);
+
+            // Is this a swizzle and not a struct deref?
+            if (reduced->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+            {
+                ast->derefstruct.isswizzle = 1;
+                if (!is_swizzle_str(member))
+                {
+                    fail(ctx, "invalid swizzle on vector");
+                    // force this to be sane for further processing.
+                    const char *sane_swiz = stringcache(ctx->strcache, "xyzw");
+                    ast->derefstruct.member = sane_swiz;
+                } // if
+                ast->derefstruct.datatype = datatype;  // !!! FIXME: should float4(0,0,0,0).xy become a float2?
+                return ast->derefstruct.datatype;
+            } // if
+
+            // maybe this is an actual struct?
+            // !!! FIXME: replace with an int or something if not.
+            require_struct_datatype(ctx, reduced);
+
+            // map member to datatype
+            assert(ast->derefstruct.datatype == NULL);
+            const MOJOSHADER_astDataTypeStructMember *mbrs = datatype->structure.members;
+            int i;
+            for (i = 0; i < reduced->structure.member_count; i++)
+            {
+                if (strcmp(mbrs[i].identifier, member) == 0)
+                {
+                    ast->derefstruct.datatype = mbrs[i].datatype;
+                    break;
+                } // if
+            } // for
+
+            if (ast->derefstruct.datatype == NULL)
+            {
+                // !!! FIXME: replace with an int or something.
+                failf(ctx, "Struct has no member named '%s'", member);
+            } // if
+
+            return ast->derefstruct.datatype;
+        } // case
 
         case MOJOSHADER_AST_OP_COMMA:
             // evaluate and throw away left, return right.
             type_check_ast(ctx, ast->binary.left);
-            return type_check_ast(ctx, ast->binary.right);
+            ast->binary.datatype = type_check_ast(ctx, ast->binary.right);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_MULTIPLY:
         case MOJOSHADER_AST_OP_DIVIDE:
@@ -1510,8 +2062,9 @@ datatype = "!!! FIXME";
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_numeric_datatype(ctx, datatype);
             require_numeric_datatype(ctx, datatype2);
-            return add_type_coercion(ctx, &ast->binary.left, datatype,
-                                     &ast->binary.right, datatype2);
+            ast->binary.datatype = add_type_coercion(ctx, &ast->binary.left,
+                                      datatype, &ast->binary.right, datatype2);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_LSHIFT:
         case MOJOSHADER_AST_OP_RSHIFT:
@@ -1520,8 +2073,9 @@ datatype = "!!! FIXME";
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_integer_datatype(ctx, datatype);
             require_integer_datatype(ctx, datatype2);
-            return add_type_coercion(ctx, &ast->binary.left, datatype,
-                                     &ast->binary.right, datatype2);
+            ast->binary.datatype = add_type_coercion(ctx, &ast->binary.left,
+                                     datatype,  &ast->binary.right, datatype2);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_LESSTHAN:
         case MOJOSHADER_AST_OP_GREATERTHAN:
@@ -1533,7 +2087,8 @@ datatype = "!!! FIXME";
             datatype2 = type_check_ast(ctx, ast->binary.right);
             add_type_coercion(ctx, &ast->binary.left, datatype,
                               &ast->binary.right, datatype2);
-            return ctx->str_b;
+            ast->binary.datatype = &ctx->dt_bool;
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_BINARYAND:
         case MOJOSHADER_AST_OP_BINARYXOR:
@@ -1542,8 +2097,9 @@ datatype = "!!! FIXME";
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_integer_datatype(ctx, datatype);
             require_integer_datatype(ctx, datatype2);
-            return add_type_coercion(ctx, &ast->binary.left, datatype,
-                                     &ast->binary.right, datatype2);
+            ast->binary.datatype = add_type_coercion(ctx, &ast->binary.left,
+                                      datatype, &ast->binary.right, datatype2);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_LOGICALAND:
         case MOJOSHADER_AST_OP_LOGICALOR:
@@ -1553,7 +2109,7 @@ datatype = "!!! FIXME";
             require_boolean_datatype(ctx, datatype2);
             add_type_coercion(ctx, &ast->binary.left, datatype,
                               &ast->binary.right, datatype2);
-            return ctx->str_b;
+            ast->binary.datatype = &ctx->dt_bool;
 
         case MOJOSHADER_AST_OP_ASSIGN:
         case MOJOSHADER_AST_OP_MULASSIGN:
@@ -1568,16 +2124,18 @@ datatype = "!!! FIXME";
         case MOJOSHADER_AST_OP_ORASSIGN:
             datatype = type_check_ast(ctx, ast->binary.left);
             datatype2 = type_check_ast(ctx, ast->binary.right);
-            add_type_coercion(ctx, NULL, datatype, &ast->binary.right, datatype2);
-            return datatype;
+            ast->binary.datatype = add_type_coercion(ctx, NULL, datatype,
+                                                &ast->binary.right, datatype2);
+            return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_CONDITIONAL:
-            type_check_ast(ctx, ast->ternary.left);
-            type_check_ast(ctx, ast->ternary.center);
-            type_check_ast(ctx, ast->ternary.right);
-            require_boolean_datatype(ctx, datatype);
-            return add_type_coercion(ctx, &ast->ternary.center, datatype2,
-                                     &ast->ternary.right, datatype3);
+            datatype = type_check_ast(ctx, ast->ternary.left);
+            datatype2 = type_check_ast(ctx, ast->ternary.center);
+            datatype3 = type_check_ast(ctx, ast->ternary.right);
+            require_numeric_datatype(ctx, datatype);
+            ast->ternary.datatype = add_type_coercion(ctx, &ast->ternary.center,
+                                    datatype2, &ast->ternary.right, datatype3);
+            return ast->ternary.datatype;
 
         case MOJOSHADER_AST_OP_IDENTIFIER:
             datatype = find_variable(ctx, ast->identifier.identifier);
@@ -1585,43 +2143,137 @@ datatype = "!!! FIXME";
             {
                 fail(ctx, "Unknown identifier");
                 // !!! FIXME: replace with a sane default, move on.
-                datatype = ctx->str_i;
+                datatype = &ctx->dt_int;
             } // if
-            return datatype;
+            ast->identifier.datatype = datatype;
+            return ast->identifier.datatype;
 
         case MOJOSHADER_AST_OP_INT_LITERAL:
-            return ctx->str_i;
-
         case MOJOSHADER_AST_OP_FLOAT_LITERAL:
-            return ctx->str_f;
-
         case MOJOSHADER_AST_OP_STRING_LITERAL:
-            return ctx->str_S;
-
         case MOJOSHADER_AST_OP_BOOLEAN_LITERAL:
-            return ctx->str_b;
+            assert(ast->expression.datatype != NULL);
+            return ast->expression.datatype;  // already set up during parsing.
 
         case MOJOSHADER_AST_ARGUMENTS:
-            datatype = type_check_ast(ctx, ast->arguments.argument);
-            if (ast->arguments.next != NULL)
-            {
-                datatype2 = type_check_ast(ctx, ast->arguments.next);
-                datatype = stringcache_fmt(ctx->strcache, "%s%s",
-                                           datatype, datatype2);
-            } // if
-            return datatype;
+            assert(0 && "Should be done by MOJOSHADER_AST_OP_CALLFUNC/CONSTRUCTOR");
+            return NULL;
 
         case MOJOSHADER_AST_OP_CALLFUNC:
+        {
             datatype = type_check_ast(ctx, ast->callfunc.identifier);
-            datatype2 = type_check_ast(ctx, ast->callfunc.args);
-            return require_function_datatype(ctx, datatype);
-// !!! FIXME: test each arg against function datatype.
-            //return retval;  // this is the datatype of the func's return value.
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(datatype);
+            require_function_datatype(ctx, reduced);
+            // !!! FIXME: replace with an int literal if this isn't a function.
+            MOJOSHADER_astArguments *arg = ast->callfunc.args;
+            MOJOSHADER_astArguments *prev = NULL;
+            int i;
+            for (i = 0; i < reduced->function.num_params; i++)
+            {
+                if (arg == NULL)  // !!! FIXME: check for default parameters.
+                {
+                    fail(ctx, "Too few arguments");
+                    // !!! FIXME: replace AST here.
+                    break;
+                } // if
+                datatype2 = type_check_ast(ctx, arg->argument);
+                add_type_coercion(ctx, NULL, &reduced->function.params[i],
+                                  &arg->argument, datatype2);
+                prev = arg;
+                arg = arg->next;
+            } // for
+
+            if (arg != NULL)
+            {
+                // Process extra arguments then chop them out.
+                MOJOSHADER_astArguments *argi;
+                for (argi = arg; argi != NULL; argi = argi->next)
+                    type_check_ast(ctx, argi->argument);
+                if (prev != NULL)
+                    prev->next = NULL;
+                delete_arguments(ctx, arg);
+                fail(ctx, "Too many arguments");
+            } // if
+
+            ast->callfunc.datatype = reduced->function.retval;
+            return ast->callfunc.datatype;
+        } // case
 
         case MOJOSHADER_AST_OP_CONSTRUCTOR:
-// !!! FIXME: test each arg against constructor datatype.
-            type_check_ast(ctx, ast->constructor.args);
+        {
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(ast->constructor.datatype);
+            const MOJOSHADER_astDataType *base_dt = reduced;
+            int num_params = 1;
+
+            assert(reduced != NULL);
+            switch (reduced->type)
+            {
+                case MOJOSHADER_AST_DATATYPE_VECTOR:
+                    num_params = reduced->vector.elements;
+                    base_dt = reduced->vector.base;
+                    break;
+                case MOJOSHADER_AST_DATATYPE_MATRIX:
+                    num_params = reduced->matrix.rows * reduced->matrix.columns;
+                    base_dt = reduced->matrix.base;
+                    break;
+
+                case MOJOSHADER_AST_DATATYPE_BOOL:
+                case MOJOSHADER_AST_DATATYPE_INT:
+                case MOJOSHADER_AST_DATATYPE_UINT:
+                case MOJOSHADER_AST_DATATYPE_FLOAT:
+                case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM:
+                case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM:
+                case MOJOSHADER_AST_DATATYPE_HALF:
+                case MOJOSHADER_AST_DATATYPE_DOUBLE:
+                case MOJOSHADER_AST_DATATYPE_STRING:
+                    num_params = 1;
+                    break;
+
+                // !!! FIXME: can you construct a MOJOSHADER_AST_DATATYPE_STRUCT?
+                // !!! FIXME: can you construct a MOJOSHADER_AST_DATATYPE_ARRAY?
+                // !!! FIXME: can you construct a MOJOSHADER_AST_DATATYPE_BUFFER?
+
+                default:
+                    fail(ctx, "Invalid type for constructor");
+                    delete_arguments(ctx, ast->constructor.args);
+                    ast->constructor.args = new_argument(ctx, new_literal_int_expr(ctx, 0));
+                    ast->constructor.datatype = &ctx->dt_int;
+                    return ast->constructor.datatype;
+            } // switch
+
+            assert(num_params > 0);
+
+            MOJOSHADER_astArguments *arg = ast->constructor.args;
+            MOJOSHADER_astArguments *prev = NULL;
+            int i;
+            for (i = 0; i < num_params; i++)
+            {
+                if (arg == NULL)  // !!! FIXME: check for default parameters.
+                {
+                    fail(ctx, "Too few arguments");
+                    // !!! FIXME: replace AST here.
+                    break;
+                } // if
+                datatype2 = type_check_ast(ctx, arg->argument);
+                add_type_coercion(ctx, NULL, base_dt, &arg->argument, datatype2);
+                prev = arg;
+                arg = arg->next;
+            } // for
+
+            if (arg != NULL)
+            {
+                fail(ctx, "Too many arguments");
+                // Process extra arguments then chop them out.
+                MOJOSHADER_astArguments *argi;
+                for (argi = arg; argi != NULL; argi = argi->next)
+                    type_check_ast(ctx, argi->argument);
+                if (prev != NULL)
+                    prev->next = NULL;
+                delete_arguments(ctx, arg);
+            } // if
+
             return ast->constructor.datatype;
+        } // case
 
         case MOJOSHADER_AST_OP_CAST:
             datatype = ast->cast.datatype;
@@ -1725,6 +2377,8 @@ datatype = "!!! FIXME";
             type_check_ast(ctx, ast->returnstmt.next);
 
         case MOJOSHADER_AST_COMPUNIT_FUNCTION:
+            // !!! FIXME: this is totally broken for function overloading.
+//fsdfsdf
             datatype = get_usertype(ctx, ast->funcunit.declaration->identifier);
             if (datatype == NULL)
             {
@@ -1770,9 +2424,7 @@ datatype = "!!! FIXME";
             return NULL;
 
         case MOJOSHADER_AST_SCALAR_OR_ARRAY:
-            datatype = type_check_ast(ctx, ast->soa.dimension);
-            require_integer_datatype(ctx, datatype);
-assert(0); // !!! FIXME: figure out datatype of identifier.
+            assert(0 && "Should be done by other AST nodes.");
             return NULL;
 
         case MOJOSHADER_AST_TYPEDEF:
@@ -1782,106 +2434,161 @@ assert(0); // !!! FIXME: figure out datatype of identifier.
             if (datatype != NULL)
             {
                 fail(ctx, "typedef already defined");
+                ast->typdef.datatype = datatype;
                 return datatype;
             } // if
 
-            datatype = ast->typdef.datatype;
+            datatype = build_datatype(ctx, ast->typdef.isconst,
+                                      ast->typdef.datatype, soa);
+            if (datatype == NULL)
+                return NULL;  // out of memory?
 
-            // don't walk into MOJOSHADER_AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
-            // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
-            // !!! FIXME: this part is cut and paste.
-            assert( (soa->isarray && soa->dimension) ||
-                    (!soa->isarray && !soa->dimension) );
-
-            if (soa->isarray)
-            {
-                if (soa->dimension->ast.type != MOJOSHADER_AST_OP_INT_LITERAL)
-                {
-                    fail(ctx, "Expected integer");
-                    delete_expr(ctx, soa->dimension);  // make sane.
-                    soa->dimension = new_literal_int_expr(ctx, 1);
-                } // if
-
-                const int dim = ((MOJOSHADER_astExpressionIntLiteral *) soa->dimension)->value;
-                datatype = stringcache_fmt(ctx->strcache, "a{%d,%s}",
-                                           dim, datatype);
-            } // if
-
-            ast->typdef.datatype = datatype;  // make sane.
             push_usertype(ctx, soa->identifier, datatype);
-            return datatype;
+            ast->typdef.datatype = datatype;
+            return ast->typdef.datatype;
         } // case
 
         case MOJOSHADER_AST_FUNCTION_PARAMS:
-            push_variable(ctx, ast->params.identifier, ast->params.datatype);
-            type_check_ast(ctx, ast->params.initializer);
-            type_check_ast(ctx, ast->params.next);
-            return NULL;
+            assert(0 && "Should be done by MOJOSHADER_AST_FUNCTION_SIGNATURE");
 
         case MOJOSHADER_AST_FUNCTION_SIGNATURE:
-            type_check_ast(ctx, ast->funcsig.params);
+        {
+            MOJOSHADER_astFunctionParameters *param;
+            int count = 0;
+
+            // !!! FIXME: pre-count this?
+            for (param = ast->funcsig.params; param; param = param->next)
+                count++;
+
+            // !!! FIXME: this is hacky.
+            MOJOSHADER_astDataType *dtparams;
+            void *ptr = Malloc(ctx, sizeof (*dtparams) * count);
+            if (ptr == NULL)
+                return NULL;
+            if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+            {
+                Free(ctx, ptr);
+                return NULL;
+            } // if
+            dtparams = (MOJOSHADER_astDataType *) ptr;
+
+            ptr = Malloc(ctx, sizeof (MOJOSHADER_astDataType));
+            if (ptr == NULL)
+                return NULL;
+            if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+            {
+                Free(ctx, ptr);
+                return NULL;
+            } // if
+            MOJOSHADER_astDataType *dt = (MOJOSHADER_astDataType *) ptr;
+
+            int i = 0;
+            for (param = ast->funcsig.params; param; param = param->next)
+            {
+                assert(i < count);
+                push_variable(ctx, param->identifier, param->datatype);
+                datatype2 = type_check_ast(ctx, param->initializer);
+                add_type_coercion(ctx, NULL, param->datatype,
+                                  &param->initializer, datatype2);
+                memcpy(&dtparams[i], param->datatype, sizeof (*param->datatype));
+                i++;
+            } // for
+
+            dt->type = MOJOSHADER_AST_DATATYPE_FUNCTION;
+            dt->function.retval = ast->funcsig.datatype;
+            dt->function.params = dtparams;
+            dt->function.num_params = count;
+
+            ast->funcsig.datatype = dt;
             return ast->funcsig.datatype;
+        } // case
 
         case MOJOSHADER_AST_STRUCT_DECLARATION:
-            datatype = type_check_ast(ctx, ast->structdecl.members);
-            datatype = stringcache_fmt(ctx->strcache, "X{%s}", datatype);
-            push_usertype(ctx, ast->structdecl.name, datatype);
-            return stringcache_fmt(ctx->strcache, "U{%s}", ast->structdecl.name);
+        {
+            const MOJOSHADER_astStructMembers *mbrs;
+
+            // !!! FIXME: count this during parsing?
+            int count = 0;
+            mbrs = ast->structdecl.members;
+            while (mbrs != NULL)
+            {
+                count++;
+                mbrs = mbrs->next;
+            } // while
+
+            // !!! FIXME: this is hacky.
+            MOJOSHADER_astDataTypeStructMember *dtmbrs;
+            void *ptr = Malloc(ctx, sizeof (*dtmbrs) * count);
+            if (ptr == NULL)
+                return NULL;
+            if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+            {
+                Free(ctx, ptr);
+                return NULL;
+            } // if
+            dtmbrs = (MOJOSHADER_astDataTypeStructMember *) ptr;
+
+            ptr = Malloc(ctx, sizeof (MOJOSHADER_astDataType));
+            if (ptr == NULL)
+                return NULL;
+            if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+            {
+                Free(ctx, ptr);
+                return NULL;
+            } // if
+            MOJOSHADER_astDataType *dt = (MOJOSHADER_astDataType *) ptr;
+
+            mbrs = ast->structdecl.members;
+            int i;
+            for (i = 0; i < count; i++)
+            {
+                // !!! FIXME: current grammar forbids const keyword on struct members!
+                dtmbrs[i].datatype = build_datatype(ctx, 0, mbrs->datatype, mbrs->details);
+                dtmbrs[i].identifier = mbrs->details->identifier;  // cached!
+                mbrs = mbrs->next;
+            } // for
+
+            dt->structure.type = MOJOSHADER_AST_DATATYPE_STRUCT;
+            dt->structure.members = dtmbrs;
+            dt->structure.member_count = count;
+            ast->structdecl.datatype = dt;
+
+            push_usertype(ctx, ast->structdecl.name, ast->structdecl.datatype);
+            return ast->structdecl.datatype;
+        } // case
 
         case MOJOSHADER_AST_STRUCT_MEMBER:
-            datatype = type_check_ast(ctx, ast->structmembers.details);
-            datatype2 = type_check_ast(ctx, ast->structmembers.next);
-            if (datatype2)
-            {
-                return stringcache_fmt(ctx->strcache, "%s%s",
-                                       datatype, datatype2);
-            } // if
-            return datatype;
+            assert(0 && "Should be done by MOJOSHADER_AST_STRUCT_DECLARATION.");
+            return NULL;
 
         case MOJOSHADER_AST_VARIABLE_DECLARATION:
             // this is true now, but we'll fill in ->datatype no matter what.
             assert((ast->vardecl.datatype && !ast->vardecl.anonymous_datatype) ||
                    (!ast->vardecl.datatype && ast->vardecl.anonymous_datatype));
 
-            // fix up if necessary.
+            // An anonymous struct? That AST node does the heavy lifting.
             if (ast->vardecl.anonymous_datatype != NULL)
-                ast->vardecl.datatype = type_check_ast(ctx, ast->vardecl.anonymous_datatype);
-            datatype = ast->vardecl.datatype;
-
-            // don't walk into MOJOSHADER_AST_SCALAR_OR_ARRAY here, since it can't resolve the identifier.
-            // !!! FIXME: SCALAR_OR_ARRAY is sort of a mess.
-            // !!! FIXME: this part is cut and paste.
-            assert( (ast->vardecl.details->isarray &&
-                     ast->vardecl.details->dimension) ||
-                     (!ast->vardecl.details->isarray &&
-                      !ast->vardecl.details->dimension) );
-
-            if (ast->vardecl.details->isarray)
+                datatype = type_check_ast(ctx, ast->vardecl.anonymous_datatype);
+            else
             {
-                MOJOSHADER_astScalarOrArray *soa = ast->vardecl.details;
-                if (soa->dimension->ast.type != MOJOSHADER_AST_OP_INT_LITERAL)
-                {
-                    fail(ctx, "Expected integer");
-                    delete_expr(ctx, soa->dimension);  // make sane.
-                    soa->dimension = new_literal_int_expr(ctx, 1);
-                } // if
+                datatype = build_datatype(ctx, (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_CONST) != 0,
+                                          ast->vardecl.datatype, ast->vardecl.details);
+            } // else
 
-                const int dim = ((MOJOSHADER_astExpressionIntLiteral *) soa->dimension)->value;
-                datatype = stringcache_fmt(ctx->strcache, "a{%d,%s}",
-                                           dim, datatype);
-            } // if
+            ast->vardecl.datatype = datatype;
 
-            ast->vardecl.datatype = datatype;  // make sane.
             push_variable(ctx, ast->vardecl.details->identifier, datatype);
-            datatype2 = type_check_ast(ctx, ast->vardecl.initializer);
-            add_type_coercion(ctx, NULL, datatype, &ast->vardecl.initializer, datatype2);
+            if (ast->vardecl.initializer != NULL)
+            {
+                datatype2 = type_check_ast(ctx, ast->vardecl.initializer);
+                add_type_coercion(ctx, NULL, datatype, &ast->vardecl.initializer, datatype2);
+            } // if
 
             type_check_ast(ctx, ast->vardecl.annotations);
             type_check_ast(ctx, ast->vardecl.lowlevel);
 
             datatype2 = type_check_ast(ctx, ast->vardecl.next);
-            assert(datatype == datatype2);
-            return datatype;
+            return ast->vardecl.datatype;
 
         case MOJOSHADER_AST_ANNOTATION:
         {
@@ -1904,7 +2611,6 @@ assert(0); // !!! FIXME: figure out datatype of identifier.
 
     return NULL;
 } // type_check_ast
-
 
 
 static inline void semantic_analysis(Context *ctx)
@@ -2154,6 +2860,21 @@ static void destroy_context(Context *ctx)
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
 
+        // !!! FIXME: this is kinda hacky.
+        const size_t count = buffer_size(ctx->garbage) / sizeof (void *);
+        if (count > 0)
+        {
+            void **garbage = (void **) buffer_flatten(ctx->garbage);
+            if (garbage != NULL)
+            {
+                size_t i;
+                for (i = 0; i < count; i++)
+                    f(garbage[i], d);
+                f(garbage, d);
+            } // if
+        } // if
+        buffer_destroy(ctx->garbage);
+
         delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit*)ctx->ast);
         destroy_symbolmap(ctx, &ctx->usertypes);
         destroy_symbolmap(ctx, &ctx->variables);
@@ -2187,25 +2908,37 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);  // !!! FIXME: check for failure.
     ctx->warnings = errorlist_create(MallocBridge, FreeBridge, ctx);  // !!! FIXME: check for failure.
 
-    // fill in some common strings we'll want to use without further hashing.
-    ctx->str_b = stringcache(ctx->strcache, "b");
-    ctx->str_f = stringcache(ctx->strcache, "f");
-    ctx->str_i = stringcache(ctx->strcache, "i");
-    ctx->str_u = stringcache(ctx->strcache, "u");
-    ctx->str_h = stringcache(ctx->strcache, "h");
-    ctx->str_d = stringcache(ctx->strcache, "d");
-    ctx->str_s = stringcache(ctx->strcache, "s");
-    ctx->str_S = stringcache(ctx->strcache, "S");
-    ctx->str_s1 = stringcache(ctx->strcache, "s1");
-    ctx->str_s2 = stringcache(ctx->strcache, "s2");
-    ctx->str_s3 = stringcache(ctx->strcache, "s3");
-    ctx->str_sc = stringcache(ctx->strcache, "sc");
-    ctx->str_ss = stringcache(ctx->strcache, "ss");
-    ctx->str_sS = stringcache(ctx->strcache, "sS");
-    ctx->str_Fs = stringcache(ctx->strcache, "Fs");
-    ctx->str_Fu = stringcache(ctx->strcache, "Fu");
-    ctx->str_ns = stringcache(ctx->strcache, "ns");
-    ctx->str_nu = stringcache(ctx->strcache, "nu");
+    // !!! FIXME: this feels hacky.
+    ctx->garbage = buffer_create(256*sizeof(void*),MallocBridge,FreeBridge,ctx);  // !!! FIXME: check for failure.
+
+    ctx->dt_bool.type = MOJOSHADER_AST_DATATYPE_BOOL;
+    ctx->dt_int.type = MOJOSHADER_AST_DATATYPE_INT;
+    ctx->dt_uint.type = MOJOSHADER_AST_DATATYPE_UINT;
+    ctx->dt_float.type = MOJOSHADER_AST_DATATYPE_FLOAT;
+    ctx->dt_float_snorm.type = MOJOSHADER_AST_DATATYPE_FLOAT_SNORM;
+    ctx->dt_float_unorm.type = MOJOSHADER_AST_DATATYPE_FLOAT_UNORM;
+    ctx->dt_half.type = MOJOSHADER_AST_DATATYPE_HALF;
+    ctx->dt_double.type = MOJOSHADER_AST_DATATYPE_DOUBLE;
+    ctx->dt_string.type = MOJOSHADER_AST_DATATYPE_STRING;
+    ctx->dt_sampler1d.type = MOJOSHADER_AST_DATATYPE_SAMPLER_1D;
+    ctx->dt_sampler2d.type = MOJOSHADER_AST_DATATYPE_SAMPLER_2D;
+    ctx->dt_sampler3d.type = MOJOSHADER_AST_DATATYPE_SAMPLER_3D;
+    ctx->dt_samplercube.type = MOJOSHADER_AST_DATATYPE_SAMPLER_CUBE;
+    ctx->dt_samplerstate.type = MOJOSHADER_AST_DATATYPE_SAMPLER_STATE;
+    ctx->dt_samplercompstate.type = MOJOSHADER_AST_DATATYPE_SAMPLER_COMPARISON_STATE;
+
+    #define INIT_DT_BUFFER(t) \
+        ctx->dt_buf_##t.type = MOJOSHADER_AST_DATATYPE_BUFFER; \
+        ctx->dt_buf_##t.buffer.base = &ctx->dt_##t;
+    INIT_DT_BUFFER(bool);
+    INIT_DT_BUFFER(int);
+    INIT_DT_BUFFER(uint);
+    INIT_DT_BUFFER(half);
+    INIT_DT_BUFFER(float);
+    INIT_DT_BUFFER(double);
+    INIT_DT_BUFFER(float_snorm);
+    INIT_DT_BUFFER(float_unorm);
+    #undef INIT_DT_BUFFER
 
     return ctx;
 } // build_context
@@ -2213,11 +2946,11 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 
 // parse the source code into an AST.
 static void parse_source(Context *ctx, const char *filename,
-                        const char *source, unsigned int sourcelen,
-                        const MOJOSHADER_preprocessorDefine *defines,
-                        unsigned int define_count,
-                        MOJOSHADER_includeOpen include_open,
-                        MOJOSHADER_includeClose include_close)
+                         const char *source, unsigned int sourcelen,
+                         const MOJOSHADER_preprocessorDefine *defines,
+                         unsigned int define_count,
+                         MOJOSHADER_includeOpen include_open,
+                         MOJOSHADER_includeClose include_close)
 {
     TokenData data;
     unsigned int tokenlen;
@@ -2234,10 +2967,19 @@ static void parse_source(Context *ctx, const char *filename,
     pp = preprocessor_start(filename, source, sourcelen, include_open,
                             include_close, defines, define_count, 0,
                             MallocBridge, FreeBridge, ctx);
-
-    // !!! FIXME: check if (pp == NULL)...
+    if (pp == NULL)
+    {
+        assert(ctx->out_of_memory);  // shouldn't fail for any other reason.
+        return;
+    } // if
 
     parser = ParseHLSLAlloc(ctx->malloc, ctx->malloc_data);
+    if (parser == NULL)
+    {
+        assert(ctx->out_of_memory);  // shouldn't fail for any other reason.
+        preprocessor_end(pp);
+        return;
+    } // if
 
     // !!! FIXME: check if (parser == NULL)...
 
@@ -2245,24 +2987,40 @@ static void parse_source(Context *ctx, const char *filename,
     ParseHLSLTrace(stdout, "COMPILER: ");
     #endif
 
+    // !!! FIXME: move this to a subroutine.
     // add in standard typedefs...
-    static char *types[] = { "bool", "int", "uint", "half", "float", "double" };
-    int i;
+    const struct
+    {
+        const char *str;
+        const MOJOSHADER_astDataType *datatype;
+    } types[] = {
+        { "bool", &ctx->dt_bool },
+        { "int", &ctx->dt_int },
+        { "uint", &ctx->dt_uint },
+        { "half", &ctx->dt_half },
+        { "float", &ctx->dt_float },
+        { "double", &ctx->dt_double },
+    };
+
+    int i, j, k;
     for (i = 0; i < STATICARRAYLEN(types); i++)
     {
         char buf[32];
-        int j;
+        int len;
+        const MOJOSHADER_astDataType *dt;
+
         for (j = 1; j <= 4; j++)
         {
             // "float2"
-            int len = snprintf(buf, sizeof (buf), "%s%d", types[i], j);
-            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), "?");
-            int k;
+            dt = new_datatype_vector(ctx, types[i].datatype, j);
+            len = snprintf(buf, sizeof (buf), "%s%d", types[i].str, j);
+            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), dt);
             for (k = 1; k <= 4; k++)
             {
                 // "float2x2"
-                len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i], j, k);
-                push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), "?");
+                dt = new_datatype_matrix(ctx, types[i].datatype, j, k);
+                len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i].str,j,k);
+                push_usertype(ctx, stringcache_len(ctx->strcache,buf,len), dt);
             } // for
         } // for
     } // for
@@ -2315,6 +3073,7 @@ static void parse_source(Context *ctx, const char *filename,
             continue;
         }
 
+        // !!! FIXME: this is a mess, decide who should be doing this stuff, and only do it once.
         lemon_token = convert_to_lemon_token(ctx, token, tokenlen, tokenval);
         switch (lemon_token)
         {
@@ -2327,6 +3086,11 @@ static void parse_source(Context *ctx, const char *filename,
                 break;
 
             case TOKEN_HLSL_USERTYPE:
+                data.string = stringcache_len(ctx->strcache, token, tokenlen);
+                data.datatype = get_usertype(ctx, data.string);
+                assert(data.datatype != NULL);
+                break;
+
             case TOKEN_HLSL_STRING_LITERAL:
             case TOKEN_HLSL_IDENTIFIER:
                 data.string = stringcache_len(ctx->strcache, token, tokenlen);

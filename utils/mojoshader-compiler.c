@@ -64,6 +64,109 @@ static void print_unroll_attr(FILE *io, const int unroll)
         fprintf(io, "[unroll(%d)] ", unroll);
 } // print_unroll_attr
 
+static void print_ast_datatype(FILE *io, const MOJOSHADER_astDataType *dt)
+{
+    int i;
+
+    if (dt == NULL)
+        return;
+
+    switch (dt->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL:
+            fprintf(io, "bool");
+            return;
+        case MOJOSHADER_AST_DATATYPE_INT:
+            fprintf(io, "int");
+            return;
+        case MOJOSHADER_AST_DATATYPE_UINT:
+            fprintf(io, "uint");
+            return;
+        case MOJOSHADER_AST_DATATYPE_FLOAT:
+            fprintf(io, "float");
+            return;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM:
+            fprintf(io, "snorm float");
+            return;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM:
+            fprintf(io, "unorm float");
+            return;
+        case MOJOSHADER_AST_DATATYPE_HALF:
+            fprintf(io, "half");
+            return;
+        case MOJOSHADER_AST_DATATYPE_DOUBLE:
+            fprintf(io, "double");
+            return;
+        case MOJOSHADER_AST_DATATYPE_STRING:
+            fprintf(io, "string");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_1D:
+            fprintf(io, "sampler1D");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_2D:
+            fprintf(io, "sampler2D");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_3D:
+            fprintf(io, "sampler3D");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_CUBE:
+            fprintf(io, "samplerCUBE");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_STATE:
+            fprintf(io, "sampler_state");
+            return;
+        case MOJOSHADER_AST_DATATYPE_SAMPLER_COMPARISON_STATE:
+            fprintf(io, "SamplerComparisonState");
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_STRUCT:
+            fprintf(io, "struct { ");
+            for (i = 0; i < dt->structure.member_count; i++)
+            {
+                print_ast_datatype(io, dt->structure.members[i].datatype);
+                fprintf(io, " %s; ", dt->structure.members[i].identifier);
+            } // for
+            fprintf(io, "}");
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_ARRAY:
+            print_ast_datatype(io, dt->array.base);
+            if (dt->array.elements < 0)
+                fprintf(io, "[]");
+            else
+                fprintf(io, "[%d]", dt->array.elements);
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_VECTOR:
+            fprintf(io, "vector<");
+            print_ast_datatype(io, dt->vector.base);
+            fprintf(io, ",%d>", dt->vector.elements);
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_MATRIX:
+            fprintf(io, "matrix<");
+            print_ast_datatype(io, dt->matrix.base);
+            fprintf(io, ",%d,%d>", dt->matrix.rows, dt->matrix.columns);
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_BUFFER:
+            fprintf(io, "buffer<");
+            print_ast_datatype(io, dt->buffer.base);
+            fprintf(io, ">");
+            return;
+
+        case MOJOSHADER_AST_DATATYPE_USER:
+            fprintf(io, "%s", dt->user.name);
+            return;
+
+        //case MOJOSHADER_AST_DATATYPE_NONE:
+        //case MOJOSHADER_AST_DATATYPE_FUNCTION:
+        default:
+            assert(0 && "Unexpected datatype.");
+            return;
+    } // switch
+} // print_ast_datatype
+
 // !!! FIXME: this screws up on order of operations.
 static void print_ast(FILE *io, const int substmt, const void *_ast)
 {
@@ -221,13 +324,16 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
             break;
 
         case MOJOSHADER_AST_OP_CONSTRUCTOR:
-            fprintf(io, "%s(", ast->constructor.datatype);
+            print_ast_datatype(io, ast->constructor.datatype);
+            fprintf(io, "(");
             print_ast(io, 0, ast->constructor.args);
             fprintf(io, ")");
             break;
 
         case MOJOSHADER_AST_OP_CAST:
-            fprintf(io, "(%s) (", ast->cast.datatype);
+            fprintf(io, "(");
+            print_ast_datatype(io, ast->cast.datatype);
+            fprintf(io, ") (");
             print_ast(io, 0, ast->cast.operand);
             fprintf(io, ")");
             break;
@@ -452,15 +558,17 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
 
         case MOJOSHADER_AST_TYPEDEF:
             DO_INDENT;
-            fprintf(io, "typedef %s%s ",
-                   ast->typdef.isconst ? "const " : "", ast->typdef.datatype);
+            fprintf(io, "typedef %s", ast->typdef.isconst ? "const " : "");
+            print_ast_datatype(io, ast->typdef.datatype);
+            fprintf(io, " ");
             print_ast(io, 0, ast->typdef.details);
             fprintf(io, ";%s", nl);
             break;
 
         case MOJOSHADER_AST_FUNCTION_PARAMS:
             fprintf(io, "%s", inpmod[(int) ast->params.input_modifier]);
-            fprintf(io, "%s %s", ast->params.datatype, ast->params.identifier);
+            print_ast_datatype(io, ast->params.datatype);
+            fprintf(io, " %s", ast->params.identifier);
             if (ast->params.semantic)
                 fprintf(io, " : %s", ast->params.semantic);
             fprintf(io, "%s", interpmod[(int) ast->params.interpolation_modifier]);
@@ -480,9 +588,11 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
 
         case MOJOSHADER_AST_FUNCTION_SIGNATURE:
             fprintf(io, "%s", fnstorage[(int) ast->funcsig.storage_class]);
-            fprintf(io, "%s %s(",
-                    ast->funcsig.datatype ? ast->funcsig.datatype : "void",
-                    ast->funcsig.identifier);
+            if (ast->funcsig.datatype)
+                print_ast_datatype(io, ast->funcsig.datatype);
+            else
+                fprintf(io, "void");
+            fprintf(io, " %s(", ast->funcsig.identifier);
             print_ast(io, 0, ast->funcsig.params);
             fprintf(io, ")");
             if (ast->funcsig.semantic)
@@ -503,7 +613,8 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
         case MOJOSHADER_AST_STRUCT_MEMBER:
             DO_INDENT;
             fprintf(io, "%s", interpmod[(int)ast->structmembers.interpolation_mod]);
-            fprintf(io, "%s ", ast->structmembers.datatype);
+            print_ast_datatype(io, ast->structmembers.datatype);
+            fprintf(io, " ");
             print_ast(io, 0, ast->structmembers.details);
             if (ast->structmembers.semantic)
                 fprintf(io, " : %s", ast->structmembers.semantic);
@@ -533,7 +644,7 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
                 fprintf(io, "columnmajor ");
 
             if (ast->vardecl.datatype)
-                fprintf(io, "%s", ast->vardecl.datatype);
+                print_ast_datatype(io, ast->vardecl.datatype);
             else
                 print_ast(io, 0, ast->vardecl.anonymous_datatype);
             fprintf(io, " ");
@@ -582,7 +693,8 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
             fprintf(io, "<");
             while (a)
             {
-                fprintf(io, " %s ", a->datatype);
+                fprintf(io, " ");
+                print_ast_datatype(io, a->datatype);
                 if (a->initializer != NULL)
                 {
                     fprintf(io, " = ");
