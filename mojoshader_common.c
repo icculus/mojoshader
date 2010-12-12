@@ -59,6 +59,33 @@ int hash_find(const HashTable *table, const void *key, const void **_value)
     return 0;
 } // hash_find
 
+int hash_iter(const HashTable *table, const void *key,
+              const void **_value, void **iter)
+{
+    HashItem *i = *iter;
+    if (i == NULL)
+        i = table->table[calc_hash(table, key)];
+    else
+        i = i->next;
+
+    while (i != NULL)
+    {
+        if (table->keymatch(key, i->key, table->data))
+        {
+            *_value = i->value;
+            *iter = i;
+            return 1;
+        } // if
+        i = i->next;
+    } // while
+
+    // no more matches.
+    *_value = NULL;
+    *iter = NULL;
+    return 0;
+} // hash_iter
+
+
 int hash_insert(HashTable *table, const void *key, const void *value)
 {
     HashItem *item = NULL;

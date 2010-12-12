@@ -177,6 +177,7 @@ void hash_destroy(HashTable *table);
 int hash_insert(HashTable *table, const void *key, const void *value);
 int hash_remove(HashTable *table, const void *key);
 int hash_find(const HashTable *table, const void *key, const void **_value);
+int hash_iter(const HashTable *table, const void *key, const void **_value, void **iter);
 
 uint32 hash_hash_string(const void *sym, void *unused);
 int hash_keymatch_string(const void *a, const void *b, void *unused);
