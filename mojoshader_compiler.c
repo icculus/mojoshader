@@ -68,6 +68,7 @@ typedef struct SymbolScope
 {
     const char *symbol;
     const MOJOSHADER_astDataType *datatype;
+    int index;  // unique positive value within a function, negative if global.
     struct SymbolScope *next;
 } SymbolScope;
 
@@ -96,6 +97,9 @@ typedef struct Context
     SymbolMap variables;
     MOJOSHADER_astNode *ast;  // Abstract Syntax Tree
     const char *source_profile;
+    int is_func_scope; // non-zero if semantic analysis is in function scope.
+    int var_index;  // next variable index for current function.
+    int global_var_index;  // next variable index for global scope.
 
     // Cache intrinsic types for fast lookup and consistent pointer values.
     MOJOSHADER_astDataType dt_bool;
@@ -221,19 +225,46 @@ static int create_symbolmap(Context *ctx, SymbolMap *map)
 } // create_symbolmap
 
 
-static void push_symbol(Context *ctx, SymbolMap *map,
-                        const char *sym, const MOJOSHADER_astDataType *dt)
+static void push_symbol(Context *ctx, SymbolMap *map, const char *sym,
+                        const MOJOSHADER_astDataType *dt, const int index)
 {
-    // !!! FIXME: decide if this symbol is defined, and if so, if it's in
-    // !!! FIXME:  the current scope.
+    // Decide if this symbol is defined, and if it's in the current scope.
+    SymbolScope *item = NULL;
+    const void *value = NULL;
+    void *iter = NULL;
+    if ((sym != NULL) && (hash_iter(map->hash, sym, &value, &iter)))
+    {
+        item = (SymbolScope *) value;
+        // Functions are always global, so no need to search scopes.
+            // !!! FIXME: Functions overload, though, so we have to continue
+            // !!! FIXME: iterating to see if it matches anything.
+        //const MOJOSHADER_astDataType *dt = item->datatype;
+        //if (dt->type == MOJOSHADER_AST_DATATYPE_FUNCTION)
+        //{
+        //} // if
+        //else  // check the current scope for a dupe.
+        {
+            item = map->scope;
+            while ((item) && (item->symbol))
+            {
+                if (strcmp(item->symbol, sym) == 0)
+                {
+                    failf(ctx, "Symbol '%s' already defined", sym);
+                    return;
+                } // if
+                item = item->next;
+            } // while
+        } // else
+    } // if
 
-    SymbolScope *item = (SymbolScope *) Malloc(ctx, sizeof (SymbolScope));
+    // Add the symbol to our map and scope stack.
+    item = (SymbolScope *) Malloc(ctx, sizeof (SymbolScope));
     if (item == NULL)
         return;
 
-    if (sym != NULL)
+    if (sym != NULL)  // sym can be NULL if we're pushing a new scope.
     {
-        if (hash_insert(map->hash, sym, dt) == -1)
+        if (hash_insert(map->hash, sym, item) == -1)
         {
             Free(ctx, item);
             return;
@@ -241,6 +272,7 @@ static void push_symbol(Context *ctx, SymbolMap *map,
     } // if
 
     item->symbol = sym;  // cached strings, don't copy.
+    item->index = index;
     item->datatype = dt;
     item->next = map->scope;
     map->scope = item;
@@ -269,12 +301,21 @@ static void push_usertype(Context *ctx, const char *sym, const MOJOSHADER_astDat
         } // if
     } // if
 
-    push_symbol(ctx, &ctx->usertypes, sym, dt);
+    push_symbol(ctx, &ctx->usertypes, sym, dt, 0);
 } // push_usertype
 
 static inline void push_variable(Context *ctx, const char *sym, const MOJOSHADER_astDataType *dt)
 {
-    push_symbol(ctx, &ctx->variables, sym, dt);
+    int idx = 0;
+    if (sym != NULL)
+    {
+        if (ctx->is_func_scope)
+            idx = ++ctx->var_index;  // these are positive.
+        else
+            idx = --ctx->global_var_index;  // these are negative.
+    } // if
+
+    push_symbol(ctx, &ctx->variables, sym, dt, idx);
 } // push_variable
 
 static inline void push_scope(Context *ctx)
@@ -311,21 +352,24 @@ static inline void pop_scope(Context *ctx)
     pop_symbol_scope(ctx, &ctx->variables);
 } // push_scope
 
-static const MOJOSHADER_astDataType *find_symbol(Context *ctx, SymbolMap *map, const char *sym)
+static const MOJOSHADER_astDataType *find_symbol(Context *ctx, SymbolMap *map, const char *sym, int *_index)
 {
-    const void *value = NULL;
-    hash_find(map->hash, sym, &value);
-    return (const MOJOSHADER_astDataType *) value;
+    const void *_item = NULL;
+    hash_find(map->hash, sym, &_item);
+    SymbolScope *item = (SymbolScope *) item;
+    if (item && _index)
+        *_index = item->index;
+    return item ? item->datatype : NULL;
 } // find_symbol
 
 static inline const MOJOSHADER_astDataType *find_usertype(Context *ctx, const char *sym)
 {
-    return find_symbol(ctx, &ctx->usertypes, sym);
+    return find_symbol(ctx, &ctx->usertypes, sym, NULL);
 } // find_usertype
 
-static inline const MOJOSHADER_astDataType *find_variable(Context *ctx, const char *sym)
+static inline const MOJOSHADER_astDataType *find_variable(Context *ctx, const char *sym, int *_index)
 {
-    return find_symbol(ctx, &ctx->variables, sym);
+    return find_symbol(ctx, &ctx->variables, sym, _index);
 } // find_variable
 
 static void destroy_symbolmap(Context *ctx, SymbolMap *map)
@@ -1321,7 +1365,7 @@ static const MOJOSHADER_astDataType *get_usertype(const Context *ctx,
     const void *value;  // search all scopes.
     if (!hash_find(ctx->usertypes.hash, token, &value))
         return NULL;
-    return (MOJOSHADER_astDataType *) value;
+    return value ? ((SymbolScope *) value)->datatype : NULL;
 } // get_usertype
 
 
@@ -2138,7 +2182,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             return ast->ternary.datatype;
 
         case MOJOSHADER_AST_OP_IDENTIFIER:
-            datatype = find_variable(ctx, ast->identifier.identifier);
+            datatype = find_variable(ctx, ast->identifier.identifier, &ast->identifier.index);
             if (datatype == NULL)
             {
                 fail(ctx, "Unknown identifier");
@@ -2394,6 +2438,8 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 fail(ctx, "function sigs don't match");
             } // else
 
+            ctx->is_func_scope = 1;
+            ctx->var_index = 0;  // reset this every function.
             push_scope(ctx);  // so function params are in function scope.
             type_check_ast(ctx, ast->funcunit.declaration);
             if (ast->funcunit.definition == NULL)
@@ -2404,6 +2450,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 pop_scope(ctx);
                 push_variable(ctx, ast->funcunit.declaration->identifier, datatype);
             } // else
+            ctx->is_func_scope = 0;
 
             type_check_ast(ctx, ast->funcunit.next);
             return NULL;

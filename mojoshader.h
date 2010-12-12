@@ -1224,11 +1224,19 @@ typedef struct MOJOSHADER_astExpressionTernary
     MOJOSHADER_astExpression *right;
 } MOJOSHADER_astExpressionTernary;
 
+/* Identifier indexes aren't available until semantic analysis phase completes.
+ *  It provides a unique id for this identifier's variable.
+ *  It will be negative for global scope, positive for function scope
+ *  (global values are globally unique, function values are only
+ *  unique within the scope of the given function).
+ *  May be zero for various reasons (function name, unknown identifier, etc).
+ */
 typedef struct MOJOSHADER_astExpressionIdentifier
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_IDENTIFIER */
     const MOJOSHADER_astDataType *datatype;
     const char *identifier;
+    int index;
 } MOJOSHADER_astExpressionIdentifier;
 
 typedef struct MOJOSHADER_astExpressionIntLiteral
