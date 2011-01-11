@@ -2419,6 +2419,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_STATEMENT_RETURN:
             type_check_ast(ctx, ast->returnstmt.expr);
             type_check_ast(ctx, ast->returnstmt.next);
+            return NULL;
 
         case MOJOSHADER_AST_COMPUNIT_FUNCTION:
             // !!! FIXME: this is totally broken for function overloading.
