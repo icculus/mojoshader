@@ -324,7 +324,6 @@ static inline void push_scope(Context *ctx)
     push_variable(ctx, NULL, NULL);
 } // push_scope
 
-
 static void pop_symbol(Context *ctx, SymbolMap *map)
 {
     SymbolScope *item = map->scope;
@@ -2417,6 +2416,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             return NULL;
 
         case MOJOSHADER_AST_STATEMENT_RETURN:
+            // !!! FIXME: type coercion to outer function's return type.
             type_check_ast(ctx, ast->returnstmt.expr);
             type_check_ast(ctx, ast->returnstmt.next);
             return NULL;
