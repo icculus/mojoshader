@@ -356,7 +356,7 @@ static const MOJOSHADER_astDataType *find_symbol(Context *ctx, SymbolMap *map, c
 {
     const void *_item = NULL;
     hash_find(map->hash, sym, &_item);
-    SymbolScope *item = (SymbolScope *) item;
+    SymbolScope *item = (SymbolScope *) _item;
     if (item && _index)
         *_index = item->index;
     return item ? item->datatype : NULL;
