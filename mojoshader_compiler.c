@@ -2610,33 +2610,39 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             return NULL;
 
         case MOJOSHADER_AST_VARIABLE_DECLARATION:
+        {
+            MOJOSHADER_astVariableDeclaration *decl = &ast->vardecl;
+
             // this is true now, but we'll fill in ->datatype no matter what.
-            assert((ast->vardecl.datatype && !ast->vardecl.anonymous_datatype) ||
-                   (!ast->vardecl.datatype && ast->vardecl.anonymous_datatype));
+            assert((decl->datatype && !decl->anonymous_datatype) ||
+                   (!decl->datatype && decl->anonymous_datatype));
 
             // An anonymous struct? That AST node does the heavy lifting.
-            if (ast->vardecl.anonymous_datatype != NULL)
-                datatype = type_check_ast(ctx, ast->vardecl.anonymous_datatype);
+            if (decl->anonymous_datatype != NULL)
+                datatype = type_check_ast(ctx, decl->anonymous_datatype);
             else
             {
-                datatype = build_datatype(ctx, (ast->vardecl.attributes & MOJOSHADER_AST_VARATTR_CONST) != 0,
-                                          ast->vardecl.datatype, ast->vardecl.details);
+                datatype = build_datatype(ctx, (decl->attributes & MOJOSHADER_AST_VARATTR_CONST) != 0,
+                                          decl->datatype, decl->details);
             } // else
 
-            ast->vardecl.datatype = datatype;
-
-            push_variable(ctx, ast->vardecl.details->identifier, datatype);
-            if (ast->vardecl.initializer != NULL)
+            while (decl != NULL)
             {
-                datatype2 = type_check_ast(ctx, ast->vardecl.initializer);
-                add_type_coercion(ctx, NULL, datatype, &ast->vardecl.initializer, datatype2);
-            } // if
+                decl->datatype = datatype;
+                push_variable(ctx, decl->details->identifier, datatype);
+                if (decl->initializer != NULL)
+                {
+                    datatype2 = type_check_ast(ctx, decl->initializer);
+                    add_type_coercion(ctx, NULL, datatype, &decl->initializer, datatype2);
+                } // if
 
-            type_check_ast(ctx, ast->vardecl.annotations);
-            type_check_ast(ctx, ast->vardecl.lowlevel);
+                type_check_ast(ctx, decl->annotations);
+                type_check_ast(ctx, decl->lowlevel);
+                decl = decl->next;
+            } // while
 
-            datatype2 = type_check_ast(ctx, ast->vardecl.next);
-            return ast->vardecl.datatype;
+            return datatype;
+        } // case
 
         case MOJOSHADER_AST_ANNOTATION:
         {
