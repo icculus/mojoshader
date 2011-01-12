@@ -474,7 +474,7 @@ primary_expr(A) ::= LPAREN expression(B) RPAREN. { A = B; }
 %destructor postfix_expr { delete_expr(ctx, $$); }
 postfix_expr(A) ::= primary_expr(B). { A = B; }
 postfix_expr(A) ::= postfix_expr(B) LBRACKET expression(C) RBRACKET. { A = new_binary_expr(ctx, MOJOSHADER_AST_OP_DEREF_ARRAY, B, C); }
-postfix_expr(A) ::= postfix_expr(B) arguments(C). { A = new_callfunc_expr(ctx, B, C); }
+postfix_expr(A) ::= IDENTIFIER(B) arguments(C). { A = new_callfunc_expr(ctx, B.string, C); }
 postfix_expr(A) ::= datatype(B) arguments(C). { A = new_constructor_expr(ctx, B, C); } // HLSL constructor
 postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C). { A = new_deref_struct_expr(ctx, B, C.string); }
 postfix_expr(A) ::= postfix_expr(B) PLUSPLUS. { A = new_unary_expr(ctx, MOJOSHADER_AST_OP_POSTINCREMENT, B); }

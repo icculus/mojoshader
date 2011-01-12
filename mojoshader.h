@@ -1005,8 +1005,9 @@ typedef struct MOJOSHADER_astDataTypeFunction
 {
     MOJOSHADER_astDataTypeType type;
     const MOJOSHADER_astDataType *retval;
-    const MOJOSHADER_astDataType *params;
+    const MOJOSHADER_astDataType **params;
     int num_params;
+    int intrinsic;  /* non-zero for built-in functions */
 } MOJOSHADER_astDataTypeFunction;
 
 typedef struct MOJOSHADER_astDataTypeUser
@@ -1228,8 +1229,10 @@ typedef struct MOJOSHADER_astExpressionTernary
  *  It provides a unique id for this identifier's variable.
  *  It will be negative for global scope, positive for function scope
  *  (global values are globally unique, function values are only
- *  unique within the scope of the given function).
- *  May be zero for various reasons (function name, unknown identifier, etc).
+ *  unique within the scope of the given function). There's a different
+ *  set of indices if this identifier is a function (positive for
+ *  user-defined functions, negative for intrinsics).
+ *  May be zero for various reasons (unknown identifier, etc).
  */
 typedef struct MOJOSHADER_astExpressionIdentifier
 {
@@ -1287,7 +1290,7 @@ typedef struct MOJOSHADER_astExpressionCallFunction
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_CALLFUNC */
     const MOJOSHADER_astDataType *datatype;
-    MOJOSHADER_astExpression *identifier;
+    MOJOSHADER_astExpressionIdentifier *identifier;
     MOJOSHADER_astArguments *args;
 } MOJOSHADER_astExpressionCallFunction;
 
