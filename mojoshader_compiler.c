@@ -2795,6 +2795,8 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             dt->structure.member_count = count;
             ast->structdecl.datatype = dt;
 
+            // !!! FIXME: this shouldn't push for anonymous structs: "struct { int x; } myvar;"
+            // !!! FIXME:  but right now, the grammar is wrong and requires a name for the struct.
             push_usertype(ctx, ast->structdecl.name, ast->structdecl.datatype);
             return ast->structdecl.datatype;
         } // case
@@ -4021,7 +4023,7 @@ static void parse_source(Context *ctx, const char *filename,
 
             case TOKEN_HLSL_USERTYPE:
                 data.string = stringcache_len(ctx->strcache, token, tokenlen);
-                data.datatype = get_usertype(ctx, data.string);
+                data.datatype = get_usertype(ctx, data.string);  // !!! FIXME: do we need this? It's kind of useless during parsing.
                 assert(data.datatype != NULL);
                 break;
 

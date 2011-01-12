@@ -175,6 +175,7 @@ interpolation_mod(A) ::= SAMPLE. { A = MOJOSHADER_AST_INTERPMOD_SAMPLE; }
 %destructor variable_declaration { delete_variable_declaration(ctx, $$); }
 variable_declaration(A) ::= variable_attribute_list(B) datatype(C) variable_declaration_details_list(D) SEMICOLON. { REVERSE_LINKED_LIST(MOJOSHADER_astVariableDeclaration, D); A = D; A->attributes = B; A->datatype = C; }
 variable_declaration(A) ::= datatype(B) variable_declaration_details_list(C) SEMICOLON. { REVERSE_LINKED_LIST(MOJOSHADER_astVariableDeclaration, C); A = C; A->datatype = B; }
+// !!! FIXME: this expects "struct Identifier {} varname" ... that "Identifier" is wrong.
 variable_declaration(A) ::= struct_declaration(B) variable_declaration_details_list(C) SEMICOLON. { REVERSE_LINKED_LIST(MOJOSHADER_astVariableDeclaration, C); A = C; A->anonymous_datatype = B; }
 
 %type variable_attribute_list { int }
