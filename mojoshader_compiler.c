@@ -3250,12 +3250,9 @@ static const MOJOSHADER_astData *build_astdata(Context *ctx)
 
 static void choose_src_profile(Context *ctx, const char *srcprofile)
 {
-    #define TEST_PROFILE(x) do { \
-        if (strcmp(srcprofile, x) == 0) { \
-            ctx->source_profile = x; \
-            return; \
-        } \
-    } while (0)
+    ctx->source_profile = srcprofile;
+
+    #define TEST_PROFILE(x) if (strcmp(srcprofile, x) == 0) { return; }
 
     TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_VS_1_1);
     TEST_PROFILE(MOJOSHADER_SRC_PROFILE_HLSL_VS_2_0);
