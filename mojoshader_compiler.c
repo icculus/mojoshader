@@ -3192,6 +3192,726 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 } // build_context
 
 
+// This macro salsa is kinda nasty, but it's the smallest, least error-prone
+//  way I can find to do this well in C.  :/
+
+#define ADD_INTRINSIC(fn, ret, params) do { \
+    push_function(ctx, fn, \
+        build_function_datatype(ctx, ret, STATICARRAYLEN(params), params, 1), \
+        0); \
+} while (0)
+
+#define ADD_INTRINSIC_VECTOR(typestr, code) do { \
+    const MOJOSHADER_astDataType *dt; \
+    dt = get_usertype(ctx, typestr "1"); code; \
+    dt = get_usertype(ctx, typestr "2"); code; \
+    dt = get_usertype(ctx, typestr "3"); code; \
+    dt = get_usertype(ctx, typestr "4"); code; \
+} while (0)
+
+#define ADD_INTRINSIC_VECTOR_FLOAT(code) ADD_INTRINSIC_VECTOR("float", code)
+#define ADD_INTRINSIC_VECTOR_INT(code) ADD_INTRINSIC_VECTOR("int", code)
+#define ADD_INTRINSIC_VECTOR_BOOL(code) ADD_INTRINSIC_VECTOR("bool", code)
+
+#define ADD_INTRINSIC_MATRIX(typestr, code) do { \
+    const MOJOSHADER_astDataType *dt; \
+    dt = get_usertype(ctx, typestr "1x1"); code; \
+    dt = get_usertype(ctx, typestr "1x2"); code; \
+    dt = get_usertype(ctx, typestr "1x3"); code; \
+    dt = get_usertype(ctx, typestr "1x4"); code; \
+    dt = get_usertype(ctx, typestr "2x1"); code; \
+    dt = get_usertype(ctx, typestr "2x2"); code; \
+    dt = get_usertype(ctx, typestr "2x3"); code; \
+    dt = get_usertype(ctx, typestr "2x4"); code; \
+    dt = get_usertype(ctx, typestr "3x1"); code; \
+    dt = get_usertype(ctx, typestr "3x2"); code; \
+    dt = get_usertype(ctx, typestr "3x3"); code; \
+    dt = get_usertype(ctx, typestr "3x4"); code; \
+    dt = get_usertype(ctx, typestr "4x1"); code; \
+    dt = get_usertype(ctx, typestr "4x2"); code; \
+    dt = get_usertype(ctx, typestr "4x3"); code; \
+    dt = get_usertype(ctx, typestr "4x4"); code; \
+} while (0)
+
+#define ADD_INTRINSIC_MATRIX_FLOAT(code) ADD_INTRINSIC_MATRIX("float", code)
+#define ADD_INTRINSIC_MATRIX_INT(code) ADD_INTRINSIC_MATRIX("int", code)
+#define ADD_INTRINSIC_MATRIX_BOOL(code) ADD_INTRINSIC_MATRIX("bool", code)
+
+#define ADD_INTRINSIC_ANY(scalar, typestr, code) do { \
+    { const MOJOSHADER_astDataType *dt = scalar; code; } \
+    ADD_INTRINSIC_VECTOR(typestr, code); \
+    ADD_INTRINSIC_MATRIX(typestr, code); \
+} while (0)
+
+#define ADD_INTRINSIC_ANY_FLOAT(code) do { \
+    ADD_INTRINSIC_ANY(&ctx->dt_double, "double", code); \
+    ADD_INTRINSIC_ANY(&ctx->dt_half, "half", code); \
+    ADD_INTRINSIC_ANY(&ctx->dt_float, "float", code); \
+} while (0)
+#define ADD_INTRINSIC_ANY_INT(code) do { \
+    ADD_INTRINSIC_ANY(&ctx->dt_uint, "uint", code); \
+    ADD_INTRINSIC_ANY(&ctx->dt_int, "int", code); \
+} while (0)
+
+#define ADD_INTRINSIC_ANY_BOOL(code) ADD_INTRINSIC_ANY(&ctx->dt_bool, "bool", code)
+
+static void add_intrinsic1(Context *ctx, const char *fn,
+                           const MOJOSHADER_astDataType *ret,
+                           const MOJOSHADER_astDataType *dt1)
+{
+    const MOJOSHADER_astDataType *params[] = { dt1 };
+    ADD_INTRINSIC(fn, ret, params);
+} // add_intrinsic1
+
+static void add_intrinsic2(Context *ctx, const char *fn,
+                           const MOJOSHADER_astDataType *ret,
+                           const MOJOSHADER_astDataType *dt1,
+                           const MOJOSHADER_astDataType *dt2)
+{
+    const MOJOSHADER_astDataType *params[] = { dt1, dt2 };
+    ADD_INTRINSIC(fn, ret, params);
+} // add_intrinsic2
+
+static void add_intrinsic3(Context *ctx, const char *fn,
+                           const MOJOSHADER_astDataType *ret,
+                           const MOJOSHADER_astDataType *dt1,
+                           const MOJOSHADER_astDataType *dt2,
+                           const MOJOSHADER_astDataType *dt3)
+{
+    const MOJOSHADER_astDataType *params[] = { dt1, dt2, dt3 };
+    ADD_INTRINSIC(fn, ret, params);
+} // add_intrinsic3
+
+static void add_intrinsic4(Context *ctx, const char *fn,
+                           const MOJOSHADER_astDataType *ret,
+                           const MOJOSHADER_astDataType *dt1,
+                           const MOJOSHADER_astDataType *dt2,
+                           const MOJOSHADER_astDataType *dt3,
+                           const MOJOSHADER_astDataType *dt4)
+{
+    const MOJOSHADER_astDataType *params[] = { dt1, dt2, dt3, dt4 };
+    ADD_INTRINSIC(fn, ret, params);
+} // add_intrinsic4
+
+// PLEASE NOTE that add_intrinsic*() is called AFTER the various
+//  ADD_INTRINSIC_* macros, even though these look like functions that
+//  should be called first. They might be called multiple times by the macro.
+//  The variable "dt" is defined by the macro for use by your code.
+static void add_intrinsic_SAME1_ANYf(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic1(ctx, fn, dt, dt));
+} // add_intrinsic_SAME1_ANYf
+
+static void add_intrinsic_SAME1_ANYfi(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_INT(add_intrinsic1(ctx, fn, dt, dt));
+    add_intrinsic_SAME1_ANYf(ctx, fn);
+} // add_intrinsic_SAME1_ANYfi
+
+static void add_intrinsic_BOOL_ANYf(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic1(ctx, fn, &ctx->dt_bool, dt));
+} // add_intrinsic_BOOL_ANYf
+
+static void add_intrinsic_BOOL_ANYfib(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_BOOL(add_intrinsic1(ctx, fn, &ctx->dt_bool, dt));
+    ADD_INTRINSIC_ANY_INT(add_intrinsic1(ctx, fn, &ctx->dt_bool, dt));
+    add_intrinsic_BOOL_ANYf(ctx, fn);
+} // add_intrinsic_BOOL_ANYfib
+
+static void add_intrinsic_SAME1_ANYf_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic2(ctx, fn, dt, dt, dt));
+} // add_intrinsic_SAME1_ANYf_SAME1
+
+static void add_intrinsic_SAME1_ANYfi_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_INT(add_intrinsic2(ctx, fn, dt, dt, dt));
+    add_intrinsic_SAME1_ANYf_SAME1(ctx, fn);
+} // add_intrinsic_SAME1_ANYfi_SAME1
+
+static void add_intrinsic_SAME1_ANYf_SAME1_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic3(ctx, fn, dt, dt, dt, dt));
+} // add_intrinsic_SAME1_ANYf_SAME1_SAME1
+
+static void add_intrinsic_SAME1_ANYfi_SAME1_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_INT(add_intrinsic3(ctx, fn, dt, dt, dt, dt));
+    add_intrinsic_SAME1_ANYf_SAME1_SAME1(ctx, fn);
+} // add_intrinsic_SAME1_ANYfi_SAME1_SAME1
+
+static void add_intrinsic_SAME1_Mfib(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_MATRIX_BOOL(add_intrinsic1(ctx, fn, dt, dt));
+    ADD_INTRINSIC_MATRIX_INT(add_intrinsic1(ctx, fn, dt, dt));
+    ADD_INTRINSIC_MATRIX_FLOAT(add_intrinsic1(ctx, fn, dt, dt));
+} // add_intrinsic_SAME1_Mfib
+
+static void add_intrinsic_SAME1_Vf(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic1(ctx, fn, dt, dt));
+} // add_intrinsic_SAME1_Vf
+
+static void add_intrinsic_SAME1_Vf_SAME1_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic3(ctx, fn, dt, dt, dt, dt));
+} // add_intrinsic_SAME1_Vf_SAME1_SAME1
+
+static void add_intrinsic_SAME1_Vf_SAME1_f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f = &ctx->dt_float;
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic3(ctx, fn, dt, dt, dt, f));
+} // add_intrinsic_SAME1_Vf_SAME1_f
+
+static void add_intrinsic_VOID_ANYf(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic1(ctx, fn, NULL, dt));
+} // add_intrinsic_VOID_ANYf
+
+static void add_intrinsic_VOID_ANYf_SAME1_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_ANY_FLOAT(add_intrinsic3(ctx, fn, NULL, dt, dt, dt));
+} // add_intrinsic_VOID_ANYf_SAME1_SAME1
+
+static void add_intrinsic_f_SQUAREMATRIXf(Context *ctx, const char *fn)
+{
+    add_intrinsic1(ctx, fn, &ctx->dt_float, get_usertype(ctx, "float1x1"));
+    add_intrinsic1(ctx, fn, &ctx->dt_float, get_usertype(ctx, "float2x2"));
+    add_intrinsic1(ctx, fn, &ctx->dt_float, get_usertype(ctx, "float3x3"));
+    add_intrinsic1(ctx, fn, &ctx->dt_float, get_usertype(ctx, "float4x4"));
+} // add_intrinsic_f_SQUAREMATRIXf
+
+static void add_intrinsic_f_Vf(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic1(ctx, fn, &ctx->dt_float, dt));
+} // add_intrinsic_f_Vf
+
+static void add_intrinsic_fi_Vfi_SAME1(Context *ctx, const char *fn)
+{
+    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, &ctx->dt_int, dt, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, &ctx->dt_float, dt, dt));
+} // add_intrinsic_fi_Vfi_SAME1
+
+static void add_intrinsic_f_Vf_SAME1(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f = &ctx->dt_float;
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, f, dt, dt));
+} // add_intrinsic_f_Vf_SAME1
+
+static void add_intrinsic_3f_3f_3f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *dt = get_usertype(ctx, "float3");
+    add_intrinsic2(ctx, fn, dt, dt, dt);
+} // add_intrinsic_3f_3f_3f
+
+static void add_intrinsic_4f_f_f_f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f = &ctx->dt_float;
+    add_intrinsic3(ctx, fn, f4, f, f, f);
+} // add_intrinsic_4f_f_f_f
+
+static void add_intrinsic_4f_s1_4f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *dt = get_usertype(ctx, "float4");
+    add_intrinsic2(ctx, fn, dt, &ctx->dt_sampler1d, dt);
+} // add_intrinsic_4f_s1_4f
+
+static void add_intrinsic_4f_s1_f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *dt = get_usertype(ctx, "float4");
+    add_intrinsic2(ctx, fn, dt, &ctx->dt_sampler1d, &ctx->dt_float);
+} // add_intrinsic_4f_s1_f
+
+static void add_intrinsic_4f_s1_f_f_f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *dt = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f = &ctx->dt_float;
+    add_intrinsic4(ctx, fn, dt, &ctx->dt_sampler1d, f, f, f);
+} // add_intrinsic_4f_s1_f_f_f
+
+static void add_intrinsic_4f_s2_2f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f2 = get_usertype(ctx, "float2");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_sampler2d, f2);
+} // add_intrinsic_4f_s2_2f
+
+static void add_intrinsic_4f_s2_2f_2f_2f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f2 = get_usertype(ctx, "float2");
+    add_intrinsic4(ctx, fn, f4, &ctx->dt_sampler2d, f2, f2, f2);
+} // add_intrinsic_4f_s2_2f_2f_2f
+
+static void add_intrinsic_4f_s2_4f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_sampler2d, f4);
+} // add_intrinsic_4f_s2_4f
+
+static void add_intrinsic_4f_s3_3f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f3 = get_usertype(ctx, "float3");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_sampler3d, f3);
+} // add_intrinsic_4f_s3_3f
+
+static void add_intrinsic_4f_s3_3f_3f_3f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f3 = get_usertype(ctx, "float3");
+    add_intrinsic4(ctx, fn, f4, &ctx->dt_sampler3d, f3, f3, f3);
+} // add_intrinsic_4f_s3_3f_3f_3f
+
+static void add_intrinsic_4f_s3_4f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_sampler3d, f4);
+} // add_intrinsic_4f_s3_4f
+
+static void add_intrinsic_4f_sc_3f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f3 = get_usertype(ctx, "float3");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_samplercube, f3);
+} // add_intrinsic_4f_sc_3f
+
+static void add_intrinsic_4f_sc_3f_3f_3f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *f3 = get_usertype(ctx, "float3");
+    add_intrinsic4(ctx, fn, f4, &ctx->dt_samplercube, f3, f3, f3);
+} // add_intrinsic_4f_sc_3f_3f_3f
+
+static void add_intrinsic_4f_sc_4f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    add_intrinsic2(ctx, fn, f4, &ctx->dt_samplercube, f4);
+} // add_intrinsic_4f_sc_4f
+
+static void add_intrinsic_4i_4f(Context *ctx, const char *fn)
+{
+    const MOJOSHADER_astDataType *i4 = get_usertype(ctx, "int4");
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    add_intrinsic1(ctx, fn, i4, f4);
+} // add_intrinsic_4i_4f
+
+static void add_intrinsic_mul(Context *ctx, const char *fn)
+{
+    // mul() is nasty, since there's a bunch of overloads that aren't just
+    //  related to vector size.
+    // !!! FIXME: needs half, double, uint...
+    const MOJOSHADER_astDataType *dtf = &ctx->dt_float;
+    const MOJOSHADER_astDataType *dti = &ctx->dt_int;
+    const MOJOSHADER_astDataType *f1 = get_usertype(ctx, "float1");
+    const MOJOSHADER_astDataType *f2 = get_usertype(ctx, "float2");
+    const MOJOSHADER_astDataType *f3 = get_usertype(ctx, "float3");
+    const MOJOSHADER_astDataType *f4 = get_usertype(ctx, "float4");
+    const MOJOSHADER_astDataType *i1 = get_usertype(ctx, "int1");
+    const MOJOSHADER_astDataType *i2 = get_usertype(ctx, "int2");
+    const MOJOSHADER_astDataType *i3 = get_usertype(ctx, "int3");
+    const MOJOSHADER_astDataType *i4 = get_usertype(ctx, "int4");
+    const MOJOSHADER_astDataType *f1x1 = get_usertype(ctx, "float1x1");
+    const MOJOSHADER_astDataType *f1x2 = get_usertype(ctx, "float1x2");
+    const MOJOSHADER_astDataType *f1x3 = get_usertype(ctx, "float1x3");
+    const MOJOSHADER_astDataType *f1x4 = get_usertype(ctx, "float1x4");
+    const MOJOSHADER_astDataType *f2x1 = get_usertype(ctx, "float2x1");
+    const MOJOSHADER_astDataType *f2x2 = get_usertype(ctx, "float2x2");
+    const MOJOSHADER_astDataType *f2x3 = get_usertype(ctx, "float2x3");
+    const MOJOSHADER_astDataType *f2x4 = get_usertype(ctx, "float2x4");
+    const MOJOSHADER_astDataType *f3x1 = get_usertype(ctx, "float3x1");
+    const MOJOSHADER_astDataType *f3x2 = get_usertype(ctx, "float3x2");
+    const MOJOSHADER_astDataType *f3x3 = get_usertype(ctx, "float3x3");
+    const MOJOSHADER_astDataType *f3x4 = get_usertype(ctx, "float3x4");
+    const MOJOSHADER_astDataType *f4x1 = get_usertype(ctx, "float4x1");
+    const MOJOSHADER_astDataType *f4x2 = get_usertype(ctx, "float4x2");
+    const MOJOSHADER_astDataType *f4x3 = get_usertype(ctx, "float4x3");
+    const MOJOSHADER_astDataType *f4x4 = get_usertype(ctx, "float4x4");
+    const MOJOSHADER_astDataType *i1x1 = get_usertype(ctx, "int1x1");
+    const MOJOSHADER_astDataType *i1x2 = get_usertype(ctx, "int1x2");
+    const MOJOSHADER_astDataType *i1x3 = get_usertype(ctx, "int1x3");
+    const MOJOSHADER_astDataType *i1x4 = get_usertype(ctx, "int1x4");
+    const MOJOSHADER_astDataType *i2x1 = get_usertype(ctx, "int2x1");
+    const MOJOSHADER_astDataType *i2x2 = get_usertype(ctx, "int2x2");
+    const MOJOSHADER_astDataType *i2x3 = get_usertype(ctx, "int2x3");
+    const MOJOSHADER_astDataType *i2x4 = get_usertype(ctx, "int2x4");
+    const MOJOSHADER_astDataType *i3x1 = get_usertype(ctx, "int3x1");
+    const MOJOSHADER_astDataType *i3x2 = get_usertype(ctx, "int3x2");
+    const MOJOSHADER_astDataType *i3x3 = get_usertype(ctx, "int3x3");
+    const MOJOSHADER_astDataType *i3x4 = get_usertype(ctx, "int3x4");
+    const MOJOSHADER_astDataType *i4x1 = get_usertype(ctx, "int4x1");
+    const MOJOSHADER_astDataType *i4x2 = get_usertype(ctx, "int4x2");
+    const MOJOSHADER_astDataType *i4x3 = get_usertype(ctx, "int4x3");
+    const MOJOSHADER_astDataType *i4x4 = get_usertype(ctx, "int4x4");
+
+    // scalar * scalar
+    add_intrinsic2(ctx, fn, dti, dti, dti);
+    add_intrinsic2(ctx, fn, dtf, dtf, dtf);
+
+    // scalar * vector
+    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, dt, dti, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, dt, dtf, dt));
+
+    // scalar * matrix
+    ADD_INTRINSIC_MATRIX_INT(add_intrinsic2(ctx, fn, dt, dti, dt));
+    ADD_INTRINSIC_MATRIX_FLOAT(add_intrinsic2(ctx, fn, dt, dtf, dt));
+
+    // vector * scalar
+    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, dt, dt, dti));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, dt, dt, dtf));
+
+    // vector * vector
+    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, dti, dt, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, dtf, dt, dt));
+
+    // vector * matrix
+    add_intrinsic2(ctx, fn, i1, i1, i1x1);
+    add_intrinsic2(ctx, fn, i2, i1, i1x2);
+    add_intrinsic2(ctx, fn, i3, i1, i1x3);
+    add_intrinsic2(ctx, fn, i4, i1, i1x4);
+    add_intrinsic2(ctx, fn, i1, i2, i2x1);
+    add_intrinsic2(ctx, fn, i2, i2, i2x2);
+    add_intrinsic2(ctx, fn, i3, i2, i2x3);
+    add_intrinsic2(ctx, fn, i4, i2, i2x4);
+    add_intrinsic2(ctx, fn, i1, i3, i3x1);
+    add_intrinsic2(ctx, fn, i2, i3, i3x2);
+    add_intrinsic2(ctx, fn, i3, i3, i3x3);
+    add_intrinsic2(ctx, fn, i4, i3, i3x4);
+    add_intrinsic2(ctx, fn, i1, i4, i4x1);
+    add_intrinsic2(ctx, fn, i2, i4, i4x2);
+    add_intrinsic2(ctx, fn, i3, i4, i4x3);
+    add_intrinsic2(ctx, fn, i4, i4, i4x4);
+    add_intrinsic2(ctx, fn, f1, f1, f1x1);
+    add_intrinsic2(ctx, fn, f2, f1, f1x2);
+    add_intrinsic2(ctx, fn, f3, f1, f1x3);
+    add_intrinsic2(ctx, fn, f4, f1, f1x4);
+    add_intrinsic2(ctx, fn, f1, f2, f2x1);
+    add_intrinsic2(ctx, fn, f2, f2, f2x2);
+    add_intrinsic2(ctx, fn, f3, f2, f2x3);
+    add_intrinsic2(ctx, fn, f4, f2, f2x4);
+    add_intrinsic2(ctx, fn, f1, f3, f3x1);
+    add_intrinsic2(ctx, fn, f2, f3, f3x2);
+    add_intrinsic2(ctx, fn, f3, f3, f3x3);
+    add_intrinsic2(ctx, fn, f4, f3, f3x4);
+    add_intrinsic2(ctx, fn, f1, f4, f4x1);
+    add_intrinsic2(ctx, fn, f2, f4, f4x2);
+    add_intrinsic2(ctx, fn, f3, f4, f4x3);
+    add_intrinsic2(ctx, fn, f4, f4, f4x4);
+
+    // matrix * scalar
+    ADD_INTRINSIC_MATRIX_INT(add_intrinsic2(ctx, fn, dt, dt, dti));
+    ADD_INTRINSIC_MATRIX_FLOAT(add_intrinsic2(ctx, fn, dt, dt, dtf));
+
+    // matrix * vector
+    add_intrinsic2(ctx, fn, i1, i1x1, i1);
+    add_intrinsic2(ctx, fn, i1, i1x2, i2);
+    add_intrinsic2(ctx, fn, i1, i1x3, i3);
+    add_intrinsic2(ctx, fn, i1, i1x4, i4);
+    add_intrinsic2(ctx, fn, i2, i2x1, i1);
+    add_intrinsic2(ctx, fn, i2, i2x2, i2);
+    add_intrinsic2(ctx, fn, i2, i2x3, i3);
+    add_intrinsic2(ctx, fn, i2, i2x4, i4);
+    add_intrinsic2(ctx, fn, i3, i3x1, i1);
+    add_intrinsic2(ctx, fn, i3, i3x2, i2);
+    add_intrinsic2(ctx, fn, i3, i3x3, i3);
+    add_intrinsic2(ctx, fn, i3, i3x4, i4);
+    add_intrinsic2(ctx, fn, i4, i4x1, i1);
+    add_intrinsic2(ctx, fn, i4, i4x2, i2);
+    add_intrinsic2(ctx, fn, i4, i4x3, i3);
+    add_intrinsic2(ctx, fn, i4, i4x4, i4);
+    add_intrinsic2(ctx, fn, f1, f1x1, f1);
+    add_intrinsic2(ctx, fn, f1, f1x2, f2);
+    add_intrinsic2(ctx, fn, f1, f1x3, f3);
+    add_intrinsic2(ctx, fn, f1, f1x4, f4);
+    add_intrinsic2(ctx, fn, f2, f2x1, f1);
+    add_intrinsic2(ctx, fn, f2, f2x2, f2);
+    add_intrinsic2(ctx, fn, f2, f2x3, f3);
+    add_intrinsic2(ctx, fn, f2, f2x4, f4);
+    add_intrinsic2(ctx, fn, f3, f3x1, f1);
+    add_intrinsic2(ctx, fn, f3, f3x2, f2);
+    add_intrinsic2(ctx, fn, f3, f3x3, f3);
+    add_intrinsic2(ctx, fn, f3, f3x4, f4);
+    add_intrinsic2(ctx, fn, f4, f4x1, f1);
+    add_intrinsic2(ctx, fn, f4, f4x2, f2);
+    add_intrinsic2(ctx, fn, f4, f4x3, f3);
+    add_intrinsic2(ctx, fn, f4, f4x4, f4);
+
+    // matrix * matrix
+    add_intrinsic2(ctx, fn, i1x1, i1x1, i1x1);
+    add_intrinsic2(ctx, fn, i1x2, i1x1, i1x2);
+    add_intrinsic2(ctx, fn, i1x3, i1x1, i1x3);
+    add_intrinsic2(ctx, fn, i1x4, i1x1, i1x4);
+    add_intrinsic2(ctx, fn, i1x1, i1x2, i2x1);
+    add_intrinsic2(ctx, fn, i1x2, i1x2, i2x2);
+    add_intrinsic2(ctx, fn, i1x3, i1x2, i2x3);
+    add_intrinsic2(ctx, fn, i1x4, i1x2, i2x4);
+    add_intrinsic2(ctx, fn, i1x1, i1x3, i3x1);
+    add_intrinsic2(ctx, fn, i1x2, i1x3, i3x2);
+    add_intrinsic2(ctx, fn, i1x3, i1x3, i3x3);
+    add_intrinsic2(ctx, fn, i1x4, i1x3, i3x4);
+    add_intrinsic2(ctx, fn, i1x1, i1x4, i4x1);
+    add_intrinsic2(ctx, fn, i1x2, i1x4, i4x2);
+    add_intrinsic2(ctx, fn, i1x3, i1x4, i4x3);
+    add_intrinsic2(ctx, fn, i1x4, i1x4, i4x4);
+    add_intrinsic2(ctx, fn, i2x1, i2x1, i1x1);
+    add_intrinsic2(ctx, fn, i2x2, i2x1, i1x2);
+    add_intrinsic2(ctx, fn, i2x3, i2x1, i1x3);
+    add_intrinsic2(ctx, fn, i2x4, i2x1, i1x4);
+    add_intrinsic2(ctx, fn, i2x1, i2x2, i2x1);
+    add_intrinsic2(ctx, fn, i2x2, i2x2, i2x2);
+    add_intrinsic2(ctx, fn, i2x3, i2x2, i2x3);
+    add_intrinsic2(ctx, fn, i2x4, i2x2, i2x4);
+    add_intrinsic2(ctx, fn, i2x1, i2x3, i3x1);
+    add_intrinsic2(ctx, fn, i2x2, i2x3, i3x2);
+    add_intrinsic2(ctx, fn, i2x3, i2x3, i3x3);
+    add_intrinsic2(ctx, fn, i2x4, i2x3, i3x4);
+    add_intrinsic2(ctx, fn, i2x1, i2x4, i4x1);
+    add_intrinsic2(ctx, fn, i2x2, i2x4, i4x2);
+    add_intrinsic2(ctx, fn, i2x3, i2x4, i4x3);
+    add_intrinsic2(ctx, fn, i2x4, i2x4, i4x4);
+    add_intrinsic2(ctx, fn, i3x1, i3x1, i1x1);
+    add_intrinsic2(ctx, fn, i3x2, i3x1, i1x2);
+    add_intrinsic2(ctx, fn, i3x3, i3x1, i1x3);
+    add_intrinsic2(ctx, fn, i3x4, i3x1, i1x4);
+    add_intrinsic2(ctx, fn, i3x1, i3x2, i2x1);
+    add_intrinsic2(ctx, fn, i3x2, i3x2, i2x2);
+    add_intrinsic2(ctx, fn, i3x3, i3x2, i2x3);
+    add_intrinsic2(ctx, fn, i3x4, i3x2, i2x4);
+    add_intrinsic2(ctx, fn, i3x1, i3x3, i3x1);
+    add_intrinsic2(ctx, fn, i3x2, i3x3, i3x2);
+    add_intrinsic2(ctx, fn, i3x3, i3x3, i3x3);
+    add_intrinsic2(ctx, fn, i3x4, i3x3, i3x4);
+    add_intrinsic2(ctx, fn, i3x1, i3x4, i4x1);
+    add_intrinsic2(ctx, fn, i3x2, i3x4, i4x2);
+    add_intrinsic2(ctx, fn, i3x3, i3x4, i4x3);
+    add_intrinsic2(ctx, fn, i3x4, i3x4, i4x4);
+    add_intrinsic2(ctx, fn, i4x1, i4x1, i1x1);
+    add_intrinsic2(ctx, fn, i4x2, i4x1, i1x2);
+    add_intrinsic2(ctx, fn, i4x3, i4x1, i1x3);
+    add_intrinsic2(ctx, fn, i4x4, i4x1, i1x4);
+    add_intrinsic2(ctx, fn, i4x1, i4x2, i2x1);
+    add_intrinsic2(ctx, fn, i4x2, i4x2, i2x2);
+    add_intrinsic2(ctx, fn, i4x3, i4x2, i2x3);
+    add_intrinsic2(ctx, fn, i4x4, i4x2, i2x4);
+    add_intrinsic2(ctx, fn, i4x1, i4x3, i3x1);
+    add_intrinsic2(ctx, fn, i4x2, i4x3, i3x2);
+    add_intrinsic2(ctx, fn, i4x3, i4x3, i3x3);
+    add_intrinsic2(ctx, fn, i4x4, i4x3, i3x4);
+    add_intrinsic2(ctx, fn, i4x1, i4x4, i4x1);
+    add_intrinsic2(ctx, fn, i4x2, i4x4, i4x2);
+    add_intrinsic2(ctx, fn, i4x3, i4x4, i4x3);
+    add_intrinsic2(ctx, fn, i4x4, i4x4, i4x4);
+    add_intrinsic2(ctx, fn, f1x1, f1x1, f1x1);
+    add_intrinsic2(ctx, fn, f1x2, f1x1, f1x2);
+    add_intrinsic2(ctx, fn, f1x3, f1x1, f1x3);
+    add_intrinsic2(ctx, fn, f1x4, f1x1, f1x4);
+    add_intrinsic2(ctx, fn, f1x1, f1x2, f2x1);
+    add_intrinsic2(ctx, fn, f1x2, f1x2, f2x2);
+    add_intrinsic2(ctx, fn, f1x3, f1x2, f2x3);
+    add_intrinsic2(ctx, fn, f1x4, f1x2, f2x4);
+    add_intrinsic2(ctx, fn, f1x1, f1x3, f3x1);
+    add_intrinsic2(ctx, fn, f1x2, f1x3, f3x2);
+    add_intrinsic2(ctx, fn, f1x3, f1x3, f3x3);
+    add_intrinsic2(ctx, fn, f1x4, f1x3, f3x4);
+    add_intrinsic2(ctx, fn, f1x1, f1x4, f4x1);
+    add_intrinsic2(ctx, fn, f1x2, f1x4, f4x2);
+    add_intrinsic2(ctx, fn, f1x3, f1x4, f4x3);
+    add_intrinsic2(ctx, fn, f1x4, f1x4, f4x4);
+    add_intrinsic2(ctx, fn, f2x1, f2x1, f1x1);
+    add_intrinsic2(ctx, fn, f2x2, f2x1, f1x2);
+    add_intrinsic2(ctx, fn, f2x3, f2x1, f1x3);
+    add_intrinsic2(ctx, fn, f2x4, f2x1, f1x4);
+    add_intrinsic2(ctx, fn, f2x1, f2x2, f2x1);
+    add_intrinsic2(ctx, fn, f2x2, f2x2, f2x2);
+    add_intrinsic2(ctx, fn, f2x3, f2x2, f2x3);
+    add_intrinsic2(ctx, fn, f2x4, f2x2, f2x4);
+    add_intrinsic2(ctx, fn, f2x1, f2x3, f3x1);
+    add_intrinsic2(ctx, fn, f2x2, f2x3, f3x2);
+    add_intrinsic2(ctx, fn, f2x3, f2x3, f3x3);
+    add_intrinsic2(ctx, fn, f2x4, f2x3, f3x4);
+    add_intrinsic2(ctx, fn, f2x1, f2x4, f4x1);
+    add_intrinsic2(ctx, fn, f2x2, f2x4, f4x2);
+    add_intrinsic2(ctx, fn, f2x3, f2x4, f4x3);
+    add_intrinsic2(ctx, fn, f2x4, f2x4, f4x4);
+    add_intrinsic2(ctx, fn, f3x1, f3x1, f1x1);
+    add_intrinsic2(ctx, fn, f3x2, f3x1, f1x2);
+    add_intrinsic2(ctx, fn, f3x3, f3x1, f1x3);
+    add_intrinsic2(ctx, fn, f3x4, f3x1, f1x4);
+    add_intrinsic2(ctx, fn, f3x1, f3x2, f2x1);
+    add_intrinsic2(ctx, fn, f3x2, f3x2, f2x2);
+    add_intrinsic2(ctx, fn, f3x3, f3x2, f2x3);
+    add_intrinsic2(ctx, fn, f3x4, f3x2, f2x4);
+    add_intrinsic2(ctx, fn, f3x1, f3x3, f3x1);
+    add_intrinsic2(ctx, fn, f3x2, f3x3, f3x2);
+    add_intrinsic2(ctx, fn, f3x3, f3x3, f3x3);
+    add_intrinsic2(ctx, fn, f3x4, f3x3, f3x4);
+    add_intrinsic2(ctx, fn, f3x1, f3x4, f4x1);
+    add_intrinsic2(ctx, fn, f3x2, f3x4, f4x2);
+    add_intrinsic2(ctx, fn, f3x3, f3x4, f4x3);
+    add_intrinsic2(ctx, fn, f3x4, f3x4, f4x4);
+    add_intrinsic2(ctx, fn, f4x1, f4x1, f1x1);
+    add_intrinsic2(ctx, fn, f4x2, f4x1, f1x2);
+    add_intrinsic2(ctx, fn, f4x3, f4x1, f1x3);
+    add_intrinsic2(ctx, fn, f4x4, f4x1, f1x4);
+    add_intrinsic2(ctx, fn, f4x1, f4x2, f2x1);
+    add_intrinsic2(ctx, fn, f4x2, f4x2, f2x2);
+    add_intrinsic2(ctx, fn, f4x3, f4x2, f2x3);
+    add_intrinsic2(ctx, fn, f4x4, f4x2, f2x4);
+    add_intrinsic2(ctx, fn, f4x1, f4x3, f3x1);
+    add_intrinsic2(ctx, fn, f4x2, f4x3, f3x2);
+    add_intrinsic2(ctx, fn, f4x3, f4x3, f3x3);
+    add_intrinsic2(ctx, fn, f4x4, f4x3, f3x4);
+    add_intrinsic2(ctx, fn, f4x1, f4x4, f4x1);
+    add_intrinsic2(ctx, fn, f4x2, f4x4, f4x2);
+    add_intrinsic2(ctx, fn, f4x3, f4x4, f4x3);
+    add_intrinsic2(ctx, fn, f4x4, f4x4, f4x4);
+} // add_intrinsic_mul
+
+static void init_builtins(Context *ctx)
+{
+    // add in standard typedefs...
+    const struct
+    {
+        const char *str;
+        const MOJOSHADER_astDataType *datatype;
+    } types[] = {
+        { "bool", &ctx->dt_bool },
+        { "int", &ctx->dt_int },
+        { "uint", &ctx->dt_uint },
+        { "half", &ctx->dt_half },
+        { "float", &ctx->dt_float },
+        { "double", &ctx->dt_double },
+    };
+
+    int i, j, k;
+    for (i = 0; i < STATICARRAYLEN(types); i++)
+    {
+        char buf[32];
+        int len;
+        const MOJOSHADER_astDataType *dt;
+
+        for (j = 1; j <= 4; j++)
+        {
+            // "float2"
+            dt = new_datatype_vector(ctx, types[i].datatype, j);
+            len = snprintf(buf, sizeof (buf), "%s%d", types[i].str, j);
+            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), dt);
+            for (k = 1; k <= 4; k++)
+            {
+                // "float2x2"
+                dt = new_datatype_matrix(ctx, types[i].datatype, j, k);
+                len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i].str,j,k);
+                push_usertype(ctx, stringcache_len(ctx->strcache,buf,len), dt);
+            } // for
+        } // for
+    } // for
+
+    // !!! FIXME: block these out by pixel/vertex/etc shader.
+    // !!! FIXME: calculate actual shader model (or maybe just let bytecode verifier throw up?).
+    const int shader_model = 3;
+    if (shader_model >= 1)
+    {
+        add_intrinsic_SAME1_ANYfi(ctx, stringcache(ctx->strcache, "abs"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "acos"));
+        add_intrinsic_BOOL_ANYfib(ctx, stringcache(ctx->strcache, "all"));
+        add_intrinsic_BOOL_ANYfib(ctx, stringcache(ctx->strcache, "any"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "asin"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "atan"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "atan2"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "ceil"));
+        add_intrinsic_SAME1_ANYfi_SAME1_SAME1(ctx, stringcache(ctx->strcache, "clamp"));
+        add_intrinsic_VOID_ANYf(ctx, stringcache(ctx->strcache, "clip"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "cos"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "cosh"));
+        add_intrinsic_3f_3f_3f(ctx, stringcache(ctx->strcache, "cross"));
+        add_intrinsic_4i_4f(ctx, stringcache(ctx->strcache, "D3DCOLORtoUBYTE4"));
+        add_intrinsic_f_Vf_SAME1(ctx, stringcache(ctx->strcache, "distance"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "degrees"));
+        add_intrinsic_f_SQUAREMATRIXf(ctx, stringcache(ctx->strcache, "determinant"));
+        add_intrinsic_fi_Vfi_SAME1(ctx, stringcache(ctx->strcache, "dot"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "exp"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "exp2"));
+        add_intrinsic_SAME1_Vf_SAME1_SAME1(ctx, stringcache(ctx->strcache, "faceforward"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "floor"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "fmod"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "frac"));
+        add_intrinsic_BOOL_ANYf(ctx, stringcache(ctx->strcache, "isfinite"));
+        add_intrinsic_BOOL_ANYf(ctx, stringcache(ctx->strcache, "isinf"));
+        add_intrinsic_BOOL_ANYf(ctx, stringcache(ctx->strcache, "isnan"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "ldexp"));
+        add_intrinsic_f_Vf(ctx, stringcache(ctx->strcache, "length"));
+        add_intrinsic_SAME1_ANYf_SAME1_SAME1(ctx, stringcache(ctx->strcache, "lerp"));
+        add_intrinsic_4f_f_f_f(ctx, stringcache(ctx->strcache, "lit"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "log"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "log10"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "log2"));
+        add_intrinsic_SAME1_ANYfi_SAME1(ctx, stringcache(ctx->strcache, "max"));
+        add_intrinsic_SAME1_ANYfi_SAME1(ctx, stringcache(ctx->strcache, "min"));
+        add_intrinsic_SAME1_ANYfi_SAME1(ctx, stringcache(ctx->strcache, "modf"));  // !!! FIXME: out var?
+        add_intrinsic_mul(ctx, stringcache(ctx->strcache, "mul"));
+        add_intrinsic_f_Vf(ctx, stringcache(ctx->strcache, "noise"));
+        add_intrinsic_SAME1_Vf(ctx, stringcache(ctx->strcache, "normalize"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "pow"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "radians"));
+        add_intrinsic_SAME1_ANYfi_SAME1(ctx, stringcache(ctx->strcache, "reflect"));
+        add_intrinsic_SAME1_Vf_SAME1_f(ctx, stringcache(ctx->strcache, "refract"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "round"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "rsqrt"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "saturate"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "sign"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "sin"));
+        add_intrinsic_VOID_ANYf_SAME1_SAME1(ctx, stringcache(ctx->strcache, "sincos"));  // !!! FIXME: out var?
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "sinh"));
+        add_intrinsic_SAME1_ANYf_SAME1_SAME1(ctx, stringcache(ctx->strcache, "smoothstep"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "sqrt"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "step"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "tan"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "tanh"));
+        add_intrinsic_4f_s1_f(ctx, stringcache(ctx->strcache, "tex1D"));
+        add_intrinsic_4f_s2_2f(ctx, stringcache(ctx->strcache, "tex2D"));
+        add_intrinsic_4f_s3_3f(ctx, stringcache(ctx->strcache, "tex3D"));
+        add_intrinsic_4f_sc_3f(ctx, stringcache(ctx->strcache, "texCUBE"));
+        add_intrinsic_SAME1_Mfib(ctx, stringcache(ctx->strcache, "transpose"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "trunc"));
+    } // if
+
+    if (shader_model >= 2)
+    {
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "ddx"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "ddy"));
+        add_intrinsic_SAME1_ANYf_SAME1(ctx, stringcache(ctx->strcache, "frexp"));
+        add_intrinsic_SAME1_ANYf(ctx, stringcache(ctx->strcache, "fwidth"));
+        add_intrinsic_4f_s1_f_f_f(ctx, stringcache(ctx->strcache, "tex1D"));
+        add_intrinsic_4f_s1_4f(ctx, stringcache(ctx->strcache, "tex1Dbias"));
+        add_intrinsic_4f_s1_f_f_f(ctx, stringcache(ctx->strcache, "tex1Dgrad"));
+        add_intrinsic_4f_s1_4f(ctx, stringcache(ctx->strcache, "tex1Dproj"));
+        add_intrinsic_4f_s2_2f_2f_2f(ctx, stringcache(ctx->strcache, "tex2D"));
+        add_intrinsic_4f_s2_4f(ctx, stringcache(ctx->strcache, "tex2Dbias"));
+        add_intrinsic_4f_s2_2f_2f_2f(ctx, stringcache(ctx->strcache, "tex2Dgrad"));
+        add_intrinsic_4f_s2_4f(ctx, stringcache(ctx->strcache, "tex2Dproj"));
+        add_intrinsic_4f_s3_3f_3f_3f(ctx, stringcache(ctx->strcache, "tex3D"));
+        add_intrinsic_4f_s3_4f(ctx, stringcache(ctx->strcache, "tex3Dbias"));
+        add_intrinsic_4f_s3_3f_3f_3f(ctx, stringcache(ctx->strcache, "tex3Dgrad"));
+        add_intrinsic_4f_s3_4f(ctx, stringcache(ctx->strcache, "tex3Dproj"));
+        add_intrinsic_4f_sc_3f_3f_3f(ctx, stringcache(ctx->strcache, "texCUBE"));
+        add_intrinsic_4f_sc_4f(ctx, stringcache(ctx->strcache, "texCUBEbias"));
+        add_intrinsic_4f_sc_3f_3f_3f(ctx, stringcache(ctx->strcache, "texCUBEgrad"));
+        add_intrinsic_4f_sc_4f(ctx, stringcache(ctx->strcache, "texCUBEproj"));
+    } // if
+
+    if (shader_model >= 3)
+    {
+        add_intrinsic_4f_s1_4f(ctx, stringcache(ctx->strcache, "tex1Dlod"));
+        add_intrinsic_4f_s2_4f(ctx, stringcache(ctx->strcache, "tex2Dlod"));
+        add_intrinsic_4f_s3_4f(ctx, stringcache(ctx->strcache, "tex3Dlod"));
+        add_intrinsic_4f_sc_4f(ctx, stringcache(ctx->strcache, "texCUBElod"));
+    } // if
+} // init_builtins
+
+
 // parse the source code into an AST.
 static void parse_source(Context *ctx, const char *filename,
                          const char *source, unsigned int sourcelen,
@@ -3231,49 +3951,13 @@ static void parse_source(Context *ctx, const char *filename,
 
     // !!! FIXME: check if (parser == NULL)...
 
+    init_builtins(ctx);
+
     SymbolScope *start_scope = ctx->usertypes.scope;
 
     #if DEBUG_COMPILER_PARSER
     ParseHLSLTrace(stdout, "COMPILER: ");
     #endif
-
-    // !!! FIXME: move this to a subroutine.
-    // add in standard typedefs...
-    const struct
-    {
-        const char *str;
-        const MOJOSHADER_astDataType *datatype;
-    } types[] = {
-        { "bool", &ctx->dt_bool },
-        { "int", &ctx->dt_int },
-        { "uint", &ctx->dt_uint },
-        { "half", &ctx->dt_half },
-        { "float", &ctx->dt_float },
-        { "double", &ctx->dt_double },
-    };
-
-    int i, j, k;
-    for (i = 0; i < STATICARRAYLEN(types); i++)
-    {
-        char buf[32];
-        int len;
-        const MOJOSHADER_astDataType *dt;
-
-        for (j = 1; j <= 4; j++)
-        {
-            // "float2"
-            dt = new_datatype_vector(ctx, types[i].datatype, j);
-            len = snprintf(buf, sizeof (buf), "%s%d", types[i].str, j);
-            push_usertype(ctx, stringcache_len(ctx->strcache, buf, len), dt);
-            for (k = 1; k <= 4; k++)
-            {
-                // "float2x2"
-                dt = new_datatype_matrix(ctx, types[i].datatype, j, k);
-                len = snprintf(buf, sizeof (buf), "%s%dx%d", types[i].str,j,k);
-                push_usertype(ctx, stringcache_len(ctx->strcache,buf,len), dt);
-            } // for
-        } // for
-    } // for
 
     // Run the preprocessor/lexer/parser...
     int is_pragma = 0;   // !!! FIXME: remove this later when we can parse #pragma.
