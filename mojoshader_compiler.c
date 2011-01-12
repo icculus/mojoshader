@@ -3037,6 +3037,8 @@ static void parse_source(Context *ctx, const char *filename,
 
     // !!! FIXME: check if (parser == NULL)...
 
+    SymbolScope *start_scope = ctx->usertypes.scope;
+
     #if DEBUG_COMPILER_PARSER
     ParseHLSLTrace(stdout, "COMPILER: ");
     #endif
@@ -3164,6 +3166,10 @@ static void parse_source(Context *ctx, const char *filename,
         else if (lemon_token == TOKEN_HLSL_RBRACE)
             pop_scope(ctx);
     } while (tokenval != TOKEN_EOI);
+
+    // Clean out extra usertypes; they are dummies until semantic analysis.
+    while (ctx->usertypes.scope != start_scope)
+        pop_symbol(ctx, &ctx->usertypes);
 
     ParseHLSLFree(parser, ctx->free, ctx->malloc_data);
     preprocessor_end(pp);
