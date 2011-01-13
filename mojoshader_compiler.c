@@ -104,6 +104,7 @@ typedef struct Context
     int intrinsic_func_index;  // next function index for intrinsic functions.
 
     // Cache intrinsic types for fast lookup and consistent pointer values.
+    MOJOSHADER_astDataType dt_none;
     MOJOSHADER_astDataType dt_bool;
     MOJOSHADER_astDataType dt_int;
     MOJOSHADER_astDataType dt_uint;
@@ -1804,13 +1805,35 @@ static int calc_ast_const_expr(Context *ctx, void *_expr, AstCalcData *data)
 } // calc_ast_const_expr
 
 
-static inline const MOJOSHADER_astDataType *reduce_datatype(const MOJOSHADER_astDataType *dt)
+static const MOJOSHADER_astDataType *reduce_datatype(Context *ctx, const MOJOSHADER_astDataType *dt)
 {
     const MOJOSHADER_astDataType *retval = dt;
     while (retval && retval->type == MOJOSHADER_AST_DATATYPE_USER)
-        retval = retval->user.details;
+    {
+        // !!! FIXME: Ugh, const removal.
+        MOJOSHADER_astDataTypeUser *user = (MOJOSHADER_astDataTypeUser *) &retval->user;
+        if (user->details->type == MOJOSHADER_AST_DATATYPE_NONE)
+        {
+            // Take this opportunity to fix up some usertype stubs that were
+            //  left over from the parse phase. You HAVE to catch these in the
+            //  right scope, so be aggressive about calling reduce_datatype()
+            //  as soon as things come into view!
+            user->details = get_usertype(ctx, user->name);
+            assert(user->details != NULL);
+        } // if
+
+        retval = user->details;
+    } // while
+
     return retval;
 } // reduce_datatype
+
+
+static inline const MOJOSHADER_astDataType *sanitize_datatype(Context *ctx, const MOJOSHADER_astDataType *dt)
+{
+    reduce_datatype(ctx, dt);
+    return dt;
+} // sanitize_datatype
 
 
 static const MOJOSHADER_astDataType *build_function_datatype(Context *ctx,
@@ -1863,6 +1886,8 @@ static const MOJOSHADER_astDataType *build_datatype(Context *ctx,
 
     assert( (soa->isarray && soa->dimension) ||
             (!soa->isarray && !soa->dimension) );
+
+    sanitize_datatype(ctx, dt);
 
     // see if we can just reuse the exist datatype.
     if (!soa->isarray)
@@ -1930,7 +1955,7 @@ static const MOJOSHADER_astDataType *build_datatype(Context *ctx,
 static void require_numeric_datatype(Context *ctx,
                                      const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     switch (datatype->type)
     {
         case MOJOSHADER_AST_DATATYPE_BOOL:
@@ -1950,7 +1975,7 @@ static void require_numeric_datatype(Context *ctx,
 static void require_integer_datatype(Context *ctx,
                                      const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     switch (datatype->type)
     {
         case MOJOSHADER_AST_DATATYPE_INT:
@@ -1966,7 +1991,7 @@ static void require_integer_datatype(Context *ctx,
 static void require_boolean_datatype(Context *ctx,
                                      const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     switch (datatype->type)
     {
         case MOJOSHADER_AST_DATATYPE_BOOL:
@@ -1984,7 +2009,7 @@ static void require_boolean_datatype(Context *ctx,
 static void require_array_datatype(Context *ctx,
                                    const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     if (datatype->type == MOJOSHADER_AST_DATATYPE_ARRAY)
         return;
 
@@ -1996,7 +2021,7 @@ static void require_array_datatype(Context *ctx,
 static void require_struct_datatype(Context *ctx,
                                     const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     if (datatype->type == MOJOSHADER_AST_DATATYPE_STRUCT)
         return;
 
@@ -2008,7 +2033,7 @@ static void require_struct_datatype(Context *ctx,
 static int require_function_datatype(Context *ctx,
                                      const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     if ((!datatype) || (datatype->type != MOJOSHADER_AST_DATATYPE_FUNCTION))
     {
         fail(ctx, "expected function");
@@ -2023,7 +2048,7 @@ static int require_function_datatype(Context *ctx,
 static const MOJOSHADER_astDataType *array_element_datatype(Context *ctx,
                                         const MOJOSHADER_astDataType *datatype)
 {
-    datatype = reduce_datatype(datatype);
+    datatype = reduce_datatype(ctx, datatype);
     assert(datatype->type == MOJOSHADER_AST_DATATYPE_ARRAY);
     return datatype->array.base;
 } // array_element_datatype
@@ -2043,8 +2068,8 @@ static const MOJOSHADER_astDataType *add_type_coercion(Context *ctx,
                                      const MOJOSHADER_astDataType *_rdatatype)
 {
     // !!! FIXME: this whole function is probably naive at best.
-    const MOJOSHADER_astDataType *ldatatype = reduce_datatype(_ldatatype);
-    const MOJOSHADER_astDataType *rdatatype = reduce_datatype(_rdatatype);
+    const MOJOSHADER_astDataType *ldatatype = reduce_datatype(ctx, _ldatatype);
+    const MOJOSHADER_astDataType *rdatatype = reduce_datatype(ctx, _rdatatype);
 
     if (ldatatype == rdatatype)
         return ldatatype;   // they already match, so we're done.
@@ -2173,7 +2198,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
     {
         SymbolScope *item = (SymbolScope *) value;
         const MOJOSHADER_astDataType *dt = item->datatype;
-        dt = reduce_datatype(dt);
+        dt = reduce_datatype(ctx, dt);
         // there's a locally-scoped symbol with this name? It takes precedence.
         if (dt->type != MOJOSHADER_AST_DATATYPE_FUNCTION)
             return dt;
@@ -2219,7 +2244,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         failf(ctx, "No matching function named '%s'", sym);
     else
     {
-        ident->datatype = reduce_datatype(best->datatype);
+        ident->datatype = reduce_datatype(ctx, best->datatype);
         ident->index = best->index;
     } // else
 
@@ -2280,7 +2305,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         {
             const char *member = ast->derefstruct.member;
             datatype = type_check_ast(ctx, ast->derefstruct.identifier);
-            const MOJOSHADER_astDataType *reduced = reduce_datatype(datatype);
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(ctx, datatype);
 
             // Is this a swizzle and not a struct deref?
             if (reduced->type == MOJOSHADER_AST_DATATYPE_VECTOR)
@@ -2437,7 +2462,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_OP_CALLFUNC:
         {
             datatype = match_func_to_call(ctx, &ast->callfunc);
-            const MOJOSHADER_astDataType *reduced = reduce_datatype(datatype);
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(ctx, datatype);
             // !!! FIXME: replace AST node with an int if this isn't a func.
             if (!require_function_datatype(ctx, reduced))
             {
@@ -2471,7 +2496,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
         case MOJOSHADER_AST_OP_CONSTRUCTOR:
         {
-            const MOJOSHADER_astDataType *reduced = reduce_datatype(ast->constructor.datatype);
+            const MOJOSHADER_astDataType *reduced = reduce_datatype(ctx, ast->constructor.datatype);
             const MOJOSHADER_astDataType *base_dt = reduced;
             int num_params = 1;
 
@@ -2546,7 +2571,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         } // case
 
         case MOJOSHADER_AST_OP_CAST:
-            datatype = ast->cast.datatype;
+            datatype = sanitize_datatype(ctx, ast->cast.datatype);
             datatype2 = type_check_ast(ctx, ast->cast.operand);
             // you still need type coercion, since you could do a wrong cast,
             //  like "int x = (short) mychar;"
@@ -2729,6 +2754,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             for (param = ast->funcsig.params; param; param = param->next)
             {
                 assert(i <= STATICARRAYLEN(dtparams));  // laziness.
+                sanitize_datatype(ctx, param->datatype);
                 if (param->initializer != NULL)
                 {
                     datatype2 = type_check_ast(ctx, param->initializer);
@@ -3161,6 +3187,7 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     // !!! FIXME: this feels hacky.
     ctx->garbage = buffer_create(256*sizeof(void*),MallocBridge,FreeBridge,ctx);  // !!! FIXME: check for failure.
 
+    ctx->dt_none.type = MOJOSHADER_AST_DATATYPE_NONE;
     ctx->dt_bool.type = MOJOSHADER_AST_DATATYPE_BOOL;
     ctx->dt_int.type = MOJOSHADER_AST_DATATYPE_INT;
     ctx->dt_uint.type = MOJOSHADER_AST_DATATYPE_UINT;

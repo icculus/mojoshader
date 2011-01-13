@@ -226,7 +226,7 @@ struct_declaration(A) ::= struct_intro(B) LBRACE struct_member_list(C) RBRACE. {
 
 // This has to be separate from struct_declaration so that the struct is in the usertypemap when parsing its members.
 %type struct_intro { const char * }
-struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, &ctx->dt_int); }  // datatype is bogus until semantic analysis.
+struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, &ctx->dt_none); }  // datatype is bogus until semantic analysis.
 
 %type struct_member_list { MOJOSHADER_astStructMembers * }
 %destructor struct_member_list { delete_struct_member(ctx, $$); }
