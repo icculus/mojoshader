@@ -2328,7 +2328,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
             // map member to datatype
             assert(ast->derefstruct.datatype == NULL);
-            const MOJOSHADER_astDataTypeStructMember *mbrs = datatype->structure.members;
+            const MOJOSHADER_astDataTypeStructMember *mbrs = reduced->structure.members;
             int i;
             for (i = 0; i < reduced->structure.member_count; i++)
             {
