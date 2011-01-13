@@ -2773,6 +2773,14 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
         case MOJOSHADER_AST_STRUCT_DECLARATION:
         {
+            // !!! FIXME: We don't handle struct predeclaration at all right now
+            // !!! FIXME:  (neither does the grammar)...not only does that mean
+            // !!! FIXME:  you need to know the struct definition up front, but
+            // !!! FIXME:  you can't do "struct XXX *next;" for a self-referencing
+            // !!! FIXME:  linked list struct thing. This probably isn't a big
+            // !!! FIXME:  deal, as there aren't (CURRENTLY!) pointers in HLSL,
+            // !!! FIXME:  but you never know.
+
             const MOJOSHADER_astStructMembers *mbrs;
 
             // !!! FIXME: count this during parsing?
