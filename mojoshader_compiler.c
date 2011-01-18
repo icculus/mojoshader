@@ -2148,7 +2148,7 @@ static const MOJOSHADER_astDataType *add_type_coercion(Context *ctx,
     return ldatatype;
 } // add_type_coercion
 
-static int is_swizzle_str(const char *str)
+static int is_swizzle_str(const char *str, const int veclen)
 {
     int i;
     int is_xyzw = 0;
@@ -2156,7 +2156,7 @@ static int is_swizzle_str(const char *str)
 
     assert(*str != '\0');  // can this actually happen?
 
-    for (i = 0; i < 4; i++, str++)
+    for (i = 0; i < veclen; i++, str++)
     {
         const char ch = *str;
         if (ch == '\0')
@@ -2310,8 +2310,9 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             // Is this a swizzle and not a struct deref?
             if (reduced->type == MOJOSHADER_AST_DATATYPE_VECTOR)
             {
+                const int veclen = reduced->vector.elements;
                 ast->derefstruct.isswizzle = 1;
-                if (!is_swizzle_str(member))
+                if (!is_swizzle_str(member, veclen))
                 {
                     fail(ctx, "invalid swizzle on vector");
                     // force this to be sane for further processing.
@@ -2320,7 +2321,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 } // if
 
                 const int swizlen = (int) strlen(member);
-                if (swizlen == reduced->vector.elements)
+                if (swizlen == veclen)
                     datatype = reduced;
                 else
                 {
