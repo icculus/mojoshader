@@ -1956,6 +1956,11 @@ static void require_numeric_datatype(Context *ctx,
                                      const MOJOSHADER_astDataType *datatype)
 {
     datatype = reduce_datatype(ctx, datatype);
+    if (datatype->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+        datatype = reduce_datatype(ctx, datatype->vector.base);
+    else if (datatype->type == MOJOSHADER_AST_DATATYPE_MATRIX)
+        datatype = reduce_datatype(ctx, datatype->matrix.base);
+
     switch (datatype->type)
     {
         case MOJOSHADER_AST_DATATYPE_BOOL:
@@ -2088,22 +2093,50 @@ static const MOJOSHADER_astDataType *add_type_coercion(Context *ctx,
         { MOJOSHADER_AST_DATATYPE_DOUBLE, 64, 0, 1 },
     };
 
+    int lvector = 0;
+    int lmatrix = 0;
     int l = STATICARRAYLEN(typeinf);
     if (ldatatype != NULL)
     {
+        MOJOSHADER_astDataTypeType type = ldatatype->type;
+        if (type == MOJOSHADER_AST_DATATYPE_VECTOR)
+        {
+            lvector = 1;
+            type = ldatatype->vector.base->type;
+        } // if
+        else if (type == MOJOSHADER_AST_DATATYPE_MATRIX)
+        {
+            lmatrix = 1;
+            type = ldatatype->matrix.base->type;
+        } // if
+
         for (l = 0; l < STATICARRAYLEN(typeinf); l++)
         {
-            if (typeinf[l].type == ldatatype->type)
+            if (typeinf[l].type == type)
                 break;
         } // for
     } // if
 
+    int rvector = 0;
+    int rmatrix = 0;
     int r = STATICARRAYLEN(typeinf);
     if (rdatatype != NULL)
     {
+        MOJOSHADER_astDataTypeType type = rdatatype->type;
+        if (type == MOJOSHADER_AST_DATATYPE_VECTOR)
+        {
+            rvector = 1;
+            type = rdatatype->vector.base->type;
+        } // if
+        else if (type == MOJOSHADER_AST_DATATYPE_MATRIX)
+        {
+            rmatrix = 1;
+            type = rdatatype->matrix.base->type;
+        } // if
+
         for (r = 0; r < STATICARRAYLEN(typeinf); r++)
         {
-            if (typeinf[r].type == rdatatype->type)
+            if (typeinf[r].type == type)
                 break;
         } // for
     } // if
@@ -2113,6 +2146,14 @@ static const MOJOSHADER_astDataType *add_type_coercion(Context *ctx,
     {
         if (left == NULL)
             choice = CHOOSE_LEFT;  // we need to force to the lvalue.
+        else if (lmatrix && !rmatrix)
+            choice = CHOOSE_LEFT;
+        else if (!lmatrix && rmatrix)
+            choice = CHOOSE_RIGHT;
+        else if (lvector && !rvector)
+            choice = CHOOSE_LEFT;
+        else if (!lvector && rvector)
+            choice = CHOOSE_RIGHT;
         else if (typeinf[l].bits > typeinf[r].bits)
             choice = CHOOSE_LEFT;
         else if (typeinf[l].bits < typeinf[r].bits)
