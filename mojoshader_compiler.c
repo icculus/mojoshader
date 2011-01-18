@@ -2321,9 +2321,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 } // if
 
                 const int swizlen = (int) strlen(member);
-                if (swizlen == veclen)
-                    datatype = reduced;
-                else
+                if (swizlen != veclen)
                 {
                     const char *typestr = NULL;
                     switch (reduced->vector.base->type)
@@ -2341,7 +2339,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                     snprintf(buf, sizeof (buf), "%s%d", typestr, swizlen);
                     datatype = get_usertype(ctx, buf);
                     assert(datatype != NULL);
-                } // else
+                } // if
 
                 ast->derefstruct.datatype = datatype;
                 return ast->derefstruct.datatype;
