@@ -2208,7 +2208,6 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         //          needs to match:
         //          short q = 2; fn(q);
         const MOJOSHADER_astDataTypeFunction *dtfn = (MOJOSHADER_astDataTypeFunction *) dt;
-        args = ast->args;
         int match = 1;
         int i;
 
@@ -2216,6 +2215,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
             match = 0;
         else
         {
+            args = ast->args;
             for (i = 0; i < argcount; i++)
             {
                 assert(args != NULL);
