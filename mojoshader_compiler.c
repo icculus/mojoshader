@@ -2316,9 +2316,33 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                     fail(ctx, "invalid swizzle on vector");
                     // force this to be sane for further processing.
                     const char *sane_swiz = stringcache(ctx->strcache, "xyzw");
-                    ast->derefstruct.member = sane_swiz;
+                    member = ast->derefstruct.member = sane_swiz;
                 } // if
-                ast->derefstruct.datatype = datatype;  // !!! FIXME: should float4(0,0,0,0).xy become a float2?
+
+                const int swizlen = (int) strlen(member);
+                if (swizlen == reduced->vector.elements)
+                    datatype = reduced;
+                else
+                {
+                    const char *typestr = NULL;
+                    switch (reduced->vector.base->type)
+                    {
+                        case MOJOSHADER_AST_DATATYPE_BOOL: typestr = "bool"; break;
+                        case MOJOSHADER_AST_DATATYPE_INT: typestr = "int"; break;
+                        case MOJOSHADER_AST_DATATYPE_UINT: typestr = "uint"; break;
+                        case MOJOSHADER_AST_DATATYPE_HALF: typestr = "half"; break;
+                        case MOJOSHADER_AST_DATATYPE_FLOAT: typestr = "float"; break;
+                        case MOJOSHADER_AST_DATATYPE_DOUBLE: typestr = "double"; break;
+                        default: assert(0 && "This shouldn't happen"); break;
+                    } // switch
+
+                    char buf[32];
+                    snprintf(buf, sizeof (buf), "%s%d", typestr, swizlen);
+                    datatype = get_usertype(ctx, buf);
+                    assert(datatype != NULL);
+                } // else
+
+                ast->derefstruct.datatype = datatype;
                 return ast->derefstruct.datatype;
             } // if
 
