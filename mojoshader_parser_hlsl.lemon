@@ -231,7 +231,7 @@ struct_intro(A) ::= STRUCT IDENTIFIER(B). { A = B.string; push_usertype(ctx, A, 
 %type struct_member_list { MOJOSHADER_astStructMembers * }
 %destructor struct_member_list { delete_struct_member(ctx, $$); }
 struct_member_list(A) ::= struct_member(B). { A = B; }
-struct_member_list(A) ::= struct_member_list(B) struct_member(C). { A = C; A->next = B; }
+struct_member_list(A) ::= struct_member_list(B) struct_member(C). { A = C; MOJOSHADER_astStructMembers *i = A; while (i->next) { i = i->next; } i->next = B; }
 
 %type struct_member { MOJOSHADER_astStructMembers * }
 %destructor struct_member { delete_struct_member(ctx, $$); }
