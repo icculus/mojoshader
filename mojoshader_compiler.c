@@ -2293,6 +2293,33 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
 } // match_func_to_call
 
 
+static const MOJOSHADER_astDataType *vectype_from_base(Context *ctx,
+                                            const MOJOSHADER_astDataTypeType base,
+                                            const int len)
+{
+    assert(len > 0);
+    assert(len <= 4);
+
+    const char *typestr = NULL;
+    switch (base)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL: typestr = "bool"; break;
+        case MOJOSHADER_AST_DATATYPE_INT: typestr = "int"; break;
+        case MOJOSHADER_AST_DATATYPE_UINT: typestr = "uint"; break;
+        case MOJOSHADER_AST_DATATYPE_HALF: typestr = "half"; break;
+        case MOJOSHADER_AST_DATATYPE_FLOAT: typestr = "float"; break;
+        case MOJOSHADER_AST_DATATYPE_DOUBLE: typestr = "double"; break;
+        default: assert(0 && "This shouldn't happen"); break;
+    } // switch
+
+    char buf[32];
+    snprintf(buf, sizeof (buf), "%s%d", typestr, len);
+    const MOJOSHADER_astDataType *datatype = get_usertype(ctx, buf);
+    assert(datatype != NULL);
+    return datatype;
+} // vectype_from_base
+
+
 // Go through the AST and make sure all datatypes check out okay. For datatypes
 //  that are compatible but are relying on an implicit cast, we add explicit
 //  casts to the AST here, so further processing doesn't have to worry about
@@ -2336,10 +2363,20 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_OP_DEREF_ARRAY:
             datatype = type_check_ast(ctx, ast->binary.left);
             datatype2 = type_check_ast(ctx, ast->binary.right);
-            require_array_datatype(ctx, datatype);
             require_integer_datatype(ctx, datatype2);
             add_type_coercion(ctx, NULL, &ctx->dt_int, &ast->binary.right, datatype2);
-            ast->binary.datatype = array_element_datatype(ctx, datatype);
+
+            datatype = reduce_datatype(ctx, datatype);
+            if (datatype->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+                ast->binary.datatype = datatype->vector.base;
+            else if (datatype->type == MOJOSHADER_AST_DATATYPE_MATRIX)
+                ast->binary.datatype = vectype_from_base(ctx, datatype->matrix.base->type, datatype->matrix.columns);  // !!! FIXME: rows?
+            else
+            {
+                require_array_datatype(ctx, datatype);
+                ast->binary.datatype = array_element_datatype(ctx, datatype);
+            } // else
+
             return ast->binary.datatype;
 
         case MOJOSHADER_AST_OP_DEREF_STRUCT:
@@ -2363,24 +2400,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
                 const int swizlen = (int) strlen(member);
                 if (swizlen != veclen)
-                {
-                    const char *typestr = NULL;
-                    switch (reduced->vector.base->type)
-                    {
-                        case MOJOSHADER_AST_DATATYPE_BOOL: typestr = "bool"; break;
-                        case MOJOSHADER_AST_DATATYPE_INT: typestr = "int"; break;
-                        case MOJOSHADER_AST_DATATYPE_UINT: typestr = "uint"; break;
-                        case MOJOSHADER_AST_DATATYPE_HALF: typestr = "half"; break;
-                        case MOJOSHADER_AST_DATATYPE_FLOAT: typestr = "float"; break;
-                        case MOJOSHADER_AST_DATATYPE_DOUBLE: typestr = "double"; break;
-                        default: assert(0 && "This shouldn't happen"); break;
-                    } // switch
-
-                    char buf[32];
-                    snprintf(buf, sizeof (buf), "%s%d", typestr, swizlen);
-                    datatype = get_usertype(ctx, buf);
-                    assert(datatype != NULL);
-                } // if
+                    datatype = vectype_from_base(ctx, reduced->vector.base->type, swizlen);
 
                 ast->derefstruct.datatype = datatype;
                 return ast->derefstruct.datatype;
