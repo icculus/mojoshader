@@ -579,7 +579,9 @@ static MOJOSHADER_astExpression *new_identifier_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionIdentifier,
                  MOJOSHADER_AST_OP_IDENTIFIER);
+    retval->datatype = NULL;
     retval->identifier = string;  // cached; don't copy string.
+    retval->index = 0;
     return (MOJOSHADER_astExpression *) retval;
 } // new_identifier_expr
 
@@ -590,6 +592,7 @@ static MOJOSHADER_astExpression *new_callfunc_expr(Context *ctx,
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionCallFunction,
                  MOJOSHADER_AST_OP_CALLFUNC);
     MOJOSHADER_astExpression *expr = new_identifier_expr(ctx, identifier);
+    retval->datatype = NULL;
     retval->identifier = (MOJOSHADER_astExpressionIdentifier *) expr;
     retval->args = args;
     return (MOJOSHADER_astExpression *) retval;
@@ -622,6 +625,7 @@ static MOJOSHADER_astExpression *new_unary_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionUnary, op);
     assert(operator_is_unary(op));
+    retval->datatype = NULL;
     retval->operand = operand;
     return (MOJOSHADER_astExpression *) retval;
 } // new_unary_expr
@@ -633,6 +637,7 @@ static MOJOSHADER_astExpression *new_binary_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionBinary, op);
     assert(operator_is_binary(op));
+    retval->datatype = NULL;
     retval->left = left;
     retval->right = right;
     return (MOJOSHADER_astExpression *) retval;
@@ -660,6 +665,7 @@ static MOJOSHADER_astExpression *new_deref_struct_expr(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astExpressionDerefStruct,
                  MOJOSHADER_AST_OP_DEREF_STRUCT);
+    retval->datatype = NULL;
     retval->identifier = identifier;
     retval->member = member;  // cached; don't copy string.
     retval->isswizzle = 0;  // may change during semantic analysis.
@@ -940,6 +946,7 @@ static MOJOSHADER_astVariableDeclaration *new_variable_declaration(
 {
     NEW_AST_NODE(retval, MOJOSHADER_astVariableDeclaration,
                  MOJOSHADER_AST_VARIABLE_DECLARATION);
+    retval->datatype = NULL;
     retval->attributes = 0;
     retval->anonymous_datatype = NULL;
     retval->details = soa;
@@ -1007,6 +1014,7 @@ static MOJOSHADER_astStructMembers *new_struct_member(Context *ctx,
 {
     NEW_AST_NODE(retval, MOJOSHADER_astStructMembers,
                  MOJOSHADER_AST_STRUCT_MEMBER);
+    retval->datatype = NULL;
     retval->semantic = semantic;
     retval->details = soa;
     retval->interpolation_mod = MOJOSHADER_AST_INTERPMOD_NONE;
