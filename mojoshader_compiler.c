@@ -2642,7 +2642,23 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                     break;
                 } // if
                 datatype2 = type_check_ast(ctx, arg->argument);
-                add_type_coercion(ctx, NULL, base_dt, &arg->argument, datatype2);
+
+                // "float4(float3(1,2,3),4)" is legal, so we need to see if
+                //  we're a vector, and jump that number of parameters instead
+                //  of doing type coercion.
+                reduced = reduce_datatype(ctx, datatype2);
+                if (reduced->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+                {
+                    // make sure things like float4(half3(1,2,3),1) convert that half3 to float3.
+                    const int count = reduced->vector.elements;
+                    datatype3 = vectype_from_base(ctx, base_dt->type, count);
+                    add_type_coercion(ctx, NULL, datatype3, &arg->argument, datatype2);
+                    i += count - 1;
+                } // else
+                else
+                {
+                    add_type_coercion(ctx, NULL, base_dt, &arg->argument, datatype2);
+                } // else
                 prev = arg;
                 arg = arg->next;
             } // for
