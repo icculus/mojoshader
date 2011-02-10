@@ -2221,6 +2221,25 @@ static int is_swizzle_str(const char *str, const int veclen)
     return ((is_rgba + is_xyzw) == 1);  // can only be one or the other.
 } // is_swizzle_str
 
+static int datatype_size(const MOJOSHADER_astDataType *dt)
+{
+    switch (dt->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL: return 1;
+        case MOJOSHADER_AST_DATATYPE_INT: return 4;
+        case MOJOSHADER_AST_DATATYPE_UINT: return 4;
+        case MOJOSHADER_AST_DATATYPE_FLOAT: return 4;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM: return 4;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM: return 4;
+        case MOJOSHADER_AST_DATATYPE_HALF: return 2;
+        case MOJOSHADER_AST_DATATYPE_DOUBLE: return 8;
+            return 1;
+        default:
+            assert(0 && "Maybe should have used reduce_datatype()?");
+            return 0;
+    } // switch
+} // datatype_size
+
 static inline int is_scalar_datatype(const MOJOSHADER_astDataType *dt)
 {
     switch (dt->type)
@@ -2238,6 +2257,54 @@ static inline int is_scalar_datatype(const MOJOSHADER_astDataType *dt)
             return 0;
     } // switch
 } // is_scalar_datatype
+
+static int compatible_arg_datatype(Context *ctx,
+                                   const MOJOSHADER_astDataType *arg,
+                                   const MOJOSHADER_astDataType *param)
+{
+    // The matching rules for HLSL function overloading, as far as I can
+    //  tell from experimenting with Microsoft's compiler, seem to be this:
+    //
+    // - All parameters of a function must match what the caller specified
+    //   after possible type promotion via the following rules.
+    // - Scalars can be promoted to vectors to make a parameter match.
+    // - Scalars can promote to other scalars (short to int, etc).
+    // - Vectors may NOT be promoted (a float2 can't extend to a float4).
+    // - Vectors with the same elements can promote (a half2 can become a float2...I _think_ it can't downcast here.).
+    // - If more than one function matches after this (all params that
+    //   would be different between two functions are passed scalars)
+    //   then fail().
+
+    if (datatypes_match(arg, param))
+        return 1;  // that was easy.
+
+    arg = reduce_datatype(ctx, arg);
+    param = reduce_datatype(ctx, param);
+
+    // we let this go for now if we passed a scalar.
+    //  !!! FIXME: should warn when downcasting.
+    //  !!! FIXME: also, being a bit more picky would be good.
+    if (is_scalar_datatype(arg))
+        return 1;
+
+    else if (arg->type == param->type)
+    {
+        if (arg->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+        {
+            if (arg->vector.elements == param->vector.elements)
+                return datatype_size(arg->vector.base) <= datatype_size(param->vector.base);
+        } // if
+        else if (arg->type == MOJOSHADER_AST_DATATYPE_MATRIX)
+        {
+            if ((arg->matrix.rows == param->matrix.rows) &&
+                (arg->matrix.columns == param->matrix.columns))
+                return datatype_size(arg->matrix.base) <= datatype_size(param->matrix.base);
+        } // if
+    } // if
+
+    return 0;
+} // compatible_arg_datatype
+
 
 static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast);
 
@@ -2271,17 +2338,6 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         if (dt->type != MOJOSHADER_AST_DATATYPE_FUNCTION)
             return dt;
 
-        // The matching rules for HLSL function overloading, as far as I can
-        //  tell from experimenting with Microsoft's compiler, seem to be this:
-        //
-        // - All parameters of a function must match what the caller specified.
-        // - Scalars can be promoted to vectors to make a parameter match.
-        // - Scalars can promote to other scalars (short to int, etc).
-        // - Vectors may NOT be promoted (a float2 can't extend to a float4).
-        // - If more than one function matches after this (all params that
-        //   would be different between two functions are passed scalars)
-        //   then fail().
-
         const MOJOSHADER_astDataTypeFunction *dtfn = (MOJOSHADER_astDataTypeFunction *) dt;
         int this_match = 1;
         int i;
@@ -2296,13 +2352,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
                 assert(args != NULL);
                 dt = args->argument->datatype;
                 args = args->next;
-
-                if (datatypes_match(dt, dtfn->params[i]))
-                    continue;  // so far, so good!
-
-                // we let this go for now if we passed a scalar.
-                //  !!! FIXME: should warn when downcasting.
-                if (!is_scalar_datatype(reduce_datatype(ctx, dt)))
+                if (!compatible_arg_datatype(ctx, dt, dtfn->params[i]))
                 {
                     this_match = 0;  // can't be perfect match.
                     break;
