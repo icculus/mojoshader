@@ -56,12 +56,24 @@ static void fail(const char *err)
 
 static void print_unroll_attr(FILE *io, const int unroll)
 {
-    if (unroll == 0)
-        fprintf(io, "[loop] ");
-    else if (unroll < 0)
-        fprintf(io, "[unroll] ");
-    else
-        fprintf(io, "[unroll(%d)] ", unroll);
+    // -1 means "unroll at compiler's discretion",
+    // -2 means user didn't specify the attribute.
+    switch (unroll)
+    {
+        case 0:
+            fprintf(io, "[loop] ");
+            break;
+        case -1:
+            fprintf(io, "[unroll] ");
+            break;
+        case -2:
+            /* no-op. */
+            break;
+        default:
+            assert(unroll > 0);
+            fprintf(io, "[unroll(%d)] ", unroll);
+            break;
+    } // case
 } // print_unroll_attr
 
 static void print_ast_datatype(FILE *io, const MOJOSHADER_astDataType *dt)
