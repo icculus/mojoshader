@@ -3614,8 +3614,7 @@ static void add_intrinsic_SAME1_Vf_SAME1_SAME1(Context *ctx, const char *fn)
 
 static void add_intrinsic_SAME1_Vf_SAME1_f(Context *ctx, const char *fn)
 {
-    const MOJOSHADER_astDataType *f = &ctx->dt_float;
-    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic3(ctx, fn, dt, dt, dt, f));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic3(ctx, fn, dt, dt, dt, dt->vector.base));
 } // add_intrinsic_SAME1_Vf_SAME1_f
 
 static void add_intrinsic_VOID_ANYf(Context *ctx, const char *fn)
@@ -3638,19 +3637,18 @@ static void add_intrinsic_f_SQUAREMATRIXf(Context *ctx, const char *fn)
 
 static void add_intrinsic_f_Vf(Context *ctx, const char *fn)
 {
-    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic1(ctx, fn, &ctx->dt_float, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic1(ctx, fn, dt->vector.base, dt));
 } // add_intrinsic_f_Vf
 
 static void add_intrinsic_fi_Vfi_SAME1(Context *ctx, const char *fn)
 {
-    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, &ctx->dt_int, dt, dt));
-    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, &ctx->dt_float, dt, dt));
+    ADD_INTRINSIC_VECTOR_INT(add_intrinsic2(ctx, fn, dt->vector.base, dt, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, dt->vector.base, dt, dt));
 } // add_intrinsic_fi_Vfi_SAME1
 
 static void add_intrinsic_f_Vf_SAME1(Context *ctx, const char *fn)
 {
-    const MOJOSHADER_astDataType *f = &ctx->dt_float;
-    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, f, dt, dt));
+    ADD_INTRINSIC_VECTOR_FLOAT(add_intrinsic2(ctx, fn, dt->vector.base, dt, dt));
 } // add_intrinsic_f_Vf_SAME1
 
 static void add_intrinsic_3f_3f_3f(Context *ctx, const char *fn)
