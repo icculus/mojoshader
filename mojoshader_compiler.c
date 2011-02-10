@@ -3394,9 +3394,18 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     dt = get_usertype(ctx, typestr "4"); code; \
 } while (0)
 
-#define ADD_INTRINSIC_VECTOR_FLOAT(code) ADD_INTRINSIC_VECTOR("float", code)
-#define ADD_INTRINSIC_VECTOR_INT(code) ADD_INTRINSIC_VECTOR("int", code)
-#define ADD_INTRINSIC_VECTOR_BOOL(code) ADD_INTRINSIC_VECTOR("bool", code)
+#define ADD_INTRINSIC_VECTOR_FLOAT(code) { \
+    ADD_INTRINSIC_VECTOR("float", code); \
+    ADD_INTRINSIC_VECTOR("half", code); \
+    ADD_INTRINSIC_VECTOR("double", code); \
+}
+#define ADD_INTRINSIC_VECTOR_INT(code) { \
+    ADD_INTRINSIC_VECTOR("int", code); \
+    ADD_INTRINSIC_VECTOR("uint", code); \
+}
+#define ADD_INTRINSIC_VECTOR_BOOL(code) { \
+    ADD_INTRINSIC_VECTOR("bool", code); \
+}
 
 #define ADD_INTRINSIC_MATRIX(typestr, code) do { \
     const MOJOSHADER_astDataType *dt; \
@@ -3418,9 +3427,18 @@ static Context *build_context(MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
     dt = get_usertype(ctx, typestr "4x4"); code; \
 } while (0)
 
-#define ADD_INTRINSIC_MATRIX_FLOAT(code) ADD_INTRINSIC_MATRIX("float", code)
-#define ADD_INTRINSIC_MATRIX_INT(code) ADD_INTRINSIC_MATRIX("int", code)
-#define ADD_INTRINSIC_MATRIX_BOOL(code) ADD_INTRINSIC_MATRIX("bool", code)
+#define ADD_INTRINSIC_MATRIX_FLOAT(code) { \
+    ADD_INTRINSIC_MATRIX("float", code); \
+    ADD_INTRINSIC_MATRIX("half", code); \
+    ADD_INTRINSIC_MATRIX("double", code); \
+}
+#define ADD_INTRINSIC_MATRIX_INT(code) { \
+    ADD_INTRINSIC_MATRIX("int", code); \
+    ADD_INTRINSIC_MATRIX("uint", code); \
+}
+#define ADD_INTRINSIC_MATRIX_BOOL(code) { \
+    ADD_INTRINSIC_MATRIX("bool", code); \
+}
 
 #define ADD_INTRINSIC_ANY(scalar, typestr, code) do { \
     { const MOJOSHADER_astDataType *dt = scalar; code; } \
