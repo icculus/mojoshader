@@ -2365,11 +2365,12 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
 
         if (this_match)
         {
-            if (match++ == 0)
+            match++;
+            if (match == 1)
                 best = item;
             else
             {
-                if (match++ == 1)
+                if (match == 2)
                     failf(ctx, "Ambiguous function call to '%s'", sym);
                 // !!! FIXME: list each possible function in a fail() here.
             } // else
