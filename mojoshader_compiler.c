@@ -2271,6 +2271,8 @@ static int compatible_arg_datatype(Context *ctx,
     // - Scalars can promote to other scalars (short to int, etc).
     // - Vectors may NOT be promoted (a float2 can't extend to a float4).
     // - Vectors with the same elements can promote (a half2 can become a float2...I _think_ it can't downcast here.).
+    // - A perfect match of all params will be favored over any functions
+    //   that only match if type promotion is applied.
     // - If more than one function matches after this (all params that
     //   would be different between two functions are passed scalars)
     //   then fail().
@@ -2339,7 +2341,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
             return dt;
 
         const MOJOSHADER_astDataTypeFunction *dtfn = (MOJOSHADER_astDataTypeFunction *) dt;
-        int this_match = 1;
+        int this_match = 2;  // 2 == perfect, 1 == compatible, 0 == not.
         int i;
 
         if (argcount != dtfn->num_params)  // !!! FIXME: default args.
@@ -2352,33 +2354,52 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
                 assert(args != NULL);
                 dt = args->argument->datatype;
                 args = args->next;
-                if (!compatible_arg_datatype(ctx, dt, dtfn->params[i]))
-                {
-                    this_match = 0;  // can't be perfect match.
+                if (datatypes_match(dt, dtfn->params[i]))
+                    continue;
+
+                // not perfect, but maybe compatible?
+                this_match = compatible_arg_datatype(ctx, dt, dtfn->params[i]);
+                if (!this_match)
                     break;
-                } // if
             } // for
 
             if (args != NULL)
                 this_match = 0;  // too many arguments supplied. No match.
         } // else
 
-        if (this_match)
+        if (this_match == 2)  // perfect match.
+        {
+            match = 1;  // ignore all other compatible matches.
+            best = item;
+            break;
+        } // if
+
+        else if (this_match == 1)  // compatible, but not perfect, match.
         {
             match++;
             if (match == 1)
                 best = item;
             else
             {
-                if (match == 2)
-                    failf(ctx, "Ambiguous function call to '%s'", sym);
-                // !!! FIXME: list each possible function in a fail() here.
+                // !!! FIXME: list each possible function in a fail(),
+                // !!! FIXME:  but you can't actually fail() here, since
+                // !!! FIXME:  this will cease to be ambiguous if we get
+                // !!! FIXME:  a perfect match on a later overload.
             } // else
-        } // if
+        } // else if
     } // while
 
+    if (match > 1)
+    {
+        assert(best != NULL);
+        failf(ctx, "Ambiguous function call to '%s'", sym);
+    } // if
+
     if (best == NULL)
+    {
+        assert(best == NULL);
         failf(ctx, "No matching function named '%s'", sym);
+    } // if
     else
     {
         ident->datatype = reduce_datatype(ctx, best->datatype);
