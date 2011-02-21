@@ -1101,7 +1101,7 @@ static int parse_condition(Context *ctx, uint32 *controls)
 
     if (ctx->tokenlen >= 3)
     {
-        for (i = 1; i < STATICARRAYLEN(comps); i++)
+        for (i = 0; i < STATICARRAYLEN(comps); i++)
         {
             if (check_token_segment(ctx, comps[i]))
             {
