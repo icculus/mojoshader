@@ -2511,7 +2511,8 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         args = args->next;
     } // while;
 
-#define DEBUG_OVERLOADS 1
+// !!! FIXME: remove this debug code later.
+#define DEBUG_OVERLOADS 0
 #if DEBUG_OVERLOADS
 printf("Attempt to call function %s(", sym);
 args = ast->args;
