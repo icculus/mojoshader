@@ -2576,8 +2576,8 @@ FILE *io = stdout;
 printf("%d PERFECT MATCH (%d/%d): ", ctx->sourceline, score, perfect);
 if (dtfn->intrinsic)
     printf("/* intrinsic */ ");
-if (dt->function.retval)
-    print_ast_datatype(io, dt->function.retval);
+if (dtfn->retval)
+    print_ast_datatype(io, dtfn->retval);
 else
     printf("void");
 printf(" %s(", sym);
@@ -2601,8 +2601,8 @@ FILE *io = stdout;
 printf("%d COMPATIBLE MATCH (%d/%d): ", ctx->sourceline, score, perfect);
 if (dtfn->intrinsic)
     printf("/* intrinsic */ ");
-if (dt->function.retval)
-    print_ast_datatype(io, dt->function.retval);
+if (dtfn->retval)
+    print_ast_datatype(io, dtfn->retval);
 else
     printf("void");
 printf(" %s(", sym);
