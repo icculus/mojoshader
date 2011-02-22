@@ -2258,6 +2258,17 @@ static inline int is_scalar_datatype(const MOJOSHADER_astDataType *dt)
     } // switch
 } // is_scalar_datatype
 
+static inline int is_float_datatype(const MOJOSHADER_astDataType *dt)
+{
+    switch (dt->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_FLOAT: return 1;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM: return 1;
+        case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM: return 1;
+        default: return 0;
+    } // switch
+} // is_float_datatype
+
 static const MOJOSHADER_astDataType *datatype_base(Context *ctx, const MOJOSHADER_astDataType *dt)
 {
     dt = reduce_datatype(ctx, dt);
@@ -2283,11 +2294,11 @@ static const MOJOSHADER_astDataType *datatype_base(Context *ctx, const MOJOSHADE
 
 typedef enum
 {
-    DT_MATCH_INCOMPATIBLE,
-    DT_MATCH_COMPATIBLE_DOWNCAST,
-    DT_MATCH_COMPATIBLE_UPCAST,
-    DT_MATCH_COMPATIBLE,
-    DT_MATCH_PERFECT
+    DT_MATCH_INCOMPATIBLE,         // flatly incompatible
+    DT_MATCH_COMPATIBLE_DOWNCAST,  // would have to lose precision
+    DT_MATCH_COMPATIBLE_UPCAST,    // would have to gain precision
+    DT_MATCH_COMPATIBLE,           // can cast to without serious change.
+    DT_MATCH_PERFECT               // identical datatype.
 } DatatypeMatch;
 
 static DatatypeMatch compatible_arg_datatype(Context *ctx,
@@ -2299,6 +2310,14 @@ static DatatypeMatch compatible_arg_datatype(Context *ctx,
     //
     // - All parameters of a function must match what the caller specified
     //   after possible type promotion via the following rules.
+    // - If the number of arguments and the number of parameters don't match,
+    //   that overload is immediately rejected.
+    // - Each overloaded function is given a score that is the sum of the
+    //   "worth" of each parameter vs the caller's arguments
+    //   (see DatatypeMatch). The higher the score, the more favorable this
+    //   function overload would be.
+    // - If there is a tie for highest score between two or more function
+    //   overloads, we declare that function call to be ambiguous and fail().
     // - Scalars can be promoted to vectors to make a parameter match.
     // - Scalars can promote to other scalars (short to int, etc).
     // - Datatypes can downcast, but should generate a warning.
@@ -2306,14 +2325,11 @@ static DatatypeMatch compatible_arg_datatype(Context *ctx,
     // - Vectors may NOT be extend (a float2 can't implicity extend to a
     //   float4).
     // - Vectors with the same elements can promote (a half2 can become
-    //   a float2...I _think_ it can't downcast here.).
+    //   a float2). Downcasting between vectors with the same number of
+    //   elements is allowed.
     // - A perfect match of all params will be favored over any functions
-    //   that only match if type promotion is applied.
-    // - An imperfect match that doesn't require downcasting will be
-    //   favored over one that does.
-    // - If more than one function matches after this (all params that
-    //   would be different between two functions can be legally type-promoted)
-    //   then fail().
+    //   that only match if type promotion is applied (given a perfect match
+    //   of all parameters, we'll stop looking for other matches).
 
     if (datatypes_match(arg, param))
         return DT_MATCH_PERFECT;  // that was easy.
@@ -2321,28 +2337,43 @@ static DatatypeMatch compatible_arg_datatype(Context *ctx,
     arg = reduce_datatype(ctx, arg);
     param = reduce_datatype(ctx, param);
 
-    int do_size_test = 0;
+    int do_base_test = 0;
 
     if (is_scalar_datatype(arg))
-        do_size_test = 1; // we let these all go through for now.
+        do_base_test = 1; // we let these all go through for now.
 
     else if (arg->type == param->type)
     {
         if (arg->type == MOJOSHADER_AST_DATATYPE_VECTOR)
-            do_size_test = (arg->vector.elements == param->vector.elements);
+            do_base_test = (arg->vector.elements == param->vector.elements);
         else if (arg->type == MOJOSHADER_AST_DATATYPE_MATRIX)
         {
-            do_size_test =
+            do_base_test =
                 ((arg->matrix.rows == param->matrix.rows) &&
                  (arg->matrix.columns == param->matrix.columns));
         } // if
     } // if
 
-    if (do_size_test)
+    if (do_base_test)
     {
-        const int argsize = datatype_size(datatype_base(ctx, arg));
-        const int paramsize = datatype_size(datatype_base(ctx, param));
-        if (argsize == paramsize)
+        arg = datatype_base(ctx, arg);
+        param = datatype_base(ctx, param);
+
+        const int argsize = datatype_size(arg);
+        const int paramsize = datatype_size(param);
+        const int argfloat = is_float_datatype(arg);
+        const int paramfloat = is_float_datatype(param);
+
+        if (argfloat && !paramfloat)
+            return DT_MATCH_COMPATIBLE_DOWNCAST;  // always loss of precision.
+        else if (argfloat && !paramfloat)
+        {
+            if (argsize < paramsize)
+                return DT_MATCH_COMPATIBLE_UPCAST;
+            else
+                return DT_MATCH_COMPATIBLE_DOWNCAST;  // loss of precision.
+        } // else if
+        else if (argsize == paramsize)
             return DT_MATCH_COMPATIBLE;
         else if (argsize < paramsize)
             return DT_MATCH_COMPATIBLE_UPCAST;
@@ -2465,7 +2496,7 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
                                     MOJOSHADER_astExpressionCallFunction *ast)
 {
     SymbolScope *best = NULL;  // best choice we find.
-    DatatypeMatch best_match = DT_MATCH_INCOMPATIBLE;
+    int best_score = 0;
     MOJOSHADER_astExpressionIdentifier *ident = ast->identifier;
     const char *sym = ident->identifier;
     const void *value = NULL;
@@ -2480,6 +2511,8 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         args = args->next;
     } // while;
 
+#define DEBUG_OVERLOADS 1
+#if DEBUG_OVERLOADS
 printf("Attempt to call function %s(", sym);
 args = ast->args;
 int qq = 0;
@@ -2492,9 +2525,10 @@ print_ast_datatype(stdout, x);
 if (args) printf(", ");
 }
 printf("); ...\n");
+#endif
 
     // we do some tapdancing to handle function overloading here.
-    DatatypeMatch match = 0;
+    int match = 0;
     while (hash_iter(ctx->variables.hash, sym, &value, &iter))
     {
         SymbolScope *item = (SymbolScope *) value;
@@ -2505,38 +2539,47 @@ printf("); ...\n");
             return dt;
 
         const MOJOSHADER_astDataTypeFunction *dtfn = (MOJOSHADER_astDataTypeFunction *) dt;
-        int this_match = DT_MATCH_PERFECT;
-        int i;
+        const int perfect = argcount * ((int) DT_MATCH_PERFECT);
+        int score = 0;
 
-        if (argcount != dtfn->num_params)  // !!! FIXME: default args.
-            this_match = 0;
-        else
+        if (argcount == dtfn->num_params)  // !!! FIXME: default args.
         {
             args = ast->args;
+            int i;
             for (i = 0; i < argcount; i++)
             {
                 assert(args != NULL);
                 dt = args->argument->datatype;
                 args = args->next;
-                const int compatible = compatible_arg_datatype(ctx, dt, dtfn->params[i]);
-                if (this_match > compatible)
-                    this_match = compatible;
-                if (!this_match)
+                const DatatypeMatch compatible = compatible_arg_datatype(ctx, dt, dtfn->params[i]);
+                if (compatible == DT_MATCH_INCOMPATIBLE)
+                {
+                    args = NULL;
+                    score = 0;
                     break;
+                } // if
+
+                score += (int) compatible;
             } // for
 
             if (args != NULL)
-                this_match = DT_MATCH_INCOMPATIBLE;  // too many arguments supplied. No match.
+                score = 0;  // too many arguments supplied. No match.
         } // else
 
-#if 0
-        if (this_match == DT_MATCH_PERFECT)  // perfect match.
+        if (score == 0)  // incompatible.
+            continue;
+
+        else if (score == perfect)  // perfection! stop looking!
         {
+#if DEBUG_OVERLOADS
 FILE *io = stdout;
-printf("%d PERFECT MATCH: ", ctx->sourceline);
+printf("%d PERFECT MATCH (%d/%d): ", ctx->sourceline, score, perfect);
 if (dtfn->intrinsic)
     printf("/* intrinsic */ ");
-print_ast_datatype(io, dt->function.retval);
+if (dt->function.retval)
+    print_ast_datatype(io, dt->function.retval);
+else
+    printf("void");
 printf(" %s(", sym);
 int i;
 for (i = 0; i < dtfn->num_params; i++) {
@@ -2545,19 +2588,17 @@ for (i = 0; i < dtfn->num_params; i++) {
         printf(", ");
 }
 printf(");\n");
+#endif
             match = 1;  // ignore all other compatible matches.
             best = item;
             break;
         } // if
 
-        else
-#endif
-
-        if (this_match > DT_MATCH_INCOMPATIBLE)  // compatible, but not perfect, match.
+        else if (score >= best_score)  // compatible, but not perfect, match.
         {
-#if 1
+#if DEBUG_OVERLOADS
 FILE *io = stdout;
-printf("%d COMPATIBLE MATCH (%d): ", ctx->sourceline, (int) this_match);
+printf("%d COMPATIBLE MATCH (%d/%d): ", ctx->sourceline, score, perfect);
 if (dtfn->intrinsic)
     printf("/* intrinsic */ ");
 if (dt->function.retval)
@@ -2574,19 +2615,20 @@ for (i = 0; i < dtfn->num_params; i++) {
 printf(");\n");
 #endif
 
-            if (this_match == best_match)
+            if (score == best_score)
             {
                 match++;
                 // !!! FIXME: list each possible function in a fail(),
                 // !!! FIXME:  but you can't actually fail() here, since
-                // !!! FIXME:  this will cease to be ambiguous if we get
-                // !!! FIXME:  a perfect match on a later overload.
+                // !!! FIXME:  this may cease to be ambiguous if we get
+                // !!! FIXME:  a better match on a later overload.
             } // if
-            else if (this_match > best_match)
+
+            else if (score > best_score)
             {
                 match = 1;  // reset the ambiguousness count.
                 best = item;
-                best_match = this_match;
+                best_score = score;
             } // if
         } // else if
     } // while
@@ -2599,7 +2641,9 @@ printf(");\n");
 
     if (best == NULL)
     {
-        assert(best == NULL);
+        assert(match == 0);
+        assert(best_score == 0);
+        // !!! FIXME: ident->datatype = ?
         failf(ctx, "No matching function named '%s'", sym);
     } // if
     else
