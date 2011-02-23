@@ -171,8 +171,16 @@ static void print_ast_datatype(FILE *io, const MOJOSHADER_astDataType *dt)
             fprintf(io, "%s", dt->user.name);
             return;
 
+        // this should only appear if we did semantic analysis on the AST,
+        //  so we only print the return value here.
+        case MOJOSHADER_AST_DATATYPE_FUNCTION:
+            if (!dt->function.retval)
+                fprintf(io, "void");
+            else
+                print_ast_datatype(io, dt->function.retval);
+            return;
+
         //case MOJOSHADER_AST_DATATYPE_NONE:
-        //case MOJOSHADER_AST_DATATYPE_FUNCTION:
         default:
             assert(0 && "Unexpected datatype.");
             return;

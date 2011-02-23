@@ -1734,6 +1734,10 @@ const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
                                     void *d);
 
+
+/* !!! FIXME: expose semantic analysis to the public API? */
+
+
 /*
  * Call this to dispose of AST parsing results when you are done with them.
  *  This will call the MOJOSHADER_free function you provided to
