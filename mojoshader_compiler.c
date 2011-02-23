@@ -2384,110 +2384,6 @@ static DatatypeMatch compatible_arg_datatype(Context *ctx,
     return DT_MATCH_INCOMPATIBLE;
 } // compatible_arg_datatype
 
-static void print_ast_datatype(FILE *io, const MOJOSHADER_astDataType *dt)
-{
-    int i;
-
-    if (dt == NULL)
-        return;
-
-    switch (dt->type)
-    {
-        case MOJOSHADER_AST_DATATYPE_BOOL:
-            fprintf(io, "bool");
-            return;
-        case MOJOSHADER_AST_DATATYPE_INT:
-            fprintf(io, "int");
-            return;
-        case MOJOSHADER_AST_DATATYPE_UINT:
-            fprintf(io, "uint");
-            return;
-        case MOJOSHADER_AST_DATATYPE_FLOAT:
-            fprintf(io, "float");
-            return;
-        case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM:
-            fprintf(io, "snorm float");
-            return;
-        case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM:
-            fprintf(io, "unorm float");
-            return;
-        case MOJOSHADER_AST_DATATYPE_HALF:
-            fprintf(io, "half");
-            return;
-        case MOJOSHADER_AST_DATATYPE_DOUBLE:
-            fprintf(io, "double");
-            return;
-        case MOJOSHADER_AST_DATATYPE_STRING:
-            fprintf(io, "string");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_1D:
-            fprintf(io, "sampler1D");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_2D:
-            fprintf(io, "sampler2D");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_3D:
-            fprintf(io, "sampler3D");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_CUBE:
-            fprintf(io, "samplerCUBE");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_STATE:
-            fprintf(io, "sampler_state");
-            return;
-        case MOJOSHADER_AST_DATATYPE_SAMPLER_COMPARISON_STATE:
-            fprintf(io, "SamplerComparisonState");
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_STRUCT:
-            fprintf(io, "struct { ");
-            for (i = 0; i < dt->structure.member_count; i++)
-            {
-                print_ast_datatype(io, dt->structure.members[i].datatype);
-                fprintf(io, " %s; ", dt->structure.members[i].identifier);
-            } // for
-            fprintf(io, "}");
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_ARRAY:
-            print_ast_datatype(io, dt->array.base);
-            if (dt->array.elements < 0)
-                fprintf(io, "[]");
-            else
-                fprintf(io, "[%d]", dt->array.elements);
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_VECTOR:
-            fprintf(io, "vector<");
-            print_ast_datatype(io, dt->vector.base);
-            fprintf(io, ",%d>", dt->vector.elements);
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_MATRIX:
-            fprintf(io, "matrix<");
-            print_ast_datatype(io, dt->matrix.base);
-            fprintf(io, ",%d,%d>", dt->matrix.rows, dt->matrix.columns);
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_BUFFER:
-            fprintf(io, "buffer<");
-            print_ast_datatype(io, dt->buffer.base);
-            fprintf(io, ">");
-            return;
-
-        case MOJOSHADER_AST_DATATYPE_USER:
-            fprintf(io, "%s", dt->user.name);
-            return;
-
-        //case MOJOSHADER_AST_DATATYPE_NONE:
-        //case MOJOSHADER_AST_DATATYPE_FUNCTION:
-
-        default:
-            assert(0 && "Unexpected datatype.");
-            return;
-    } // switch
-} // print_ast_datatype
-
 
 static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast);
 
@@ -2510,23 +2406,6 @@ static const MOJOSHADER_astDataType *match_func_to_call(Context *ctx,
         type_check_ast(ctx, args->argument);
         args = args->next;
     } // while;
-
-// !!! FIXME: remove this debug code later.
-#define DEBUG_OVERLOADS 0
-#if DEBUG_OVERLOADS
-printf("Attempt to call function %s(", sym);
-args = ast->args;
-int qq = 0;
-for (qq = 0; qq < argcount; qq++)
-{
-assert(args != NULL);
-const MOJOSHADER_astDataType *x = args->argument->datatype;
-args = args->next;
-print_ast_datatype(stdout, x);
-if (args) printf(", ");
-}
-printf("); ...\n");
-#endif
 
     // we do some tapdancing to handle function overloading here.
     int match = 0;
@@ -2572,24 +2451,6 @@ printf("); ...\n");
 
         else if (score == perfect)  // perfection! stop looking!
         {
-#if DEBUG_OVERLOADS
-FILE *io = stdout;
-printf("%d PERFECT MATCH (%d/%d): ", ctx->sourceline, score, perfect);
-if (dtfn->intrinsic)
-    printf("/* intrinsic */ ");
-if (dtfn->retval)
-    print_ast_datatype(io, dtfn->retval);
-else
-    printf("void");
-printf(" %s(", sym);
-int i;
-for (i = 0; i < dtfn->num_params; i++) {
-    print_ast_datatype(io, dtfn->params[i]);
-    if (i < dtfn->num_params-1)
-        printf(", ");
-}
-printf(");\n");
-#endif
             match = 1;  // ignore all other compatible matches.
             best = item;
             break;
@@ -2597,25 +2458,6 @@ printf(");\n");
 
         else if (score >= best_score)  // compatible, but not perfect, match.
         {
-#if DEBUG_OVERLOADS
-FILE *io = stdout;
-printf("%d COMPATIBLE MATCH (%d/%d): ", ctx->sourceline, score, perfect);
-if (dtfn->intrinsic)
-    printf("/* intrinsic */ ");
-if (dtfn->retval)
-    print_ast_datatype(io, dtfn->retval);
-else
-    printf("void");
-printf(" %s(", sym);
-int i;
-for (i = 0; i < dtfn->num_params; i++) {
-    print_ast_datatype(io, dtfn->params[i]);
-    if (i < dtfn->num_params-1)
-        printf(", ");
-}
-printf(");\n");
-#endif
-
             if (score == best_score)
             {
                 match++;
