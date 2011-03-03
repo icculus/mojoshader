@@ -1492,8 +1492,8 @@ typedef struct MOJOSHADER_astForStatement
     MOJOSHADER_astNodeInfo ast;
     MOJOSHADER_astStatement *next;
     int unroll;  /* # times to unroll, 0 to loop, < 0 == compiler's choice. */
-    MOJOSHADER_astVariableDeclaration *var_decl;
-    MOJOSHADER_astExpression *initializer;
+    MOJOSHADER_astVariableDeclaration *var_decl;  /* either this ... */
+    MOJOSHADER_astExpression *initializer;        /*  ... or this will used. */
     MOJOSHADER_astExpression *looptest;
     MOJOSHADER_astExpression *counter;
     MOJOSHADER_astStatement *statement;

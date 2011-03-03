@@ -451,11 +451,7 @@ static void print_ast(FILE *io, const int substmt, const void *_ast)
             print_unroll_attr(io, ast->forstmt.unroll);
             fprintf(io, "for (");
             print_ast(io, 1, ast->forstmt.var_decl);
-            if (ast->forstmt.initializer != NULL)
-            {
-                fprintf(io, " = ");
-                print_ast(io, 1, ast->forstmt.initializer);
-            } // if
+            print_ast(io, 1, ast->forstmt.initializer);
             fprintf(io, "; ");
             print_ast(io, 1, ast->forstmt.looptest);
             fprintf(io, "; ");
