@@ -2925,6 +2925,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 type_check_ast(ctx, cases->statement);
                 cases = cases->next;
             } // while
+            type_check_ast(ctx, ast->switchstmt.next);
             return NULL;
         } // case
 
