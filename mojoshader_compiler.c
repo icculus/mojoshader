@@ -2277,6 +2277,20 @@ static inline int is_float_datatype(const MOJOSHADER_astDataType *dt)
     } // switch
 } // is_float_datatype
 
+static int datatype_elems(Context *ctx, const MOJOSHADER_astDataType *dt)
+{
+    dt = reduce_datatype(ctx, dt);
+    switch (dt->type)
+    {
+        case MOJOSHADER_AST_DATATYPE_VECTOR:
+            return dt->vector.elements;
+        case MOJOSHADER_AST_DATATYPE_MATRIX:
+            return dt->matrix.rows * dt->matrix.columns;
+        default:
+            return 1;
+    } // switch
+} // datatype_elems
+
 static const MOJOSHADER_astDataType *datatype_base(Context *ctx, const MOJOSHADER_astDataType *dt)
 {
     dt = reduce_datatype(ctx, dt);
@@ -2571,10 +2585,19 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_OP_PREDECREMENT:
         case MOJOSHADER_AST_OP_COMPLEMENT:
         case MOJOSHADER_AST_OP_NEGATE:
-        case MOJOSHADER_AST_OP_NOT:
+            // !!! FIXME: must be lvalue.
+            // !!! FIXME: bools must type-promote to ...int?
+            // !!! FIXME: complement must not be float (...right?)
             datatype = type_check_ast(ctx, ast->unary.operand);
             require_numeric_datatype(ctx, datatype);
             ast->unary.datatype = datatype;
+            return datatype;
+
+        case MOJOSHADER_AST_OP_NOT:
+            datatype = type_check_ast(ctx, ast->unary.operand);
+            require_boolean_datatype(ctx, datatype);
+            // !!! FIXME: coerce to bool here.
+            ast->unary.datatype = &ctx->dt_bool;
             return datatype;
 
         case MOJOSHADER_AST_OP_DEREF_ARRAY:
@@ -2708,6 +2731,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             datatype2 = type_check_ast(ctx, ast->binary.right);
             require_boolean_datatype(ctx, datatype);
             require_boolean_datatype(ctx, datatype2);
+            // !!! FIXME: coerce each to bool here, separately.
             add_type_coercion(ctx, &ast->binary.left, datatype,
                               &ast->binary.right, datatype2);
             ast->binary.datatype = &ctx->dt_bool;
@@ -2723,6 +2747,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         case MOJOSHADER_AST_OP_ANDASSIGN:
         case MOJOSHADER_AST_OP_XORASSIGN:
         case MOJOSHADER_AST_OP_ORASSIGN:
+            // !!! FIXME: verify binary.left is an lvalue, or fail()!
             datatype = type_check_ast(ctx, ast->binary.left);
             datatype2 = type_check_ast(ctx, ast->binary.right);
             ast->binary.datatype = add_type_coercion(ctx, NULL, datatype,
@@ -2941,9 +2966,11 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
         {
             ctx->switch_count++;
             MOJOSHADER_astSwitchCases *cases = ast->switchstmt.cases;
+            // !!! FIXME: expr must be POD (no structs, arrays, etc!).
             datatype = type_check_ast(ctx, ast->switchstmt.expr);
             while (cases)
             {
+                // !!! FIXME: case must be POD (no structs, arrays, etc!).
                 datatype2 = type_check_ast(ctx, cases->expr);
                 add_type_coercion(ctx, NULL, datatype,
                                   &cases->expr, datatype2);
@@ -3023,7 +3050,6 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             // We have to tapdance here to make sure the function is in
             //  the global scope, but it's parameters are pushed as variables
             //  in the function's scope.
-
             datatype = type_check_ast(ctx, ast->funcunit.declaration);
             push_function(ctx, ast->funcunit.declaration->identifier,
                           datatype, ast->funcunit.definition == NULL);
