@@ -69,6 +69,7 @@ typedef struct SymbolScope
     const char *symbol;
     const MOJOSHADER_astDataType *datatype;
     int index;  // unique positive value within a function, negative if global.
+    int referenced;  // non-zero if something looked for this symbol (so we know it's used).
     struct SymbolScope *next;
 } SymbolScope;
 
@@ -351,6 +352,7 @@ static void push_symbol(Context *ctx, SymbolMap *map, const char *sym,
     item->symbol = sym;  // cached strings, don't copy.
     item->index = index;
     item->datatype = dt;
+    item->referenced = 0;
     item->next = map->scope;
     map->scope = item;
 } // push_symbol
@@ -471,8 +473,12 @@ static const MOJOSHADER_astDataType *find_symbol(Context *ctx, SymbolMap *map, c
     const void *_item = NULL;
     hash_find(map->hash, sym, &_item);
     SymbolScope *item = (SymbolScope *) _item;
-    if (item && _index)
-        *_index = item->index;
+    if (item != NULL)
+    {
+        item->referenced++;
+        if (_index != NULL)
+            *_index = item->index;
+    } // if
     return item ? item->datatype : NULL;
 } // find_symbol
 
