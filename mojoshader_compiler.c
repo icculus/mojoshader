@@ -98,6 +98,8 @@ typedef struct Context
     MOJOSHADER_astNode *ast;  // Abstract Syntax Tree
     const char *source_profile;
     int is_func_scope; // non-zero if semantic analysis is in function scope.
+    int loop_count;
+    int switch_count;
     int var_index;  // next variable index for current function.
     int global_var_index;  // next variable index for global scope.
     int user_func_index;  // next function index for user-defined functions.
@@ -2888,8 +2890,24 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             return datatype;
 
         case MOJOSHADER_AST_STATEMENT_BREAK:
+            if ((ctx->loop_count == 0) && (ctx->switch_count == 0))
+                fail(ctx, "Break outside loop or switch");
+            // !!! FIXME: warn if unreachable statements follow?
+            type_check_ast(ctx, ast->stmt.next);
+            return NULL;
+
         case MOJOSHADER_AST_STATEMENT_CONTINUE:
+            if (ctx->loop_count == 0)
+                fail(ctx, "Continue outside loop");
+            // !!! FIXME: warn if unreachable statements follow?
+            type_check_ast(ctx, ast->stmt.next);
+            return NULL;
+
         case MOJOSHADER_AST_STATEMENT_DISCARD:
+            // !!! FIXME: warn if unreachable statements follow?
+            type_check_ast(ctx, ast->stmt.next);
+            return NULL;
+
         case MOJOSHADER_AST_STATEMENT_EMPTY:
             type_check_ast(ctx, ast->stmt.next);
             return NULL;
@@ -2915,6 +2933,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
         case MOJOSHADER_AST_STATEMENT_SWITCH:
         {
+            ctx->switch_count++;
             MOJOSHADER_astSwitchCases *cases = ast->switchstmt.cases;
             datatype = type_check_ast(ctx, ast->switchstmt.expr);
             while (cases)
@@ -2925,6 +2944,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 type_check_ast(ctx, cases->statement);
                 cases = cases->next;
             } // while
+            ctx->switch_count--;
             type_check_ast(ctx, ast->switchstmt.next);
             return NULL;
         } // case
@@ -2951,6 +2971,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             return NULL;
 
         case MOJOSHADER_AST_STATEMENT_FOR:
+            ctx->loop_count++;
             push_scope(ctx);  // new scope for "for (int x = 0; ...)"
             type_check_ast(ctx, ast->forstmt.var_decl);
             type_check_ast(ctx, ast->forstmt.initializer);
@@ -2958,27 +2979,34 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             type_check_ast(ctx, ast->forstmt.counter);
             type_check_ast(ctx, ast->forstmt.statement);
             pop_scope(ctx);
+            ctx->loop_count--;
             type_check_ast(ctx, ast->forstmt.next);
             return NULL;
 
         case MOJOSHADER_AST_STATEMENT_DO:
+            ctx->loop_count++;
+            // !!! FIXME: should there be a push_scope() here?
             type_check_ast(ctx, ast->dostmt.statement);
             push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
             type_check_ast(ctx, ast->dostmt.expr);
             pop_scope(ctx);
+            ctx->loop_count--;
             type_check_ast(ctx, ast->dostmt.next);
             return NULL;
 
         case MOJOSHADER_AST_STATEMENT_WHILE:
+            ctx->loop_count++;
             push_scope(ctx);  // new scope for "while ((int x = blah()) != 0)"
             type_check_ast(ctx, ast->whilestmt.expr);
             type_check_ast(ctx, ast->whilestmt.statement);
             pop_scope(ctx);
+            ctx->loop_count--;
             type_check_ast(ctx, ast->whilestmt.next);
             return NULL;
 
         case MOJOSHADER_AST_STATEMENT_RETURN:
             // !!! FIXME: type coercion to outer function's return type.
+            // !!! FIXME: warn if unreachable statements follow?
             type_check_ast(ctx, ast->returnstmt.expr);
             type_check_ast(ctx, ast->returnstmt.next);
             return NULL;
@@ -2997,6 +3025,8 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             // not just a declaration, but a full function definition?
             if (ast->funcunit.definition != NULL)
             {
+                assert(ctx->loop_count == 0);
+                assert(ctx->switch_count == 0);
                 ctx->is_func_scope = 1;
                 ctx->var_index = 0;  // reset this every function.
                 push_scope(ctx);  // so function params are in function scope.
@@ -3007,6 +3037,8 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 type_check_ast(ctx, ast->funcunit.definition);
                 pop_scope(ctx);
                 ctx->is_func_scope = 0;
+                assert(ctx->loop_count == 0);
+                assert(ctx->switch_count == 0);
             } // else
 
             type_check_ast(ctx, ast->funcunit.next);
