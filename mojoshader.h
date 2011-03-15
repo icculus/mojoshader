@@ -1281,6 +1281,10 @@ typedef struct MOJOSHADER_astExpressionDerefStruct
 {
     MOJOSHADER_astNodeInfo ast;  /* Always MOJOSHADER_AST_OP_DEREF_STRUCT */
     const MOJOSHADER_astDataType *datatype;
+    /* !!! FIXME:
+     *  "identifier" is misnamed; this might not be an identifier at all:
+     *    x = FunctionThatReturnsAStruct().SomeMember;
+     */
     MOJOSHADER_astExpression *identifier;
     const char *member;
     int isswizzle;  /* Always 1 or 0. Never set by parseAst()! */
