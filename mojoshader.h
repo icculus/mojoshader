@@ -1288,6 +1288,7 @@ typedef struct MOJOSHADER_astExpressionDerefStruct
     MOJOSHADER_astExpression *identifier;
     const char *member;
     int isswizzle;  /* Always 1 or 0. Never set by parseAst()! */
+    int member_index;  /* Never set by parseAst()! */
 } MOJOSHADER_astExpressionDerefStruct;
 
 typedef struct MOJOSHADER_astExpressionCallFunction

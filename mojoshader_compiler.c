@@ -677,6 +677,7 @@ static MOJOSHADER_astExpression *new_deref_struct_expr(Context *ctx,
     retval->identifier = identifier;
     retval->member = member;  // cached; don't copy string.
     retval->isswizzle = 0;  // may change during semantic analysis.
+    retval->member_index = 0;  // set during semantic analysis.
     return (MOJOSHADER_astExpression *) retval;
 } // new_deref_struct_expr
 
@@ -2659,6 +2660,7 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 if (strcmp(mbrs[i].identifier, member) == 0)
                 {
                     ast->derefstruct.datatype = mbrs[i].datatype;
+                    ast->derefstruct.member_index = i;
                     break;
                 } // if
             } // for
