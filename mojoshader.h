@@ -1755,6 +1755,285 @@ const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
 void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data);
 
 
+/* Intermediate Representation interface... */
+/* !!! FIXME: there is currently no way to access the IR via the public API. */
+typedef enum MOJOSHADER_irNodeType
+{
+    MOJOSHADER_IR_START_RANGE_EXPR,
+    MOJOSHADER_IR_CONSTANT,
+    MOJOSHADER_IR_TEMP,
+    MOJOSHADER_IR_BINOP,
+    MOJOSHADER_IR_MEMORY,
+    MOJOSHADER_IR_CALL,
+    MOJOSHADER_IR_ESEQ,
+    MOJOSHADER_IR_ARRAY,
+    MOJOSHADER_IR_CONVERT,
+    MOJOSHADER_IR_SWIZZLE,
+    MOJOSHADER_IR_CONSTRUCT,
+    MOJOSHADER_IR_END_RANGE_EXPR,
+
+    MOJOSHADER_IR_START_RANGE_STMT,
+    MOJOSHADER_IR_MOVE,
+    MOJOSHADER_IR_EXPR_STMT,
+    MOJOSHADER_IR_JUMP,
+    MOJOSHADER_IR_CJUMP,
+    MOJOSHADER_IR_SEQ,
+    MOJOSHADER_IR_LABEL,
+    MOJOSHADER_IR_DISCARD,
+    MOJOSHADER_IR_END_RANGE_STMT,
+
+    MOJOSHADER_IR_START_RANGE_MISC,
+    MOJOSHADER_IR_EXPRLIST,
+    MOJOSHADER_IR_END_RANGE_MISC,
+
+    MOJOSHADER_IR_END_RANGE
+} MOJOSHADER_irNodeType;
+
+typedef struct MOJOSHADER_irNodeInfo
+{
+    MOJOSHADER_irNodeType type;
+    const char *filename;
+    unsigned int line;
+} MOJOSHADER_irNodeInfo;
+
+typedef struct MOJOSHADER_irExprList MOJOSHADER_irExprList;
+
+/*
+ * IR nodes are categorized into Expressions, Statements, and Everything Else.
+ *  You can cast any of them to MOJOSHADER_irGeneric, but this split is
+ *  useful for slightly better type-checking (you can't cleanly assign
+ *  something that doesn't return a value to something that wants one, etc).
+ * These broader categories are just unions of the simpler types, so the
+ *  real definitions are below all the things they contain (but these
+ *  predeclarations are because the simpler types refer to the broader
+ *  categories).
+ */
+typedef union MOJOSHADER_irExpression MOJOSHADER_irExpression;  /* returns a value. */
+typedef union MOJOSHADER_irStatement MOJOSHADER_irStatement;   /* no returned value. */
+typedef union MOJOSHADER_irMisc MOJOSHADER_irMisc;        /* Everything Else. */
+typedef union MOJOSHADER_irNode MOJOSHADER_irNode;        /* Generic uber-wrapper. */
+
+/* You can cast any IR node pointer to this. */
+typedef struct MOJOSHADER_irGeneric
+{
+    MOJOSHADER_irNodeInfo ir;
+} MOJOSHADER_irGeneric;
+
+
+/* These are used for MOJOSHADER_irBinOp */
+typedef enum MOJOSHADER_irBinOpType
+{
+    MOJOSHADER_IR_BINOP_ADD,
+    MOJOSHADER_IR_BINOP_SUBTRACT,
+    MOJOSHADER_IR_BINOP_MULTIPLY,
+    MOJOSHADER_IR_BINOP_DIVIDE,
+    MOJOSHADER_IR_BINOP_MODULO,
+    MOJOSHADER_IR_BINOP_AND,
+    MOJOSHADER_IR_BINOP_OR,
+    MOJOSHADER_IR_BINOP_XOR,
+    MOJOSHADER_IR_BINOP_LSHIFT,
+    MOJOSHADER_IR_BINOP_RSHIFT,
+    MOJOSHADER_IR_BINOP_UNKNOWN
+} MOJOSHADER_irBinOpType;
+
+typedef enum MOJOSHADER_irConditionType
+{
+    MOJOSHADER_IR_COND_EQL,
+    MOJOSHADER_IR_COND_NEQ,
+    MOJOSHADER_IR_COND_LT,
+    MOJOSHADER_IR_COND_GT,
+    MOJOSHADER_IR_COND_LEQ,
+    MOJOSHADER_IR_COND_GEQ,
+    MOJOSHADER_IR_COND_UNKNOWN
+} MOJOSHADER_irConditionType;
+
+
+/* MOJOSHADER_irExpression types... */
+
+typedef struct MOJOSHADER_irExprInfo
+{
+    MOJOSHADER_irNodeInfo ir;
+    MOJOSHADER_astDataTypeType type;
+    int elements;
+} MOJOSHADER_irExprInfo;
+
+typedef struct MOJOSHADER_irConstant    /* Constant value */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_CONSTANT */
+    union
+    {
+        int ival[16];
+        float fval[16];
+    } value;
+} MOJOSHADER_irConstant;
+
+typedef struct MOJOSHADER_irTemp /* temp value (not necessarily a register). */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_TEMP */
+    int index;
+} MOJOSHADER_irTemp;
+
+typedef struct MOJOSHADER_irBinOp  /* binary operator (+, -, etc) */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_BINOP */
+    MOJOSHADER_irBinOpType op;
+    MOJOSHADER_irExpression *left;
+    MOJOSHADER_irExpression *right;
+} MOJOSHADER_irBinOp;
+
+typedef struct MOJOSHADER_irMemory
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_MEMORY */
+    int index;  /* not final addresses, just a unique identifier. */
+} MOJOSHADER_irMemory;
+
+typedef struct MOJOSHADER_irCall
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_CALL */
+    int index;
+    MOJOSHADER_irExprList *args;
+} MOJOSHADER_irCall;
+
+typedef struct MOJOSHADER_irESeq  /* statement with result */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_ESEQ */
+    MOJOSHADER_irStatement *stmt;  /* execute this for side-effects, then... */
+    MOJOSHADER_irExpression *expr; /* ...use this for the result. */
+} MOJOSHADER_irESeq;
+
+typedef struct MOJOSHADER_irArray  /* Array dereference. */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_ARRAY */
+    MOJOSHADER_irExpression *array;
+    MOJOSHADER_irExpression *element;
+} MOJOSHADER_irArray;
+
+typedef struct MOJOSHADER_irConvert  /* casting between datatypes */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_CONVERT */
+    MOJOSHADER_irExpression *expr;
+} MOJOSHADER_irConvert;
+
+typedef struct MOJOSHADER_irSwizzle  /* vector swizzle */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_SWIZZLE */
+    MOJOSHADER_irExpression *expr;
+    char channels[4];
+} MOJOSHADER_irSwizzle;
+
+typedef struct MOJOSHADER_irConstruct  /* vector construct from discrete items */
+{
+    MOJOSHADER_irExprInfo info;  /* Always MOJOSHADER_IR_CONTSTRUCT */
+    MOJOSHADER_irExprList *args;
+} MOJOSHADER_irConstruct;
+
+/* Wrap the whole category in a union for type "safety." */
+union MOJOSHADER_irExpression
+{
+    MOJOSHADER_irNodeInfo ir;
+    MOJOSHADER_irExprInfo info;
+    MOJOSHADER_irConstant constant;
+    MOJOSHADER_irTemp temp;
+    MOJOSHADER_irBinOp binop;
+    MOJOSHADER_irMemory memory;
+    MOJOSHADER_irCall call;
+    MOJOSHADER_irESeq eseq;
+    MOJOSHADER_irArray array;
+    MOJOSHADER_irConvert convert;
+    MOJOSHADER_irSwizzle swizzle;
+    MOJOSHADER_irConstruct construct;
+};
+
+/* MOJOSHADER_irStatement types. */
+
+typedef struct MOJOSHADER_irMove  /* load/store. */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_MOVE */
+    MOJOSHADER_irExpression *dst; /* must result in a temp or mem! */
+    MOJOSHADER_irExpression *src;
+    int writemask;  // for write-masking vector channels.
+} MOJOSHADER_irMove;
+
+typedef struct MOJOSHADER_irExprStmt  /* evaluate expression, throw it away. */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_EXPR_STMT */
+    MOJOSHADER_irExpression *expr;
+} MOJOSHADER_irExprStmt;
+
+typedef struct MOJOSHADER_irJump  /* unconditional jump */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_JUMP */
+    int label;
+    // !!! FIXME: possible label list, for further optimization passes.
+} MOJOSHADER_irJump;
+
+typedef struct MOJOSHADER_irCJump  /* conditional jump */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_CJUMP */
+    MOJOSHADER_irConditionType cond;
+    MOJOSHADER_irExpression *left;  /* if (left cond right) */
+    MOJOSHADER_irExpression *right;
+    int iftrue;  /* label id for true case. */
+    int iffalse; /* label id for false case. */
+} MOJOSHADER_irCJump;
+
+typedef struct MOJOSHADER_irSeq  /* statement without side effects */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_SEQ */
+    MOJOSHADER_irStatement *first;
+    MOJOSHADER_irStatement *next;
+} MOJOSHADER_irSeq;
+
+typedef struct MOJOSHADER_irLabel  /* like a label in assembly language. */
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_LABEL */
+    int index;
+} MOJOSHADER_irLabel;
+
+typedef MOJOSHADER_irGeneric MOJOSHADER_irDiscard;  /* discard statement. */
+
+
+/* Wrap the whole category in a union for type "safety." */
+union MOJOSHADER_irStatement
+{
+    MOJOSHADER_irNodeInfo ir;
+    MOJOSHADER_irGeneric generic;
+    MOJOSHADER_irMove move;
+    MOJOSHADER_irExprStmt expr;
+    MOJOSHADER_irJump jump;
+    MOJOSHADER_irCJump cjump;
+    MOJOSHADER_irSeq seq;
+    MOJOSHADER_irLabel label;
+    MOJOSHADER_irDiscard discard;
+};
+
+/* MOJOSHADER_irMisc types. */
+
+struct MOJOSHADER_irExprList
+{
+    MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_EXPRLIST */
+    MOJOSHADER_irExpression *expr;
+    MOJOSHADER_irExprList *next;
+};
+
+/* Wrap the whole category in a union for type "safety." */
+union MOJOSHADER_irMisc
+{
+    MOJOSHADER_irNodeInfo ir;
+    MOJOSHADER_irGeneric generic;
+    MOJOSHADER_irExprList exprlist;
+};
+
+/* This is a catchall for all your needs. :) */
+union MOJOSHADER_irNode
+{
+    MOJOSHADER_irNodeInfo ir;
+    MOJOSHADER_irGeneric generic;
+    MOJOSHADER_irExpression expr;
+    MOJOSHADER_irStatement stmt;
+    MOJOSHADER_irMisc misc;
+};
+
 
 /* Compiler interface... */
 

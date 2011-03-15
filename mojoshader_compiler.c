@@ -79,6 +79,12 @@ typedef struct SymbolMap
     SymbolScope *scope;
 } SymbolMap;
 
+typedef struct LoopLabels
+{
+    int start;  // loop's start label during IR build.
+    int end;    // loop's end label during IR build.
+    struct LoopLabels *prev;
+} LoopLabels;
 
 // Compile state, passed around all over the place.
 
@@ -105,6 +111,13 @@ typedef struct Context
     int global_var_index;  // next variable index for global scope.
     int user_func_index;  // next function index for user-defined functions.
     int intrinsic_func_index;  // next function index for intrinsic functions.
+
+    MOJOSHADER_irNode *ir;  // intermediate representation.
+    int ir_label_count;  // next unused IR label index.
+    int ir_temp_count;  // next unused IR temporary value index.
+    int ir_end; // current function's end label during IR build.
+    int ir_ret; // temp that holds current function's retval during IR build.
+    LoopLabels *ir_loop;  // nested loop boundary labels during IR build.
 
     // Cache intrinsic types for fast lookup and consistent pointer values.
     MOJOSHADER_astDataType dt_none;
@@ -388,10 +401,20 @@ static inline void push_variable(Context *ctx, const char *sym, const MOJOSHADER
     int idx = 0;
     if (sym != NULL)
     {
+        // leave space for individual member indexes. The IR will need this.
+        int additional = 0;
+        if (dt->type == MOJOSHADER_AST_DATATYPE_STRUCT)
+            additional = dt->structure.member_count;
         if (ctx->is_func_scope)
+        {
             idx = ++ctx->var_index;  // these are positive.
+            ctx->var_index += additional;
+        } // if
         else
+        {
             idx = --ctx->global_var_index;  // these are negative.
+            ctx->global_var_index -= additional;
+        } // else
     } // if
 
     push_symbol(ctx, &ctx->variables, sym, dt, idx, 1);
@@ -3282,14 +3305,6 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 static inline void semantic_analysis(Context *ctx)
 {
     type_check_ast(ctx, ctx->ast);
-
-    // !!! FIXME: build an IR here.
-
-    // done with the AST, nuke it.
-    delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit *) ctx->ast);
-    ctx->ast = NULL;
-
-    // !!! FIXME: do everything else.  :)
 } // semantic_analysis
 
 // !!! FIXME: isn't this a cut-and-paste of somewhere else?
@@ -3519,6 +3534,9 @@ static int convert_to_lemon_token(Context *ctx, const char *token,
     return 0;
 } // convert_to_lemon_token
 
+
+static void delete_ir(Context *ctx, void *_ir);  // !!! FIXME: move this code around.
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -3547,6 +3565,8 @@ static void destroy_context(Context *ctx)
         stringcache_destroy(ctx->strcache);
         errorlist_destroy(ctx->errors);
         errorlist_destroy(ctx->warnings);
+
+        delete_ir(ctx, ctx->ir);
 
         // !!! FIXME: more to clean up here, now.
 
@@ -4489,6 +4509,1419 @@ static void parse_source(Context *ctx, const char *filename,
 } // parse_source
 
 
+/* Intermediate representation... */
+
+static inline int generate_ir_label(Context *ctx)
+{
+    return ctx->ir_label_count++;
+} // generate_ir_label
+
+static inline int generate_ir_temp(Context *ctx)
+{
+    return ctx->ir_temp_count++;
+} // generate_ir_temp
+
+static const LoopLabels *push_ir_loop(Context *ctx, const int isswitch)
+{
+    // !!! FIXME: cache these allocations?
+    LoopLabels *retval = Malloc(ctx, sizeof (LoopLabels));
+    if (retval)
+    {
+        retval->start = (isswitch) ? -1 : generate_ir_label(ctx);
+        retval->end = generate_ir_label(ctx);
+        retval->prev = ctx->ir_loop;
+        ctx->ir_loop = retval;
+    } // if
+
+    return retval;
+} // push_ir_loop
+
+static void pop_ir_loop(Context *ctx)
+{
+    assert(ctx->ir_loop != NULL);
+    LoopLabels *labels = ctx->ir_loop;
+    ctx->ir_loop = ctx->ir_loop->prev;
+    Free(ctx, labels);
+} // pop_ir_loop
+
+
+#define NEW_IR_NODE(retval, cls, typ) \
+    cls *retval = (cls *) Malloc(ctx, sizeof (cls)); \
+    do { \
+        if (retval == NULL) { return NULL; } \
+        retval->ir.type = typ; \
+        retval->ir.filename = ctx->sourcefile; \
+        retval->ir.line = ctx->sourceline; \
+    } while (0)
+
+#define NEW_IR_EXPR(retval, cls, typ, dt, numelems) \
+    cls *retval = (cls *) Malloc(ctx, sizeof (cls)); \
+    do { \
+        if (retval == NULL) { return NULL; } \
+        retval->info.ir.type = typ; \
+        retval->info.ir.filename = ctx->sourcefile; \
+        retval->info.ir.line = ctx->sourceline; \
+        retval->info.type = dt; \
+        retval->info.elements = numelems; \
+    } while (0)
+
+// syntactic sugar.
+static inline MOJOSHADER_irNode *build_ir(Context *ctx, void *_ast);
+static inline MOJOSHADER_irExpression *build_ir_expr(Context *ctx, void *_ast)
+{
+    MOJOSHADER_irNode *retval = build_ir(ctx, _ast);
+    assert(!retval || (retval->ir.type > MOJOSHADER_IR_START_RANGE_EXPR));
+    assert(!retval || (retval->ir.type < MOJOSHADER_IR_END_RANGE_EXPR));
+    return (MOJOSHADER_irExpression *) retval;
+} // build_ir_expr
+
+static inline MOJOSHADER_irStatement *build_ir_stmt(Context *ctx, void *_ast)
+{
+    MOJOSHADER_irNode *retval = build_ir(ctx, _ast);
+    assert(!retval || (retval->ir.type > MOJOSHADER_IR_START_RANGE_STMT));
+    assert(!retval || (retval->ir.type < MOJOSHADER_IR_END_RANGE_STMT));
+    return (MOJOSHADER_irStatement *) retval;
+} // build_ir_stmt
+
+
+static MOJOSHADER_irExpression *new_ir_binop(Context *ctx,
+                                       const MOJOSHADER_irBinOpType op,
+                                       MOJOSHADER_irExpression *left,
+                                       MOJOSHADER_irExpression *right)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irBinOp, MOJOSHADER_IR_BINOP, left->info.type, left->info.elements);
+    assert(left->info.type == right->info.type);
+    assert(left->info.elements == right->info.elements);
+    retval->op = op;
+    retval->left = left;
+    retval->right = right;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_binop
+
+static MOJOSHADER_irExpression *new_ir_eseq(Context *ctx,
+                                      MOJOSHADER_irStatement *stmt,
+                                      MOJOSHADER_irExpression *expr)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irESeq, MOJOSHADER_IR_ESEQ, expr->info.type, expr->info.elements);
+    retval->stmt = stmt;
+    retval->expr = expr;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_eseq
+
+static MOJOSHADER_irExpression *new_ir_temp(Context *ctx, const int index,
+                                            const MOJOSHADER_astDataTypeType type,
+                                            const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irTemp, MOJOSHADER_IR_TEMP, type, elements);
+    retval->index = index;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_temp
+
+
+
+#define NEW_IR_BINOP(op,l,r) new_ir_binop(ctx, MOJOSHADER_IR_BINOP_##op, l, r)
+#define EASY_IR_BINOP(op) \
+    NEW_IR_BINOP(op, build_ir_expr(ctx, ast->binary.left), \
+                 build_ir_expr(ctx, ast->binary.right))
+
+// You have to fill in ->value yourself!
+static MOJOSHADER_irExpression *new_ir_constant(Context *ctx,
+                                                const MOJOSHADER_astDataTypeType type,
+                                                const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irConstant, MOJOSHADER_IR_CONSTANT, type, elements);
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_constant
+
+static MOJOSHADER_irExpression *new_ir_constint(Context *ctx, const int val)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irConstant, MOJOSHADER_IR_CONSTANT, MOJOSHADER_AST_DATATYPE_INT, 1);
+    retval->value.ival[0] = val;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_constint
+
+static MOJOSHADER_irExpression *new_ir_constfloat(Context *ctx, const float val)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irConstant, MOJOSHADER_IR_CONSTANT, MOJOSHADER_AST_DATATYPE_FLOAT, 1);
+    retval->value.fval[0] = val;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_constfloat
+
+static MOJOSHADER_irExpression *new_ir_constbool(Context *ctx, const int val)
+{
+    // !!! FIXME: cache true and false in (ctx), ignore in delete_ir().
+    NEW_IR_EXPR(retval, MOJOSHADER_irConstant, MOJOSHADER_IR_CONSTANT, MOJOSHADER_AST_DATATYPE_BOOL, 1);
+    retval->value.ival[0] = val;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_constbool
+
+static MOJOSHADER_irExpression *new_ir_convert(Context *ctx, MOJOSHADER_irExpression *expr,
+                                               const MOJOSHADER_astDataTypeType type,
+                                               const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irConvert, MOJOSHADER_IR_CONVERT, type, elements);
+    retval->expr = expr;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_convert
+
+static MOJOSHADER_irExpression *new_ir_construct(Context *ctx, MOJOSHADER_irExprList *args,
+                                               const MOJOSHADER_astDataTypeType type,
+                                               const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irConstruct, MOJOSHADER_IR_CONSTRUCT, type, elements);
+    retval->args = args;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_construct
+
+static MOJOSHADER_irExpression *new_ir_call(Context *ctx, const int index,
+                                            MOJOSHADER_irExprList *args,
+                                            const MOJOSHADER_astDataTypeType type,
+                                            const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irCall, MOJOSHADER_IR_CALL, type, elements);
+    retval->args = args;
+    retval->index = index;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_call
+
+static MOJOSHADER_irExpression *new_ir_swizzle(Context *ctx,
+                                               MOJOSHADER_irExpression *expr,
+                                               const char *channels,
+                                               const MOJOSHADER_astDataTypeType type,
+                                               const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irSwizzle, MOJOSHADER_IR_SWIZZLE, type, elements);
+    retval->expr = expr;
+    memcpy(retval->channels, channels, sizeof (retval->channels));
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_swizzle
+
+static MOJOSHADER_irExpression *new_ir_memory(Context *ctx, const int index,
+                                              const MOJOSHADER_astDataTypeType type,
+                                              const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irMemory, MOJOSHADER_IR_MEMORY, type, elements);
+    retval->index = index;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_memory
+
+static MOJOSHADER_irExpression *new_ir_array(Context *ctx,
+                                             MOJOSHADER_irExpression *array,
+                                             MOJOSHADER_irExpression *element,
+                                             const MOJOSHADER_astDataTypeType type,
+                                             const int elements)
+{
+    NEW_IR_EXPR(retval, MOJOSHADER_irArray, MOJOSHADER_IR_ARRAY, type, elements);
+    retval->array = array;
+    retval->element = element;
+    return (MOJOSHADER_irExpression *) retval;
+} // new_ir_array
+
+static MOJOSHADER_irStatement *new_ir_seq(Context *ctx,
+                                     MOJOSHADER_irStatement *first,
+                                     MOJOSHADER_irStatement *next)
+{
+    assert((first != NULL) || (next != NULL));
+    if (first == NULL)  // don't generate a SEQ if unnecessary.
+        return next;
+    else if (next == NULL)
+        return first;
+
+    NEW_IR_NODE(retval, MOJOSHADER_irSeq, MOJOSHADER_IR_SEQ);
+    retval->first = first;
+    retval->next = next;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_seq
+
+static MOJOSHADER_irStatement *new_ir_jump(Context *ctx, const int label)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irJump, MOJOSHADER_IR_JUMP);
+    retval->label = label;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_jump
+
+static MOJOSHADER_irStatement *new_ir_cjump(Context *ctx,
+                                       const MOJOSHADER_irConditionType cond,
+                                       MOJOSHADER_irExpression *left,
+                                       MOJOSHADER_irExpression *right,
+                                       const int iftrue, const int iffalse)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irCJump, MOJOSHADER_IR_CJUMP);
+    retval->cond = cond;
+    retval->left = left;
+    retval->right = right;
+    retval->iftrue = iftrue;
+    retval->iffalse = iffalse;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_cjump
+
+static MOJOSHADER_irStatement *new_ir_label(Context *ctx, const int index)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irLabel, MOJOSHADER_IR_LABEL);
+    retval->index = index;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_label
+
+static MOJOSHADER_irStatement *new_ir_move(Context *ctx,
+                                      MOJOSHADER_irExpression *dst,
+                                      MOJOSHADER_irExpression *src,
+                                      const int writemask)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irMove, MOJOSHADER_IR_MOVE);
+    assert(dst->info.type == src->info.type);
+    assert(dst->info.elements == src->info.elements);
+    retval->dst = dst;
+    retval->src = src;
+    retval->writemask = writemask;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_move
+
+static MOJOSHADER_irStatement *new_ir_expr_stmt(Context *ctx, MOJOSHADER_irExpression *expr)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irExprStmt, MOJOSHADER_IR_EXPR_STMT);
+    retval->expr = expr;
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_expr_stmt
+
+static MOJOSHADER_irStatement *new_ir_discard(Context *ctx)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irDiscard, MOJOSHADER_IR_DISCARD);
+    return (MOJOSHADER_irStatement *) retval;
+} // new_ir_discard
+
+static MOJOSHADER_irExprList *new_ir_exprlist(Context *ctx, MOJOSHADER_irExpression *expr)
+{
+    NEW_IR_NODE(retval, MOJOSHADER_irExprList, MOJOSHADER_IR_EXPRLIST);
+    retval->expr = expr;
+    retval->next = NULL;
+    return (MOJOSHADER_irExprList *) retval;
+} // new_ir_exprlist
+
+
+// This handles most comparison operators (less-than, equals, etc...)
+static MOJOSHADER_irExpression *build_ir_compare(Context *ctx,
+                                    const MOJOSHADER_irConditionType operation,
+                                    MOJOSHADER_irExpression *left,
+                                    MOJOSHADER_irExpression *right,
+                                    MOJOSHADER_irExpression *tval,
+                                    MOJOSHADER_irExpression *fval)
+{
+    /* The gist...
+            cjump x < y, t, f  // '<' is whatever operation
+        t:
+            move tmp, tval
+            jump join
+        f:
+            move tmp, fval
+        join:
+    */
+
+    const int t = generate_ir_label(ctx);
+    const int f = generate_ir_label(ctx);
+    const int join = generate_ir_label(ctx);
+    const int tmp = generate_ir_temp(ctx);
+
+    assert(tval->info.type == fval->info.type);
+    assert(tval->info.elements == fval->info.elements);
+
+    const MOJOSHADER_astDataTypeType dt = tval->info.type;
+    const int elements = tval->info.elements;
+
+    return new_ir_eseq(ctx,
+                new_ir_seq(ctx, new_ir_cjump(ctx, operation, left, right, t, f),
+                new_ir_seq(ctx, new_ir_label(ctx, t),
+                new_ir_seq(ctx, new_ir_move(ctx, new_ir_temp(ctx, tmp, dt, elements), tval, -1),
+                new_ir_seq(ctx, new_ir_jump(ctx, join),
+                new_ir_seq(ctx, new_ir_label(ctx, f),
+                new_ir_seq(ctx, new_ir_move(ctx, new_ir_temp(ctx, tmp, dt, elements), fval, -1),
+                                new_ir_label(ctx, join))))))),
+                    new_ir_temp(ctx, tmp, dt, elements));
+} // build_ir_compare
+
+#define EASY_IR_COMPARE(op) \
+    build_ir_compare(ctx, MOJOSHADER_IR_COND_##op, \
+                   build_ir_expr(ctx, ast->binary.left), \
+                   build_ir_expr(ctx, ast->binary.right), \
+                   new_ir_constbool(ctx, 1), \
+                   new_ir_constbool(ctx, 0))
+
+
+// This handles && and || operators.
+static MOJOSHADER_irExpression *build_ir_logical_and_or(Context *ctx,
+                                    const MOJOSHADER_astExpressionBinary *ast,
+                                    const int left_testval)
+{
+    /* The gist...
+            cjump left == left_testval, maybe, f
+        maybe:
+            cjump right == true, t, f
+        t:
+            move tmp, 1
+            jump join
+        f:
+            move tmp, 0
+        join:
+    */
+
+    assert(ast->left->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+    assert(ast->right->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+
+    const int t = generate_ir_label(ctx);
+    const int f = generate_ir_label(ctx);
+    const int maybe = generate_ir_label(ctx);
+    const int join = generate_ir_label(ctx);
+    const int tmp = generate_ir_temp(ctx);
+
+    return new_ir_eseq(ctx,
+                new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->left), new_ir_constbool(ctx, left_testval), maybe, f),
+                new_ir_seq(ctx, new_ir_label(ctx, maybe),
+                new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->right), new_ir_constbool(ctx, 1), t, f),
+                new_ir_seq(ctx, new_ir_label(ctx, t),
+                new_ir_seq(ctx, new_ir_move(ctx, new_ir_temp(ctx, tmp, MOJOSHADER_AST_DATATYPE_BOOL, 1), new_ir_constbool(ctx, 1), -1),
+                new_ir_seq(ctx, new_ir_jump(ctx, join),
+                new_ir_seq(ctx, new_ir_label(ctx, f),
+                new_ir_seq(ctx, new_ir_move(ctx, new_ir_temp(ctx, tmp, MOJOSHADER_AST_DATATYPE_BOOL, 1), new_ir_constbool(ctx, 0), -1),
+                                new_ir_label(ctx, join))))))))),
+                    new_ir_temp(ctx, tmp, MOJOSHADER_AST_DATATYPE_BOOL, 1));
+} // build_ir_logical_and_or
+
+static inline MOJOSHADER_irExpression *build_ir_logical_and(Context *ctx,
+                                    const MOJOSHADER_astExpressionBinary *ast)
+{
+    // this needs to not evaluate (right) if (left) is false!
+    return build_ir_logical_and_or(ctx, ast, 1);
+} // build_ir_logical_and
+
+static inline MOJOSHADER_irExpression *build_ir_logical_or(Context *ctx,
+                                    const MOJOSHADER_astExpressionBinary *ast)
+{
+    // this needs to not evaluate (right) if (left) is true!
+    return build_ir_logical_and_or(ctx, ast, 0);
+} // build_ir_logical_or
+
+static inline MOJOSHADER_irStatement *build_ir_no_op(Context *ctx)
+{
+    return new_ir_label(ctx, generate_ir_label(ctx));
+} // build_ir_no_op
+
+static MOJOSHADER_irStatement *build_ir_ifstmt(Context *ctx,
+                                          const MOJOSHADER_astIfStatement *ast)
+{
+    assert(ast->expr->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+
+    // !!! FIXME: ast->attributes?
+
+    // IF statement without an ELSE.
+    if (ast->else_statement == NULL)
+    {
+        /* The gist...
+                cjump expr, t, join
+            t:
+                statement
+            join:
+        */
+
+        const int t = generate_ir_label(ctx);
+        const int join = generate_ir_label(ctx);
+
+        return new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->expr), new_ir_constbool(ctx, 1), t, join),
+               new_ir_seq(ctx, new_ir_label(ctx, t),
+               new_ir_seq(ctx, build_ir_stmt(ctx, ast->statement),
+               new_ir_seq(ctx, new_ir_label(ctx, join),
+                               build_ir_stmt(ctx, ast->next)))));
+    } // if
+
+    // IF statement _with_ an ELSE.
+    /* The gist...
+            cjump expr, t, f
+        t:
+            statement
+            jump join
+        f:
+            elsestatement
+        join:
+    */
+
+    const int t = generate_ir_label(ctx);
+    const int f = generate_ir_label(ctx);
+    const int join = generate_ir_label(ctx);
+
+    return new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->expr), new_ir_constbool(ctx, 1), t, f),
+           new_ir_seq(ctx, new_ir_label(ctx, t),
+           new_ir_seq(ctx, build_ir_stmt(ctx, ast->statement),
+           new_ir_seq(ctx, new_ir_jump(ctx, join),
+           new_ir_seq(ctx, new_ir_label(ctx, f),
+           new_ir_seq(ctx, build_ir_stmt(ctx, ast->else_statement),
+           new_ir_seq(ctx, new_ir_label(ctx, join),
+                           build_ir_stmt(ctx, ast->next))))))));
+} // build_ir_ifstmt
+
+
+static MOJOSHADER_irStatement *build_ir_forstmt(Context *ctx,
+                                       const MOJOSHADER_astForStatement *ast)
+{
+    // !!! FIXME: ast->unroll
+
+    assert(ast->looptest->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+
+    /* The gist...
+            initializer  // (or var_decl->initializer!)
+        test:
+            cjump looptest == true, loop, join
+        loop:
+            statement
+        increment:  // needs to be here; this is where "continue" jumps!
+            counter
+            jump test
+        join:
+    */
+
+    const int test = generate_ir_label(ctx);
+    const int loop = generate_ir_label(ctx);
+
+    const LoopLabels *labels = push_ir_loop(ctx, 0);
+    if (labels == NULL)
+        return NULL;  // out of memory...
+
+    const int increment = labels->start;
+    const int join = labels->end;
+
+    assert( (ast->var_decl && !ast->initializer) ||
+            (!ast->var_decl && ast->initializer) );
+
+    MOJOSHADER_irStatement *init = NULL;
+    if (ast->var_decl != NULL)
+    {
+//sdfsdf
+        // !!! FIXME: map the initializer to the variable? Need fix to var_decl parsing.
+//        new_ir_move(ctx, FIXME MAP TO REGISTER ast->var_decl->index, build_ir_expr(ctx, ast->fsdf));
+//        FIXME
+//        init = build_ir_vardecl(ctx, ast->var_decl);
+    } // if
+    else
+    {
+//        init = build_ir_expr(ctx, ast->initializer);
+    } // else
+
+    MOJOSHADER_irStatement *retval =
+        new_ir_seq(ctx, init,
+        new_ir_seq(ctx, new_ir_label(ctx, test),
+        new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->looptest), new_ir_constbool(ctx, 1), loop, join),
+        new_ir_seq(ctx, new_ir_label(ctx, loop),
+        new_ir_seq(ctx, build_ir_stmt(ctx, ast->statement),
+        new_ir_seq(ctx, new_ir_label(ctx, increment),
+        new_ir_seq(ctx, new_ir_expr_stmt(ctx, build_ir_expr(ctx, ast->counter)),
+        new_ir_seq(ctx, new_ir_jump(ctx, test),
+                        new_ir_label(ctx, join)))))))));
+
+    pop_ir_loop(ctx);
+
+    return new_ir_seq(ctx, retval, build_ir_stmt(ctx, ast->next));
+} // build_ir_forstmt
+
+static MOJOSHADER_irStatement *build_ir_whilestmt(Context *ctx,
+                                          const MOJOSHADER_astWhileStatement *ast)
+{
+    // !!! FIXME: ast->unroll
+
+    assert(ast->expr->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+
+    /* The gist...
+        loop:
+            cjump expr == true, t, join
+        t:
+            statement
+            jump loop
+        join:
+    */
+
+    const LoopLabels *labels = push_ir_loop(ctx, 0);
+    if (labels == NULL)
+        return NULL;  // out of memory...
+
+    const int loop = labels->start;
+    const int t = generate_ir_label(ctx);
+    const int join = labels->end;
+
+    MOJOSHADER_irStatement *retval =
+        new_ir_seq(ctx, new_ir_label(ctx, loop),
+        new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->expr), new_ir_constbool(ctx, 1), t, join),
+        new_ir_seq(ctx, new_ir_label(ctx, t),
+        new_ir_seq(ctx, build_ir_stmt(ctx, ast->statement),
+        new_ir_seq(ctx, new_ir_jump(ctx, loop),
+                        new_ir_label(ctx, join))))));
+
+    pop_ir_loop(ctx);
+
+    return new_ir_seq(ctx, retval, build_ir_stmt(ctx, ast->next));
+} // build_ir_whilestmt
+
+static MOJOSHADER_irStatement *build_ir_dostmt(Context *ctx,
+                                          const MOJOSHADER_astDoStatement *ast)
+{
+    // !!! FIXME: ast->unroll
+
+    assert(ast->expr->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+
+    /* The gist...
+        loop:
+            statement
+            cjump expr == true, loop, join
+        join:
+    */
+
+    const LoopLabels *labels = push_ir_loop(ctx, 0);
+    if (labels == NULL)
+        return NULL;  // out of memory...
+
+    const int loop = labels->start;
+    const int join = labels->end;
+
+    MOJOSHADER_irStatement *retval =
+        new_ir_seq(ctx, new_ir_label(ctx, loop),
+        new_ir_seq(ctx, build_ir_stmt(ctx, ast->statement),
+        new_ir_seq(ctx, new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, ast->expr), new_ir_constbool(ctx, 1), loop, join),
+                        new_ir_label(ctx, join))));
+
+    pop_ir_loop(ctx);
+
+    return new_ir_seq(ctx, retval, build_ir_stmt(ctx, ast->next));
+} // build_ir_dostmt
+
+static MOJOSHADER_irStatement *build_ir_switch(Context *ctx, const MOJOSHADER_astSwitchStatement *ast)
+{
+    // Dithering down to a list of if-statements in all cases
+    //  isn't ideal, but we can't do jumptables in D3D bytecode.
+
+    // !!! FIXME: attributes?
+
+    /* The gist...
+            move tmp, expr
+            cjump tmp == case1expr, case1, testcase2
+        testcase2:  // etc
+            cjump tmp == case2expr, case2, join
+        case1:
+            case1stmt  // might have a break in it somewhere.
+        case2:
+            case2stmt
+        join:
+    */
+
+    const LoopLabels *labels = push_ir_loop(ctx, 1);
+    if (labels == NULL)
+        return NULL;  // out of memory...
+
+    const int join = labels->end;
+    const int elems = datatype_elems(ctx, ast->expr->datatype);
+    const MOJOSHADER_astDataTypeType dt = datatype_base(ctx, ast->expr->datatype)->type;
+
+    const MOJOSHADER_astSwitchCases *cases = ast->cases;
+    const int tmp = generate_ir_temp(ctx);
+    MOJOSHADER_irStatement *startseqs = new_ir_move(ctx, new_ir_temp(ctx, tmp, dt, elems), build_ir_expr(ctx, ast->expr), -1);
+    MOJOSHADER_irStatement *testseqs = startseqs;
+    MOJOSHADER_irStatement *startcaseseqs = NULL;
+    MOJOSHADER_irStatement *caseseqs = NULL;
+    while (cases)
+    {
+        const int t = generate_ir_label(ctx);
+        const int f = (cases->next == NULL) ? join : generate_ir_label(ctx);
+        MOJOSHADER_irStatement *cjump = new_ir_cjump(ctx, MOJOSHADER_IR_COND_EQL, build_ir_expr(ctx, cases->expr), new_ir_temp(ctx, tmp, dt, elems), t, f);
+
+        if (cases->next == NULL)  // last one, do the join label.
+        {
+            testseqs = new_ir_seq(ctx, testseqs, cjump);
+            caseseqs = new_ir_seq(ctx, caseseqs, new_ir_seq(ctx, new_ir_label(ctx, t), build_ir_stmt(ctx, cases->statement)));
+            caseseqs = new_ir_seq(ctx, caseseqs, new_ir_label(ctx, f));
+        } // if
+        else
+        {
+            testseqs = new_ir_seq(ctx, testseqs, new_ir_seq(ctx, cjump, new_ir_label(ctx, f)));
+            caseseqs = new_ir_seq(ctx, caseseqs, new_ir_seq(ctx, new_ir_label(ctx, t), build_ir_stmt(ctx, cases->statement)));
+        } // else
+
+        if (startcaseseqs == NULL)
+            startcaseseqs = caseseqs;
+
+        cases = cases->next;
+    } // while
+
+    pop_ir_loop(ctx);
+
+    return new_ir_seq(ctx, startseqs, new_ir_seq(ctx, startcaseseqs, build_ir_stmt(ctx, ast->next)));
+} // build_ir_switch
+
+static MOJOSHADER_irExpression *build_ir_increxpr(Context *ctx, const MOJOSHADER_astDataType *_dt,
+                                                  const int val)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, _dt);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    MOJOSHADER_irConstant *retval = (MOJOSHADER_irConstant *) new_ir_constant(ctx, type, elems);
+    int i;
+
+    switch (type)
+    {
+        case MOJOSHADER_AST_DATATYPE_BOOL:
+        case MOJOSHADER_AST_DATATYPE_INT:
+        case MOJOSHADER_AST_DATATYPE_UINT:
+            for (i = 0; i < elems; i++)
+                retval->value.ival[i] = (int) val;
+            break;
+
+        case MOJOSHADER_AST_DATATYPE_FLOAT:
+        case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM:
+        case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM:
+        case MOJOSHADER_AST_DATATYPE_HALF:
+        case MOJOSHADER_AST_DATATYPE_DOUBLE:
+            for (i = 0; i < elems; i++)
+                retval->value.fval[i] = (float) val;
+            break;
+
+        default:
+            assert(0 && "Semantic analysis should have caught this!");
+    } // switch
+
+    return (MOJOSHADER_irExpression *) retval;
+} // build_ir_increxpr
+
+static MOJOSHADER_irExpression *build_ir_preincdec(Context *ctx, MOJOSHADER_astExpressionUnary *ast, const MOJOSHADER_irBinOpType binop)
+{
+    /* The gist...
+        move expr, expr + 1
+        return expr
+    */
+    // !!! FIXME: can you writemask an increment operator?
+    MOJOSHADER_irExpression *constant = build_ir_increxpr(ctx, ast->datatype, 1);
+    return new_ir_eseq(ctx,
+                new_ir_move(ctx,
+                    build_ir_expr(ctx, ast->operand),
+                    new_ir_binop(ctx, binop, build_ir_expr(ctx, ast->operand), constant), -1),
+                build_ir_expr(ctx, ast->operand));
+} // build_ir_preincdec
+
+static MOJOSHADER_irExpression *build_ir_postincdec(Context *ctx, MOJOSHADER_astExpressionUnary *ast, const MOJOSHADER_irBinOpType binop)
+{
+    /* The gist...
+        move tmp, expr
+        move expr, expr + 1
+        return tmp
+    */
+
+    // !!! FIXME: can you writemask an increment operator?
+    MOJOSHADER_irExpression *constant = build_ir_increxpr(ctx, ast->datatype, 1);
+    const int tmp = generate_ir_temp(ctx);
+    return new_ir_eseq(ctx,
+                new_ir_seq(ctx,
+                    new_ir_move(ctx, new_ir_temp(ctx, tmp, constant->info.type, constant->info.elements), build_ir_expr(ctx, ast->operand), -1),
+                    new_ir_move(ctx, build_ir_expr(ctx, ast->operand),
+                        new_ir_binop(ctx, binop, build_ir_expr(ctx, ast->operand), constant), -1)),
+                new_ir_temp(ctx, tmp, constant->info.type, constant->info.elements));
+} // build_ir_postincdec
+
+static MOJOSHADER_irExpression *build_ir_convert(Context *ctx, const MOJOSHADER_astExpressionCast *ast)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    return new_ir_convert(ctx, build_ir_expr(ctx, ast->operand), type, elems);
+} // build_ir_convert
+
+static MOJOSHADER_irExprList *build_ir_exprlist(Context *ctx, MOJOSHADER_astArguments *args)
+{
+    MOJOSHADER_irExprList *retval = NULL;
+    MOJOSHADER_irExprList *prev = NULL;
+
+    while (args != NULL)
+    {
+        assert((retval && prev) || ((!retval) && (!prev)));
+
+        MOJOSHADER_irExprList *item = new_ir_exprlist(ctx, build_ir_expr(ctx, args->argument));
+        if (prev == NULL)
+            prev = retval = item;
+        else
+        {
+            prev->next = item;
+            item = prev;
+        } // else
+
+        args = args->next;
+    } // for
+
+    return retval;
+} // build_ir_exprlist
+
+static MOJOSHADER_irExpression *build_ir_constructor(Context *ctx, const MOJOSHADER_astExpressionConstructor *ast)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    assert(elems <= 16);  // just in case (matrix4x4 constructor is largest).
+    return new_ir_construct(ctx, build_ir_exprlist(ctx, ast->args), type, elems);
+} // build_ir_constructor
+
+static MOJOSHADER_irExpression *build_ir_call(Context *ctx, const MOJOSHADER_astExpressionCallFunction *ast)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    return new_ir_call(ctx, ast->identifier->index, build_ir_exprlist(ctx, ast->args), type, elems);
+} // build_ir_call
+
+static char swiz_to_channel(const char swiz)
+{
+    if ((swiz == 'r') || (swiz == 'x')) return 0;
+    if ((swiz == 'g') || (swiz == 'y')) return 1;
+    if ((swiz == 'b') || (swiz == 'z')) return 2;
+    if ((swiz == 'a') || (swiz == 'w')) return 3;
+    assert(0 && "Should have been caught by semantic analysis.");
+    return 0;
+} // swiz_to_channel
+
+static MOJOSHADER_irExpression *build_ir_swizzle(Context *ctx, const MOJOSHADER_astExpressionDerefStruct *ast)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    char chans[4] = { 0, 0, 0, 0 };
+    const char *swizstr = ast->member;
+    int i;
+
+    for (i = 0; swizstr[i]; i++)
+        chans[i] = swiz_to_channel(swizstr[i]);
+
+    return new_ir_swizzle(ctx, build_ir_expr(ctx, ast->identifier), chans, type, elems);
+} // build_ir_swizzle
+
+static MOJOSHADER_irExpression *build_ir_identifier(Context *ctx, const MOJOSHADER_astExpressionIdentifier *ast)
+{
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+    return new_ir_memory(ctx, ast->index, type, elems);
+} // build_ir_identifier
+
+static MOJOSHADER_irExpression *build_ir_derefstruct(Context *ctx, const MOJOSHADER_astExpressionDerefStruct *ast)
+{
+    // There are only three possible IR nodes that contain a struct:
+    //  an irTemp, an irMemory, or an irESeq that results in a temp or memory.
+    //  As such, we figure out which it is, and offset appropriately for the
+    //  member.
+    MOJOSHADER_irExpression *expr = build_ir_expr(ctx, ast->identifier);
+    MOJOSHADER_irExpression *finalexpr = expr;
+
+    assert(!ast->isswizzle);
+
+    while (finalexpr->ir.type == MOJOSHADER_IR_ESEQ)
+        finalexpr = finalexpr->eseq.expr;
+
+    if (finalexpr->ir.type == MOJOSHADER_IR_TEMP)
+        finalexpr->temp.index += ast->member_index;
+    else if (finalexpr->ir.type == MOJOSHADER_IR_MEMORY)
+        finalexpr->memory.index += ast->member_index;
+    else
+        assert(0 && "Unexpected condition");
+
+    return expr;
+} // build_ir_derefstruct
+
+static MOJOSHADER_irExpression *build_ir_derefarray(Context *ctx, const MOJOSHADER_astExpressionBinary *ast)
+{
+    // In most compilers, arrays dither down to offsets into memory, but
+    //  they're somewhat special in D3D, since they might have to deal with
+    //  vectors, etc...so we keep them as first-class citizens of the IR,
+    //  and let the optimizer/codegen sort it out.
+    // !!! FIXME: this might be the wrong move. Maybe remove this IR node type?
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
+
+    // !!! FIXME: Array dereference of a vector can become a simple swizzle operation, if we have a constant index.
+    // !!! FIXME: Matrix dereference of a vector can become a simple reference to a temp/memory, if we have a constant index.
+    return new_ir_array(ctx, build_ir_expr(ctx, ast->left), build_ir_expr(ctx, ast->right), type, elems);
+} // build_ir_derefarray
+
+static MOJOSHADER_irExpression *build_ir_assign_binop(Context *ctx,
+                                                const MOJOSHADER_irBinOpType op,
+                                                const MOJOSHADER_astExpressionBinary *ast)
+{
+    MOJOSHADER_irExpression *lvalue = build_ir_expr(ctx, ast->left);
+    MOJOSHADER_irExpression *rvalue = build_ir_expr(ctx, ast->right);
+    const MOJOSHADER_astDataTypeType type = lvalue->info.type;
+    const int elems = lvalue->info.elements;
+    const int tmp = generate_ir_temp(ctx);
+
+    // Semantic analysis should have inserted casts if necessary.
+    assert(type == rvalue->info.type);
+    assert(elems == rvalue->info.elements);
+
+    // The destination must eventually be lvalue, which means memory or temp.
+    MOJOSHADER_irExpression *dst = lvalue;
+    while (dst->ir.type == MOJOSHADER_IR_ESEQ)
+        dst = dst->eseq.expr;
+
+    if (dst->ir.type == MOJOSHADER_IR_TEMP)
+        dst = new_ir_temp(ctx, dst->temp.index, dst->info.type, dst->info.elements);
+    else if (dst->ir.type == MOJOSHADER_IR_MEMORY)
+        dst = new_ir_memory(ctx, dst->memory.index, dst->info.type, dst->info.elements);
+    else
+        assert(0 && "Unexpected condition");
+
+    // !!! FIXME: write masking!
+    return new_ir_eseq(ctx,
+                new_ir_seq(ctx,
+                    new_ir_move(ctx, new_ir_temp(ctx, tmp, type, elems), new_ir_binop(ctx, op, lvalue, rvalue), -1),
+                    new_ir_move(ctx, dst, new_ir_temp(ctx, tmp, type, elems), -1)),
+                new_ir_temp(ctx, tmp, type, elems));
+} // build_ir_assign_binop
+
+static MOJOSHADER_irExpression *build_ir_assign(Context *ctx,
+                                                const MOJOSHADER_astExpressionBinary *ast)
+{
+    MOJOSHADER_irExpression *lvalue = build_ir_expr(ctx, ast->left);
+    MOJOSHADER_irExpression *rvalue = build_ir_expr(ctx, ast->right);
+    const MOJOSHADER_astDataTypeType type = lvalue->info.type;
+    const int elems = lvalue->info.elements;
+    const int tmp = generate_ir_temp(ctx);
+
+    // Semantic analysis should have inserted casts if necessary.
+    assert(type == rvalue->info.type);
+    assert(elems == rvalue->info.elements);
+
+    // !!! FIXME: write masking!
+    // !!! FIXME: whole array/struct assignments need to become a sequence of moves.
+    return new_ir_eseq(ctx,
+                new_ir_seq(ctx,
+                    new_ir_move(ctx, new_ir_temp(ctx, tmp, type, elems), rvalue, -1),
+                    new_ir_move(ctx, lvalue, new_ir_temp(ctx, tmp, type, elems), -1)),
+                new_ir_temp(ctx, tmp, type, elems));
+} // build_ir_assign
+
+
+// The AST must be perfect and normalized and sane here. If there are any
+//  strange corner cases, you should strive to handle them in semantic
+//  analysis, so conversion to IR can proceed with a minimum of drama.
+static void *build_ir_internal(Context *ctx, void *_ast);
+static inline MOJOSHADER_irNode *build_ir(Context *ctx, void *_ast)
+{
+    return (MOJOSHADER_irNode *) build_ir_internal(ctx, _ast);
+} // build_ir
+
+static void *build_ir_internal(Context *ctx, void *_ast)
+{
+    if ((_ast == NULL) || (ctx->out_of_memory))
+        return NULL;
+
+    MOJOSHADER_astNode *ast = (MOJOSHADER_astNode *) _ast;
+
+    // upkeep so we report correct error locations...
+    ctx->sourcefile = ast->ast.filename;
+    ctx->sourceline = ast->ast.line;
+
+    switch (ast->ast.type)
+    {
+        case MOJOSHADER_AST_OP_PREINCREMENT:  // !!! FIXME: sequence points?
+            return build_ir_preincdec(ctx, &ast->unary, MOJOSHADER_IR_BINOP_ADD);
+
+        case MOJOSHADER_AST_OP_POSTINCREMENT: // !!! FIXME: sequence points?
+            return build_ir_postincdec(ctx, &ast->unary, MOJOSHADER_IR_BINOP_ADD);
+
+        case MOJOSHADER_AST_OP_PREDECREMENT:  // !!! FIXME: sequence points?
+            return build_ir_preincdec(ctx, &ast->unary, MOJOSHADER_IR_BINOP_SUBTRACT);
+
+        case MOJOSHADER_AST_OP_POSTDECREMENT: // !!! FIXME: sequence points?
+            return build_ir_postincdec(ctx, &ast->unary, MOJOSHADER_IR_BINOP_SUBTRACT);
+
+        case MOJOSHADER_AST_OP_COMPLEMENT:
+            return NEW_IR_BINOP(XOR, build_ir_expr(ctx, ast->unary.operand),
+                                new_ir_constint(ctx, 0xFFFFFFFF));
+
+        case MOJOSHADER_AST_OP_NEGATE:  // !!! FIXME: -0.0f != +0.0f
+            return NEW_IR_BINOP(SUBTRACT, build_ir_increxpr(ctx, ast->unary.datatype, -1),
+                                build_ir_expr(ctx, ast->unary.operand));
+
+        case MOJOSHADER_AST_OP_NOT:  // operand must be bool here!
+            assert(ast->unary.operand->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+            return NEW_IR_BINOP(XOR, build_ir_expr(ctx, ast->unary.operand),
+                                new_ir_constint(ctx, 1));
+
+        case MOJOSHADER_AST_OP_DEREF_ARRAY:
+            return build_ir_derefarray(ctx, &ast->binary);
+
+        case MOJOSHADER_AST_OP_DEREF_STRUCT:
+            if (ast->derefstruct.isswizzle)
+                return build_ir_swizzle(ctx, &ast->derefstruct);
+            return build_ir_derefstruct(ctx, &ast->derefstruct);
+
+        case MOJOSHADER_AST_OP_COMMA:
+            // evaluate and throw away left, return right.
+            return new_ir_eseq(ctx, new_ir_expr_stmt(ctx, build_ir_expr(ctx, ast->binary.left)),
+                               build_ir_expr(ctx, ast->binary.right));
+
+        case MOJOSHADER_AST_OP_LESSTHAN: return EASY_IR_COMPARE(LT);
+        case MOJOSHADER_AST_OP_GREATERTHAN: return EASY_IR_COMPARE(GT);
+        case MOJOSHADER_AST_OP_LESSTHANOREQUAL: return EASY_IR_COMPARE(LEQ);
+        case MOJOSHADER_AST_OP_GREATERTHANOREQUAL: return EASY_IR_COMPARE(GEQ);
+        case MOJOSHADER_AST_OP_NOTEQUAL: return EASY_IR_COMPARE(NEQ);
+        case MOJOSHADER_AST_OP_EQUAL: return EASY_IR_COMPARE(EQL);
+
+        case MOJOSHADER_AST_OP_MULTIPLY: return EASY_IR_BINOP(MULTIPLY);
+        case MOJOSHADER_AST_OP_DIVIDE: return EASY_IR_BINOP(DIVIDE);
+        case MOJOSHADER_AST_OP_MODULO: return EASY_IR_BINOP(MODULO);
+        case MOJOSHADER_AST_OP_ADD: return EASY_IR_BINOP(ADD);
+        case MOJOSHADER_AST_OP_SUBTRACT: return EASY_IR_BINOP(SUBTRACT);
+        case MOJOSHADER_AST_OP_LSHIFT: return EASY_IR_BINOP(LSHIFT);
+        case MOJOSHADER_AST_OP_RSHIFT: return EASY_IR_BINOP(RSHIFT);
+        case MOJOSHADER_AST_OP_BINARYAND: return EASY_IR_BINOP(AND);
+        case MOJOSHADER_AST_OP_BINARYXOR: return EASY_IR_BINOP(XOR);
+        case MOJOSHADER_AST_OP_BINARYOR: return EASY_IR_BINOP(OR);
+
+        case MOJOSHADER_AST_OP_LOGICALAND:
+            return build_ir_logical_and(ctx, &ast->binary);
+
+        case MOJOSHADER_AST_OP_LOGICALOR:
+            return build_ir_logical_or(ctx, &ast->binary);
+
+        case MOJOSHADER_AST_OP_ASSIGN:
+            return build_ir_assign(ctx, &ast->binary);
+
+        case MOJOSHADER_AST_OP_MULASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_MULTIPLY, &ast->binary);
+        case MOJOSHADER_AST_OP_DIVASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_DIVIDE, &ast->binary);
+        case MOJOSHADER_AST_OP_MODASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_MODULO, &ast->binary);
+        case MOJOSHADER_AST_OP_ADDASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_ADD, &ast->binary);
+        case MOJOSHADER_AST_OP_SUBASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_SUBTRACT, &ast->binary);
+        case MOJOSHADER_AST_OP_LSHIFTASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_LSHIFT, &ast->binary);
+        case MOJOSHADER_AST_OP_RSHIFTASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_RSHIFT, &ast->binary);
+        case MOJOSHADER_AST_OP_ANDASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_AND, &ast->binary);
+        case MOJOSHADER_AST_OP_XORASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_XOR, &ast->binary);
+        case MOJOSHADER_AST_OP_ORASSIGN: return build_ir_assign_binop(ctx, MOJOSHADER_IR_BINOP_OR, &ast->binary);
+
+        case MOJOSHADER_AST_OP_CONDITIONAL:
+            assert(ast->binary.left->datatype->type == MOJOSHADER_AST_DATATYPE_BOOL);
+            return build_ir_compare(ctx, MOJOSHADER_IR_COND_EQL,
+                                  build_ir_expr(ctx, ast->ternary.left),
+                                  new_ir_constbool(ctx, 1),
+                                  build_ir_expr(ctx, ast->ternary.center),
+                                  build_ir_expr(ctx, ast->ternary.right));
+
+        case MOJOSHADER_AST_OP_IDENTIFIER:
+            return build_ir_identifier(ctx, &ast->identifier);
+
+        case MOJOSHADER_AST_OP_INT_LITERAL:
+            return new_ir_constint(ctx, ast->intliteral.value);
+
+        case MOJOSHADER_AST_OP_FLOAT_LITERAL:
+            return new_ir_constfloat(ctx, ast->floatliteral.value);
+
+        case MOJOSHADER_AST_OP_BOOLEAN_LITERAL:
+            return new_ir_constbool(ctx, ast->boolliteral.value);
+
+        case MOJOSHADER_AST_OP_CALLFUNC:
+            return build_ir_call(ctx, &ast->callfunc);
+
+        case MOJOSHADER_AST_OP_CONSTRUCTOR:
+            return build_ir_constructor(ctx, &ast->constructor);
+
+        case MOJOSHADER_AST_OP_CAST:
+            return build_ir_convert(ctx, &ast->cast);
+
+        case MOJOSHADER_AST_STATEMENT_BREAK:
+        {
+            const LoopLabels *labels = ctx->ir_loop;
+            assert(labels != NULL);  // semantic analysis should catch this.
+            return new_ir_jump(ctx, labels->end);
+        } // case
+
+        case MOJOSHADER_AST_STATEMENT_CONTINUE:
+        {
+            const LoopLabels *labels = ctx->ir_loop;
+            assert(labels != NULL);  // semantic analysis should catch this.
+            return new_ir_jump(ctx, labels->start);
+        } // case
+
+        case MOJOSHADER_AST_STATEMENT_DISCARD:
+            return new_ir_seq(ctx, new_ir_discard(ctx), build_ir_stmt(ctx, ast->discardstmt.next));
+
+        case MOJOSHADER_AST_STATEMENT_EMPTY:
+            return build_ir(ctx, ast->stmt.next);  // skip it, do next thing.
+
+        case MOJOSHADER_AST_STATEMENT_EXPRESSION:
+            return new_ir_seq(ctx, new_ir_expr_stmt(ctx, build_ir_expr(ctx, ast->exprstmt.expr)), build_ir_stmt(ctx, ast->exprstmt.next));
+
+        case MOJOSHADER_AST_STATEMENT_IF:
+            return build_ir_ifstmt(ctx, &ast->ifstmt);
+
+        case MOJOSHADER_AST_STATEMENT_TYPEDEF:  // ignore this, move on.
+            return build_ir(ctx, ast->typedefstmt.next);
+
+        case MOJOSHADER_AST_STATEMENT_SWITCH:
+            return build_ir_switch(ctx, &ast->switchstmt);
+
+        case MOJOSHADER_AST_STATEMENT_STRUCT:  // ignore this, move on.
+            return build_ir(ctx, ast->structstmt.next);
+
+        case MOJOSHADER_AST_STATEMENT_VARDECL: // ignore this, move on.
+            return build_ir(ctx, ast->vardeclstmt.next);
+
+        case MOJOSHADER_AST_STATEMENT_BLOCK:
+            return new_ir_seq(ctx, build_ir_stmt(ctx, ast->blockstmt.statements), build_ir_stmt(ctx, ast->blockstmt.next));
+
+        case MOJOSHADER_AST_STATEMENT_FOR:
+            return build_ir_forstmt(ctx, &ast->forstmt);
+
+        case MOJOSHADER_AST_STATEMENT_DO:
+            return build_ir_dostmt(ctx, &ast->dostmt);
+
+        case MOJOSHADER_AST_STATEMENT_WHILE:
+            return build_ir_whilestmt(ctx, &ast->whilestmt);
+
+        case MOJOSHADER_AST_STATEMENT_RETURN:
+        {
+            const int label = ctx->ir_end;
+            assert(label >= 0);  // parser should have caught this!
+            MOJOSHADER_irStatement *retval = NULL;
+            if (ast->returnstmt.expr != NULL)
+            {
+                // !!! FIXME: whole array/struct returns need to move more into the temp.
+                const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->returnstmt.expr->datatype);
+                const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+                const int elems = datatype_elems(ctx, dt);
+                assert(ctx->ir_ret >= 0);
+                retval = new_ir_move(ctx, new_ir_temp(ctx, ctx->ir_ret, type, elems), build_ir_expr(ctx, ast->returnstmt.expr), -1);
+            } // if
+            return new_ir_seq(ctx, retval, new_ir_jump(ctx, label));
+        } // case
+
+        case MOJOSHADER_AST_COMPUNIT_TYPEDEF:
+        case MOJOSHADER_AST_COMPUNIT_STRUCT:
+        case MOJOSHADER_AST_COMPUNIT_VARIABLE:
+        case MOJOSHADER_AST_COMPUNIT_FUNCTION:
+        case MOJOSHADER_AST_ARGUMENTS:
+        case MOJOSHADER_AST_OP_STRING_LITERAL:
+        case MOJOSHADER_AST_SWITCH_CASE:
+        case MOJOSHADER_AST_SCALAR_OR_ARRAY:
+        case MOJOSHADER_AST_TYPEDEF:
+        case MOJOSHADER_AST_FUNCTION_PARAMS:
+        case MOJOSHADER_AST_FUNCTION_SIGNATURE:
+        case MOJOSHADER_AST_STRUCT_DECLARATION:
+        case MOJOSHADER_AST_STRUCT_MEMBER:
+        case MOJOSHADER_AST_VARIABLE_DECLARATION:
+        case MOJOSHADER_AST_ANNOTATION:
+        case MOJOSHADER_AST_PACK_OFFSET:
+        case MOJOSHADER_AST_VARIABLE_LOWLEVEL:
+            assert(0 && "Shouldn't hit this in build_ir.");
+            return NULL;
+
+        default:
+            assert(0 && "unexpected type");
+            return NULL;
+    } // switch
+} // build_ir
+
+static void print_ir(FILE *io, unsigned int depth, void *_ir)
+{
+    MOJOSHADER_irNode *ir = (MOJOSHADER_irNode *) _ir;
+    if (ir == NULL)
+        return;
+
+    const char *fname = strrchr(ir->ir.filename, '/');
+    if (fname != NULL)
+        fname++;
+    else
+    {
+        fname = strrchr(ir->ir.filename, '\\');
+        if (fname != NULL)
+            fname++;
+        else
+            fname = ir->ir.filename;
+    } // else
+
+    int i;
+    for (i = 0; i < depth; i++)
+        fprintf(io, "  ");
+    depth++;
+
+    fprintf(io, "[ %s:%d ", fname, ir->ir.line);
+
+    switch (ir->ir.type)
+    {
+        case MOJOSHADER_IR_LABEL:
+            fprintf(io, "LABEL %d ]\n", ir->stmt.label.index);
+            break;
+
+        case MOJOSHADER_IR_CONSTANT:
+            fprintf(io, "CONSTANT ");
+            switch (ir->expr.constant.info.type)
+            {
+                case MOJOSHADER_AST_DATATYPE_BOOL:
+                case MOJOSHADER_AST_DATATYPE_INT:
+                case MOJOSHADER_AST_DATATYPE_UINT:
+                    for (i = 0; i < ir->expr.constant.info.elements-1; i++)
+                        fprintf(io, "%d, ", ir->expr.constant.value.ival[i]);
+                    if (ir->expr.constant.info.elements > 0)
+                        fprintf(io, "%d", ir->expr.constant.value.ival[i]);
+                    break;
+
+                case MOJOSHADER_AST_DATATYPE_FLOAT:
+                case MOJOSHADER_AST_DATATYPE_FLOAT_SNORM:
+                case MOJOSHADER_AST_DATATYPE_FLOAT_UNORM:
+                case MOJOSHADER_AST_DATATYPE_HALF:
+                case MOJOSHADER_AST_DATATYPE_DOUBLE:
+                    for (i = 0; i < ir->expr.constant.info.elements-1; i++)
+                        fprintf(io, "%ff, ", ir->expr.constant.value.fval[i]);
+                    if (ir->expr.constant.info.elements > 0)
+                        fprintf(io, "%ff", ir->expr.constant.value.fval[i]);
+                    break;
+
+                default: assert(0 && "shouldn't happen");
+            } // switch
+            fprintf(io, " ]\n");
+            break;
+
+        case MOJOSHADER_IR_TEMP:
+            fprintf(io, "TEMP %d ]\n", ir->expr.temp.index);
+            break;
+
+        case MOJOSHADER_IR_DISCARD:
+            fprintf(io, "DISCARD ]\n");
+            break;
+
+        case MOJOSHADER_IR_SWIZZLE:
+            fprintf(io, "SWIZZLE");
+            for (i = 0; i < ir->expr.swizzle.info.elements-1; i++)
+                fprintf(io, " %d", (int) ir->expr.swizzle.channels[i]);
+            fprintf(io, " ]\n");
+            print_ir(io, depth, ir->expr.swizzle.expr);
+            break;
+
+        case MOJOSHADER_IR_CONSTRUCT:
+            fprintf(io, "CONSTRUCT ]\n");
+            print_ir(io, depth, ir->expr.construct.args);
+            break;
+
+        case MOJOSHADER_IR_CONVERT:
+            fprintf(io, "CONVERT ]\n");
+            print_ir(io, depth, ir->expr.convert.expr);
+            break;
+
+        case MOJOSHADER_IR_BINOP:
+            fprintf(io, "BINOP ");
+            switch (ir->expr.binop.op)
+            {
+                #define PRINT_IR_BINOP(x) \
+                    case MOJOSHADER_IR_BINOP_##x: fprintf(io, #x); break;
+                PRINT_IR_BINOP(ADD)
+                PRINT_IR_BINOP(SUBTRACT)
+                PRINT_IR_BINOP(MULTIPLY)
+                PRINT_IR_BINOP(DIVIDE)
+                PRINT_IR_BINOP(MODULO)
+                PRINT_IR_BINOP(AND)
+                PRINT_IR_BINOP(OR)
+                PRINT_IR_BINOP(XOR)
+                PRINT_IR_BINOP(LSHIFT)
+                PRINT_IR_BINOP(RSHIFT)
+                PRINT_IR_BINOP(UNKNOWN)
+                #undef PRINT_IR_BINOP
+                default: assert(0 && "unexpected case"); break;
+            } // switch
+            fprintf(io, " ]\n");
+            print_ir(io, depth, ir->expr.binop.left);
+            print_ir(io, depth, ir->expr.binop.right);
+            break;
+
+        case MOJOSHADER_IR_MEMORY:
+            fprintf(io, "MEMORY %d ]\n", ir->expr.memory.index);
+            break;
+
+        case MOJOSHADER_IR_CALL:
+            fprintf(io, "CALL %d ]\n", ir->expr.call.index);
+            print_ir(io, depth, ir->expr.call.args);
+            break;
+
+        case MOJOSHADER_IR_ESEQ:
+            fprintf(io, "ESEQ ]\n");
+            print_ir(io, depth, ir->expr.eseq.stmt);
+            break;
+
+        case MOJOSHADER_IR_ARRAY:
+            fprintf(io, "ARRAY ]\n");
+            print_ir(io, depth, ir->expr.array.array);
+            print_ir(io, depth, ir->expr.array.element);
+            break;
+
+        case MOJOSHADER_IR_MOVE:
+            fprintf(io, "MOVE ]\n");
+            print_ir(io, depth, ir->stmt.move.dst);
+            print_ir(io, depth, ir->stmt.move.src);
+            break;
+
+        case MOJOSHADER_IR_EXPR_STMT:
+            fprintf(io, "EXPRSTMT ]\n");
+            print_ir(io, depth, ir->stmt.expr.expr);
+            break;
+
+        case MOJOSHADER_IR_JUMP:
+            fprintf(io, "JUMP %d ]\n", ir->stmt.jump.label);
+            break;
+
+        case MOJOSHADER_IR_CJUMP:
+            fprintf(io, "CJUMP ");
+            switch (ir->expr.binop.op)
+            {
+                #define PRINT_IR_COND(x) \
+                    case MOJOSHADER_IR_COND_##x: fprintf(io, #x); break;
+                PRINT_IR_COND(EQL)
+                PRINT_IR_COND(NEQ)
+                PRINT_IR_COND(LT)
+                PRINT_IR_COND(GT)
+                PRINT_IR_COND(LEQ)
+                PRINT_IR_COND(GEQ)
+                PRINT_IR_COND(UNKNOWN)
+                #undef PRINT_IR_COND
+                default: assert(0 && "unexpected case"); break;
+            } // switch
+            fprintf(io, " %d %d ]\n", ir->stmt.cjump.iftrue, ir->stmt.cjump.iffalse);
+            print_ir(io, depth, ir->stmt.cjump.left);
+            print_ir(io, depth, ir->stmt.cjump.right);
+            break;
+
+        case MOJOSHADER_IR_SEQ:
+            fprintf(io, "SEQ ]\n");
+            print_ir(io, depth, ir->stmt.seq.first);
+            print_ir(io, depth, ir->stmt.seq.next);  // !!! FIXME: don't recurse?
+            break;
+
+        case MOJOSHADER_IR_EXPRLIST:
+            fprintf(io, "EXPRLIST ]\n");
+            print_ir(io, depth, ir->misc.exprlist.expr);
+            print_ir(io, depth, ir->misc.exprlist.next);  // !!! FIXME: don't recurse?
+            break;
+
+        default: assert(0 && "unexpected IR node"); break;
+    } // switch
+} // print_ir
+
+static void delete_ir(Context *ctx, void *_ir)
+{
+    MOJOSHADER_irNode *ir = (MOJOSHADER_irNode *) _ir;
+    if (ir == NULL)
+        return;
+
+    switch (ir->ir.type)
+    {
+        case MOJOSHADER_IR_JUMP:
+        case MOJOSHADER_IR_LABEL:
+        case MOJOSHADER_IR_CONSTANT:
+        case MOJOSHADER_IR_TEMP:
+        case MOJOSHADER_IR_DISCARD:
+        case MOJOSHADER_IR_MEMORY:
+            break;  // nothing extra to free here.
+
+        case MOJOSHADER_IR_BINOP:
+            delete_ir(ctx, ir->expr.binop.left);
+            delete_ir(ctx, ir->expr.binop.right);
+            break;
+
+        case MOJOSHADER_IR_CALL:
+            delete_ir(ctx, ir->expr.call.args);
+            break;
+
+        case MOJOSHADER_IR_ESEQ:
+            delete_ir(ctx, ir->expr.eseq.stmt);
+            delete_ir(ctx, ir->expr.eseq.expr);
+            break;
+
+        case MOJOSHADER_IR_ARRAY:
+            delete_ir(ctx, ir->expr.array.array);
+            delete_ir(ctx, ir->expr.array.element);
+            break;
+
+        case MOJOSHADER_IR_MOVE:
+            delete_ir(ctx, ir->stmt.move.dst);
+            delete_ir(ctx, ir->stmt.move.src);
+            break;
+
+        case MOJOSHADER_IR_EXPR_STMT:
+            delete_ir(ctx, ir->stmt.expr.expr);
+            break;
+
+        case MOJOSHADER_IR_CJUMP:
+            delete_ir(ctx, ir->stmt.cjump.left);
+            delete_ir(ctx, ir->stmt.cjump.right);
+            break;
+
+        case MOJOSHADER_IR_SEQ:
+            delete_ir(ctx, ir->stmt.seq.first);
+            delete_ir(ctx, ir->stmt.seq.next);  // !!! FIXME: don't recurse?
+            break;
+
+        case MOJOSHADER_IR_EXPRLIST:
+            delete_ir(ctx, ir->misc.exprlist.expr);
+            delete_ir(ctx, ir->misc.exprlist.next);  // !!! FIXME: don't recurse?
+            break;
+
+        case MOJOSHADER_IR_SWIZZLE:
+            delete_ir(ctx, ir->expr.swizzle.expr);
+            break;
+
+        case MOJOSHADER_IR_CONSTRUCT:
+            delete_ir(ctx, ir->expr.construct.args);
+            break;
+
+        case MOJOSHADER_IR_CONVERT:
+            delete_ir(ctx, ir->expr.convert.expr);
+            break;
+
+        default: assert(0 && "unexpected IR node"); break;
+    } // switch
+
+    Free(ctx, ir);
+} // delete_ir
+
+static void intermediate_representation(Context *ctx)
+{
+    const MOJOSHADER_astCompilationUnit *ast = NULL;
+    const MOJOSHADER_astCompilationUnitFunction *astfn = NULL;
+
+    ctx->ir_end = -1;
+    ctx->ir_ret = -1;
+
+    for (ast = &ctx->ast->compunit; ast != NULL; ast = ast->next)
+    {
+        assert(ast->ast.type > MOJOSHADER_AST_COMPUNIT_START_RANGE);
+        assert(ast->ast.type < MOJOSHADER_AST_COMPUNIT_END_RANGE);
+        if (ast->ast.type != MOJOSHADER_AST_COMPUNIT_FUNCTION)
+            continue;  // only care about functions right now.
+
+        astfn = (MOJOSHADER_astCompilationUnitFunction *) ast;
+        if (astfn->definition == NULL)  // just a predeclare; skip.
+            continue;
+
+        assert(ctx->ir_loop == NULL);  // parser should have caught this!
+        assert(ctx->ir_end < 0);  // parser should have caught this!
+        assert(ctx->ir_ret < 0);  // parser should have caught this!
+        const int start = generate_ir_label(ctx);  // !!! FIXME: store somewhere.
+        const int end = generate_ir_label(ctx);
+        ctx->ir_end = end;
+
+        if (astfn->declaration->datatype != NULL)
+            ctx->ir_ret = generate_ir_temp(ctx);
+
+        MOJOSHADER_irStatement *funcseq = new_ir_seq(ctx, new_ir_label(ctx, start), build_ir_stmt(ctx, astfn->definition));
+        funcseq = new_ir_seq(ctx, funcseq, new_ir_label(ctx, end));
+        assert(ctx->ir_loop == NULL);  // parser should have caught this!
+        ctx->ir_end = -1;
+        ctx->ir_ret = -1;
+
+printf("[FUNCTION %s ]\n", astfn->declaration->identifier); print_ir(stdout, 1, funcseq);
+    } // for
+
+    // done with the AST, nuke it.
+    delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit *) ctx->ast);
+    ctx->ast = NULL;
+} // intermediate_representation
+
+
+
 static MOJOSHADER_astData MOJOSHADER_out_of_mem_ast_data = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0
 };
@@ -4761,6 +6194,9 @@ const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
 
     if (!isfail(ctx))
         semantic_analysis(ctx);
+
+    if (!isfail(ctx))
+        intermediate_representation(ctx);
 
     if (isfail(ctx))
         retval = (MOJOSHADER_compileData *) build_failed_compile(ctx);
