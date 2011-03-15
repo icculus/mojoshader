@@ -2609,9 +2609,15 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
 
             datatype = reduce_datatype(ctx, datatype);
             if (datatype->type == MOJOSHADER_AST_DATATYPE_VECTOR)
+            {
+                // !!! FIXME: if constant int, fail if not 0 >= value <= vecsize.
                 ast->binary.datatype = datatype->vector.base;
+            } // if
             else if (datatype->type == MOJOSHADER_AST_DATATYPE_MATRIX)
+            {
+                // !!! FIXME: if constant int, fail if not 0 >= value <= rowsize (colsize?).
                 ast->binary.datatype = vectype_from_base(ctx, datatype->matrix.base, datatype->matrix.columns);  // !!! FIXME: rows?
+            }
             else
             {
                 require_array_datatype(ctx, datatype);
