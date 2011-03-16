@@ -5306,6 +5306,9 @@ static MOJOSHADER_irExpression *build_ir_derefstruct(Context *ctx, const MOJOSHA
     //  an irTemp, an irMemory, or an irESeq that results in a temp or memory.
     //  As such, we figure out which it is, and offset appropriately for the
     //  member.
+    const MOJOSHADER_astDataType *dt = reduce_datatype(ctx, ast->datatype);
+    const MOJOSHADER_astDataTypeType type = datatype_base(ctx, dt)->type;
+    const int elems = datatype_elems(ctx, dt);
     MOJOSHADER_irExpression *expr = build_ir_expr(ctx, ast->identifier);
     MOJOSHADER_irExpression *finalexpr = expr;
 
@@ -5320,6 +5323,10 @@ static MOJOSHADER_irExpression *build_ir_derefstruct(Context *ctx, const MOJOSHA
         finalexpr->memory.index += ast->member_index;
     else
         assert(0 && "Unexpected condition");
+
+    // Replace the struct type with the type of the member.
+    expr->info.type = type;
+    expr->info.elements = elems;
 
     return expr;
 } // build_ir_derefstruct
