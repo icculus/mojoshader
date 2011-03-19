@@ -1539,6 +1539,7 @@ typedef struct MOJOSHADER_astCompilationUnitFunction
     MOJOSHADER_astCompilationUnit *next;
     MOJOSHADER_astFunctionSignature *declaration;
     MOJOSHADER_astStatement *definition;
+    int index;  /* unique id. Will be 0 until semantic analysis runs. */
 } MOJOSHADER_astCompilationUnitFunction;
 
 typedef struct MOJOSHADER_astCompilationUnitTypedef

@@ -420,7 +420,7 @@ static inline void push_variable(Context *ctx, const char *sym, const MOJOSHADER
     push_symbol(ctx, &ctx->variables, sym, dt, idx, 1);
 } // push_variable
 
-static void push_function(Context *ctx, const char *sym,
+static int push_function(Context *ctx, const char *sym,
                           const MOJOSHADER_astDataType *dt,
                           const int just_declare)
 {
@@ -428,6 +428,25 @@ static void push_function(Context *ctx, const char *sym,
     //  so this would be a bug.
     assert(!ctx->is_func_scope);
     assert(dt->type == MOJOSHADER_AST_DATATYPE_FUNCTION);
+
+    // Functions are always global, so no need to search scopes.
+    //  Functions overload, though, so we have to continue iterating to
+    //  see if it matches anything.
+    const void *value = NULL;
+    void *iter = NULL;
+    while (hash_iter(ctx->variables.hash, sym, &value, &iter))
+    {
+        // !!! FIXME: this breaks if you predeclare a function.
+        // !!! FIXME:  (a declare AFTER defining works, though.)
+        // there's already something called this.
+        SymbolScope *item = (SymbolScope *) value;
+        if (datatypes_match(dt, item->datatype))
+        {
+            if (!just_declare)
+                failf(ctx, "Function '%s' already defined.", sym);
+            return item->index;
+        } // if
+    } // while
 
     int idx = 0;
     if ((sym != NULL) && (dt != NULL))
@@ -438,24 +457,10 @@ static void push_function(Context *ctx, const char *sym,
             idx = --ctx->intrinsic_func_index;  // these are negative.
     } // if
 
-    // Functions are always global, so no need to search scopes.
-    //  Functions overload, though, so we have to continue iterating to
-    //  see if it matches anything.
-    const void *value = NULL;
-    void *iter = NULL;
-    while (hash_iter(ctx->variables.hash, sym, &value, &iter))
-    {
-        // there's already something called this.
-        if (datatypes_match(dt, ((SymbolScope *) value)->datatype))
-        {
-            if (!just_declare)
-                failf(ctx, "Function '%s' already defined.", sym);
-            return;
-        } // if
-    } // while
-
     // push_symbol() doesn't check dupes, because we just did.
     push_symbol(ctx, &ctx->variables, sym, dt, idx, 0);
+
+    return idx;
 } // push_function
 
 static inline void push_scope(Context *ctx)
@@ -865,6 +870,7 @@ static MOJOSHADER_astCompilationUnit *new_function(Context *ctx,
     retval->next = NULL;
     retval->declaration = declaration;
     retval->definition = definition;
+    retval->index = 0;
     return (MOJOSHADER_astCompilationUnit *) retval;
 } // new_function
 
@@ -3082,8 +3088,9 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             //  the global scope, but it's parameters are pushed as variables
             //  in the function's scope.
             datatype = type_check_ast(ctx, ast->funcunit.declaration);
-            push_function(ctx, ast->funcunit.declaration->identifier,
-                          datatype, ast->funcunit.definition == NULL);
+            ast->funcunit.index = push_function(ctx,
+                                ast->funcunit.declaration->identifier,
+                                datatype, ast->funcunit.definition == NULL);
 
             // not just a declaration, but a full function definition?
             if (ast->funcunit.definition != NULL)
@@ -5919,7 +5926,7 @@ static void intermediate_representation(Context *ctx)
         ctx->ir_end = -1;
         ctx->ir_ret = -1;
 
-printf("[FUNCTION %s ]\n", astfn->declaration->identifier); print_ir(stdout, 1, funcseq);
+printf("[FUNCTION %d ]\n", astfn->index); print_ir(stdout, 1, funcseq);
     } // for
 
     // done with the AST, nuke it.
