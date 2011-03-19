@@ -5772,7 +5772,7 @@ static void print_ir(FILE *io, unsigned int depth, void *_ir)
 
         case MOJOSHADER_IR_CJUMP:
             fprintf(io, "CJUMP ");
-            switch (ir->expr.binop.op)
+            switch (ir->stmt.cjump.cond)
             {
                 #define PRINT_IR_COND(x) \
                     case MOJOSHADER_IR_COND_##x: fprintf(io, #x); break;
