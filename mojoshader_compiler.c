@@ -112,7 +112,7 @@ typedef struct Context
     int user_func_index;  // next function index for user-defined functions.
     int intrinsic_func_index;  // next function index for intrinsic functions.
 
-    MOJOSHADER_irNode *ir;  // intermediate representation.
+    MOJOSHADER_irStatement **ir;  // intermediate representation.
     int ir_label_count;  // next unused IR label index.
     int ir_temp_count;  // next unused IR temporary value index.
     int ir_end; // current function's end label during IR build.
@@ -3550,6 +3550,7 @@ static void destroy_context(Context *ctx)
     {
         MOJOSHADER_free f = ((ctx->free != NULL) ? ctx->free : MOJOSHADER_internal_free);
         void *d = ctx->malloc_data;
+        size_t i = 0;
 
         // !!! FIXME: this is kinda hacky.
         const size_t count = buffer_size(ctx->garbage) / sizeof (void *);
@@ -3558,7 +3559,6 @@ static void destroy_context(Context *ctx)
             void **garbage = (void **) buffer_flatten(ctx->garbage);
             if (garbage != NULL)
             {
-                size_t i;
                 for (i = 0; i < count; i++)
                     f(garbage[i], d);
                 f(garbage, d);
@@ -3573,7 +3573,12 @@ static void destroy_context(Context *ctx)
         errorlist_destroy(ctx->errors);
         errorlist_destroy(ctx->warnings);
 
-        delete_ir(ctx, ctx->ir);
+        if (ctx->ir != NULL)
+        {
+            for (i = 0; i <= ctx->user_func_index; i++)
+                delete_ir(ctx, ctx->ir[i]);
+            f(ctx->ir, d);
+        } // if
 
         // !!! FIXME: more to clean up here, now.
 
@@ -5891,10 +5896,31 @@ static void delete_ir(Context *ctx, void *_ir)
     Free(ctx, ir);
 } // delete_ir
 
+
+static void print_whole_ir(Context *ctx, FILE *io)
+{
+    if (ctx->ir != NULL)
+    {
+        int i;
+        for (i = 0; i <= ctx->user_func_index; i++)
+        {
+            printf("[FUNCTION %d ]\n", i);
+            print_ir(io, 1, ctx->ir[i]);
+        } // for
+    } // if
+} // print_whole_ir
+
+
 static void intermediate_representation(Context *ctx)
 {
     const MOJOSHADER_astCompilationUnit *ast = NULL;
     const MOJOSHADER_astCompilationUnitFunction *astfn = NULL;
+    const size_t arraylen = (ctx->user_func_index+1) * sizeof (MOJOSHADER_irStatement *);
+
+    ctx->ir = Malloc(ctx, arraylen);
+    if (ctx->ir == NULL)
+        return;
+    memset(ctx->ir, '\0', arraylen);
 
     ctx->ir_end = -1;
     ctx->ir_ret = -1;
@@ -5926,10 +5952,15 @@ static void intermediate_representation(Context *ctx)
         ctx->ir_end = -1;
         ctx->ir_ret = -1;
 
-printf("[FUNCTION %d ]\n", astfn->index); print_ir(stdout, 1, funcseq);
+        assert(astfn->index <= ctx->user_func_index);
+        assert(ctx->ir[astfn->index] == NULL);
+        ctx->ir[astfn->index] = funcseq;
     } // for
 
+    print_whole_ir(ctx, stdout);
+
     // done with the AST, nuke it.
+    // !!! FIXME: we're going to need CTAB data from this at some point.
     delete_compilation_unit(ctx, (MOJOSHADER_astCompilationUnit *) ctx->ast);
     ctx->ast = NULL;
 } // intermediate_representation
