@@ -5819,6 +5819,19 @@ static void print_ir(FILE *io, unsigned int depth, void *_ir)
     } // switch
 } // print_ir
 
+static void print_whole_ir(Context *ctx, FILE *io)
+{
+    if (ctx->ir != NULL)
+    {
+        int i;
+        for (i = 0; i <= ctx->user_func_index; i++)
+        {
+            printf("[FUNCTION %d ]\n", i);
+            print_ir(io, 1, ctx->ir[i]);
+        } // for
+    } // if
+} // print_whole_ir
+
 static void delete_ir(Context *ctx, void *_ir)
 {
     MOJOSHADER_irNode *ir = (MOJOSHADER_irNode *) _ir;
@@ -5895,21 +5908,6 @@ static void delete_ir(Context *ctx, void *_ir)
 
     Free(ctx, ir);
 } // delete_ir
-
-
-static void print_whole_ir(Context *ctx, FILE *io)
-{
-    if (ctx->ir != NULL)
-    {
-        int i;
-        for (i = 0; i <= ctx->user_func_index; i++)
-        {
-            printf("[FUNCTION %d ]\n", i);
-            print_ir(io, 1, ctx->ir[i]);
-        } // for
-    } // if
-} // print_whole_ir
-
 
 static void intermediate_representation(Context *ctx)
 {
