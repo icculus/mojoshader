@@ -136,6 +136,7 @@ typedef struct Context
     int determined_constants_arrays;
     int predicated;
     int glsl_generated_lit_opcode;
+    int glsl_generated_texldd_setup;
 
 #if SUPPORT_PROFILE_ARB1_NV
     int profile_supports_nv2;
@@ -3092,7 +3093,7 @@ static void emit_GLSL_TEXKILL(Context *ctx)
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
-static void emit_GLSL_TEXLD(Context *ctx)
+static void glsl_texld(Context *ctx, const int texldd)
 {
     // !!! FIXME: do non-RGBA textures map to same default values as D3D?
 
@@ -3110,6 +3111,8 @@ static void emit_GLSL_TEXLD(Context *ctx)
         const char *funcname = NULL;
         char src0[64] = { '\0' };
         char src1[64]; get_GLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
+        char src2[64] = { '\0' };
+        char src3[64] = { '\0' };
 
         if (sreg == NULL)
         {
@@ -3117,6 +3120,13 @@ static void emit_GLSL_TEXLD(Context *ctx)
             return;
         } // if
 
+        if (texldd)
+        {
+            make_GLSL_srcarg_string_full(ctx, 2, src2, sizeof (src2));
+            make_GLSL_srcarg_string_full(ctx, 3, src3, sizeof (src3));
+        } // if
+
+        // !!! FIXME: can TEXLDD set instruction_controls?
         // !!! FIXME: does the d3d bias value map directly to GLSL?
         const char *biassep = "";
         char bias[64] = { '\0' };
@@ -3169,11 +3179,28 @@ static void emit_GLSL_TEXLD(Context *ctx)
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
 
         char code[128];
-        make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s(%s, %s%s%s)%s",
-                                 funcname, src1, src0, biassep, bias, swiz_str);
+        if (texldd)
+        {
+            make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                     "%sGrad(%s, %s, %s, %s)%s", funcname,
+                                     src1, src0, src2, src3, swiz_str);
+        } // if
+        else
+        {
+            make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                     "%s(%s, %s%s%s)%s", funcname,
+                                     src1, src0, biassep, bias, swiz_str);
+        } // else
+
         output_line(ctx, "%s", code);
     } // else
+} // glsl_texld
+
+static void emit_GLSL_TEXLD(Context *ctx)
+{
+     glsl_texld(ctx, 0);
 } // emit_GLSL_TEXLD
+    
 
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)  // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEML) // !!! FIXME
@@ -3319,7 +3346,36 @@ static void emit_GLSL_DSY(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD) // !!! FIXME
+static void emit_GLSL_TEXLDD(Context *ctx)
+{
+    // !!! FIXME:
+    // GLSL 1.30 introduced textureGrad() for this, but it looks like the
+    //  functions are overloaded instead of texture2DGrad() (etc).
+
+    // GL_shader_texture_lod and GL_EXT_gpu_shader4 added texture2DGrad*(),
+    //  so we'll use them if available. Failing that, we'll just fallback
+    //  to a regular texture2D call and hope the mipmap it chooses is close
+    //  enough.
+    if (!ctx->glsl_generated_texldd_setup)
+    {
+        ctx->glsl_generated_texldd_setup = 1;
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "#if GL_EXT_gpu_shader4");
+        output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
+        output_line(ctx, "#elif GL_ARB_shader_texture_lod");
+        output_line(ctx, "#extension GL_ARB_shader_texture_lod : enable");
+        output_line(ctx, "#define texture2DGrad texture2DGradARB");
+        output_line(ctx, "#define texture2DProjGrad texture2DProjARB");
+        output_line(ctx, "#else");
+        output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
+        output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
+        output_line(ctx, "#endif");
+        output_blank_line(ctx);
+        pop_output(ctx);
+    } // if
+
+    glsl_texld(ctx, 1);
+} // emit_GLSL_TEXLDD
 
 static void emit_GLSL_SETP(Context *ctx)
 {
@@ -5005,10 +5061,7 @@ static void emit_ARB1_DSY(Context *ctx)
         failf(ctx, "DSY unsupported in %s profile", ctx->profile->name);
 } // emit_ARB1_DSY
 
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXLDD)
-
-
-static void arb1_texld(Context *ctx, const char *opcode)
+static void arb1_texld(Context *ctx, const char *opcode, const int texldd)
 {
     // !!! FIXME: Hack: "TEXH" is invalid in nv4. Fix this more cleanly.
     if ((ctx->dest_arg.result_mod & MOD_PP) && (support_nv4(ctx)))
@@ -5022,6 +5075,15 @@ static void arb1_texld(Context *ctx, const char *opcode)
     const char *ttype = NULL;
     char src0[64]; get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
     //char src1[64]; get_ARB1_srcarg_varname(ctx, 1, src1, sizeof (src1));  // !!! FIXME: SRC_MOD?
+
+    char src2[64] = { 0 };
+    char src3[64] = { 0 };
+
+    if (texldd)
+    {
+        make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
+        make_ARB1_srcarg_string(ctx, 3, src3, sizeof (src3));
+    } // if
 
     // !!! FIXME: this should be in state_TEXLD, not in the arb1/glsl emitters.
     if (sreg == NULL)
@@ -5044,9 +5106,29 @@ static void arb1_texld(Context *ctx, const char *opcode)
         default: fail(ctx, "unknown texture type"); return;
     } // switch
 
-    output_line(ctx, "%s%s, %s, texture[%d], %s;", opcode, dst, src0,
-                samp_arg->regnum, ttype);
+    if (texldd)
+    {
+        output_line(ctx, "%s%s, %s, %s, %s, texture[%d], %s;", opcode, dst,
+                    src0, src2, src3, samp_arg->regnum, ttype);
+    } // if
+    else
+    {
+        output_line(ctx, "%s%s, %s, texture[%d], %s;", opcode, dst, src0,
+                    samp_arg->regnum, ttype);
+    } // else
 } // arb1_texld
+
+
+static void emit_ARB1_TEXLDD(Context *ctx)
+{
+    // With GL_NV_fragment_program2, we can use the TXD opcode.
+    //  In stock arb1, we can settle for a standard texld, which isn't
+    //  perfect, but oh well.
+    if (support_nv2(ctx))
+        arb1_texld(ctx, "TXD", 1);
+    else
+        arb1_texld(ctx, "TEX", 0);
+} // emit_ARB1_TEXLDD
 
 
 static void emit_ARB1_TEXLDL(Context *ctx)
@@ -5066,7 +5148,7 @@ static void emit_ARB1_TEXLDL(Context *ctx)
     } // if
 
     // !!! FIXME: this doesn't map exactly to TEXLDL. Review this.
-    arb1_texld(ctx, "TXL");
+    arb1_texld(ctx, "TXL", 0);
 } // emit_ARB1_TEXLDL
 
 
@@ -5159,11 +5241,11 @@ static void emit_ARB1_TEXLD(Context *ctx)
 
     // !!! FIXME: do texldb and texldp map between OpenGL and D3D correctly?
     if (ctx->instruction_controls == CONTROL_TEXLD)
-        arb1_texld(ctx, "TEX");
+        arb1_texld(ctx, "TEX", 0);
     else if (ctx->instruction_controls == CONTROL_TEXLDP)
-        arb1_texld(ctx, "TXP");
+        arb1_texld(ctx, "TXP", 0);
     else if (ctx->instruction_controls == CONTROL_TEXLDB)
-        arb1_texld(ctx, "TXB");
+        arb1_texld(ctx, "TXB", 0);
 } // emit_ARB1_TEXLD
 
 #endif  // SUPPORT_PROFILE_ARB1
