@@ -352,8 +352,12 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
     for (i = 0; i < effect->technique_count; i++)
     {
         MOJOSHADER_effectTechnique *technique = &effect->techniques[i];
+        f((void *) technique->name, d);
         for (j = 0; j < technique->pass_count; j++)
+        {
+            f((void *) technique->passes[j].name, d);
             f(technique->passes[j].states, d);
+        } // for
         f(technique->passes, d);
     } // for
 
