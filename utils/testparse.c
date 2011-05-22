@@ -39,6 +39,16 @@ static void Free(void *_ptr)
 #define Free NULL
 #endif
 
+static inline void do_indent(const unsigned int indent)
+{
+    unsigned int i;
+    for (i = 0; i < indent; i++)
+        printf("    ");
+}
+
+#define INDENT() do { if (indent) { do_indent(indent); } } while (0)
+
+
 static const char *shader_type(const MOJOSHADER_shaderType s)
 {
     switch (s)
@@ -54,33 +64,29 @@ static const char *shader_type(const MOJOSHADER_shaderType s)
 } // shader_type
 
 
-static int do_parse(const char *fname, const unsigned char *buf,
-                    const int len, const char *prof)
+static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
+                         unsigned int indent)
 {
-    const MOJOSHADER_parseData *pd;
-    int retval = 0;
-
-    pd = MOJOSHADER_parse(prof, buf, len, NULL, 0, Malloc, Free, NULL);
-    printf("PROFILE: %s\n", prof);
+    INDENT(); printf("PROFILE: %s\n", pd->profile);
     if (pd->error_count > 0)
     {
         int i;
         for (i = 0; i < pd->error_count; i++)
         {
+            const MOJOSHADER_error *err = &pd->errors[i];
+            INDENT();
             printf("%s:%d: ERROR: %s\n",
-                    pd->errors[i].filename ? pd->errors[i].filename : fname,
-                    pd->errors[i].error_position,
-                    pd->errors[i].error);
+                    err->filename ? err->filename : fname,
+                    err->error_position, err->error);
         } // for
     } // if
     else
     {
-        retval = 1;
-        printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
-        printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
-        printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
+        INDENT(); printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
+        INDENT(); printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
+        INDENT(); printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
 
-        printf("ATTRIBUTES:");
+        INDENT(); printf("ATTRIBUTES:");
         if (pd->attribute_count == 0)
             printf(" (none.)\n");
         else
@@ -98,6 +104,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
                 char numstr[16] = { 0 };
                 if (a->index != 0)
                     snprintf(numstr, sizeof (numstr), "%d", a->index);
+                INDENT();
                 printf("    * %s%s", usagenames[(int) a->usage], numstr);
                 if (a->name != NULL)
                     printf(" (\"%s\")", a->name);
@@ -105,7 +112,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
             } // for
         } // else
 
-        printf("CONSTANTS:");
+        INDENT(); printf("CONSTANTS:");
         if (pd->constant_count == 0)
             printf(" (none.)\n");
         else
@@ -116,6 +123,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
             {
                 static const char *typenames[] = { "float", "int", "bool" };
                 const MOJOSHADER_constant *c = &pd->constants[i];
+                INDENT(); 
                 printf("    * %d: %s (", c->index, typenames[(int) c->type]);
                 if (c->type == MOJOSHADER_UNIFORM_FLOAT)
                 {
@@ -139,7 +147,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
             } // for
         } // else
 
-        printf("UNIFORMS:");
+        INDENT(); printf("UNIFORMS:");
         if (pd->uniform_count == 0)
             printf(" (none.)\n");
         else
@@ -160,6 +168,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
                              u->array_count);
                 } // if
 
+                INDENT();
                 printf("    * %d: %s%s%s%s", u->index, constant, arrayof,
                         arrayrange, typenames[(int) u->type]);
                 if (u->name != NULL)
@@ -168,7 +177,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
             } // for
         } // else
 
-        printf("SAMPLERS:");
+        INDENT(); printf("SAMPLERS:");
         if (pd->sampler_count == 0)
             printf(" (none.)\n");
         else
@@ -179,6 +188,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
             {
                 static const char *typenames[] = { "2d", "cube", "volume" };
                 const MOJOSHADER_sampler *s = &pd->samplers[i];
+                INDENT();
                 printf("    * %d: %s", s->index, typenames[(int) s->type]);
                 if (s->name != NULL)
                     printf(" (\"%s\")", s->name);
@@ -189,14 +199,110 @@ static int do_parse(const char *fname, const unsigned char *buf,
         if (pd->output != NULL)
         {
             int i;
+            INDENT();
             printf("OUTPUT:\n");
+            indent++;
+            INDENT();
             for (i = 0; i < pd->output_len; i++)
+            {
                 putchar((int) pd->output[i]);
+                if (pd->output[i] == '\n')
+                    INDENT();
+            } // for
             printf("\n");
+            indent--;
         } // if
     } // else
     printf("\n\n");
-    MOJOSHADER_freeParseData(pd);
+} // print_shader
+
+
+static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
+                         const unsigned int indent)
+{
+    INDENT(); printf("PROFILE: %s\n", effect->profile);
+    printf("\n");
+    if (effect->error_count > 0)
+    {
+        int i;
+        for (i = 0; i < effect->error_count; i++)
+        {
+            const MOJOSHADER_error *err = &effect->errors[i];
+            INDENT();
+            printf("%s:%d: ERROR: %s\n",
+                    err->filename ? err->filename : fname,
+                    err->error_position, err->error);
+        } // for
+    } // if
+    else
+    {
+        int i, j, k;
+        const MOJOSHADER_effectTechnique *technique = effect->techniques;
+        const MOJOSHADER_effectTexture *texture = effect->textures;
+        const MOJOSHADER_effectShader *shader = effect->shaders;
+
+        for (i = 0; i < effect->technique_count; i++, technique++)
+        {
+            const MOJOSHADER_effectPass *pass = technique->passes;
+            INDENT(); printf("TECHNIQUE #%d ('%s'):\n", i, technique->name);
+            for (j = 0; j < technique->pass_count; j++, pass++)
+            {
+                const MOJOSHADER_effectState *state = pass->states;
+                INDENT(); printf("    PASS #%d ('%s'):\n", j, pass->name);
+                for (k = 0; k < pass->state_count; k++, state++)
+                {
+                    INDENT(); printf("        STATE 0x%X\n", state->type);
+                } // for
+            } // for
+            printf("\n");
+        } // for
+
+        for (i = 0; i < effect->texture_count; i++, texture++)
+        {
+            INDENT();
+            printf("TEXTURE #%d ('%s'): %u\n", i,
+                    texture->name, texture->param);
+        } // for
+
+        printf("\n");
+
+        for (i = 0; i < effect->shader_count; i++, shader++)
+        {
+            INDENT();
+            printf("SHADER #%d: technique %u, pass %u\n", i,
+                    shader->technique, shader->pass);
+            print_shader(fname, shader->shader, indent + 1);
+        } // for
+    } // else
+} // print_effect
+
+
+static int do_parse(const char *fname, const unsigned char *buf,
+                    const int len, const char *prof)
+{
+    int retval = 0;
+
+    // magic for an effects file (!!! FIXME: I _think_).
+    if ( (buf[0] == 0x01) && (buf[1] == 0x09) &&
+         (buf[2] == 0xFF) && (buf[3] == 0xFE) )
+    {
+        const MOJOSHADER_effect *effect;
+        effect = MOJOSHADER_parseEffect(prof, buf, len, 0, 0, Malloc, Free, 0);
+        retval = (effect->error_count == 0);
+        printf("EFFECT: %s\n", fname);
+        print_effect(fname, effect, 1);
+        MOJOSHADER_freeEffect(effect);
+    } // if
+
+    else  // do it as a regular compiled shader.
+    {
+        const MOJOSHADER_parseData *pd;
+        pd = MOJOSHADER_parse(prof, buf, len, NULL, 0, Malloc, Free, NULL);
+        retval = (pd->error_count == 0);
+        printf("SHADER: %s\n", fname);
+        print_shader(fname, pd, 1);
+        MOJOSHADER_freeParseData(pd);
+    } // else
 
     return retval;
 } // do_parse
@@ -221,7 +327,6 @@ int main(int argc, char **argv)
         for (i = 2; i < argc; i++)
         {
             FILE *io = fopen(argv[i], "rb");
-            printf("FILE: %s\n", argv[i]);
             if (io == NULL)
                 printf(" ... fopen('%s') failed.\n", argv[i]);
             else

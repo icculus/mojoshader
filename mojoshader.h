@@ -619,6 +619,130 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 
+/* Effects interface... */  /* !!! FIXME: THIS API IS NOT STABLE YET! */
+
+typedef struct MOJOSHADER_effectState
+{
+    unsigned int type;
+} MOJOSHADER_effectState;
+
+typedef struct MOJOSHADER_effectPass
+{
+    const char *name;
+    unsigned int state_count;
+    MOJOSHADER_effectState *states;
+} MOJOSHADER_effectPass;
+
+typedef struct MOJOSHADER_effectTechnique
+{
+    const char *name;
+    unsigned int pass_count;
+    MOJOSHADER_effectPass *passes;
+} MOJOSHADER_effectTechnique;
+
+typedef struct MOJOSHADER_effectTexture
+{
+    unsigned int param;
+    const char *name;
+} MOJOSHADER_effectTexture;
+
+typedef struct MOJOSHADER_effectShader
+{
+    unsigned int technique;
+    unsigned int pass;
+    const MOJOSHADER_parseData *shader;
+} MOJOSHADER_effectShader;
+
+/*
+ * Structure used to return data from parsing of an effect file...
+ */
+/* !!! FIXME: most of these ints should be unsigned. */
+typedef struct MOJOSHADER_effect
+{
+    /*
+     * The number of elements pointed to by (errors).
+     */
+    int error_count;
+
+    /*
+     * (error_count) elements of data that specify errors that were generated
+     *  by parsing this shader.
+     * This can be NULL if there were no errors or if (error_count) is zero.
+     */
+    MOJOSHADER_error *errors;
+
+    /*
+     * The name of the profile used to parse the shader. Will be NULL on error.
+     */
+    const char *profile;
+
+    /*
+     * The number of elements pointed to by (techniques).
+     */
+    int technique_count;
+
+    /*
+     * (technique_count) elements of data that specify techniques used in
+     *  this effect. Each technique contains a series of passes, and each pass
+     *  specifies state and shaders that affect rendering.
+     * This can be NULL on error or if (technique_count) is zero.
+     */
+    MOJOSHADER_effectTechnique *techniques;
+
+    /*
+     * The number of elements pointed to by (textures).
+     */
+    int texture_count;
+
+    /*
+     * (texture_count) elements of data that specify textures used in
+     *  this effect.
+     * This can be NULL on error or if (texture_count) is zero.
+     */
+    MOJOSHADER_effectTexture *textures;
+
+    /*
+     * The number of elements pointed to by (shaders).
+     */
+    int shader_count;
+
+    /*
+     * (shader_count) elements of data that specify shaders used in
+     *  this effect.
+     * This can be NULL on error or if (shader_count) is zero.
+     */
+    MOJOSHADER_effectShader *shaders;
+
+    /*
+     * This is the malloc implementation you passed to MOJOSHADER_parseEffect().
+     */
+    MOJOSHADER_malloc malloc;
+
+    /*
+     * This is the free implementation you passed to MOJOSHADER_parseEffect().
+     */
+    MOJOSHADER_free free;
+
+    /*
+     * This is the pointer you passed as opaque data for your allocator.
+     */
+    void *malloc_data;
+} MOJOSHADER_effect;
+
+/* !!! FIXME: document me. */
+const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
+                                                const unsigned char *buf,
+                                                const unsigned int _len,
+                                                const MOJOSHADER_swizzle *swiz,
+                                                const unsigned int swizcount,
+                                                MOJOSHADER_malloc m,
+                                                MOJOSHADER_free f,
+                                                void *d);
+
+
+/* !!! FIXME: document me. */
+void MOJOSHADER_freeEffect(const MOJOSHADER_effect *effect);
+
 
 /* Preprocessor interface... */
 

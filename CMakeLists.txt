@@ -64,6 +64,7 @@ ADD_CUSTOM_COMMAND(
 ADD_LIBRARY(mojoshader STATIC
     mojoshader.c
     mojoshader_common.c
+    mojoshader_effects.c
     mojoshader_compiler.c
     mojoshader_preprocessor.c
     mojoshader_lexer.c
