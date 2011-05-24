@@ -772,9 +772,7 @@ static void *loadsym(MOJOSHADER_glGetProcAddress lookup, void *d,
 static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
 {
     #define DO_LOOKUP(ext, typ, fn) { \
-        int exist = ctx->have_##ext; \
-        ctx->fn = (typ) loadsym(lookup, d, #fn, &exist); \
-        ctx->have_##ext = exist; \
+        ctx->fn = (typ) loadsym(lookup, d, #fn, &ctx->have_##ext); \
     }
 
     DO_LOOKUP(base_opengl, PFNGLGETSTRINGPROC, glGetString);
