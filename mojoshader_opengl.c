@@ -689,7 +689,7 @@ static void impl_ARB1_PushUniforms(void)
         else if (type == MOJOSHADER_UNIFORM_INT)
         {
             int i;
-            if (ctx->glProgramLocalParameterI4ivNV != NULL)
+            if (ctx->have_GL_NV_gpu_program4)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
                 for (i = 0; i < size; i++, srci += 4, loc++)
@@ -710,7 +710,7 @@ static void impl_ARB1_PushUniforms(void)
         else if (type == MOJOSHADER_UNIFORM_BOOL)
         {
             int i;
-            if (ctx->glProgramLocalParameterI4ivNV != NULL)
+            if (ctx->have_GL_NV_gpu_program4)
             {
                 // GL_NV_gpu_program4 has integer uniform loading support.
                 for (i = 0; i < size; i++, srcb++, loc++)
