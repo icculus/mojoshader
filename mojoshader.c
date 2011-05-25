@@ -3360,12 +3360,12 @@ static void emit_GLSL_TEXLDD(Context *ctx)
     {
         ctx->glsl_generated_texldd_setup = 1;
         push_output(ctx, &ctx->preflight);
-        output_line(ctx, "#if GL_EXT_gpu_shader4");
-        output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
-        output_line(ctx, "#elif GL_ARB_shader_texture_lod");
+        output_line(ctx, "#if GL_ARB_shader_texture_lod");
         output_line(ctx, "#extension GL_ARB_shader_texture_lod : enable");
         output_line(ctx, "#define texture2DGrad texture2DGradARB");
         output_line(ctx, "#define texture2DProjGrad texture2DProjARB");
+        output_line(ctx, "#elif GL_EXT_gpu_shader4");
+        output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
         output_line(ctx, "#else");
         output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
         output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
