@@ -6742,7 +6742,7 @@ static int parse_instruction_token(Context *ctx)
     if (instruction->opcode_string == NULL)
     {
         fail(ctx, "Unknown opcode.");
-        return 1;  // pray that you resync later.
+        return insttoks + 1;  // pray that you resync later.
     } // if
 
     if (coissue)
