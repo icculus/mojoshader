@@ -6280,7 +6280,7 @@ void MOJOSHADER_freeCompileData(const MOJOSHADER_compileData *_data)
     for (i = 0; i < data->symbol_count; i++)
     {
         f((void *) data->symbols[i].name, d);
-        f((void *) data->symbols[i].default_value, d);
+        // !!! FIXME: this is missing stuff (including freeing substructs).
     } // for
     f((void *) data->symbols, d);
 

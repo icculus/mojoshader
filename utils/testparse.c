@@ -64,6 +64,49 @@ static const char *shader_type(const MOJOSHADER_shaderType s)
 } // shader_type
 
 
+static void print_typeinfo(const MOJOSHADER_symbolTypeInfo *info,
+                           unsigned int indent)
+{
+    static const char *symclasses[] = {
+        "scalar", "vector", "row-major matrix",
+        "column-major matrix", "object", "struct"
+    };
+
+    static const char *symtypes[] = {
+        "void", "bool", "int", "float", "string", "texture",
+        "texture1d", "texture2d", "texture3d", "texturecube",
+        "sampler", "sampler1d", "sampler2d", "sampler3d",
+        "samplercube", "pixelshader", "vertexshader", "unsupported"
+    };
+
+    INDENT();
+    printf("      symbol class %s\n", symclasses[info->parameter_class]);
+    INDENT();
+    printf("      symbol type %s\n", symtypes[info->parameter_type]);
+    INDENT();
+    printf("      rows %u\n", info->rows);
+    INDENT();
+    printf("      columns %u\n", info->columns);
+    INDENT();
+    printf("      elements %u\n", info->elements);
+
+    if (info->member_count > 0)
+    {
+        int i;
+        INDENT(); printf("      MEMBERS:\n");
+        for (i = 0; i < info->member_count; i++)
+        {
+            const MOJOSHADER_symbolStructMember *member = &info->members[i];
+            INDENT(); printf("      MEMBERS:\n");
+            indent++;
+            INDENT(); printf("      * %d: \"%s\"\n", i, member->name);
+            print_typeinfo(&member->info, indent);
+            indent--;
+        } // for
+    } // if
+} // print_typeinfo
+
+
 static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
                          unsigned int indent)
 {
@@ -194,6 +237,29 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
                     printf(" (\"%s\")", s->name);
                 printf("\n");
             } // for
+        } // else
+
+        INDENT(); printf("SYMBOLS:");
+        if (pd->symbol_count == 0)
+            printf(" (none.)\n");
+        else
+        {
+            int i;
+            printf("\n");
+            for (i = 0; i < pd->symbol_count; i++)
+            {
+                static const char *regsets[] = {
+                    "bool", "int4", "float4", "sampler"
+                };
+
+                const MOJOSHADER_symbol *sym = &pd->symbols[i];
+                INDENT(); printf("    * %d: \"%s\"\n", i, sym->name);
+                INDENT(); printf("      register set %s\n", regsets[sym->register_set]);
+                INDENT(); printf("      register index %u\n", sym->register_index);
+                INDENT(); printf("      register count %u\n", sym->register_count);
+                print_typeinfo(&sym->info, indent);
+            } // for
+            printf("\n");
         } // else
 
         if (pd->output != NULL)

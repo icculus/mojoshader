@@ -315,7 +315,6 @@ typedef struct MOJOSHADER_symbol
     unsigned int register_index;
     unsigned int register_count;
     MOJOSHADER_symbolTypeInfo info;
-    void *default_value;
 } MOJOSHADER_symbol;
 
 

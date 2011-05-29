@@ -137,6 +137,8 @@ typedef struct Context
     int predicated;
     int glsl_generated_lit_opcode;
     int glsl_generated_texldd_setup;
+    int symbol_count;
+    MOJOSHADER_symbol *symbols;
 
 #if SUPPORT_PROFILE_ARB1_NV
     int profile_supports_nv2;
@@ -6856,14 +6858,93 @@ static int parse_version_token(Context *ctx, const char *profilestr)
 } // parse_version_token
 
 
+static int parse_ctab_string(const uint8 *start, const uint32 bytes,
+                             const uint32 name)
+{
+    // Make sure strings don't overflow the CTAB buffer...
+    if (name < bytes)
+    {
+        int i;
+        const int slenmax = bytes - name;
+        const char *namestr = (const char *) (start + name);
+        for (i = 0; i < slenmax; i++)
+        {
+            if (namestr[i] == '\0')
+                return 1;  // it's okay.
+        } // for
+    } // if
+
+    return 0;  // overflowed.
+} // parse_ctab_string
+
+
+static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
+                               const uint32 bytes, const uint32 pos,
+                               MOJOSHADER_symbolTypeInfo *info)
+{
+    if ((pos + 16) >= bytes)
+        return 0;  // corrupt CTAB.
+
+    const uint16 *typeptr = (const uint16 *) (start + pos);
+
+    info->parameter_class = (MOJOSHADER_symbolClass) SWAP16(typeptr[0]);
+    info->parameter_type = (MOJOSHADER_symbolType) SWAP16(typeptr[1]);
+    info->rows = (unsigned int) SWAP16(typeptr[2]);
+    info->columns = (unsigned int) SWAP16(typeptr[3]);
+    info->elements = (unsigned int) SWAP16(typeptr[4]);
+    info->member_count = (unsigned int) SWAP16(typeptr[5]);
+
+    if ((pos + 16 + (info->member_count * 8)) >= bytes)
+        return 0;  // corrupt CTAB.
+
+    const size_t len = sizeof (MOJOSHADER_symbolStructMember) *
+                        info->member_count;
+
+    info->members = (MOJOSHADER_symbolStructMember *) Malloc(ctx, len);
+    if (info->members == NULL)
+        return 1;  // we'll check ctx->out_of_memory later.
+    memset(info->members, '\0', len);
+
+    int i;
+    const uint32 *member = (const uint32 *)((const uint8 *) (&typeptr[6]));
+    for (i = 0; i < info->member_count; i++)
+    {
+        MOJOSHADER_symbolStructMember *mbr = &info->members[i];
+        const uint32 name = SWAP32(member[0]);
+        const uint32 memberinfopos = SWAP32(member[1]);
+        member += 2;
+
+        if (!parse_ctab_string(start, bytes, name))
+            return 0;  // info->members will be free()'d elsewhere.
+
+        mbr->name = StrDup(ctx, (const char *) (start + name));
+        if (mbr->name == NULL)
+            return 1;  // we'll check ctx->out_of_memory later.
+        if (!parse_ctab_typeinfo(ctx, start, bytes, memberinfopos, &mbr->info))
+            return 0;
+        if (ctx->out_of_memory)
+            return 1;  // drop out now.
+    } // for
+
+    return 1;
+} // parse_ctab_typeinfo
+
+
 // Microsoft's tools add a CTAB comment to all shaders. This is the
 //  "constant table," or specifically: D3DXSHADER_CONSTANTTABLE:
 //  http://msdn.microsoft.com/en-us/library/bb205440(VS.85).aspx
 // This may tell us high-level truths about an otherwise generic low-level
 //  registers, for instance, how large an array actually is, etc.
-// !!! FIXME: parse symbols.
 static void parse_constant_table(Context *ctx, const uint32 bytes)
 {
+    if (bytes < 32)
+    {
+        fail(ctx, "Truncated CTAB data");
+        return;
+    } // if
+
+    assert(ctx->have_ctab == 0);  // !!! FIXME: can you have more than one?
+
     const uint8 *start = (uint8 *) &ctx->tokens[2];
     const uint32 id = SWAP32(ctx->tokens[1]);
     const uint32 size = SWAP32(ctx->tokens[2]);
@@ -6877,7 +6958,7 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
     if (id != CTAB_ID)
         return;  // not the constant table.
 
-    if (size != CTAB_SIZE)
+    if (size != CTAB_SIZE)  // !!! FIXME: should this fail()?
         return;  // only handle this version of the struct.
 
     if (version != ctx->version_token) goto corrupt_ctab;
@@ -6886,6 +6967,12 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
     if (target >= bytes) goto corrupt_ctab;
 
     ctx->have_ctab = 1;
+
+    ctx->symbol_count = constants;
+    ctx->symbols = Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
+    if (ctx->symbols == NULL)
+        return;
+    memset(ctx->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
 
     for (i = 0; i < constants; i++)
     {
@@ -6898,8 +6985,7 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
         const uint32 defval = SWAP32(*((uint32 *) (ptr + 16)));
         MOJOSHADER_uniformType mojotype = MOJOSHADER_UNIFORM_UNKNOWN;
 
-        if (name >= bytes) goto corrupt_ctab;
-        if ((typeinf + 16) >= bytes) goto corrupt_ctab;
+        if (!parse_ctab_string(start, bytes, name)) goto corrupt_ctab;
         if (defval >= bytes) goto corrupt_ctab;
 
         switch (regset)
@@ -6927,6 +7013,21 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
                 ctx->variables = item;
             } // if
         } // if
+
+        // Add the symbol.
+        const char *namecpy = StrDup(ctx, (const char *) (start + name));
+        if (namecpy == NULL)
+            return;
+
+        MOJOSHADER_symbol *sym = &ctx->symbols[i];
+        sym->name = namecpy;
+        sym->register_set = (MOJOSHADER_symbolRegisterSet) regset;
+        sym->register_index = (unsigned int) regidx;
+        sym->register_count = (unsigned int) regcnt;
+        if (!parse_ctab_typeinfo(ctx, start, bytes, typeinf, &sym->info))
+            goto corrupt_ctab;  // sym->name will get free()'d later.
+        else if (ctx->out_of_memory)
+            return;  // just bail now.
     } // for
 
     return;
@@ -6936,18 +7037,36 @@ corrupt_ctab:
 } // parse_constant_table
 
 
+static int is_comment_token(Context *ctx, const uint32 tok, uint32 *tokcount)
+{
+    const uint32 token = SWAP32(tok);
+    if ((token & 0xFFFF) == 0xFFFE)  // actually a comment token?
+    {
+        if ((token & 0x80000000) != 0)
+            fail(ctx, "comment token high bit must be zero.");  // so says msdn.
+        *tokcount = ((token >> 16) & 0xFFFF);
+        return 1;
+    } // if
+
+    return 0;
+} // is_comment_token
+
+
 static int parse_comment_token(Context *ctx)
 {
-    const uint32 token = SWAP32(*(ctx->tokens));
-    if ((token & 0xFFFF) != 0xFFFE)
-        return 0;  // not a comment token.
-    if ((token & 0x80000000) != 0)
-        fail(ctx, "comment token high bit must be zero.");  // so says msdn.
+    uint32 commenttoks = 0;
+    if (is_comment_token(ctx, *ctx->tokens, &commenttoks))
+    {
+        if ((commenttoks >= 1) && (commenttoks < ctx->tokencount))
+        {
+            const uint32 id = SWAP32(ctx->tokens[1]);
+            if (id == CTAB_ID)
+                parse_constant_table(ctx, commenttoks * 4);
+        } // if
+        return commenttoks + 1;  // comment data plus the initial token.
+    } // if
 
-    const uint32 commenttoks = ((token >> 16) & 0xFFFF);
-    if ((commenttoks >= 8) && (commenttoks < ctx->tokencount))
-        parse_constant_table(ctx, commenttoks * 4);
-    return commenttoks + 1;  // comment data plus the initial token.
+    return 0;  // not a comment token.
 } // parse_comment_token
 
 
@@ -7107,6 +7226,32 @@ static void free_variable_list(MOJOSHADER_free f, void *d, VariableList *item)
 } // free_variable_list
 
 
+static void free_sym_typeinfo(MOJOSHADER_free f, void *d,
+                              MOJOSHADER_symbolTypeInfo *typeinfo)
+{
+    int i;
+    for (i = 0; i < typeinfo->member_count; i++)
+    {
+        f((void *) typeinfo->members[i].name, d);
+        free_sym_typeinfo(f, d, &typeinfo->members[i].info);
+    } // for
+    f((void *) typeinfo->members, d);
+} // free_sym_members
+
+
+static void free_symbols(MOJOSHADER_free f, void *d, MOJOSHADER_symbol *syms,
+                         const int symcount)
+{
+    int i;
+    for (i = 0; i < symcount; i++)
+    {
+        f((void *) syms[i].name, d);
+        free_sym_typeinfo(f, d, &syms[i].info);
+    } // for
+    f((void *) syms, d);
+} // free_symbols
+
+
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -7128,6 +7273,7 @@ static void destroy_context(Context *ctx)
         free_reglist(f, d, ctx->samplers.next);
         free_variable_list(f, d, ctx->variables);
         errorlist_destroy(ctx->errors);
+        free_symbols(f, d, ctx->symbols, ctx->symbol_count);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -7507,6 +7653,11 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->attributes = attributes;
         retval->swizzle_count = ctx->swizzles_count;
         retval->swizzles = swizzles;
+        retval->symbol_count = ctx->symbol_count;
+        retval->symbols = ctx->symbols;
+
+        ctx->symbols = NULL;  // we don't own this now, retval does.
+        ctx->symbol_count = 0;
     } // else
 
     retval->error_count = error_count;
@@ -7810,12 +7961,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
         f((void *) data->samplers[i].name, d);
     f((void *) data->samplers, d);
 
-    for (i = 0; i < data->symbol_count; i++)
-    {
-        f((void *) data->symbols[i].name, d);
-        f((void *) data->symbols[i].default_value, d);
-    } // for
-    f((void *) data->symbols, d);
+    free_symbols(f, d, data->symbols, data->symbol_count);
 
     f(data, d);
 } // MOJOSHADER_freeParseData
