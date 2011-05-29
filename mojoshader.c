@@ -6937,36 +6937,37 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
 //  registers, for instance, how large an array actually is, etc.
 static void parse_constant_table(Context *ctx, const uint32 bytes)
 {
+    const uint32 id = SWAP32(ctx->tokens[1]);
+    if (id != CTAB_ID)
+        return;  // not the constant table.
+
+    assert(ctx->have_ctab == 0);  // !!! FIXME: can you have more than one?
+    ctx->have_ctab = 1;
+
+    const uint8 *start = (uint8 *) &ctx->tokens[2];
+
     if (bytes < 32)
     {
         fail(ctx, "Truncated CTAB data");
         return;
     } // if
 
-    assert(ctx->have_ctab == 0);  // !!! FIXME: can you have more than one?
-
-    const uint8 *start = (uint8 *) &ctx->tokens[2];
-    const uint32 id = SWAP32(ctx->tokens[1]);
     const uint32 size = SWAP32(ctx->tokens[2]);
     const uint32 creator = SWAP32(ctx->tokens[3]);
     const uint32 version = SWAP32(ctx->tokens[4]);
     const uint32 constants = SWAP32(ctx->tokens[5]);
     const uint32 constantinfo = SWAP32(ctx->tokens[6]);
     const uint32 target = SWAP32(ctx->tokens[8]);
-    uint32 i = 0;
 
-    if (id != CTAB_ID)
-        return;  // not the constant table.
-
-    if (size != CTAB_SIZE)  // !!! FIXME: should this fail()?
-        return;  // only handle this version of the struct.
+    if (size != CTAB_SIZE)
+        goto corrupt_ctab;
 
     if (version != ctx->version_token) goto corrupt_ctab;
     if (creator >= bytes) goto corrupt_ctab;
     if ((constantinfo + (constants * CINFO_SIZE)) >= bytes) goto corrupt_ctab;
     if (target >= bytes) goto corrupt_ctab;
-
-    ctx->have_ctab = 1;
+    if (!parse_ctab_string(start, bytes, target)) goto corrupt_ctab;
+    // !!! FIXME: check that (start+target) points to "ps_3_0", etc.
 
     ctx->symbol_count = constants;
     ctx->symbols = Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
@@ -6974,6 +6975,7 @@ static void parse_constant_table(Context *ctx, const uint32 bytes)
         return;
     memset(ctx->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
 
+    uint32 i = 0;
     for (i = 0; i < constants; i++)
     {
         const uint8 *ptr = start + constantinfo + (i * CINFO_SIZE);
