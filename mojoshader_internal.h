@@ -155,6 +155,8 @@ typedef uint64_t uint64;
 #   define SWAP32(x) (x)
 #endif
 
+#define SWAPDBL(x) (x)  // !!! FIXME
+
 static inline int Min(const int a, const int b)
 {
     return ((a < b) ? a : b);
@@ -244,6 +246,12 @@ ssize_t buffer_find(Buffer *buffer, const size_t start,
 #define CINFO_SIZE 20  // sizeof (D3DXSHADER_CONSTANTINFO).
 #define CTYPEINFO_SIZE 16  // sizeof (D3DXSHADER_TYPEINFO).
 #define CMEMBERINFO_SIZE 8  // sizeof (D3DXSHADER_STRUCTMEMBERINFO)
+
+// Preshader magic values...
+#define PRES_ID 0x53455250  // 0x53455250 == 'PRES'
+#define PRSI_ID 0x49535250  // 0x49535250 == 'PRSI'
+#define CLIT_ID 0x54494C43  // 0x54494C43 == 'CLIT'
+#define FXLC_ID 0x434C5846  // 0x434C5846 == 'FXLC'
 
 // we need to reference these by explicit value occasionally...
 #define OPCODE_RET 28

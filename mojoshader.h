@@ -353,6 +353,66 @@ typedef struct MOJOSHADER_error
     int error_position;
 } MOJOSHADER_error;
 
+
+/* !!! FIXME: document me. */
+typedef enum MOJOSHADER_preshaderOpcode
+{
+    MOJOSHADER_PRESHADEROP_NOP,
+    MOJOSHADER_PRESHADEROP_MOV,
+    MOJOSHADER_PRESHADEROP_CMP,
+    MOJOSHADER_PRESHADEROP_DOT,
+    MOJOSHADER_PRESHADEROP_DOT_SCALAR,
+    MOJOSHADER_PRESHADEROP_NEG,
+    MOJOSHADER_PRESHADEROP_MAX,
+    MOJOSHADER_PRESHADEROP_MAX_SCALAR,
+    MOJOSHADER_PRESHADEROP_CMPLT,
+    MOJOSHADER_PRESHADEROP_CMPLT_SCALAR,
+    MOJOSHADER_PRESHADEROP_CMPGE,
+    MOJOSHADER_PRESHADEROP_CMPGE_SCALAR,
+    MOJOSHADER_PRESHADEROP_RCP,
+    MOJOSHADER_PRESHADEROP_FRC,
+    MOJOSHADER_PRESHADEROP_EXP,
+    MOJOSHADER_PRESHADEROP_ADD,
+    MOJOSHADER_PRESHADEROP_ADD_SCALAR,
+    MOJOSHADER_PRESHADEROP_MUL,
+    MOJOSHADER_PRESHADEROP_MUL_SCALAR,
+    MOJOSHADER_PRESHADEROP_LOG,
+    MOJOSHADER_PRESHADEROP_RSQ,
+    MOJOSHADER_PRESHADEROP_SIN,
+    MOJOSHADER_PRESHADEROP_COS,
+} MOJOSHADER_preshaderOpcode;
+
+typedef enum MOJOSHADER_preshaderOperandType
+{
+    MOJOSHADER_PRESHADEROPERAND_INPUT,
+    MOJOSHADER_PRESHADEROPERAND_OUTPUT,
+    MOJOSHADER_PRESHADEROPERAND_LITERAL,
+    MOJOSHADER_PRESHADEROPERAND_TEMP,
+} MOJOSHADER_preshaderOperandType;
+
+typedef struct MOJOSHADER_preshaderOperand
+{
+    MOJOSHADER_preshaderOperandType type;
+    unsigned int index;
+} MOJOSHADER_preshaderOperand;
+
+typedef struct MOJOSHADER_preshaderInstruction
+{
+    MOJOSHADER_preshaderOpcode opcode;
+    unsigned int element_count;
+    unsigned int operand_count;
+    MOJOSHADER_preshaderOperand operands[3];
+} MOJOSHADER_preshaderInstruction;
+
+typedef struct MOJOSHADER_preshader
+{
+    unsigned int literal_count;
+    double *literals;
+    unsigned int temp_count;  /* scalar, not vector! */
+    unsigned int instruction_count;
+    MOJOSHADER_preshaderInstruction *instructions;
+} MOJOSHADER_preshader;
+
 /*
  * Structure used to return data from parsing of a shader...
  */
@@ -495,6 +555,12 @@ typedef struct MOJOSHADER_parseData
      * This can be NULL on error or if (symbol_count) is zero.
      */
     MOJOSHADER_symbol *symbols;
+
+    /*
+     * !!! FIXME: document me.
+     * This can be NULL on error or if no preshader was available.
+     */
+    MOJOSHADER_preshader *preshader;
 
     /*
      * This is the malloc implementation you passed to MOJOSHADER_parse().

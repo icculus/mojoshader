@@ -107,6 +107,108 @@ static void print_typeinfo(const MOJOSHADER_symbolTypeInfo *info,
 } // print_typeinfo
 
 
+static void print_preshader(const MOJOSHADER_preshader *preshader,
+                            const int indent)
+{
+    MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
+    int i, j, k;
+
+    static const char *opcodestr[] = {
+        "nop", "mov", "cmp", "dot", "dot", "neg", "max", "max",
+        "cmplt", "cmplt", "cmpge", "cmpge", "rcp", "frc", "exp",
+        "add", "add", "mul", "mul", "log", "rsq", "sin", "cos"
+    };
+
+    static char mask[] = { 'x', 'y', 'z', 'w' };
+
+    INDENT(); printf("PRESHADER:\n");
+    for (i = 0; i < preshader->instruction_count; i++, inst++)
+    {
+        const MOJOSHADER_preshaderOperand *operand = inst->operands;
+
+        INDENT();
+        printf("    %s", opcodestr[inst->opcode]);
+        for (j = 0; j < inst->operand_count; j++, operand++)
+        {
+            const int elems = inst->element_count;
+            int isscalar = 0;
+            if (j == 1)  // This is probably wrong.
+            {
+                switch (inst->opcode)
+                {
+                    case MOJOSHADER_PRESHADEROP_DOT_SCALAR:
+                    case MOJOSHADER_PRESHADEROP_MAX_SCALAR:
+                    case MOJOSHADER_PRESHADEROP_CMPLT_SCALAR:
+                    case MOJOSHADER_PRESHADEROP_CMPGE_SCALAR:
+                    case MOJOSHADER_PRESHADEROP_ADD_SCALAR:
+                    case MOJOSHADER_PRESHADEROP_MUL_SCALAR:
+                        isscalar = 1; break;
+                    default:
+                        isscalar = 0; break;
+                } // switch
+            } // if
+
+            if (j != 0)
+                printf(",");
+            printf(" ");
+
+            switch (operand->type)
+            {
+                case MOJOSHADER_PRESHADEROPERAND_LITERAL:
+                {
+                    const double *lit = &preshader->literals[operand->index];
+                    printf("(");
+                    if (isscalar)
+                    {
+                        const double val = *lit;
+                        for (k = 0; k < elems-1; k++)
+                            printf("%g, ", val);
+                        printf("%g)", val);
+                    } // if
+                    else
+                    {
+                        for (k = 0; k < elems-1; k++, lit++)
+                            printf("%g, ", *lit);
+                        printf("%g)", *lit);
+                    } // else
+                    break;
+                } // case
+
+                case MOJOSHADER_PRESHADEROPERAND_INPUT:
+                case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
+                case MOJOSHADER_PRESHADEROPERAND_TEMP:
+                {
+                    int idx = operand->index % 4;
+                    char regch = 'c';
+                    if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
+                        regch = 'r';
+
+                    printf("%c%d", regch, operand->index / 4);
+                    if (isscalar)
+                        printf(".%c", mask[idx]);
+                    else if (elems != 4)
+                    {
+                        printf(".");
+                        for (k = 0; k < elems; k++)
+                            printf("%c", mask[idx++]);
+                    } // else if
+                    break;
+                } // case
+
+                default:
+                    printf("[???{%d, %u}???]",
+                            (int) operand->type, operand->index);
+                    break;
+            } // switch
+        } // for
+
+        printf("\n");
+    } // for
+
+    printf("\n");
+} // print_preshader
+
+
 static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
                          unsigned int indent)
 {
@@ -262,6 +364,9 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
             printf("\n");
         } // else
 
+        if (pd->preshader != NULL)
+            print_preshader(pd->preshader, indent);
+
         if (pd->output != NULL)
         {
             int i;
@@ -279,6 +384,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
             indent--;
         } // if
     } // else
+
     printf("\n\n");
 } // print_shader
 
