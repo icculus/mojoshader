@@ -114,9 +114,10 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
     int i, j, k;
 
     static const char *opcodestr[] = {
-        "nop", "mov", "cmp", "dot", "dot", "neg", "max", "max",
-        "cmplt", "cmplt", "cmpge", "cmpge", "rcp", "frc", "exp",
-        "add", "add", "mul", "mul", "log", "rsq", "sin", "cos"
+        "nop", "mov", "neg", "rcp", "frc", "exp", "log", "rsq", "sin", "cos",
+        "asin", "acos", "atan", "min", "max", "cmplt", "cmpge", "add", "mul",
+        "atan2", "cmp", "dot", "min", "max", "cmplt", "cmpge", "add", "mul",
+        "atan2", "dot"
     };
 
     static char mask[] = { 'x', 'y', 'z', 'w' };
@@ -125,28 +126,15 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
     for (i = 0; i < preshader->instruction_count; i++, inst++)
     {
         const MOJOSHADER_preshaderOperand *operand = inst->operands;
+        const int scalarstart = (int) MOJOSHADER_PRESHADEROP_SCALAR_OPS;
+        const int isscalarop = (inst->opcode >= scalarstart);
 
-        INDENT();
-        printf("    %s", opcodestr[inst->opcode]);
+        INDENT(); printf("    %s", opcodestr[inst->opcode]);
+
         for (j = 0; j < inst->operand_count; j++, operand++)
         {
             const int elems = inst->element_count;
-            int isscalar = 0;
-            if (j == 1)  // This is probably wrong.
-            {
-                switch (inst->opcode)
-                {
-                    case MOJOSHADER_PRESHADEROP_DOT_SCALAR:
-                    case MOJOSHADER_PRESHADEROP_MAX_SCALAR:
-                    case MOJOSHADER_PRESHADEROP_CMPLT_SCALAR:
-                    case MOJOSHADER_PRESHADEROP_CMPGE_SCALAR:
-                    case MOJOSHADER_PRESHADEROP_ADD_SCALAR:
-                    case MOJOSHADER_PRESHADEROP_MUL_SCALAR:
-                        isscalar = 1; break;
-                    default:
-                        isscalar = 0; break;
-                } // switch
-            } // if
+            const int isscalar = ((isscalarop) && (j == 1)); // probably wrong.
 
             if (j != 0)
                 printf(",");

@@ -7269,18 +7269,25 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             case 0x1070: opcode = MOJOSHADER_PRESHADEROP_RSQ; break;
             case 0x1080: opcode = MOJOSHADER_PRESHADEROP_SIN; break;
             case 0x1090: opcode = MOJOSHADER_PRESHADEROP_COS; break;
+            case 0x10A0: opcode = MOJOSHADER_PRESHADEROP_ASIN; break;
+            case 0x10B0: opcode = MOJOSHADER_PRESHADEROP_ACOS; break;
+            case 0x10C0: opcode = MOJOSHADER_PRESHADEROP_ATAN; break;
+            case 0x2000: opcode = MOJOSHADER_PRESHADEROP_MIN; break;
             case 0x2010: opcode = MOJOSHADER_PRESHADEROP_MAX; break;
             case 0x2020: opcode = MOJOSHADER_PRESHADEROP_CMPLT; break;
             case 0x2030: opcode = MOJOSHADER_PRESHADEROP_CMPGE; break;
             case 0x2040: opcode = MOJOSHADER_PRESHADEROP_ADD; break;
             case 0x2050: opcode = MOJOSHADER_PRESHADEROP_MUL; break;
+            case 0x2060: opcode = MOJOSHADER_PRESHADEROP_ATAN2; break;
             case 0x3000: opcode = MOJOSHADER_PRESHADEROP_CMP; break;
             case 0x5000: opcode = MOJOSHADER_PRESHADEROP_DOT; break;
+            case 0xA000: opcode = MOJOSHADER_PRESHADEROP_MIN_SCALAR; break;
             case 0xA010: opcode = MOJOSHADER_PRESHADEROP_MAX_SCALAR; break;
             case 0xA020: opcode = MOJOSHADER_PRESHADEROP_CMPLT_SCALAR; break;
             case 0xA030: opcode = MOJOSHADER_PRESHADEROP_CMPGE_SCALAR; break;
             case 0xA040: opcode = MOJOSHADER_PRESHADEROP_ADD_SCALAR; break;
             case 0xA050: opcode = MOJOSHADER_PRESHADEROP_MUL_SCALAR; break;
+            case 0xA060: opcode = MOJOSHADER_PRESHADEROP_ATAN2_SCALAR; break;
             case 0xD000: opcode = MOJOSHADER_PRESHADEROP_DOT_SCALAR; break;
             default: fail(ctx, "Unknown preshader opcode."); break;
         } // switch
