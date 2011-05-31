@@ -699,6 +699,12 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 /* Effects interface... */  /* !!! FIXME: THIS API IS NOT STABLE YET! */
 
+typedef struct MOJOSHADER_effectParam
+{
+    const char *name;
+    const char *semantic;
+} MOJOSHADER_effectParam;
+
 typedef struct MOJOSHADER_effectState
 {
     unsigned int type;
@@ -753,6 +759,18 @@ typedef struct MOJOSHADER_effect
      * The name of the profile used to parse the shader. Will be NULL on error.
      */
     const char *profile;
+
+    /*
+     * The number of params pointed to by (params).
+     */
+    int param_count;
+
+    /*
+     * (param_count) elements of data that specify parameter bind points for
+     *  this effect.
+     * This can be NULL on error or if (param_count) is zero.
+     */
+    MOJOSHADER_effectParam *params;
 
     /*
      * The number of elements pointed to by (techniques).

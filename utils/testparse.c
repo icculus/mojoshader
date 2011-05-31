@@ -400,6 +400,15 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
         const MOJOSHADER_effectTechnique *technique = effect->techniques;
         const MOJOSHADER_effectTexture *texture = effect->textures;
         const MOJOSHADER_effectShader *shader = effect->shaders;
+        const MOJOSHADER_effectParam *param = effect->params;
+
+        for (i = 0; i < effect->param_count; i++, param++)
+        {
+            INDENT();
+            printf("PARAM #%d '%s' -> '%s'\n", i, param->name, param->semantic);
+        } // for
+
+        printf("\n");
 
         for (i = 0; i < effect->technique_count; i++, technique++)
         {

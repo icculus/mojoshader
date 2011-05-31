@@ -217,11 +217,14 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
     if (len < 8)
         goto parseEffect_unexpectedEOF;
 
+    const uint8 *base = NULL;
     if (readui32(&ptr, &len) != 0xFEFF0901) // !!! FIXME: is this always magic?
         goto parseEffect_notAnEffectsFile;
     else
     {
         const uint32 offset = readui32(&ptr, &len);
+        base = ptr;
+//printf("base offset == %u\n", offset);
         if (offset > len)
             goto parseEffect_unexpectedEOF;
         ptr += offset;
@@ -236,27 +239,61 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
     const uint32 numparams = readui32(&ptr, &len);
     const uint32 numtechniques = readui32(&ptr, &len);
 
-    readui32(&ptr, &len); // !!! FIXME: there are 8 unknown bytes here.
-    readui32(&ptr, &len);
+    readui32(&ptr, &len); // !!! FIXME: there are 8 unknown bytes here. Annotations?
+    /*const uint32 numobjects = */ readui32(&ptr, &len);
 
-    for (i = 0; i < numparams; i++)
+    if (numparams > 0)
     {
-        if (len < 16)
-            goto parseEffect_unexpectedEOF;
+        siz = sizeof (MOJOSHADER_effectParam) * numparams;
+        retval->params = (MOJOSHADER_effectParam *) m(siz, d);
+        if (retval->params == NULL)
+            goto parseEffect_outOfMemory;
+        memset(retval->params, '\0', siz);
 
-        /*const uint32 startoffset = */ readui32(&ptr, &len);
-        /*const uint32 endoffset = */ readui32(&ptr, &len);
-        readui32(&ptr, &len);  // !!! FIXME: don't know what this is.
-        const uint32 numannos = readui32(&ptr, &len);
-        for (j = 0; j < numannos; j++)
+        retval->param_count = numparams;
+
+        for (i = 0; i < numparams; i++)
         {
-            if (len < 8)
+            if (len < 16)
                 goto parseEffect_unexpectedEOF;
-            // !!! FIXME: parse annotations.
-            readui32(&ptr, &len);
-            readui32(&ptr, &len);
+
+            const uint32 typeoffset = readui32(&ptr, &len);
+            const uint32 valoffset = readui32(&ptr, &len);
+            const uint32 flags = readui32(&ptr, &len);
+            const uint32 numannos = readui32(&ptr, &len);
+            for (j = 0; j < numannos; j++)
+            {
+                if (len < 8)
+                    goto parseEffect_unexpectedEOF;
+                // !!! FIXME: parse annotations.
+                readui32(&ptr, &len);
+                readui32(&ptr, &len);
+            } // for
+
+            const uint8 *typeptr = base + typeoffset;
+            unsigned int typelen = 9999999;  // !!! FIXME
+            const uint32 paramtype = readui32(&typeptr, &typelen);
+            const uint32 paramclass = readui32(&typeptr, &typelen);
+            const uint32 paramname = readui32(&typeptr, &typelen);
+            const uint32 paramsemantic = readui32(&typeptr, &typelen);
+
+            // !!! FIXME: sanity checks!
+            const char *namestr = ((const char *) base) + paramname;
+            const char *semstr = ((const char *) base) + paramsemantic;
+            uint32 len;
+            char *strptr;
+            len = *((const uint32 *) namestr);
+            strptr = (char *) m(len + 1, d);
+            memcpy(strptr, namestr + 4, len);
+            strptr[len] = '\0';
+            retval->params[i].name = strptr;
+            len = *((const uint32 *) semstr);
+            strptr = (char *) m(len + 1, d);
+            memcpy(strptr, semstr + 4, len);
+            strptr[len] = '\0';
+            retval->params[i].semantic = strptr;
         } // for
-    } // for
+    } // if
 
     uint32 numshaders = 0;  // we'll calculate this later.
 
@@ -279,23 +316,37 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
             
             MOJOSHADER_effectTechnique *technique = &retval->techniques[i];
 
-            // !!! FIXME: is this always 12?
-            const uint32 nameoffset = readui32(&ptr, &len) + 12;
-            readui32(&ptr, &len);  // !!! FIXME: don't know what this field does.
+            const uint32 nameoffset = readui32(&ptr, &len);
+            const uint32 numannos = readui32(&ptr, &len);
             const uint32 numpasses = readui32(&ptr, &len);
 
             if (nameoffset >= _len)
                 goto parseEffect_unexpectedEOF;
 
+            if (numannos > 0)
+            {
+                // !!! FIXME: expose these to the caller?
+                for (j = 0; j < numannos; j++)
+                {
+                    if (len < 8)
+                        goto parseEffect_unexpectedEOF;
+                    readui32(&ptr, &len);  // typedef offset
+                    readui32(&ptr, &len);  // value offset
+                } // for
+            } // if
+
+            // !!! FIXME: verify this doesn't go past EOF looking for a null.
+            {
+                const char *namestr = ((char *) base) + nameoffset;
+                uint32 len = *((const uint32 *) namestr);
+                char *strptr = (char *) m(len + 1, d);
+                memcpy(strptr, namestr + 4, len);
+                strptr[len] = '\0';
+                technique->name = strptr;
+            }
+
             if (numpasses > 0)
             {
-                // !!! FIXME: verify this doesn't go past EOF looking for a null.
-                siz = strlen(((const char *) buf) + nameoffset) + 1;
-                technique->name = (char *) m(siz, d);
-                if (technique->name == NULL)
-                    goto parseEffect_outOfMemory;
-                strcpy((char *) technique->name, ((const char *) buf) + nameoffset);
-
                 technique->pass_count = numpasses;
 
                 siz = sizeof (MOJOSHADER_effectPass) * numpasses;
@@ -311,20 +362,34 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
 
                     MOJOSHADER_effectPass *pass = &technique->passes[j];
 
-                    // !!! FIXME: is this always 12?
-                    const uint32 passnameoffset = readui32(&ptr, &len) + 12;
-                    readui32(&ptr, &len);  // !!! FIXME: don't know what this field does.
+                    const uint32 passnameoffset = readui32(&ptr, &len);
+                    const uint32 numannos = readui32(&ptr, &len);
                     const uint32 numstates = readui32(&ptr, &len);
 
                     if (passnameoffset >= _len)
                         goto parseEffect_unexpectedEOF;
 
                     // !!! FIXME: verify this doesn't go past EOF looking for a null.
-                    siz = strlen(((const char *) buf) + passnameoffset) + 1;
-                    pass->name = (char *) m(siz, d);
-                    if (pass->name == NULL)
-                        goto parseEffect_outOfMemory;
-                    strcpy((char *) pass->name, ((const char *) buf) + passnameoffset);
+                    {
+                        const char *namestr = ((char *) base) + passnameoffset;
+                        uint32 len = *((const uint32 *) namestr);
+                        char *strptr = (char *) m(len + 1, d);
+                        memcpy(strptr, namestr + 4, len);
+                        strptr[len] = '\0';
+                        pass->name = strptr;
+                    }
+
+                    if (numannos > 0)
+                    {
+                        for (k = 0; k < numannos; k++)
+                        {
+                            if (len < 8)
+                                goto parseEffect_unexpectedEOF;
+                            // !!! FIXME: do something with this.
+                            readui32(&ptr, &len);
+                            readui32(&ptr, &len);
+                        } // for
+                    } // if
 
                     if (numstates > 0)
                     {
@@ -502,6 +567,13 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
     f((void *) effect->errors, d);
 
     f((void *) effect->profile, d);
+
+    for (i = 0; i < effect->param_count; i++)
+    {
+        f((void *) effect->params[i].name, d);
+        f((void *) effect->params[i].semantic, d);
+    } // for
+    f(effect->params, d);
 
     for (i = 0; i < effect->technique_count; i++)
     {
