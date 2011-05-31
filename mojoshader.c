@@ -7274,8 +7274,8 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             case 0x10C0: opcode = MOJOSHADER_PRESHADEROP_ATAN; break;
             case 0x2000: opcode = MOJOSHADER_PRESHADEROP_MIN; break;
             case 0x2010: opcode = MOJOSHADER_PRESHADEROP_MAX; break;
-            case 0x2020: opcode = MOJOSHADER_PRESHADEROP_CMPLT; break;
-            case 0x2030: opcode = MOJOSHADER_PRESHADEROP_CMPGE; break;
+            case 0x2020: opcode = MOJOSHADER_PRESHADEROP_LT; break;
+            case 0x2030: opcode = MOJOSHADER_PRESHADEROP_GE; break;
             case 0x2040: opcode = MOJOSHADER_PRESHADEROP_ADD; break;
             case 0x2050: opcode = MOJOSHADER_PRESHADEROP_MUL; break;
             case 0x2060: opcode = MOJOSHADER_PRESHADEROP_ATAN2; break;
@@ -7286,8 +7286,8 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             case 0x5020: opcode = MOJOSHADER_PRESHADEROP_NOISE; break;
             case 0xA000: opcode = MOJOSHADER_PRESHADEROP_MIN_SCALAR; break;
             case 0xA010: opcode = MOJOSHADER_PRESHADEROP_MAX_SCALAR; break;
-            case 0xA020: opcode = MOJOSHADER_PRESHADEROP_CMPLT_SCALAR; break;
-            case 0xA030: opcode = MOJOSHADER_PRESHADEROP_CMPGE_SCALAR; break;
+            case 0xA020: opcode = MOJOSHADER_PRESHADEROP_LT_SCALAR; break;
+            case 0xA030: opcode = MOJOSHADER_PRESHADEROP_GE_SCALAR; break;
             case 0xA040: opcode = MOJOSHADER_PRESHADEROP_ADD_SCALAR; break;
             case 0xA050: opcode = MOJOSHADER_PRESHADEROP_MUL_SCALAR; break;
             case 0xA060: opcode = MOJOSHADER_PRESHADEROP_ATAN2_SCALAR; break;
