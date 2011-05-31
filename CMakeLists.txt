@@ -72,6 +72,10 @@ ADD_LIBRARY(mojoshader STATIC
     mojoshader_opengl.c
 )
 
+IF(UNIX)
+    SET(LIBM -lm)
+ENDIF(UNIX)
+
 SET_SOURCE_FILES_PROPERTIES(
     mojoshader_compiler.c
     PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
@@ -94,15 +98,15 @@ FIND_PACKAGE(SDL)
 IF(SDL_FOUND)
     INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
     ADD_EXECUTABLE(glcaps utils/glcaps.c)
-    TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY})
+    TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY} ${LIBM})
     ADD_EXECUTABLE(bestprofile utils/bestprofile.c)
-    TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL_LIBRARY})
+    TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL_LIBRARY} ${LIBM})
     ADD_EXECUTABLE(availableprofiles utils/availableprofiles.c)
-    TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL_LIBRARY})
+    TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL_LIBRARY} ${LIBM})
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(finderrors utils/finderrors.c)
-TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY})
+TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY} ${LIBM})
 IF(SDL_FOUND)
     SET_SOURCE_FILES_PROPERTIES(
         utils/finderrors.c
@@ -111,11 +115,11 @@ IF(SDL_FOUND)
 ENDIF(SDL_FOUND)
 
 ADD_EXECUTABLE(testparse utils/testparse.c)
-TARGET_LINK_LIBRARIES(testparse mojoshader)
+TARGET_LINK_LIBRARIES(testparse mojoshader ${LIBM})
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
-TARGET_LINK_LIBRARIES(testoutput mojoshader)
+TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM})
 ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
-TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader)
+TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM})
 
 # Unit tests...
 ADD_CUSTOM_TARGET(

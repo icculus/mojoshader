@@ -10,6 +10,160 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
+#include <math.h>
+
+void run_preshader(const MOJOSHADER_preshader *preshader, float *regs)
+{
+    // this is fairly straightforward, as there aren't any branching
+    //  opcodes in the preshader instruction set (at the moment, at least).
+    const int scalarstart = (int) MOJOSHADER_PRESHADEROP_SCALAR_OPS;
+
+    double *temps = (double *) alloca(sizeof (double) * preshader->temp_count);
+    memset(temps, '\0', sizeof (double) * preshader->temp_count);
+
+    double dst[4];
+    double src[3][4];
+    const double *src0 = src[0];
+    const double *src1 = src[1];
+    const double *src2 = src[2];
+
+    MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
+    int instit;
+
+    for (instit = 0; instit < preshader->instruction_count; instit++, inst++)
+    {
+        const MOJOSHADER_preshaderOperand *operand = inst->operands;
+        const int isscalar = (inst->opcode >= scalarstart);
+        const int elems = inst->element_count;
+        const int elemsbytes = sizeof (double) * elems;
+
+        // load up our operands...
+        int opiter, elemiter;
+        for (opiter = 1; opiter < inst->operand_count; opiter++, operand++)
+        {
+            const unsigned int index = operand->index;
+            switch (operand->type)
+            {
+                case MOJOSHADER_PRESHADEROPERAND_LITERAL:
+                {
+                    const double *lit = &preshader->literals[index];
+                    if (!isscalar)
+                        memcpy(src[opiter], lit, elemsbytes);
+                    else
+                    {
+                        const double val = *lit;
+                        for (elemiter = 0; elemiter < elems; elemiter++)
+                            src[opiter][elemiter] = val;
+                    } // else
+                    break;
+                } // case
+
+                case MOJOSHADER_PRESHADEROPERAND_INPUT:
+                case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
+                    if (isscalar)
+                        src[opiter][0] = regs[index];
+                    else
+                    {
+                        int cpy;
+                        for (cpy = 0; cpy < elems; cpy++)
+                            src[opiter][cpy] = regs[index+cpy];
+                    } // else
+                    break;
+
+                case MOJOSHADER_PRESHADEROPERAND_TEMP:
+                    if (isscalar)
+                        src[opiter][0] = temps[index];
+                    else
+                        memcpy(src[opiter], temps + index, elemsbytes);
+                    break;
+
+                default:
+                    assert(0 && "unexpected preshader operand type.");
+                    break;
+            } // switch
+        } // for
+
+        // run the actual instruction, store result to dst.
+        int i;
+        switch (inst->opcode)
+        {
+            #define OPCODE_CASE(op, val) \
+                case MOJOSHADER_PRESHADEROP_##op: \
+                    for (i = 0; i < elems; i++) { dst[i] = val; } \
+                    break;
+
+            //OPCODE_CASE(NOP, 0.0)  // not a real instruction.
+            OPCODE_CASE(MOV, src0[i])
+            OPCODE_CASE(NEG, -src0[i])
+            OPCODE_CASE(RCP, 1.0 / src0[i])
+            OPCODE_CASE(FRC, src0[i] - floor(src0[i]))
+            OPCODE_CASE(EXP, exp(src0[i]))
+            OPCODE_CASE(LOG, log(src0[i]))
+            OPCODE_CASE(RSQ, 1.0 / sqrt(src0[i]))
+            OPCODE_CASE(SIN, sin(src0[i]))
+            OPCODE_CASE(COS, cos(src0[i]))
+            OPCODE_CASE(ASIN, asin(src0[i]))
+            OPCODE_CASE(ACOS, acos(src0[i]))
+            OPCODE_CASE(ATAN, atan(src0[i]))
+            OPCODE_CASE(MIN, (src0[i] < src1[i]) ? src0[i] : src1[i])
+            OPCODE_CASE(MAX, (src0[i] > src1[i]) ? src0[i] : src1[i])
+            OPCODE_CASE(LT, (src0[i] < src1[i]) ? 1.0 : 0.0)
+            OPCODE_CASE(GE, (src0[i] >= src1[i]) ? 1.0 : 0.0)
+            OPCODE_CASE(ADD, src0[i] + src1[i])
+            OPCODE_CASE(MUL,  src0[i] * src1[i])
+            OPCODE_CASE(ATAN2, atan2(src0[i], src1[i]))
+            OPCODE_CASE(DIV, src0[i] / src1[i])
+            OPCODE_CASE(CMP, (src0[i] >= 0.0) ? src1[i] : src2[i])
+            //OPCODE_CASE(NOISE, ???)  // !!! FIXME: don't know what this does
+            //OPCODE_CASE(MOVC, ???)  // !!! FIXME: don't know what this does
+            #undef OPCODE_CASE
+
+            case MOJOSHADER_PRESHADEROP_DOT:
+            {
+                double final = 0.0;
+                for (i = 0; i < elems; i++)
+                    final += src0[i] * src1[i];
+                for (i = 0; i < elems; i++)
+                    dst[i] = final;  // !!! FIXME: is this right?
+            } // case
+
+            #define OPCODE_CASE_SCALAR(op, val) \
+                case MOJOSHADER_PRESHADEROP_##op##_SCALAR: { \
+                    const double final = val; \
+                    for (i = 0; i < elems; i++) { dst[i] = final; } \
+                    break; \
+                }
+
+            OPCODE_CASE_SCALAR(MIN, (src0[0] < src1[0]) ? src0[0] : src1[0])
+            OPCODE_CASE_SCALAR(MAX, (src0[0] > src1[0]) ? src0[0] : src1[0])
+            OPCODE_CASE_SCALAR(LT, (src0[0] < src1[0]) ? 1.0 : 0.0)
+            OPCODE_CASE_SCALAR(GE, (src0[0] >= src1[0]) ? 1.0 : 0.0)
+            OPCODE_CASE_SCALAR(ADD, src0[0] + src1[0])
+            OPCODE_CASE_SCALAR(MUL, src0[0] * src1[0])
+            OPCODE_CASE_SCALAR(ATAN2, atan2(src0[0], src1[0]))
+            OPCODE_CASE_SCALAR(DIV, src0[0] / src1[0])
+            //OPCODE_CASE_SCALAR(DOT)  // !!! FIXME: isn't this just a MUL?
+            //OPCODE_CASE_SCALAR(NOISE, ???)  // !!! FIXME: ?
+            #undef OPCODE_CASE_SCALAR
+
+            default:
+                assert(0 && "Unhandled preshader opcode!");
+                break;
+        } // switch
+
+        // Figure out where dst wants to be stored.
+        operand = inst->operands;
+        if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
+            memcpy(temps + operand->index, dst, elemsbytes);
+        else
+        {
+            assert(operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT);
+            for (i = 0; i < elems; i++)
+                regs[operand->index + i] = (float) dst[i];
+        } // else
+    } // for
+} // run_preshader
+
 
 static MOJOSHADER_effect MOJOSHADER_out_of_mem_effect = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
