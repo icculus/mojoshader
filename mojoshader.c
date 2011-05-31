@@ -7281,7 +7281,9 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             case 0x2060: opcode = MOJOSHADER_PRESHADEROP_ATAN2; break;
             case 0x2080: opcode = MOJOSHADER_PRESHADEROP_DIV; break;
             case 0x3000: opcode = MOJOSHADER_PRESHADEROP_CMP; break;
+            case 0x3010: opcode = MOJOSHADER_PRESHADEROP_MOVC; break;
             case 0x5000: opcode = MOJOSHADER_PRESHADEROP_DOT; break;
+            case 0x5020: opcode = MOJOSHADER_PRESHADEROP_NOISE; break;
             case 0xA000: opcode = MOJOSHADER_PRESHADEROP_MIN_SCALAR; break;
             case 0xA010: opcode = MOJOSHADER_PRESHADEROP_MAX_SCALAR; break;
             case 0xA020: opcode = MOJOSHADER_PRESHADEROP_CMPLT_SCALAR; break;
@@ -7291,6 +7293,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             case 0xA060: opcode = MOJOSHADER_PRESHADEROP_ATAN2_SCALAR; break;
             case 0xA080: opcode = MOJOSHADER_PRESHADEROP_DIV_SCALAR; break;
             case 0xD000: opcode = MOJOSHADER_PRESHADEROP_DOT_SCALAR; break;
+            case 0xD020: opcode = MOJOSHADER_PRESHADEROP_NOISE_SCALAR; break;
             default: fail(ctx, "Unknown preshader opcode."); break;
         } // switch
 

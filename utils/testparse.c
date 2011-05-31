@@ -115,9 +115,9 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
 
     static const char *opcodestr[] = {
         "nop", "mov", "neg", "rcp", "frc", "exp", "log", "rsq", "sin", "cos",
-        "asin", "acos", "atan", "min", "max", "cmplt", "cmpge", "add", "mul",
-        "atan2", "div", "cmp", "dot", "min", "max", "cmplt", "cmpge", "add",
-        "mul", "atan2", "div", "dot"
+        "asin", "acos", "atan", "min", "max", "lt", "ge", "add", "mul",
+        "atan2", "div", "cmp", "movc", "dot", "noise", "min", "max", "lt",
+        "ge", "add", "mul", "atan2", "div", "dot", "noise"
     };
 
     static char mask[] = { 'x', 'y', 'z', 'w' };
