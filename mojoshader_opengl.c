@@ -1826,9 +1826,32 @@ void MOJOSHADER_glProgramReady(void)
         GLfloat *dstf = program->vs_uniforms_float4;
         GLint *dsti = program->vs_uniforms_int4;
         GLint *dstb = program->vs_uniforms_bool;
+        const MOJOSHADER_preshader *preshader = NULL;
+        int ran_preshader = 0;
         uint32 i;
 
-        program->generation = ctx->generation;
+        if (program->vertex)
+        {
+            preshader = program->vertex->parseData->preshader;
+            if (preshader)
+            {
+                MOJOSHADER_runPreshader(preshader, ctx->vs_reg_file_f);
+                ran_preshader = 1;
+            } // if
+        } // if
+
+        if (program->fragment)
+        {
+            preshader = program->fragment->parseData->preshader;
+            if (preshader)
+            {
+                MOJOSHADER_runPreshader(preshader, ctx->ps_reg_file_f);
+                ran_preshader = 1;
+            } // if
+        } // if
+
+        if (ran_preshader)
+            ctx->generation++;
 
         for (i = 0; i < count; i++)
         {
@@ -1891,6 +1914,8 @@ void MOJOSHADER_glProgramReady(void)
 
             // !!! FIXME: set constants that overlap the array.
         } // for
+
+        program->generation = ctx->generation;
 
         ctx->profilePushUniforms();
     } // if
