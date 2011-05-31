@@ -60,7 +60,6 @@
 #define SUPPORT_PROFILE_ARB1_NV 1
 #endif
 
-
 #if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
 #error nv profiles require arb1 profile. Fix your build.
 #endif
@@ -69,6 +68,20 @@
 #error glsl120 profile requires glsl profile. Fix your build.
 #endif
 
+
+// Other stuff you can disable...
+
+// This removes the preshader parsing and execution code. You can save some
+//  bytes if you have normal shaders and not Effect files.
+#ifndef SUPPORT_PRESHADERS
+#define SUPPORT_PRESHADERS 1
+#endif
+
+#if SUPPORT_PRESHADERS
+void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *, float *);
+#else
+#define MOJOSHADER_runPreshader(a, b)
+#endif
 
 
 // Get basic wankery out of the way here...

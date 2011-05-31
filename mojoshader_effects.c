@@ -12,7 +12,9 @@
 
 #include <math.h>
 
-void run_preshader(const MOJOSHADER_preshader *preshader, float *regs)
+#if SUPPORT_PRESHADERS
+void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
+                                 float *regs)
 {
     // this is fairly straightforward, as there aren't any branching
     //  opcodes in the preshader instruction set (at the moment, at least).
@@ -162,8 +164,8 @@ void run_preshader(const MOJOSHADER_preshader *preshader, float *regs)
                 regs[operand->index + i] = (float) dst[i];
         } // else
     } // for
-} // run_preshader
-
+} // MOJOSHADER_runPreshader
+#endif
 
 static MOJOSHADER_effect MOJOSHADER_out_of_mem_effect = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
