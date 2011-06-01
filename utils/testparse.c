@@ -135,11 +135,72 @@ static void print_symbols(const MOJOSHADER_symbol *sym,
 } // print_symbols
 
 
+static void print_preshader_operand(const MOJOSHADER_preshader *preshader,
+                                    const int instidx, const int opidx)
+{
+    static char mask[] = { 'x', 'y', 'z', 'w' };
+    const MOJOSHADER_preshaderInstruction *inst = &preshader->instructions[instidx];
+    const MOJOSHADER_preshaderOperand *operand = &inst->operands[opidx];
+    const int elems = inst->element_count;
+    const int isscalarop = (inst->opcode >= MOJOSHADER_PRESHADEROP_SCALAR_OPS);
+    const int isscalar = ((isscalarop) && (opidx == 1)); // probably wrong.
+    int i;
+
+    switch (operand->type)
+    {
+        case MOJOSHADER_PRESHADEROPERAND_LITERAL:
+        {
+            const double *lit = &preshader->literals[operand->index];
+            printf("(");
+            if (isscalar)
+            {
+                const double val = *lit;
+                for (i = 0; i < elems-1; i++)
+                    printf("%g, ", val);
+                printf("%g)", val);
+            } // if
+            else
+            {
+                for (i = 0; i < elems-1; i++, lit++)
+                    printf("%g, ", *lit);
+                printf("%g)", *lit);
+            } // else
+            break;
+        } // case
+
+        case MOJOSHADER_PRESHADEROPERAND_INPUT:
+        case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
+        case MOJOSHADER_PRESHADEROPERAND_TEMP:
+        {
+            int idx = operand->index % 4;
+            char regch = 'c';
+            if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
+                regch = 'r';
+
+            printf("%c%d", regch, operand->index / 4);
+            if (isscalar)
+                printf(".%c", mask[idx]);
+            else if (elems != 4)
+            {
+                printf(".");
+                for (i = 0; i < elems; i++)
+                    printf("%c", mask[idx++]);
+            } // else if
+            break;
+        } // case
+
+        default:
+            printf("[???{%d, %u}???]", (int) operand->type, operand->index);
+            break;
+    } // switch
+} // print_preshader_operand
+
+
 static void print_preshader(const MOJOSHADER_preshader *preshader,
                             const int indent)
 {
     MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
-    int i, j, k;
+    int i, j;
 
     static const char *opcodestr[] = {
         "nop", "mov", "neg", "rcp", "frc", "exp", "log", "rsq", "sin", "cos",
@@ -148,77 +209,22 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
         "ge", "add", "mul", "atan2", "div", "dot", "noise"
     };
 
-    static char mask[] = { 'x', 'y', 'z', 'w' };
-
     INDENT(); printf("PRESHADER:\n");
 
     print_symbols(preshader->symbols, preshader->symbol_count, indent + 1);
 
     for (i = 0; i < preshader->instruction_count; i++, inst++)
     {
-        const MOJOSHADER_preshaderOperand *operand = inst->operands;
-        const int scalarstart = (int) MOJOSHADER_PRESHADEROP_SCALAR_OPS;
-        const int isscalarop = (inst->opcode >= scalarstart);
+        INDENT(); printf("    %s ", opcodestr[inst->opcode]);
 
-        INDENT(); printf("    %s", opcodestr[inst->opcode]);
+        // print dest register first...
+        print_preshader_operand(preshader, i, inst->operand_count - 1);
 
-        for (j = 0; j < inst->operand_count; j++, operand++)
+        // ...then the source registers.
+        for (j = 0; j < inst->operand_count - 1; j++)
         {
-            const int elems = inst->element_count;
-            const int isscalar = ((isscalarop) && (j == 1)); // probably wrong.
-
-            if (j != 0)
-                printf(",");
-            printf(" ");
-
-            switch (operand->type)
-            {
-                case MOJOSHADER_PRESHADEROPERAND_LITERAL:
-                {
-                    const double *lit = &preshader->literals[operand->index];
-                    printf("(");
-                    if (isscalar)
-                    {
-                        const double val = *lit;
-                        for (k = 0; k < elems-1; k++)
-                            printf("%g, ", val);
-                        printf("%g)", val);
-                    } // if
-                    else
-                    {
-                        for (k = 0; k < elems-1; k++, lit++)
-                            printf("%g, ", *lit);
-                        printf("%g)", *lit);
-                    } // else
-                    break;
-                } // case
-
-                case MOJOSHADER_PRESHADEROPERAND_INPUT:
-                case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
-                case MOJOSHADER_PRESHADEROPERAND_TEMP:
-                {
-                    int idx = operand->index % 4;
-                    char regch = 'c';
-                    if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
-                        regch = 'r';
-
-                    printf("%c%d", regch, operand->index / 4);
-                    if (isscalar)
-                        printf(".%c", mask[idx]);
-                    else if (elems != 4)
-                    {
-                        printf(".");
-                        for (k = 0; k < elems; k++)
-                            printf("%c", mask[idx++]);
-                    } // else if
-                    break;
-                } // case
-
-                default:
-                    printf("[???{%d, %u}???]",
-                            (int) operand->type, operand->index);
-                    break;
-            } // switch
+            printf(", ");
+            print_preshader_operand(preshader, i, j);
         } // for
 
         printf("\n");

@@ -34,14 +34,14 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
 
     for (instit = 0; instit < preshader->instruction_count; instit++, inst++)
     {
-        const MOJOSHADER_preshaderOperand *operand = &inst->operands[1];
+        const MOJOSHADER_preshaderOperand *operand = inst->operands;
         const int isscalar = (inst->opcode >= scalarstart);
         const int elems = inst->element_count;
         const int elemsbytes = sizeof (double) * elems;
 
         // load up our operands...
         int opiter, elemiter;
-        for (opiter = 1; opiter < inst->operand_count; opiter++, operand++)
+        for (opiter = 0; opiter < inst->operand_count-1; opiter++, operand++)
         {
             const unsigned int index = operand->index;
             switch (operand->type)
@@ -164,7 +164,6 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
         } // switch
 
         // Figure out where dst wants to be stored.
-        operand = inst->operands;
         if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
             memcpy(temps + operand->index, dst, elemsbytes);
         else

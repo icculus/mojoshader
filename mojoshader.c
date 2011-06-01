@@ -7320,13 +7320,10 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             return;
         } // if
 
-        MOJOSHADER_preshaderOperand *operand = &inst->operands[1];
+        MOJOSHADER_preshaderOperand *operand = inst->operands;
         while (operand_count--)
         {
             const unsigned int item = (unsigned int) SWAP32(fxlc.tokens[2]);
-
-            if (operand_count == 0)  // List destination first.
-                operand = &inst->operands[0];
 
             // !!! FIXME: don't know what first token does.
             switch (SWAP32(fxlc.tokens[1]))
