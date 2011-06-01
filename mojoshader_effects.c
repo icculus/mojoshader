@@ -20,8 +20,12 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
     //  opcodes in the preshader instruction set (at the moment, at least).
     const int scalarstart = (int) MOJOSHADER_PRESHADEROP_SCALAR_OPS;
 
-    double *temps = (double *) alloca(sizeof (double) * preshader->temp_count);
-    memset(temps, '\0', sizeof (double) * preshader->temp_count);
+    double *temps = NULL;
+    if (preshader->temp_count > 0)
+    {
+        temps = (double *) alloca(sizeof (double) * preshader->temp_count);
+        memset(temps, '\0', sizeof (double) * preshader->temp_count);
+    } // if
 
     double dst[4];
     double src[3][4];
