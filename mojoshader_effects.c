@@ -14,7 +14,7 @@
 
 #if SUPPORT_PRESHADERS
 void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
-                                 float *regs)
+                             const float *inregs, float *outregs)
 {
     // this is fairly straightforward, as there aren't any branching
     //  opcodes in the preshader instruction set (at the moment, at least).
@@ -61,14 +61,24 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                 } // case
 
                 case MOJOSHADER_PRESHADEROPERAND_INPUT:
-                case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
                     if (isscalar)
-                        src[opiter][0] = regs[index];
+                        src[opiter][0] = inregs[index];
                     else
                     {
                         int cpy;
                         for (cpy = 0; cpy < elems; cpy++)
-                            src[opiter][cpy] = regs[index+cpy];
+                            src[opiter][cpy] = inregs[index+cpy];
+                    } // else
+                    break;
+
+                case MOJOSHADER_PRESHADEROPERAND_OUTPUT:
+                    if (isscalar)
+                        src[opiter][0] = outregs[index];
+                    else
+                    {
+                        int cpy;
+                        for (cpy = 0; cpy < elems; cpy++)
+                            src[opiter][cpy] = outregs[index+cpy];
                     } // else
                     break;
 
@@ -161,7 +171,7 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
         {
             assert(operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT);
             for (i = 0; i < elems; i++)
-                regs[operand->index + i] = (float) dst[i];
+                outregs[operand->index + i] = (float) dst[i];
         } // else
     } // for
 } // MOJOSHADER_runPreshader

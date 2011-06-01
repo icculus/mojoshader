@@ -7,6 +7,9 @@
  *  This file written by Ryan C. Gordon.
  */
 
+// !!! FIXME: preshaders shouldn't be handled in here at all. This should
+// !!! FIXME:  be in the Effects API, once that's actually written.
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -85,6 +88,12 @@ struct MOJOSHADER_glProgram
     GLint *ps_uniforms_int4;
     size_t ps_uniforms_bool_count;
     GLint *ps_uniforms_bool;
+
+    size_t vs_preshader_reg_count;
+    GLfloat *vs_preshader_regs;
+    size_t ps_preshader_reg_count;
+    GLfloat *ps_preshader_regs;
+
     uint32 refcount;
     // GLSL uses these...location of uniform arrays.
     GLint vs_float4_loc;
@@ -1279,6 +1288,8 @@ static void program_unref(MOJOSHADER_glProgram *program)
             ctx->profileDeleteProgram(program->handle);
             shader_unref(program->vertex);
             shader_unref(program->fragment);
+            Free(program->vs_preshader_regs);
+            Free(program->ps_preshader_regs);
             Free(program->vs_uniforms_float4);
             Free(program->vs_uniforms_int4);
             Free(program->vs_uniforms_bool);
@@ -1394,6 +1405,38 @@ static int lookup_uniforms(MOJOSHADER_glProgram *program,
     MAKE_ARRAY(bool, GLint, 1, bool_count);
 
     #undef MAKE_ARRAY
+
+    if (pd->preshader)
+    {
+        unsigned int largest = 0;
+        const MOJOSHADER_symbol *sym = pd->preshader->symbols;
+        for (i = 0; i < pd->preshader->symbol_count; i++, sym++)
+        {
+            const unsigned int val = sym->register_index + sym->register_count;
+            if (val > largest)
+                largest = val;
+        } // for
+
+        if (largest > 0)
+        {
+            const size_t len = largest * sizeof (GLfloat);
+            GLfloat *buf = (GLfloat *) Malloc(len);
+            if (buf == NULL)
+                return 0;
+            memset(buf, '\0', len);
+
+            if (shader_type == MOJOSHADER_TYPE_VERTEX)
+            {
+                program->vs_preshader_reg_count = largest;
+                program->vs_preshader_regs = buf;
+            } // if
+            else if (shader_type == MOJOSHADER_TYPE_PIXEL)
+            {
+                program->ps_preshader_reg_count = largest;
+                program->ps_preshader_regs = buf;
+            } // else if
+        } // if
+    } // if
 
     return 1;
 } // lookup_uniforms
@@ -1884,6 +1927,78 @@ void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
 } // MOJOSHADER_glSetVertexAttribute
 
 
+void MOJOSHADER_glSetVertexPreshaderUniformF(unsigned int idx,
+                                             const float *data,
+                                             unsigned int vec4n)
+{
+    MOJOSHADER_glProgram *program = ctx->bound_program;
+    if (program == NULL)
+        return;  // nothing to do.
+
+    const uint maxregs = program->vs_preshader_reg_count;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(program->vs_preshader_regs + (idx * 4), data, cpy);
+        program->generation = ctx->generation-1;
+    } // if
+} // MOJOSHADER_glSetVertexPreshaderUniformF
+
+
+void MOJOSHADER_glGetVertexPreshaderUniformF(unsigned int idx, float *data,
+                                             unsigned int vec4n)
+{
+    MOJOSHADER_glProgram *program = ctx->bound_program;
+    if (program == NULL)
+        return;  // nothing to do.
+
+    const uint maxregs = program->vs_preshader_reg_count;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(data, program->vs_preshader_regs + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetVertexPreshaderUniformF
+
+
+void MOJOSHADER_glSetPixelPreshaderUniformF(unsigned int idx,
+                                             const float *data,
+                                             unsigned int vec4n)
+{
+    MOJOSHADER_glProgram *program = ctx->bound_program;
+    if (program == NULL)
+        return;  // nothing to do.
+
+    const uint maxregs = program->ps_preshader_reg_count;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(program->ps_preshader_regs + (idx * 4), data, cpy);
+        program->generation = ctx->generation-1;
+    } // if
+} // MOJOSHADER_glSetPixelPreshaderUniformF
+
+
+void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
+                                             unsigned int vec4n)
+{
+    MOJOSHADER_glProgram *program = ctx->bound_program;
+    if (program == NULL)
+        return;  // nothing to do.
+
+    const uint maxregs = program->ps_preshader_reg_count;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(data, program->ps_preshader_regs + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetPixelPreshaderUniformF
+
+
 void MOJOSHADER_glProgramReady(void)
 {
     MOJOSHADER_glProgram *program = ctx->bound_program;
@@ -1915,7 +2030,8 @@ void MOJOSHADER_glProgramReady(void)
             preshader = program->vertex->parseData->preshader;
             if (preshader)
             {
-                MOJOSHADER_runPreshader(preshader, ctx->vs_reg_file_f);
+                MOJOSHADER_runPreshader(preshader, program->vs_preshader_regs,
+                                        ctx->vs_reg_file_f);
                 ran_preshader = 1;
             } // if
         } // if
@@ -1925,7 +2041,8 @@ void MOJOSHADER_glProgramReady(void)
             preshader = program->fragment->parseData->preshader;
             if (preshader)
             {
-                MOJOSHADER_runPreshader(preshader, ctx->ps_reg_file_f);
+                MOJOSHADER_runPreshader(preshader, program->ps_preshader_regs,
+                                        ctx->ps_reg_file_f);
                 ran_preshader = 1;
             } // if
         } // if
