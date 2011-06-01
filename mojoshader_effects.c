@@ -260,8 +260,8 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
                 goto parseEffect_unexpectedEOF;
 
             const uint32 typeoffset = readui32(&ptr, &len);
-            const uint32 valoffset = readui32(&ptr, &len);
-            const uint32 flags = readui32(&ptr, &len);
+            /*const uint32 valoffset =*/ readui32(&ptr, &len);
+            /*const uint32 flags =*/ readui32(&ptr, &len);
             const uint32 numannos = readui32(&ptr, &len);
             for (j = 0; j < numannos; j++)
             {
@@ -274,8 +274,8 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
 
             const uint8 *typeptr = base + typeoffset;
             unsigned int typelen = 9999999;  // !!! FIXME
-            const uint32 paramtype = readui32(&typeptr, &typelen);
-            const uint32 paramclass = readui32(&typeptr, &typelen);
+            /*const uint32 paramtype =*/ readui32(&typeptr, &typelen);
+            /*const uint32 paramclass =*/ readui32(&typeptr, &typelen);
             const uint32 paramname = readui32(&typeptr, &typelen);
             const uint32 paramsemantic = readui32(&typeptr, &typelen);
 
