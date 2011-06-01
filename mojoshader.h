@@ -2714,6 +2714,37 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
                                           unsigned int vec4count);
 
 /*
+ * Retrieve a floating-point uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of 4-float "registers" shared by all vertex shaders.
+ *  This is the "c" register file in Direct3D (c0, c1, c2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * (idx) is the index into the internal array: 0 is the first four floats,
+ *  1 is the next four, etc.
+ * (data) is a pointer to space for (vec4count*4) floats.
+ *  (data) will be filled will current values in the register file. Results
+ *  are undefined if you request data past the end of the register file or
+ *  previously uninitialized registers.
+ *
+ * This is a "fast" call; we're just reading memory from internal memory. We
+ *  do not query the GPU or the GL for this information.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetVertexShaderUniformF(unsigned int idx, float *data,
+                                          unsigned int vec4count);
+
+
+/*
  * Set an integer uniform value (what Direct3D calls a "constant").
  *
  * There is a single array of 4-int "registers" shared by all vertex shaders.
@@ -2735,6 +2766,36 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
+                                          unsigned int ivec4count);
+
+/*
+ * Retrieve an integer uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of 4-int "registers" shared by all vertex shaders.
+ *  This is the "i" register file in Direct3D (i0, i1, i2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * (idx) is the index into the internal array: 0 is the first four ints,
+ *  1 is the next four, etc.
+ * (data) is a pointer to space for (ivec4count*4) ints.
+ *  (data) will be filled will current values in the register file. Results
+ *  are undefined if you request data past the end of the register file or
+ *  previously uninitialized registers.
+ *
+ * This is a "fast" call; we're just reading memory from internal memory. We
+ *  do not query the GPU or the GL for this information.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetVertexShaderUniformI(unsigned int idx, int *data,
                                           unsigned int ivec4count);
 
 /*
@@ -2767,6 +2828,43 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
                                           unsigned int bcount);
 
 /*
+ * Retrieve a boolean uniform value (what Direct3D calls a "constant").
+ *
+ * There is a single array of "registers" shared by all vertex shaders.
+ *  This is the "b" register file in Direct3D (b0, b1, b2, etc...)
+ *  MojoShader will take care of synchronizing this internal array with the
+ *  appropriate variables in the GL shaders.
+ *
+ * Unlike the float and int counterparts, booleans are single values, not
+ *  four-element vectors...so idx==1 is the second boolean in the internal
+ *  array, not the fifth.
+ *
+ * Non-zero values are considered "true" and zero is considered "false".
+ *  This function will always return true values as 1, regardless of what
+ *  non-zero integer you originally used to set the registers.
+ *
+ * (idx) is the index into the internal array.
+ * (data) is a pointer to space for (bcount) ints.
+ *  (data) will be filled will current values in the register file. Results
+ *  are undefined if you request data past the end of the register file or
+ *  previously uninitialized registers.
+ *
+ * This is a "fast" call; we're just reading memory from internal memory. We
+ *  do not query the GPU or the GL for this information.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetVertexShaderUniformB(unsigned int idx, int *data,
+                                          unsigned int bcount);
+
+/*
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformF() for pixel
  *  shaders. Other than using a different internal array that is specific
  *  to pixel shaders, this functions just like its vertex array equivalent.
@@ -2782,6 +2880,25 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  */
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
                                          unsigned int vec4count);
+
+
+/*
+ * The equivalent of MOJOSHADER_glGetVertexShaderUniformF() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetPixelShaderUniformF(unsigned int idx, float *data,
+                                         unsigned int vec4count);
+
 
 /*
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformI() for pixel
@@ -2800,6 +2917,24 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
                                          unsigned int ivec4count);
 
+
+/*
+ * The equivalent of MOJOSHADER_glGetVertexShaderUniformI() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetPixelShaderUniformI(unsigned int idx, int *data,
+                                         unsigned int ivec4count);
+
 /*
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformB() for pixel
  *  shaders. Other than using a different internal array that is specific
@@ -2815,6 +2950,23 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
  * Uniforms are not shared between contexts.
  */
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
+                                         unsigned int bcount);
+
+/*
+ * The equivalent of MOJOSHADER_glGetVertexShaderUniformB() for pixel
+ *  shaders. Other than using a different internal array that is specific
+ *  to pixel shaders, this functions just like its vertex array equivalent.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Uniforms are not shared between contexts.
+ */
+void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
                                          unsigned int bcount);
 
 /*

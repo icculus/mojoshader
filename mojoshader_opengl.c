@@ -1659,6 +1659,19 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
 } // MOJOSHADER_glSetVertexShaderUniformF
 
 
+void MOJOSHADER_glGetVertexShaderUniformF(unsigned int idx, float *data,
+                                          unsigned int vec4n)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_f) / 4;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(data, ctx->vs_reg_file_f + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetVertexShaderUniformF
+
+
 void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
                                           unsigned int ivec4n)
 {
@@ -1671,6 +1684,19 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
         ctx->generation++;
     } // if
 } // MOJOSHADER_glSetVertexShaderUniformI
+
+
+void MOJOSHADER_glGetVertexShaderUniformI(unsigned int idx, int *data,
+                                          unsigned int ivec4n)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_i) / 4;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLint) == sizeof (int));
+        const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        memcpy(data, ctx->vs_reg_file_i + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetVertexShaderUniformI
 
 
 void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
@@ -1688,6 +1714,20 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
 } // MOJOSHADER_glSetVertexShaderUniformB
 
 
+void MOJOSHADER_glGetVertexShaderUniformB(unsigned int idx, int *data,
+                                          unsigned int bcount)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->vs_reg_file_f) / 4;
+    if (idx < maxregs)
+    {
+        uint8 *rptr = ctx->vs_reg_file_b + idx;
+        uint8 *endptr = rptr + minuint(maxregs - idx, bcount);
+        while (rptr != endptr)
+            *(data++) = (int) *(rptr++);
+    } // if
+} // MOJOSHADER_glGetVertexShaderUniformB
+
+
 void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
                                          unsigned int vec4n)
 {
@@ -1700,6 +1740,19 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
         ctx->generation++;
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformF
+
+
+void MOJOSHADER_glGetPixelShaderUniformF(unsigned int idx, float *data,
+                                         unsigned int vec4n)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_f) / 4;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLfloat) == sizeof (float));
+        const uint cpy = (minuint(maxregs - idx, vec4n) * sizeof (*data)) * 4;
+        memcpy(data, ctx->ps_reg_file_f + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetPixelShaderUniformF
 
 
 void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
@@ -1716,6 +1769,19 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
 } // MOJOSHADER_glSetPixelShaderUniformI
 
 
+void MOJOSHADER_glGetPixelShaderUniformI(unsigned int idx, int *data,
+                                         unsigned int ivec4n)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_i) / 4;
+    if (idx < maxregs)
+    {
+        assert(sizeof (GLint) == sizeof (int));
+        const uint cpy = (minuint(maxregs - idx, ivec4n) * sizeof (*data)) * 4;
+        memcpy(data, ctx->ps_reg_file_i + (idx * 4), cpy);
+    } // if
+} // MOJOSHADER_glGetPixelShaderUniformI
+
+
 void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
                                          unsigned int bcount)
 {
@@ -1729,6 +1795,20 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
         ctx->generation++;
     } // if
 } // MOJOSHADER_glSetPixelShaderUniformB
+
+
+void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
+                                         unsigned int bcount)
+{
+    const uint maxregs = STATICARRAYLEN(ctx->ps_reg_file_f) / 4;
+    if (idx < maxregs)
+    {
+        uint8 *rptr = ctx->ps_reg_file_b + idx;
+        uint8 *endptr = rptr + minuint(maxregs - idx, bcount);
+        while (rptr != endptr)
+            *(data++) = (int) *(rptr++);
+    } // if
+} // MOJOSHADER_glGetPixelShaderUniformB
 
 
 static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
