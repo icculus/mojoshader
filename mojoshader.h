@@ -422,6 +422,8 @@ typedef struct MOJOSHADER_preshader
     unsigned int literal_count;
     double *literals;
     unsigned int temp_count;  /* scalar, not vector! */
+    unsigned int symbol_count;
+    MOJOSHADER_symbol *symbols;
     unsigned int instruction_count;
     MOJOSHADER_preshaderInstruction *instructions;
 } MOJOSHADER_preshader;

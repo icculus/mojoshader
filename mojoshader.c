@@ -7232,10 +7232,15 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     CtabData ctabdata = { 0, 0, 0 };
     parse_constant_table(ctx, ctab.tokens - 1, ctab.tokcount * 4,
                          okay_version, 0, &ctabdata);
+
+    // preshader owns this now. Don't free it in this function.
+    preshader->symbol_count = ctabdata.symbol_count;
+    preshader->symbols = ctabdata.symbols;
+
     if (!ctabdata.have_ctab)
     {
         fail(ctx, "Bogus preshader CTAB data");
-        goto parse_preshader_cleanup;
+        return;
     } // if
 
     // The FXLC block has the actual instructions...
@@ -7246,7 +7251,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     preshader->instructions = (MOJOSHADER_preshaderInstruction *)
                                 Malloc(ctx, len);
     if (preshader->instructions == NULL)
-        goto parse_preshader_cleanup;
+        return;
     memset(preshader->instructions, '\0', len);
 
     fxlc.tokens += 2;
@@ -7254,7 +7259,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     if (opcode_count > (fxlc.tokcount / 2))
     {
         fail(ctx, "Bogus preshader FXLC block.");
-        goto parse_preshader_cleanup;
+        return;
     } // if
 
     MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
@@ -7312,7 +7317,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
         if ((operand_count * 3) > fxlc.tokcount)
         {
             fail(ctx, "Bogus preshader FXLC block.");
-            goto parse_preshader_cleanup;
+            return;
         } // if
 
         MOJOSHADER_preshaderOperand *operand = &inst->operands[1];
@@ -7396,10 +7401,6 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
 
         inst++;
     } // while
-
-parse_preshader_cleanup:
-    free_symbols(ctx->free, ctx->malloc_data,
-                 ctabdata.symbols, ctabdata.symbol_count);
 #endif
 } // parse_preshader
 
@@ -7616,6 +7617,7 @@ static void free_preshader(MOJOSHADER_free f, void *d,
     {
         f((void *) preshader->literals, d);
         f((void *) preshader->instructions, d);
+        free_symbols(f, d, preshader->symbols, preshader->symbol_count);
         f((void *) preshader, d);
     } // if
 } // free_preshader
