@@ -107,6 +107,34 @@ static void print_typeinfo(const MOJOSHADER_symbolTypeInfo *info,
 } // print_typeinfo
 
 
+static void print_symbols(const MOJOSHADER_symbol *sym,
+                          const unsigned int symbol_count,
+                          const unsigned int indent)
+{
+    INDENT(); printf("SYMBOLS:");
+    if (symbol_count == 0)
+        printf(" (none.)\n");
+    else
+    {
+        int i;
+        printf("\n");
+        for (i = 0; i < symbol_count; i++, sym++)
+        {
+            static const char *regsets[] = {
+                "bool", "int4", "float4", "sampler"
+            };
+
+            INDENT(); printf("    * %d: \"%s\"\n", i, sym->name);
+            INDENT(); printf("      register set %s\n", regsets[sym->register_set]);
+            INDENT(); printf("      register index %u\n", sym->register_index);
+            INDENT(); printf("      register count %u\n", sym->register_count);
+            print_typeinfo(&sym->info, indent);
+        } // for
+        printf("\n");
+    } // else
+} // print_symbols
+
+
 static void print_preshader(const MOJOSHADER_preshader *preshader,
                             const int indent)
 {
@@ -123,6 +151,9 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
     static char mask[] = { 'x', 'y', 'z', 'w' };
 
     INDENT(); printf("PRESHADER:\n");
+
+    print_symbols(preshader->symbols, preshader->symbol_count, indent + 1);
+
     for (i = 0; i < preshader->instruction_count; i++, inst++)
     {
         const MOJOSHADER_preshaderOperand *operand = inst->operands;
@@ -329,28 +360,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
             } // for
         } // else
 
-        INDENT(); printf("SYMBOLS:");
-        if (pd->symbol_count == 0)
-            printf(" (none.)\n");
-        else
-        {
-            int i;
-            printf("\n");
-            for (i = 0; i < pd->symbol_count; i++)
-            {
-                static const char *regsets[] = {
-                    "bool", "int4", "float4", "sampler"
-                };
-
-                const MOJOSHADER_symbol *sym = &pd->symbols[i];
-                INDENT(); printf("    * %d: \"%s\"\n", i, sym->name);
-                INDENT(); printf("      register set %s\n", regsets[sym->register_set]);
-                INDENT(); printf("      register index %u\n", sym->register_index);
-                INDENT(); printf("      register count %u\n", sym->register_count);
-                print_typeinfo(&sym->info, indent);
-            } // for
-            printf("\n");
-        } // else
+        print_symbols(pd->symbols, pd->symbol_count, indent);
 
         if (pd->preshader != NULL)
             print_preshader(pd->preshader, indent);
