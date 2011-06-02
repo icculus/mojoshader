@@ -143,7 +143,7 @@ static void print_preshader_operand(const MOJOSHADER_preshader *preshader,
     const MOJOSHADER_preshaderOperand *operand = &inst->operands[opidx];
     const int elems = inst->element_count;
     const int isscalarop = (inst->opcode >= MOJOSHADER_PRESHADEROP_SCALAR_OPS);
-    const int isscalar = ((isscalarop) && (opidx == 1)); // probably wrong.
+    const int isscalar = ((isscalarop) && (opidx == 0)); // probably wrong.
     int i;
 
     switch (operand->type)
