@@ -7419,8 +7419,8 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
                 case 7:
                 {
                     operand->type = MOJOSHADER_PRESHADEROPERAND_TEMP;
-                    if (operand->index > preshader->temp_count)
-                        preshader->temp_count = operand->index;
+                    if (operand->index >= preshader->temp_count)
+                        preshader->temp_count = operand->index + 1;
                     break;
                 } // case
             } // switch
