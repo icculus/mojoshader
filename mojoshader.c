@@ -145,6 +145,7 @@ typedef struct Context
     int predicated;
     int glsl_generated_lit_opcode;
     int glsl_generated_texldd_setup;
+    int arb1_wrote_position;
     int have_preshader;
     MOJOSHADER_preshader *preshader;
 
@@ -4010,17 +4011,15 @@ static inline const char *arb1_float_temp(const Context *ctx)
 
 static void emit_ARB1_finalize(Context *ctx)
 {
-    // !!! FIXME: if we never wrote the position register, add the
-    // !!! FIXME:  position_invariant program option here.
+    push_output(ctx, &ctx->preflight);
+
+    if (shader_is_vertex(ctx) && !ctx->arb1_wrote_position)
+        output_line(ctx, "OPTION ARB_position_invariant;");
 
     if (shader_is_pixel(ctx) && ctx->have_multi_color_outputs)
-    {
-        // We have to gamble that you have GL_ARB_draw_buffers.
-        // You probably do at this point if you have a sane setup.
-        push_output(ctx, &ctx->preflight);
         output_line(ctx, "OPTION ARB_draw_buffers;");
-        pop_output(ctx);
-    } // if
+
+    pop_output(ctx);
 
     const char *tmpstr = arb1_float_temp(ctx);
     int i;
@@ -4273,6 +4272,7 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
+                    ctx->arb1_wrote_position = 1;
                     usage_str = "result.position";
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
