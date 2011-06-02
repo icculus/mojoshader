@@ -140,6 +140,7 @@ typedef struct Context
     int centroid_allowed;
     CtabData ctab;
     int have_relative_input_registers;
+    int have_multi_color_outputs;
     int determined_constants_arrays;
     int predicated;
     int glsl_generated_lit_opcode;
@@ -557,6 +558,8 @@ static inline const RegisterList *reglist_exists(RegisterList *prev,
 static inline void set_used_register(Context *ctx, const RegisterType regtype,
                                      const int regnum)
 {
+    if ((regtype == REG_TYPE_COLOROUT) && (regnum > 0))
+        ctx->have_multi_color_outputs = 1;
     reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
 } // set_used_register
 
@@ -2075,8 +2078,13 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
-        /* no-op. */ ;
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL) == 0)
+    {
+        // No gl_FragData[] before GLSL 1.10, so we have to force the version.
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "#version 110");
+        pop_output(ctx);
+    } // else if
 
     #if SUPPORT_PROFILE_GLSL120
     else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSL120) == 0)
@@ -2456,7 +2464,17 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         } // if
 
         if (regtype == REG_TYPE_COLOROUT)
-            usage_str = "gl_FragColor";
+        {
+            if (!ctx->have_multi_color_outputs)
+                usage_str = "gl_FragColor";  // maybe faster?
+            else
+            {
+                snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
+                usage_str = "gl_FragData";
+                arrayleft = "[";
+                arrayright = "]";
+            } // else
+        } // if
 
         else if (regtype == REG_TYPE_DEPTHOUT)
             usage_str = "gl_FragDepth";
@@ -3934,7 +3952,7 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    set_output(ctx, &ctx->globals);
+    set_output(ctx, &ctx->preflight);
 
     if (strcmp(profilestr, MOJOSHADER_PROFILE_ARB1) == 0)
         output_line(ctx, "!!ARB%s1.0", shader_str);
@@ -3994,6 +4012,16 @@ static void emit_ARB1_finalize(Context *ctx)
 {
     // !!! FIXME: if we never wrote the position register, add the
     // !!! FIXME:  position_invariant program option here.
+
+    if (shader_is_pixel(ctx) && ctx->have_multi_color_outputs)
+    {
+        // We have to gamble that you have GL_ARB_draw_buffers.
+        // You probably do at this point if you have a sane setup.
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "OPTION ARB_draw_buffers;");
+        pop_output(ctx);
+    } // if
+
     const char *tmpstr = arb1_float_temp(ctx);
     int i;
     push_output(ctx, &ctx->globals);
@@ -4314,6 +4342,14 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
         {
             paramtype_str = "OUTPUT";
             usage_str = "result.color";
+            if (ctx->have_multi_color_outputs)
+            {
+                // We have to gamble that you have GL_ARB_draw_buffers.
+                // You probably do at this point if you have a sane setup.
+                snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
+                arrayleft = "[";
+                arrayright = "]";
+            } // if
         } // if
 
         else if (regtype == REG_TYPE_DEPTHOUT)
