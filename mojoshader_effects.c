@@ -39,14 +39,15 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
     for (instit = 0; instit < preshader->instruction_count; instit++, inst++)
     {
         const MOJOSHADER_preshaderOperand *operand = inst->operands;
-        const int isscalar = (inst->opcode >= scalarstart);
         const int elems = inst->element_count;
         const int elemsbytes = sizeof (double) * elems;
+        const int isscalarop = (inst->opcode >= scalarstart);
 
         // load up our operands...
         int opiter, elemiter;
         for (opiter = 0; opiter < inst->operand_count-1; opiter++, operand++)
         {
+            const int isscalar = ((isscalarop) && (opiter == 0));
             const unsigned int index = operand->index;
             switch (operand->type)
             {
