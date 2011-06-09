@@ -6940,13 +6940,17 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
     if ((pos + 16 + (info->member_count * 8)) >= bytes)
         return 0;  // corrupt CTAB.
 
-    const size_t len = sizeof (MOJOSHADER_symbolStructMember) *
-                        info->member_count;
-
-    info->members = (MOJOSHADER_symbolStructMember *) Malloc(ctx, len);
-    if (info->members == NULL)
-        return 1;  // we'll check ctx->out_of_memory later.
-    memset(info->members, '\0', len);
+    if (info->member_count == 0)
+        info->members = NULL;
+    else
+    {
+        const size_t len = sizeof (MOJOSHADER_symbolStructMember) *
+                            info->member_count;
+        info->members = (MOJOSHADER_symbolStructMember *) Malloc(ctx, len);
+        if (info->members == NULL)
+            return 1;  // we'll check ctx->out_of_memory later.
+        memset(info->members, '\0', len);
+    } // else
 
     int i;
     const uint32 *member = (const uint32 *)((const uint8 *) (&typeptr[6]));
