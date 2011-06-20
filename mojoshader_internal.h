@@ -398,7 +398,8 @@ typedef struct
     RegisterType regtype;
 } DestArgInfo;
 
-
+// NOTE: This will NOT know a dcl_psize output register should be scalar!
+//  This function doesn't have access to that information.
 static inline int scalar_register(const MOJOSHADER_shaderType shader_type,
                                   const RegisterType regtype, const int regnum)
 {
