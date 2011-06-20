@@ -45,6 +45,10 @@
 #define GL_HALF_FLOAT_OES 0x8D61
 #endif
 
+// this happens to be the same value for ARB1 and GLSL.
+#ifndef GL_PROGRAM_POINT_SIZE
+#define GL_PROGRAM_POINT_SIZE 0x8642
+#endif
 
 struct MOJOSHADER_glShader
 {
@@ -95,6 +99,9 @@ struct MOJOSHADER_glProgram
     GLfloat *ps_preshader_regs;
 
     uint32 refcount;
+
+    int uses_pointsize;
+
     // GLSL uses these...location of uniform arrays.
     GLint vs_float4_loc;
     GLint vs_int4_loc;
@@ -145,6 +152,9 @@ struct MOJOSHADER_glContext
     GLint max_attrs;
     uint8 want_attr[32];
     uint8 have_attr[32];
+
+    // rarely used, so we don't touch when we don't have to.
+    int pointsize_enabled;
 
     // GL stuff...
     int opengl_major;
@@ -1470,6 +1480,24 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
 } // lookup_samplers
 
 
+// Right now, this just decides if we have to toggle pointsize support later.
+static void lookup_outputs(MOJOSHADER_glProgram *program,
+                           MOJOSHADER_glShader *shader)
+{
+    const MOJOSHADER_parseData *pd = shader->parseData;
+    int i;
+
+    for (i = 0; i < pd->output_count; i++)
+    {
+        if (pd->outputs[i].usage == MOJOSHADER_USAGE_POINTSIZE)
+        {
+            program->uses_pointsize = 1;
+            break;
+        } // if
+    } // for
+} // lookup_outputs
+
+
 static int lookup_attributes(MOJOSHADER_glProgram *program)
 {
     int i;
@@ -1581,6 +1609,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         if (!lookup_uniforms(retval, vshader, &bound))
             goto link_program_fail;
         lookup_samplers(retval, vshader, &bound);
+        lookup_outputs(retval, pshader);
         vshader->refcount++;
     } // if
 
@@ -1589,6 +1618,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         if (!lookup_uniforms(retval, pshader, &bound))
             goto link_program_fail;
         lookup_samplers(retval, pshader, &bound);
+        lookup_outputs(retval, pshader);
         pshader->refcount++;
     } // if
 
@@ -2008,6 +2038,15 @@ void MOJOSHADER_glProgramReady(void)
 
     // Toggle vertex attribute arrays on/off, based on our needs.
     update_enabled_arrays();
+
+    if (program->uses_pointsize != ctx->pointsize_enabled)
+    {
+        if (program->uses_pointsize)
+            ctx->glEnable(GL_PROGRAM_POINT_SIZE);
+        else
+            ctx->glDisable(GL_PROGRAM_POINT_SIZE);
+        ctx->pointsize_enabled = program->uses_pointsize;
+    } // if
 
     // push Uniforms to the program from our register files...
     if ((program->uniform_count) && (program->generation != ctx->generation))
