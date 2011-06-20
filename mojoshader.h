@@ -532,11 +532,13 @@ typedef struct MOJOSHADER_parseData
      */
     MOJOSHADER_sampler *samplers;
 
+    /* !!! FIXME: this should probably be "input" and not "attribute" */
     /*
      * The number of elements pointed to by (attributes).
      */
     int attribute_count;
 
+    /* !!! FIXME: this should probably be "input" and not "attribute" */
     /*
      * (attribute_count) elements of data that specify Attributes to be set
      *  for this shader. See discussion on MOJOSHADER_attribute for details.
@@ -545,10 +547,23 @@ typedef struct MOJOSHADER_parseData
     MOJOSHADER_attribute *attributes;
 
     /*
+     * The number of elements pointed to by (outputs).
+     */
+    int output_count;
+
+    /*
+     * (output_count) elements of data that specify outputs this shader
+     *  writes to. See discussion on MOJOSHADER_attribute for details.
+     * This can be NULL on error or if (output_count) is zero.
+     */
+    MOJOSHADER_attribute *outputs;
+
+    /*
      * The number of elements pointed to by (swizzles).
      */
     int swizzle_count;
 
+    /* !!! FIXME: this should probably be "input" and not "attribute" */
     /*
      * (swizzle_count) elements of data that specify swizzles the shader will
      *  apply to incoming attributes. This is a copy of what was passed to
@@ -2996,6 +3011,8 @@ void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
  *
  * Vertex attributes are not shared between contexts.
  */
+ /* !!! FIXME: this should probably be "input" and not "attribute" */
+ /* !!! FIXME: or maybe "vertex array" or something. */
 void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                      int index, unsigned int size,
                                      MOJOSHADER_attributeType type,

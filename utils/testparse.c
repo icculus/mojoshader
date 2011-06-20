@@ -234,6 +234,38 @@ static void print_preshader(const MOJOSHADER_preshader *preshader,
 } // print_preshader
 
 
+static void print_attrs(const char *category, const int count,
+                        const MOJOSHADER_attribute *attributes,
+                        const int indent)
+{
+    INDENT(); printf("%s:", category);
+    if (count == 0)
+        printf(" (none.)\n");
+    else
+    {
+        int i;
+        printf("\n");
+        for (i = 0; i < count; i++)
+        {
+            static const char *usagenames[] = {
+                "position", "blendweight", "blendindices", "normal",
+                "psize", "texcoord", "tangent", "binormal", "tessfactor",
+                "positiont", "color", "fog", "depth", "sample"
+            };
+            const MOJOSHADER_attribute *a = &attributes[i];
+            char numstr[16] = { 0 };
+            if (a->index != 0)
+                snprintf(numstr, sizeof (numstr), "%d", a->index);
+            INDENT();
+            printf("    * %s%s", usagenames[(int) a->usage], numstr);
+            if (a->name != NULL)
+                printf(" (\"%s\")", a->name);
+            printf("\n");
+        } // for
+    } // else
+} // print_attrs
+
+
 static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
                          unsigned int indent)
 {
@@ -255,32 +287,8 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
         INDENT(); printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
         INDENT(); printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
         INDENT(); printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
-
-        INDENT(); printf("ATTRIBUTES:");
-        if (pd->attribute_count == 0)
-            printf(" (none.)\n");
-        else
-        {
-            int i;
-            printf("\n");
-            for (i = 0; i < pd->attribute_count; i++)
-            {
-                static const char *usagenames[] = {
-                    "position", "blendweight", "blendindices", "normal",
-                    "psize", "texcoord", "tangent", "binormal", "tessfactor",
-                    "positiont", "color", "fog", "depth", "sample"
-                };
-                const MOJOSHADER_attribute *a = &pd->attributes[i];
-                char numstr[16] = { 0 };
-                if (a->index != 0)
-                    snprintf(numstr, sizeof (numstr), "%d", a->index);
-                INDENT();
-                printf("    * %s%s", usagenames[(int) a->usage], numstr);
-                if (a->name != NULL)
-                    printf(" (\"%s\")", a->name);
-                printf("\n");
-            } // for
-        } // else
+        print_attrs("INPUTS", pd->attribute_count, pd->attributes, indent);
+        print_attrs("OUTPUTS", pd->output_count, pd->outputs, indent);
 
         INDENT(); printf("CONSTANTS:");
         if (pd->constant_count == 0)

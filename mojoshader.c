@@ -7966,6 +7966,61 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
     return retval;
 } // build_attributes
 
+static MOJOSHADER_attribute *build_outputs(Context *ctx, int *_count)
+{
+    int count = 0;
+
+    if (ctx->attribute_count == 0)
+    {
+        *_count = 0;
+        return NULL;  // nothing to do.
+    } // if
+
+    const size_t len = sizeof (MOJOSHADER_attribute) * ctx->attribute_count;
+    MOJOSHADER_attribute *retval = (MOJOSHADER_attribute *) Malloc(ctx, len);
+
+    if (retval != NULL)
+    {
+        RegisterList *item = ctx->attributes.next;
+        MOJOSHADER_attribute *wptr = retval;
+        int i;
+
+        memset(retval, '\0', len);
+
+        for (i = 0; i < ctx->attribute_count; i++)
+        {
+            if (item == NULL)
+            {
+                fail(ctx, "BUG: mismatched attribute list and count");
+                break;
+            } // if
+
+            switch (item->regtype)
+            {
+                case REG_TYPE_RASTOUT:
+                case REG_TYPE_ATTROUT:
+                case REG_TYPE_TEXCRDOUT:
+                case REG_TYPE_COLOROUT:
+                case REG_TYPE_DEPTHOUT:
+                    wptr->usage = item->usage;
+                    wptr->index = item->index;
+                    wptr->name = alloc_varname(ctx, item);
+                    wptr++;
+                    count++;
+                    break;
+                default:
+                    break;
+            } // switch
+
+
+            item = item->next;
+        } // for
+    } // if
+
+    *_count = count;
+    return retval;
+} // build_outputs
+
 
 static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 {
@@ -7973,12 +8028,14 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     MOJOSHADER_constant *constants = NULL;
     MOJOSHADER_uniform *uniforms = NULL;
     MOJOSHADER_attribute *attributes = NULL;
+    MOJOSHADER_attribute *outputs = NULL;
     MOJOSHADER_sampler *samplers = NULL;
     MOJOSHADER_swizzle *swizzles = NULL;
     MOJOSHADER_error *errors = NULL;
     MOJOSHADER_parseData *retval = NULL;
     size_t output_len = 0;
     int attribute_count = 0;
+    int output_count = 0;
 
     if (ctx->out_of_memory)
         return &MOJOSHADER_out_of_mem_data;
@@ -8000,6 +8057,9 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
 
     if (!isfail(ctx))
         attributes = build_attributes(ctx, &attribute_count);
+
+    if (!isfail(ctx))
+        outputs = build_outputs(ctx, &output_count);
 
     if (!isfail(ctx))
         samplers = build_samplers(ctx);
@@ -8041,6 +8101,13 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
             Free(ctx, attributes);
         } // if
 
+        if (outputs != NULL)
+        {
+            for (i = 0; i < output_count; i++)
+                Free(ctx, (void *) outputs[i].name);
+            Free(ctx, outputs);
+        } // if
+
         if (samplers != NULL)
         {
             for (i = 0; i < ctx->sampler_count; i++)
@@ -8077,6 +8144,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->samplers = samplers;
         retval->attribute_count = attribute_count;
         retval->attributes = attributes;
+        retval->output_count = output_count;
+        retval->outputs = outputs;
         retval->swizzle_count = ctx->swizzles_count;
         retval->swizzles = swizzles;
         retval->symbol_count = ctx->ctab.symbol_count;
@@ -8385,6 +8454,10 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
     for (i = 0; i < data->attribute_count; i++)
         f((void *) data->attributes[i].name, d);
     f((void *) data->attributes, d);
+
+    for (i = 0; i < data->output_count; i++)
+        f((void *) data->outputs[i].name, d);
+    f((void *) data->outputs, d);
 
     for (i = 0; i < data->sampler_count; i++)
         f((void *) data->samplers[i].name, d);
