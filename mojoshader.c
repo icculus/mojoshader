@@ -148,6 +148,7 @@ typedef struct Context
     int glsl_generated_texldd_setup;
     int arb1_wrote_position;
     int have_preshader;
+    int ignores_ctab;
     MOJOSHADER_preshader *preshader;
 
 #if SUPPORT_PROFILE_ARB1_NV
@@ -1059,6 +1060,8 @@ static void emit_D3D_start(Context *ctx, const char *profilestr)
     const uint minor = (uint) ctx->minor_ver;
     char minor_str[16];
 
+    ctx->ignores_ctab = 1;
+
     if (minor == 0xFF)
         strcpy(minor_str, "sw");
     else if ((major > 1) && (minor == 1))
@@ -1506,6 +1509,8 @@ static void emit_D3D_SINCOS(Context *ctx)
 
 static void emit_BYTECODE_start(Context *ctx, const char *profilestr)
 {
+    ctx->ignores_ctab = 1;
+
     // just copy the whole token stream and make all other emitters no-ops.
     if (set_output(ctx, &ctx->mainline))
     {
@@ -5435,8 +5440,11 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
             fail(ctx, "Relative addressing in non-vertex shader");
         if (!shader_version_atleast(ctx, 3, 0))
             fail(ctx, "Relative addressing in vertex shader version < 3.0");
-        if (!ctx->ctab.have_ctab)  // it's hard to do this efficiently without!
+        if ((!ctx->ctab.have_ctab) && (!ctx->ignores_ctab))
+        {
+            // it's hard to do this efficiently without!
             fail(ctx, "relative addressing unsupported without a CTAB");
+        } // if
 
         // !!! FIXME: I don't have a shader that has a relative dest currently.
         fail(ctx, "Relative addressing of dest tokens is unsupported");
@@ -5713,28 +5721,31 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         else if (info->regtype == REG_TYPE_CONST)
         {
             // figure out what array we're in...
-            if (!ctx->ctab.have_ctab)  // it's hard to do efficiently without!
-                fail(ctx, "relative addressing unsupported without a CTAB");
-            else
+            if (!ctx->ignores_ctab)
             {
-                determine_constants_arrays(ctx);
-
-                VariableList *var;
-                const int reltarget = info->regnum;
-                for (var = ctx->variables; var != NULL; var = var->next)
+                if (!ctx->ctab.have_ctab)  // hard to do efficiently without!
+                    fail(ctx, "relative addressing unsupported without a CTAB");
+                else
                 {
-                    const int lo = var->index;
-                    if ( (reltarget >= lo) && (reltarget < (lo + var->count)) )
-                        break;  // match!
-                } // for
+                    determine_constants_arrays(ctx);
 
-                if (var == NULL)
-                    fail(ctx, "relative addressing of indeterminate array");
+                    VariableList *var;
+                    const int reltarget = info->regnum;
+                    for (var = ctx->variables; var != NULL; var = var->next)
+                    {
+                        const int lo = var->index;
+                        if ( (reltarget >= lo) && (reltarget < (lo + var->count)) )
+                            break;  // match!
+                    } // for
 
-                var->used = 1;
-                info->relative_array = var;
-                set_used_register(ctx, info->relative_regtype, info->relative_regnum);
-            } // else
+                    if (var == NULL)
+                        fail(ctx, "relative addressing of indeterminate array");
+
+                    var->used = 1;
+                    info->relative_array = var;
+                    set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+                } // else
+            } // if
         } // else if
         else
         {
