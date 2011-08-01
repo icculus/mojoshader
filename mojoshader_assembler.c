@@ -427,9 +427,11 @@ static int parse_register_name(Context *ctx, RegisterType *rtype, int *rnum)
     // "c[5]" is the same as "c5", so if the token is done, see if next is '['.
     if ((neednum) && (ctx->tokenlen == 0))
     {
+        const int tlen = ctx->tokenlen;  // we need to protect this for later.
         if (nexttoken(ctx) == ((Token) '['))
             neednum = 0;  // don't need a number on register name itself.
         pushback(ctx);
+        ctx->tokenlen = tlen;
     } // if
 
     if (neednum)
