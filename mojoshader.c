@@ -541,11 +541,7 @@ static RegisterList *reglist_find(const RegisterList *prev,
         else if (newval < val)  // should have been here if it existed.
             return NULL;
         else // if (newval > val)
-        {
-            // keep going, we're not to the insertion point yet.
-            prev = item;
             item = item->next;
-        } // else
     } // while
 
     return NULL;  // wasn't in the list.
@@ -5740,10 +5736,12 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
 
                     if (var == NULL)
                         fail(ctx, "relative addressing of indeterminate array");
-
-                    var->used = 1;
-                    info->relative_array = var;
-                    set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+                    else
+                    {
+                        var->used = 1;
+                        info->relative_array = var;
+                        set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+                    } // else
                 } // else
             } // if
         } // else if
@@ -8272,7 +8270,6 @@ static void process_definitions(Context *ctx)
     // ...and uniforms...
     for (item = ctx->uniforms.next; item != NULL; item = item->next)
     {
-        int arraybase = -1;
         int arraysize = -1;
 
         // check if this is a register contained in an array...
@@ -8289,7 +8286,6 @@ static void process_definitions(Context *ctx)
                 {
                     assert(!var->constant);
                     item->array = var;  // used when building parseData.
-                    arraybase = lo;
                     arraysize = var->count;
                     break;
                 } // if

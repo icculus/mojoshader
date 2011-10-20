@@ -382,7 +382,7 @@ static void push_usertype(Context *ctx, const char *sym, const MOJOSHADER_astDat
             if (!buffer_append(ctx->garbage, &userdt, sizeof (userdt)))
             {
                 Free(ctx, userdt);
-                userdt = NULL;
+                return;
             } // if
 
             userdt->type = MOJOSHADER_AST_DATATYPE_USER;
@@ -1888,8 +1888,9 @@ static const MOJOSHADER_astDataType *build_function_datatype(Context *ctx,
                                         const MOJOSHADER_astDataType **params,
                                         const int intrinsic)
 {
-    assert( ((paramcount == 0) && (params == NULL)) ||
-            ((paramcount > 0) && (params != NULL)) );
+    if ( ((paramcount > 0) && (params == NULL)) ||
+         ((paramcount == 0) && (params != NULL)) )
+        return NULL;
 
     // !!! FIXME: this is hacky.
     const MOJOSHADER_astDataType **dtparams;
@@ -2834,7 +2835,6 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
             } // if
 
             MOJOSHADER_astArguments *arg = ast->callfunc.args;
-            MOJOSHADER_astArguments *prev = NULL;
             int i;
             for (i = 0; i < reduced->function.num_params; i++)
             {
@@ -2847,7 +2847,6 @@ static const MOJOSHADER_astDataType *type_check_ast(Context *ctx, void *_ast)
                 datatype2 = arg->argument->datatype;  // already type-checked.
                 add_type_coercion(ctx, NULL, reduced->function.params[i],
                                   &arg->argument, datatype2);
-                prev = arg;
                 arg = arg->next;
             } // for
 
@@ -5251,13 +5250,10 @@ static MOJOSHADER_irExprList *build_ir_exprlist(Context *ctx, MOJOSHADER_astArgu
         if (prev == NULL)
             prev = retval = item;
         else
-        {
             prev->next = item;
-            item = prev;
-        } // else
 
         args = args->next;
-    } // for
+    } // while
 
     return retval;
 } // build_ir_exprlist

@@ -1687,16 +1687,11 @@ static void update_enabled_arrays(void)
 
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 {
-    GLuint handle = 0;
-
     if (program == ctx->bound_program)
         return;  // nothing to do.
 
     if (program != NULL)
-    {
-        handle = program->handle;
         program->refcount++;
-    } // if
 
     memset(ctx->want_attr, '\0', sizeof (ctx->want_attr[0]) * ctx->max_attrs);
 

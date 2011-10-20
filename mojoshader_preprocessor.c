@@ -1119,8 +1119,11 @@ static void handle_pp_define(Context *ctx)
 handle_pp_define_failed:
     Free(ctx, sym);
     Free(ctx, definition);
-    while (params--)
-        Free(ctx, idents[params]);
+    if (idents != NULL)
+    {
+        while (params--)
+            Free(ctx, idents[params]);
+    } // if
     Free(ctx, idents);
 } // handle_pp_define
 
