@@ -250,7 +250,17 @@ int stringmap_insert(StringMap *smap, const char *key, const char *value)
     int rc = -1;
     char *k = (char *) smap->m(strlen(key) + 1, smap->d);
     char *v = (char *) (value ? smap->m(strlen(value) + 1, smap->d) : NULL);
-    if ( (!k) || ((!v) && (value)) || ((rc = hash_insert(smap, k, v)) <= 0) )
+    int failed = ( (!k) || ((!v) && (value)) );
+
+    if (!failed)
+    {
+        strcpy(k, key);
+        if (value != NULL)
+            strcpy(v, value);
+        failed = ((rc = hash_insert(smap, k, v)) <= 0);
+    } // if
+
+    if (failed)
     {
         smap->f(k, smap->d);
         smap->f(v, smap->d);
