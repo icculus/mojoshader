@@ -5708,6 +5708,8 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         if (!replicate_swizzle(relswiz))
             fail(ctx, "relative address needs replicate swizzle");
 
+        info->relative_component = (relswiz & 0x3);
+
         if (info->regtype == REG_TYPE_INPUT)
         {
             if ( (shader_is_pixel(ctx)) || (!shader_version_atleast(ctx, 3, 0)) )
