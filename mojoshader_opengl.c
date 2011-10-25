@@ -1429,7 +1429,7 @@ static int lookup_uniforms(MOJOSHADER_glProgram *program,
 
         if (largest > 0)
         {
-            const size_t len = largest * sizeof (GLfloat);
+            const size_t len = largest * sizeof (GLfloat) * 4;
             GLfloat *buf = (GLfloat *) Malloc(len);
             if (buf == NULL)
                 return 0;

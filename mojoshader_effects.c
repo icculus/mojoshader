@@ -27,11 +27,11 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
         memset(temps, '\0', sizeof (double) * preshader->temp_count);
     } // if
 
-    double dst[4];
-    double src[3][4];
-    const double *src0 = src[0];
-    const double *src1 = src[1];
-    const double *src2 = src[2];
+    double dst[4] = { 0, 0, 0, 0 };
+    double src[3][4] = { { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } };
+    const double *src0 = &src[0][0];
+    const double *src1 = &src[1][0];
+    const double *src2 = &src[2][0];
 
     MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
     int instit;
@@ -42,6 +42,9 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
         const int elems = inst->element_count;
         const int elemsbytes = sizeof (double) * elems;
         const int isscalarop = (inst->opcode >= scalarstart);
+
+        assert(elems >= 0);
+        assert(elems <= 4);
 
         // load up our operands...
         int opiter, elemiter;
@@ -54,8 +57,9 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                 case MOJOSHADER_PRESHADEROPERAND_LITERAL:
                 {
                     const double *lit = &preshader->literals[index];
+                    assert((index + elems) <= preshader->literal_count);
                     if (!isscalar)
-                        memcpy(src[opiter], lit, elemsbytes);
+                        memcpy(&src[opiter][0], lit, elemsbytes);
                     else
                     {
                         const double val = *lit;
@@ -88,15 +92,18 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                     break;
 
                 case MOJOSHADER_PRESHADEROPERAND_TEMP:
-                    if (isscalar)
-                        src[opiter][0] = temps[index];
-                    else
-                        memcpy(src[opiter], temps + index, elemsbytes);
+                    if (temps != NULL)
+                    {
+                        if (isscalar)
+                            src[opiter][0] = temps[index];
+                        else
+                            memcpy(src[opiter], temps + index, elemsbytes);
+                    } // if
                     break;
 
                 default:
                     assert(0 && "unexpected preshader operand type.");
-                    break;
+                    return;
             } // switch
         } // for
 
@@ -170,7 +177,11 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
 
         // Figure out where dst wants to be stored.
         if (operand->type == MOJOSHADER_PRESHADEROPERAND_TEMP)
+        {
+            assert(preshader->temp_count >=
+                    operand->index + (elemsbytes / sizeof (double)));
             memcpy(temps + operand->index, dst, elemsbytes);
+        } // if
         else
         {
             assert(operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT);
