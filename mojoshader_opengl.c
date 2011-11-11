@@ -148,6 +148,9 @@ struct MOJOSHADER_glContext
     // This increments every time we change the register files.
     uint32 generation;
 
+    // This keeps track of implicitly linked programs.
+    HashTable *linker_cache;
+
     // This tells us which vertex attribute arrays we have enabled.
     GLint max_attrs;
     uint8 want_attr[32];
@@ -285,12 +288,16 @@ static inline int macosx_version_atleast(int x, int y, int z)
 } // macosx_version_atleast
 #endif
 
+static inline void out_of_memory(void)
+{
+    set_error("out of memory");
+} // out_of_memory
 
 static inline void *Malloc(const size_t len)
 {
     void *retval = ctx->malloc_fn((int) len, ctx->malloc_data);
     if (retval == NULL)
-        set_error("out of memory");
+        out_of_memory();
     return retval;
 } // Malloc
 
@@ -1113,7 +1120,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     ctx = (MOJOSHADER_glContext *) m(sizeof (MOJOSHADER_glContext), malloc_d);
     if (ctx == NULL)
     {
-        set_error("out of memory");
+        out_of_memory();
         goto init_fail;
     } // if
 
@@ -1707,6 +1714,105 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program)
 } // MOJOSHADER_glBindProgram
 
 
+typedef struct
+{
+    MOJOSHADER_glShader *vertex;
+    MOJOSHADER_glShader *fragment;
+} BoundShaders;
+
+static uint32 hash_shaders(const void *sym, void *data)
+{
+    (void) data;
+    const BoundShaders *s = (const BoundShaders *) sym;
+    const uint32 v = (s->vertex) ? (uint32) s->vertex->handle : 0;
+    const uint32 f = (s->fragment) ? (uint32) s->fragment->handle : 0;
+    return ((v & 0xFFFF) << 16) | (f & 0xFFFF);
+} // hash_shaders
+
+static int match_shaders(const void *_a, const void *_b, void *data)
+{
+    (void) data;
+    const BoundShaders *a = (const BoundShaders *) _a;
+    const BoundShaders *b = (const BoundShaders *) _b;
+
+    const GLuint av = (a->vertex) ? a->vertex->handle : 0;
+    const GLuint bv = (b->vertex) ? b->vertex->handle : 0;
+    if (av != bv)
+        return 0;
+
+    const GLuint af = (a->fragment) ? a->fragment->handle : 0;
+    const GLuint bf = (b->fragment) ? b->fragment->handle : 0;
+    if (af != bf)
+        return 0;
+
+    return 1;
+} // match_shaders
+
+static void nuke_shaders(const void *key, const void *value, void *data)
+{
+    (void) data;
+    Free((void *) key);  // this was a BoundShaders struct.
+    MOJOSHADER_glDeleteProgram((MOJOSHADER_glProgram *) value);
+} // nuke_shaders
+
+void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *v, MOJOSHADER_glShader *p)
+{
+    if ((v == NULL) && (p == NULL))
+    {
+        MOJOSHADER_glBindProgram(NULL);
+        return;
+    } // if
+
+    // !!! FIXME: eventually support GL_EXT_separate_shader_objects.
+    if (ctx->linker_cache == NULL)
+    {
+        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
+                                        nuke_shaders, 0, ctx->malloc_fn,
+                                        ctx->free_fn, ctx->malloc_data);
+
+        if (ctx->linker_cache == NULL)
+        {
+            out_of_memory();
+            return;
+        } // if
+    } // if
+
+    MOJOSHADER_glProgram *program = NULL;
+    BoundShaders shaders;
+    shaders.vertex = v;
+    shaders.fragment = p;
+
+    const void *val = NULL;
+    if (hash_find(ctx->linker_cache, &shaders, &val))
+        program = (MOJOSHADER_glProgram *) val;
+    else
+    {
+        program = MOJOSHADER_glLinkProgram(v, p);
+        if (program == NULL)
+            return;
+
+        BoundShaders *item = (BoundShaders *) Malloc(sizeof (BoundShaders));
+        if (item == NULL)
+        {
+            MOJOSHADER_glDeleteProgram(program);
+            return;
+        } // if
+
+        memcpy(item, &shaders, sizeof (BoundShaders));
+        if (hash_insert(ctx->linker_cache, item, program) != 1)
+        {
+            Free(item);
+            MOJOSHADER_glDeleteProgram(program);
+            out_of_memory();
+            return;
+        } // if
+    } // else
+
+    assert(program != NULL);
+    MOJOSHADER_glBindProgram(program);
+} // MOJOSHADER_glBindShaders
+
+
 static inline uint minuint(const uint a, const uint b)
 {
     return ((a < b) ? a : b);
@@ -2161,6 +2267,25 @@ void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program)
 
 void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader)
 {
+    // See if this was bound as an unlinked program anywhere...
+    if (ctx->linker_cache)
+    {
+        const void *key = NULL;
+        void *iter = NULL;
+        int morekeys = hash_iter_keys(ctx->linker_cache, &key, &iter);
+        while (morekeys)
+        {
+            const BoundShaders *shaders = (const BoundShaders *) key;
+            // Do this here so we don't confuse the iteration by removing...
+            morekeys = hash_iter_keys(ctx->linker_cache, &key, &iter);
+            if ((shaders->vertex == shader) || (shaders->fragment == shader))
+            {
+                // Deletes the linked program, which will unref the shader.
+                hash_remove(ctx->linker_cache, shaders);
+            } // if
+        } // while
+    } // if
+
     shader_unref(shader);
 } // MOJOSHADER_glDeleteShader
 
@@ -2170,7 +2295,9 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
-    lookup_entry_points(NULL, NULL);
+    lookup_entry_points(NULL, NULL);   // !!! FIXME: is there a value to this?
+    if (ctx->linker_cache)
+        hash_destroy(ctx->linker_cache);
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_glDestroyContext

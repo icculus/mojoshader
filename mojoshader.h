@@ -2705,6 +2705,9 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
  */
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
 
+// !!! FIXME: document this.
+void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
+                              MOJOSHADER_glShader *pshader);
 
 /*
  * Set a floating-point uniform value (what Direct3D calls a "constant").
@@ -3073,8 +3076,9 @@ void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
  * Free the resources of a compiled shader. This will delete the GL object
  *  and free memory.
  *
- * If the shader is currently referenced by a linked program, it will
- *  be deleted as soon as all referencing programs are deleted, too.
+ * If the shader is currently referenced by a linked program (or is currently
+ *  bound with MOJOSHADER_glBindShaders()), it will be deleted as soon as all
+ *  referencing programs are deleted and it is no longer bound, too.
  *
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
