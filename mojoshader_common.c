@@ -85,6 +85,33 @@ int hash_iter(const HashTable *table, const void *key,
     return 0;
 } // hash_iter
 
+int hash_iter_keys(const HashTable *table, const void **_key, void **iter)
+{
+    HashItem *item = *iter;
+    int idx = 0;
+
+    if (item != NULL)
+    {
+        const HashItem *orig = item;
+        item = item->next;
+        if (item == NULL)
+            idx = calc_hash(table, orig->key) + 1;
+    } // if
+
+    while (!item && (idx < table->table_len))
+        item = table->table[idx++];  // skip empty buckets...
+
+    if (item == NULL)  // no more matches?
+    {
+        *_key = NULL;
+        *iter = NULL;
+        return 0;
+    } // if
+
+    *_key = item->key;
+    *iter = item;
+    return 1;
+} // hash_iter_keys
 
 int hash_insert(HashTable *table, const void *key, const void *value)
 {
