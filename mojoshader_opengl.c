@@ -2162,9 +2162,10 @@ void MOJOSHADER_glProgramReady(void)
         GLint *dsti = program->vs_uniforms_int4;
         GLint *dstb = program->vs_uniforms_bool;
         const MOJOSHADER_preshader *preshader = NULL;
-        int ran_preshader = 0;
         uint32 i;
 
+        #if SUPPORT_PRESHADERS
+        int ran_preshader = 0;
         if (program->vertex)
         {
             preshader = program->vertex->parseData->preshader;
@@ -2189,6 +2190,7 @@ void MOJOSHADER_glProgramReady(void)
 
         if (ran_preshader)
             ctx->generation++;
+        #endif
 
         for (i = 0; i < count; i++)
         {
