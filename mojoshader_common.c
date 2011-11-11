@@ -62,21 +62,21 @@ int hash_find(const HashTable *table, const void *key, const void **_value)
 int hash_iter(const HashTable *table, const void *key,
               const void **_value, void **iter)
 {
-    HashItem *i = *iter;
-    if (i == NULL)
-        i = table->table[calc_hash(table, key)];
+    HashItem *item = *iter;
+    if (item == NULL)
+        item = table->table[calc_hash(table, key)];
     else
-        i = i->next;
+        item = item->next;
 
-    while (i != NULL)
+    while (item != NULL)
     {
-        if (table->keymatch(key, i->key, table->data))
+        if (table->keymatch(key, item->key, table->data))
         {
-            *_value = i->value;
-            *iter = i;
+            *_value = item->value;
+            *iter = item;
             return 1;
         } // if
-        i = i->next;
+        item = item->next;
     } // while
 
     // no more matches.
