@@ -2705,7 +2705,31 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
  */
 void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
 
-// !!! FIXME: document this.
+/*
+ * This binds individual shaders as if you had linked them with
+ *  MOJOSHADER_glLinkProgram(), and used MOJOSHADER_glBindProgram() on the
+ *  linked result.
+ *
+ * MojoShader will handle linking behind the scenes, and keep a cache of
+ *  programs linked here. Programs are removed from this cache when one of the
+ *  invidual shaders in it is deleted, otherwise they remain cached so future
+ *  calls to this function don't need to relink a previously-used shader
+ *  grouping.
+ *
+ * This function is for convenience, as the API is closer to how Direct3D
+ *  works, and retrofitting linking into your app can be difficult;
+ *  frequently, you just end up building your own cache, anyhow.
+ *
+ * Calling with all shaders set to NULL is equivalent to calling
+ *  MOJOSHADER_glBindProgram(NULL).
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
 void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
                               MOJOSHADER_glShader *pshader);
 
