@@ -1681,7 +1681,7 @@ static void update_enabled_arrays(void)
                 ctx->glEnableVertexAttribArray(i);
             else
                 ctx->glDisableVertexAttribArray(i);
-            ctx->have_attr[i] = ctx->want_attr[i];
+            ctx->have_attr[i] = want;
         } // if
 
         if (want)
