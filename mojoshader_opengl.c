@@ -162,6 +162,8 @@ struct MOJOSHADER_glContext
     // GL stuff...
     int opengl_major;
     int opengl_minor;
+    int glsl_major;
+    int glsl_minor;
     MOJOSHADER_glProgram *bound_program;
     char profile[16];
 
@@ -878,26 +880,42 @@ static void parse_opengl_version_str(const char *verstr, int *maj, int *min)
 } // parse_opengl_version_str
 
 
-static inline void parse_opengl_version(const char *verstr)
-{
-    parse_opengl_version_str(verstr, &ctx->opengl_major, &ctx->opengl_minor);
-} // parse_opengl_version
-
-
 #if SUPPORT_PROFILE_GLSL
-static int glsl_version_atleast(int maj, int min)
+static inline int glsl_version_atleast(const int major, const int minor)
 {
-    int glslmin = 0;
-    int glslmaj = 0;
-    ctx->glGetError();  // flush any existing error state.
-    const GLenum enumval = GL_SHADING_LANGUAGE_VERSION_ARB;
-    const char *str = (const char *) ctx->glGetString(enumval);
-    if (ctx->glGetError() == GL_INVALID_ENUM)
-        return 0;  // this is a basic, 1.0-compliant implementation.
-    parse_opengl_version_str(str, &glslmaj, &glslmin);
-    return ( (glslmaj > maj) || ((glslmaj == maj) && (glslmin >= min)) );
+    return ( ((ctx->glsl_major << 16) | (ctx->glsl_minor & 0xFFFF)) >=
+             ((major << 16) | (minor & 0xFFFF)) );
 } // glsl_version_atleast
 #endif
+
+static void detect_glsl_version(void)
+{
+    ctx->glsl_major = ctx->glsl_minor = 0;
+
+#if SUPPORT_PROFILE_GLSL
+    #if PLATFORM_MACOSX
+    // If running on Mac OS X <= 10.4, don't ever use GLSL, even if
+    //  the system claims it is available.
+    if (!macosx_version_atleast(10, 5, 0))
+        return;
+    #endif
+
+    if ( 0/* !!! FIXME: (ctx->opengl_major >= 2)*/ ||
+         ( ctx->have_GL_ARB_shader_objects &&
+           ctx->have_GL_ARB_vertex_shader &&
+           ctx->have_GL_ARB_fragment_shader &&
+           ctx->have_GL_ARB_shading_language_100 ) )
+    {
+        // the GL2.0 and ARB enum is the same value.
+        const GLenum enumval = GL_SHADING_LANGUAGE_VERSION_ARB;
+        ctx->glGetError();  // flush any existing error state.
+        const char *str = (const char *) ctx->glGetString(enumval);
+        if (ctx->glGetError() == GL_INVALID_ENUM)
+            str = NULL;
+        parse_opengl_version_str(str, &ctx->glsl_major, &ctx->glsl_minor);
+    } // if
+#endif
+} // detect_glsl_version
 
 
 static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
@@ -925,7 +943,8 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
         set_error("missing basic OpenGL entry points");
     else
     {
-        parse_opengl_version((const char *) ctx->glGetString(GL_VERSION));
+        const char *str = (const char *) ctx->glGetString(GL_VERSION);
+        parse_opengl_version_str(str, &ctx->opengl_major, &ctx->opengl_minor);
         extlist = (const char *) ctx->glGetString(GL_EXTENSIONS);
     } // else
 
@@ -937,10 +956,10 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
 
     VERIFY_EXT(GL_ARB_vertex_program, -1, -1);
     VERIFY_EXT(GL_ARB_fragment_program, -1, -1);
-    VERIFY_EXT(GL_ARB_shader_objects, 2, 0);
-    VERIFY_EXT(GL_ARB_vertex_shader, 2, 0);
-    VERIFY_EXT(GL_ARB_fragment_shader, 2, 0);
-    VERIFY_EXT(GL_ARB_shading_language_100, 2, 0);
+    VERIFY_EXT(GL_ARB_shader_objects, -1, -1);
+    VERIFY_EXT(GL_ARB_vertex_shader, -1, -1);
+    VERIFY_EXT(GL_ARB_fragment_shader, -1, -1);
+    VERIFY_EXT(GL_ARB_shading_language_100, -1, -1);
     VERIFY_EXT(GL_NV_vertex_program2_option, -1, -1);
     VERIFY_EXT(GL_NV_fragment_program2, -1, -1);
     VERIFY_EXT(GL_NV_vertex_program3, -1, -1);
@@ -949,26 +968,24 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     VERIFY_EXT(GL_OES_vertex_half_float, -1, -1);
 
     #undef VERIFY_EXT
+
+    detect_glsl_version();
 } // load_extensions
 
 
 static int valid_profile(const char *profile)
 {
-#if SUPPORT_PROFILE_GLSL
-    // If running on Mac OS X <= 10.4, don't ever pick GLSL, even if
-    //  the system claims it is available.
-    #if PLATFORM_MACOSX
-    const int allow_glsl = macosx_version_atleast(10, 5, 0);
-    #else
-    const int allow_glsl = 1;
-    #endif
-#endif
-
     if (!ctx->have_base_opengl)
         return 0;
 
     #define MUST_HAVE(p, x) \
         if (!ctx->have_##x) { set_error(#p " profile needs " #x); return 0; }
+
+    // we might actually _have_ maj.min, but forcibly disabled GLSL elsewhere.
+    #define MUST_HAVE_GLSL(p, maj, min) \
+        if (!glsl_version_atleast(maj, min)) { \
+            set_error(#p " profile needs missing GLSL support"); return 0; \
+        }
 
     if (profile == NULL)
     {
@@ -1008,25 +1025,16 @@ static int valid_profile(const char *profile)
     #endif
 
     #if SUPPORT_PROFILE_GLSL120
-    else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0))
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0)
     {
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_fragment_shader);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shading_language_100);
-        // if you got here, you have all the extensions.
-        if (!glsl_version_atleast(1, 20))
-            return 0;
+        MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSL120, 1, 20);
     } // else if
     #endif
 
     #if SUPPORT_PROFILE_GLSL
-    else if ((allow_glsl) && (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0))
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0)
     {
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shader_objects);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_vertex_shader);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_fragment_shader);
-        MUST_HAVE(MOJOSHADER_PROFILE_GLSL, GL_ARB_shading_language_100);
+        MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSL, 1, 10);
     } // else if
     #endif
 
