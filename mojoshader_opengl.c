@@ -37,8 +37,12 @@
 #include "GL/gl.h"
 #include "GL/glext.h"
 
-#ifndef GL_HALF_FLOAT
-#define GL_HALF_FLOAT 0x140B
+#ifndef GL_HALF_FLOAT_NV
+#define GL_HALF_FLOAT_NV 0x140B
+#endif
+
+#ifndef GL_HALF_FLOAT_ARB
+#define GL_HALF_FLOAT_ARB 0x140B
 #endif
 
 #ifndef GL_HALF_FLOAT_OES
@@ -2139,9 +2143,9 @@ static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
             if (ctx->have_GL_NV_half_float)
                 return GL_HALF_FLOAT_NV;
             else if (ctx->have_GL_ARB_half_float_vertex)
-                return GL_HALF_FLOAT;
+                return GL_HALF_FLOAT_ARB;
             else if (ctx->have_GL_OES_vertex_half_float)
-                return GL_HALF_FLOAT;
+                return GL_HALF_FLOAT_OES;
             break;
     } // switch
 
