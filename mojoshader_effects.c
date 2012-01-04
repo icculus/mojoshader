@@ -140,6 +140,16 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
             OPCODE_CASE(CMP, (src0[i] >= 0.0) ? src1[i] : src2[i])
             //OPCODE_CASE(NOISE, ???)  // !!! FIXME: don't know what this does
             //OPCODE_CASE(MOVC, ???)  // !!! FIXME: don't know what this does
+            OPCODE_CASE(MIN_SCALAR, (src0[0] < src1[i]) ? src0[0] : src1[i])
+            OPCODE_CASE(MAX_SCALAR, (src0[0] > src1[i]) ? src0[0] : src1[i])
+            OPCODE_CASE(LT_SCALAR, (src0[0] < src1[i]) ? 1.0 : 0.0)
+            OPCODE_CASE(GE_SCALAR, (src0[0] >= src1[i]) ? 1.0 : 0.0)
+            OPCODE_CASE(ADD_SCALAR, src0[0] + src1[i])
+            OPCODE_CASE(MUL_SCALAR, src0[0] * src1[i])
+            OPCODE_CASE(ATAN2_SCALAR, atan2(src0[0], src1[i]))
+            OPCODE_CASE(DIV_SCALAR, src0[0] / src1[i])
+            //OPCODE_CASE(DOT_SCALAR)  // !!! FIXME: isn't this just a MUL?
+            //OPCODE_CASE(NOISE_SCALAR, ???)  // !!! FIXME: ?
             #undef OPCODE_CASE
 
             case MOJOSHADER_PRESHADEROP_DOT:
@@ -150,25 +160,6 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                 for (i = 0; i < elems; i++)
                     dst[i] = final;  // !!! FIXME: is this right?
             } // case
-
-            #define OPCODE_CASE_SCALAR(op, val) \
-                case MOJOSHADER_PRESHADEROP_##op##_SCALAR: { \
-                    const double final = val; \
-                    for (i = 0; i < elems; i++) { dst[i] = final; } \
-                    break; \
-                }
-
-            OPCODE_CASE_SCALAR(MIN, (src0[0] < src1[0]) ? src0[0] : src1[0])
-            OPCODE_CASE_SCALAR(MAX, (src0[0] > src1[0]) ? src0[0] : src1[0])
-            OPCODE_CASE_SCALAR(LT, (src0[0] < src1[0]) ? 1.0 : 0.0)
-            OPCODE_CASE_SCALAR(GE, (src0[0] >= src1[0]) ? 1.0 : 0.0)
-            OPCODE_CASE_SCALAR(ADD, src0[0] + src1[0])
-            OPCODE_CASE_SCALAR(MUL, src0[0] * src1[0])
-            OPCODE_CASE_SCALAR(ATAN2, atan2(src0[0], src1[0]))
-            OPCODE_CASE_SCALAR(DIV, src0[0] / src1[0])
-            //OPCODE_CASE_SCALAR(DOT)  // !!! FIXME: isn't this just a MUL?
-            //OPCODE_CASE_SCALAR(NOISE, ???)  // !!! FIXME: ?
-            #undef OPCODE_CASE_SCALAR
 
             default:
                 assert(0 && "Unhandled preshader opcode!");
