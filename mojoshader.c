@@ -2814,7 +2814,6 @@ static void emit_GLSL_FRC(Context *ctx)
 
 static void emit_GLSL_M4X4(Context *ctx)
 {
-    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
     char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
     char row0[64]; make_GLSL_srcarg_string_full(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
@@ -2829,7 +2828,6 @@ static void emit_GLSL_M4X4(Context *ctx)
 
 static void emit_GLSL_M4X3(Context *ctx)
 {
-    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
     char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
     char row0[64]; make_GLSL_srcarg_string_full(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
@@ -2843,7 +2841,6 @@ static void emit_GLSL_M4X3(Context *ctx)
 
 static void emit_GLSL_M3X4(Context *ctx)
 {
-    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
     char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
     char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
@@ -2861,7 +2858,6 @@ static void emit_GLSL_M3X4(Context *ctx)
 
 static void emit_GLSL_M3X3(Context *ctx)
 {
-    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
     char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
     char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
@@ -2875,7 +2871,6 @@ static void emit_GLSL_M3X3(Context *ctx)
 
 static void emit_GLSL_M3X2(Context *ctx)
 {
-    // !!! FIXME: d3d is row-major, glsl is column-major, I think.
     char src0[64]; make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
     char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
