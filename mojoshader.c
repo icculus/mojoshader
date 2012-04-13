@@ -2756,7 +2756,7 @@ static void emit_GLSL_LOG(Context *ctx)
 
 static void emit_GLSL_LIT_helper(Context *ctx)
 {
-    const char *maxp = "127.9961f"; // value from the dx9 reference.
+    const char *maxp = "127.9961"; // value from the dx9 reference.
 
     if (ctx->glsl_generated_lit_opcode)
         return;
@@ -2764,10 +2764,10 @@ static void emit_GLSL_LIT_helper(Context *ctx)
     ctx->glsl_generated_lit_opcode = 1;
 
     push_output(ctx, &ctx->helpers);
-    output_line(ctx, "const vec4 LIT(const vec4 src)");
+    output_line(ctx, "vec4 LIT(const vec4 src)");
     output_line(ctx, "{"); ctx->indent++;
-    output_line(ctx,   "const float power = clamp(src.w, -%s, %s);",maxp,maxp);
-    output_line(ctx,   "vec4 retval(1.0, 0.0, 0.0, 1.0)");
+    output_line(ctx,   "float power = clamp(src.w, -%s, %s);",maxp,maxp);
+    output_line(ctx,   "vec4 retval = vec4(1.0, 0.0, 0.0, 1.0);");
     output_line(ctx,   "if (src.x > 0.0) {"); ctx->indent++;
     output_line(ctx,     "retval.y = src.x;");
     output_line(ctx,     "if (src.y > 0.0) {"); ctx->indent++;
