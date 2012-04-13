@@ -655,6 +655,17 @@ static inline int vecsize_from_writemask(const int m)
     return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
 } // vecsize_from_writemask
 
+
+static inline void set_dstarg_writemask(DestArgInfo *dst, const int mask)
+{
+    dst->writemask = mask;
+    dst->writemask0 = ((mask >> 0) & 1);
+    dst->writemask1 = ((mask >> 1) & 1);
+    dst->writemask2 = ((mask >> 2) & 1);
+    dst->writemask3 = ((mask >> 3) & 1);
+} // set_dstarg_writemask
+
+
 static int allocate_scratch_register(Context *ctx)
 {
     const int retval = ctx->scratch_registers++;
@@ -3318,23 +3329,16 @@ static void emit_GLSL_comparison_operations(Context *ctx, const char *cmp)
         make_GLSL_srcarg_string(ctx, 1, mask, src1, sizeof (src1));
         make_GLSL_srcarg_string(ctx, 2, mask, src2, sizeof (src2));
 
-        dst->writemask = mask;
-        dst->writemask0 = ((mask >> 0) & 1);
-        dst->writemask1 = ((mask >> 1) & 1);
-        dst->writemask2 = ((mask >> 2) & 1);
-        dst->writemask3 = ((mask >> 3) & 1);
+        set_dstarg_writemask(dst, mask);
 
         char code[128];
         make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                  "((%s %s) ? %s : %s)",
                                  src0, cmp, src1, src2);
-        dst->writemask = origmask;
-        dst->writemask0 = ((origmask >> 0) & 1);
-        dst->writemask1 = ((origmask >> 1) & 1);
-        dst->writemask2 = ((origmask >> 2) & 1);
-        dst->writemask3 = ((origmask >> 3) & 1);
         output_line(ctx, "%s", code);
     } // for
+
+    set_dstarg_writemask(dst, origmask);
 } // emit_GLSL_comparison_operations
 
 static void emit_GLSL_CND(Context *ctx)
@@ -5401,11 +5405,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
     else
         writemask = info->orig_writemask;
 
-    info->writemask = writemask;
-    info->writemask0 = (int) ((writemask >> 0) & 0x1); // bit 16
-    info->writemask1 = (int) ((writemask >> 1) & 0x1); // bit 17
-    info->writemask2 = (int) ((writemask >> 2) & 0x1); // bit 18
-    info->writemask3 = (int) ((writemask >> 3) & 0x1); // bit 19
+    set_dstarg_writemask(info, writemask);  // bits 16 through 19.
 
     // all the REG_TYPE_CONSTx types are the same register type, it's just
     //  split up so its regnum can be > 2047 in the bytecode. Clean it up.
