@@ -4562,14 +4562,34 @@ static void emit_ARB1_LRP(Context *ctx)
 
 EMIT_ARB1_OPCODE_DS_FUNC(FRC)
 
-// !!! FIXME: these could be implemented with vector opcodes, but it looks
-// !!! FIXME:  like the Microsoft HLSL compiler never generates matrix
-// !!! FIXME:  operations for some reason.
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M4X4)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M4X3)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X4)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X3)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(M3X2)
+static void arb1_MxXy(Context *ctx, const int x, const int y)
+{
+    DestArgInfo *dstarg = &ctx->dest_arg;
+    const int origmask = dstarg->writemask;
+    char src0[64];
+    int i;
+
+    make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+
+    for (i = 0; i < y; i++)
+    {
+        char dst[64];
+        char row[64];
+        make_ARB1_srcarg_string(ctx, i + 1, row, sizeof (row));
+        set_dstarg_writemask(dstarg, 1 << i);
+        make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+        output_line(ctx, "DP%d%s, %s, %s;", x, dst, src0, row);
+    } // for
+
+    set_dstarg_writemask(dstarg, origmask);
+    emit_ARB1_dest_modifiers(ctx);
+} // arb1_MxXy
+
+static void emit_ARB1_M4X4(Context *ctx) { arb1_MxXy(ctx, 4, 4); }
+static void emit_ARB1_M4X3(Context *ctx) { arb1_MxXy(ctx, 4, 3); }
+static void emit_ARB1_M3X4(Context *ctx) { arb1_MxXy(ctx, 3, 4); }
+static void emit_ARB1_M3X3(Context *ctx) { arb1_MxXy(ctx, 3, 3); }
+static void emit_ARB1_M3X2(Context *ctx) { arb1_MxXy(ctx, 3, 2); }
 
 static void emit_ARB1_CALL(Context *ctx)
 {
