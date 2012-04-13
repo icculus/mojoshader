@@ -760,7 +760,7 @@ int buffer_append_fmt(Buffer *buffer, const char *fmt, ...)
 
 int buffer_append_va(Buffer *buffer, const char *fmt, va_list va)
 {
-    char scratch[128];
+    char scratch[256];
 
     va_list ap;
     va_copy(ap, va);

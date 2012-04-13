@@ -1811,7 +1811,7 @@ static const char *make_GLSL_destarg_assign(Context *ctx, char *buf,
         return buf;
     } // if
 
-    char operation[128];
+    char operation[256];
     va_list ap;
     va_start(ap, fmt);
     const int len = vsnprintf(operation, sizeof (operation), fmt, ap);
@@ -2830,7 +2830,7 @@ static void emit_GLSL_M4X4(Context *ctx)
     char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
     char row2[64]; make_GLSL_srcarg_string_full(ctx, 3, row2, sizeof (row2));
     char row3[64]; make_GLSL_srcarg_string_full(ctx, 4, row3, sizeof (row3));
-    char code[128];
+    char code[256];
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
                     "vec4(dot(%s, %s), dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                     src0, row0, src0, row1, src0, row2, src0, row3);
@@ -2843,7 +2843,7 @@ static void emit_GLSL_M4X3(Context *ctx)
     char row0[64]; make_GLSL_srcarg_string_full(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_full(ctx, 2, row1, sizeof (row1));
     char row2[64]; make_GLSL_srcarg_string_full(ctx, 3, row2, sizeof (row2));
-    char code[128];
+    char code[256];
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
@@ -2858,7 +2858,7 @@ static void emit_GLSL_M3X4(Context *ctx)
     char row2[64]; make_GLSL_srcarg_string_vec3(ctx, 3, row2, sizeof (row2));
     char row3[64]; make_GLSL_srcarg_string_vec3(ctx, 4, row3, sizeof (row3));
 
-    char code[128];
+    char code[256];
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec4(dot(%s, %s), dot(%s, %s), "
                                      "dot(%s, %s), dot(%s, %s))",
@@ -2873,7 +2873,7 @@ static void emit_GLSL_M3X3(Context *ctx)
     char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
     char row2[64]; make_GLSL_srcarg_string_vec3(ctx, 3, row2, sizeof (row2));
-    char code[128];
+    char code[256];
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
@@ -2886,7 +2886,7 @@ static void emit_GLSL_M3X2(Context *ctx)
     char row0[64]; make_GLSL_srcarg_string_vec3(ctx, 1, row0, sizeof (row0));
     char row1[64]; make_GLSL_srcarg_string_vec3(ctx, 2, row1, sizeof (row1));
 
-    char code[128];
+    char code[256];
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
                                 "vec2(dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1);
