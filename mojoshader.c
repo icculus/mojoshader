@@ -144,6 +144,7 @@ typedef struct Context
     int determined_constants_arrays;
     int predicated;
     int uses_pointsize;
+    int uses_fog;
     int glsl_generated_lit_opcode;
     int glsl_generated_texldd_setup;
     int arb1_wrote_position;
@@ -592,6 +593,8 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
 
     if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_POINTSIZE))
         ctx->uses_pointsize = 1;  // note that we have to check this later.
+    else if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_FOG))
+        ctx->uses_fog = 1;  // note that we have to check this later.
 } // add_attribute_register
 
 static inline void add_sampler(Context *ctx, const RegisterType rtype,
@@ -678,11 +681,17 @@ static inline void adjust_token_position(Context *ctx, const int incr)
 static int isscalar(Context *ctx, const MOJOSHADER_shaderType shader_type,
                     const RegisterType rtype, const int rnum)
 {
-    if ((rtype == REG_TYPE_OUTPUT) && (ctx->uses_pointsize))
+    const int uses_psize = ctx->uses_pointsize;
+    const int uses_fog = ctx->uses_fog;
+    if ( (rtype == REG_TYPE_OUTPUT) && ((uses_psize) || (uses_fog)) )
     {
         const RegisterList *reg = reglist_find(&ctx->attributes, rtype, rnum);
         if (reg != NULL)
-            return (reg->usage == MOJOSHADER_USAGE_POINTSIZE);
+        {
+            const MOJOSHADER_usage usage = reg->usage;
+            return ( (uses_psize && (usage == MOJOSHADER_USAGE_POINTSIZE)) ||
+                     (uses_fog && (usage == MOJOSHADER_USAGE_FOG)) );
+        } // if
     } // if
 
     return scalar_register(shader_type, rtype, rnum);

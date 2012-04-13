@@ -399,13 +399,20 @@ typedef struct
     RegisterType regtype;
 } DestArgInfo;
 
-// NOTE: This will NOT know a dcl_psize output register should be scalar!
-//  This function doesn't have access to that information.
+// NOTE: This will NOT know a dcl_psize or dcl_fog output register should be
+//        scalar! This function doesn't have access to that information.
 static inline int scalar_register(const MOJOSHADER_shaderType shader_type,
                                   const RegisterType regtype, const int regnum)
 {
     switch (regtype)
     {
+        case REG_TYPE_RASTOUT:
+            if (((const RastOutType) regnum) == RASTOUT_TYPE_FOG)
+                return 1;
+            else if (((const RastOutType) regnum) == RASTOUT_TYPE_POINT_SIZE)
+                return 1;
+            return 0;
+
         case REG_TYPE_DEPTHOUT:
         case REG_TYPE_CONSTBOOL:
         case REG_TYPE_LOOP:
