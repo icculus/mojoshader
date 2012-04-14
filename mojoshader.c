@@ -2153,6 +2153,16 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
 static void emit_GLSL_RET(Context *ctx);
 static void emit_GLSL_end(Context *ctx)
 {
+    // ps_1_* writes color to r0 instead oC0. We move it to the right place.
+    // We don't have to worry about a RET opcode messing this up, since
+    //  RET isn't available before ps_2_0.
+    if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
+    {
+        const char *shstr = ctx->shader_type_str;
+        set_used_register(ctx, REG_TYPE_COLOROUT, 0);
+        output_line(ctx, "%s_oC0 = %s_r0;", shstr, shstr);
+    } // if
+
     // force a RET opcode if we're at the end of the stream without one.
     if (ctx->previous_opcode != OPCODE_RET)
         emit_GLSL_RET(ctx);
@@ -4021,6 +4031,15 @@ static void emit_ARB1_start(Context *ctx, const char *profilestr)
 
 static void emit_ARB1_end(Context *ctx)
 {
+    // ps_1_* writes color to r0 instead oC0. We move it to the right place.
+    // We don't have to worry about a RET opcode messing this up, since
+    //  RET isn't available before ps_2_0.
+    if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
+    {
+        set_used_register(ctx, REG_TYPE_COLOROUT, 0);
+        output_line(ctx, "MOV oC0, r0;");
+    } // if
+
     output_line(ctx, "END");
 } // emit_ARB1_end
 
@@ -8368,6 +8387,11 @@ static void verify_swizzles(Context *ctx)
 
 
 // API entry point...
+
+// !!! FIXME:
+// MSDN: "Shader validation will fail CreatePixelShader on any shader that
+//  attempts to read from a temporary register that has not been written by a
+//  previous instruction."  (true for ps_1_*, maybe others). Check this.
 
 const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
                                              const unsigned char *tokenbuf,
