@@ -6785,7 +6785,7 @@ static void state_TEXLD(Context *ctx)
         else if (src1->regtype != REG_TYPE_SAMPLER)
             fail(ctx, "TEXLD src1 must be sampler register");
         else if (src1->src_mod != SRCMOD_NONE)
-            fail(ctx, "TEXLD src0 must have no modifiers");
+            fail(ctx, "TEXLD src1 must have no modifiers");
         else if ( (ctx->instruction_controls != CONTROL_TEXLD) &&
                   (ctx->instruction_controls != CONTROL_TEXLDP) &&
                   (ctx->instruction_controls != CONTROL_TEXLDB) )
