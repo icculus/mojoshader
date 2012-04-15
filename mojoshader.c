@@ -563,6 +563,13 @@ static inline const RegisterList *reglist_exists(RegisterList *prev,
     return (reglist_find(prev, regtype, regnum));
 } // reglist_exists
 
+static inline int register_was_written(Context *ctx, const RegisterType rtype,
+                                       const int regnum)
+{
+    RegisterList *reg = reglist_find(&ctx->used_registers, rtype, regnum);
+    return (reg && reg->written);
+} // register_was_written
+
 static inline void set_used_register(Context *ctx, const RegisterType regtype,
                                      const int regnum, const int written)
 {
@@ -8477,9 +8484,14 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 
     ctx->current_position = MOJOSHADER_POSITION_AFTER;
 
-    // !!! FIXME: for ps_1_*, the output color is written to r0...throw an
-    // !!! FIXME:  error if this register was never written. This isn't
-    // !!! FIXME:  important for vertex shaders, or shader model 2+.
+    // for ps_1_*, the output color is written to r0...throw an
+    //  error if this register was never written. This isn't
+    //  important for vertex shaders, or shader model 2+.
+    if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
+    {
+        if (!register_was_written(ctx, REG_TYPE_TEMP, 0))
+            fail(ctx, "r0 (pixel shader 1.x color output) never written to");
+    } // if
 
     if (!failed)
     {
