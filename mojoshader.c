@@ -45,6 +45,7 @@ typedef struct RegisterList
     unsigned int index;
     int writemask;
     int misc;
+    int written;
     const VariableList *array;
     struct RegisterList *next;
 } RegisterList;
@@ -563,11 +564,15 @@ static inline const RegisterList *reglist_exists(RegisterList *prev,
 } // reglist_exists
 
 static inline void set_used_register(Context *ctx, const RegisterType regtype,
-                                     const int regnum)
+                                     const int regnum, const int written)
 {
+    RegisterList *reg = NULL;
     if ((regtype == REG_TYPE_COLOROUT) && (regnum > 0))
         ctx->have_multi_color_outputs = 1;
-    reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
+
+    reg = reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
+    if (reg && written)
+        reg->written = 1;
 } // set_used_register
 
 static inline int get_used_register(Context *ctx, const RegisterType regtype,
@@ -2166,7 +2171,7 @@ static void emit_GLSL_end(Context *ctx)
     if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
     {
         const char *shstr = ctx->shader_type_str;
-        set_used_register(ctx, REG_TYPE_COLOROUT, 0);
+        set_used_register(ctx, REG_TYPE_COLOROUT, 0, 1);
         output_line(ctx, "%s_oC0 = %s_r0;", shstr, shstr);
     } // if
 
@@ -4043,7 +4048,7 @@ static void emit_ARB1_end(Context *ctx)
     //  RET isn't available before ps_2_0.
     if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
     {
-        set_used_register(ctx, REG_TYPE_COLOROUT, 0);
+        set_used_register(ctx, REG_TYPE_COLOROUT, 0, 1);
         output_line(ctx, "MOV oC0, r0;");
     } // if
 
@@ -5526,7 +5531,7 @@ static int parse_destination_token(Context *ctx, DestArgInfo *info)
         fail(ctx, "Register type is out of range");
 
     if (!isfail(ctx))
-        set_used_register(ctx, info->regtype, info->regnum);
+        set_used_register(ctx, info->regtype, info->regnum, 1);
 
     return 1;
 } // parse_destination_token
@@ -5792,7 +5797,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
                     {
                         var->used = 1;
                         info->relative_array = var;
-                        set_used_register(ctx, info->relative_regtype, info->relative_regnum);
+                        set_used_register(ctx, info->relative_regtype, info->relative_regnum, 0);
                     } // else
                 } // else
             } // if
@@ -5849,7 +5854,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     //    None of the constant floating-point registers can use the abs modifier.
 
     if (!isfail(ctx))
-        set_used_register(ctx, info->regtype, info->regnum);
+        set_used_register(ctx, info->regtype, info->regnum, 0);
 
     return retval;
 } // parse_source_token
@@ -6374,7 +6379,7 @@ static void srcarg_matrix_replicate(Context *ctx, const int idx,
     {
         memcpy(dst, src, sizeof (SourceArgInfo));
         dst->regnum += (i + 1);
-        set_used_register(ctx, dst->regtype, dst->regnum);
+        set_used_register(ctx, dst->regtype, dst->regnum, 0);
     } // for
 } // srcarg_matrix_replicate
 
