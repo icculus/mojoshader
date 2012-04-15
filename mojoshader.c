@@ -13,8 +13,6 @@
 // !!! FIXME: rules from MSDN about temp registers we probably don't check.
 // - There are limited temporaries: vs_1_1 has 12 (ps_1_1 has _2_!).
 // - SM2 apparently was variable, between 12 and 32. Shader Model 3 has 32.
-// - If a temporary register uses components that are not defined in previous
-//   code, shader validation will fail.
 // - A maximum of three temp registers can be used in a single instruction.
 
 #define __MOJOSHADER_INTERNAL__ 1
@@ -570,8 +568,10 @@ static inline int register_was_written(Context *ctx, const RegisterType rtype,
     return (reg && reg->written);
 } // register_was_written
 
-static inline void set_used_register(Context *ctx, const RegisterType regtype,
-                                     const int regnum, const int written)
+static inline RegisterList *set_used_register(Context *ctx,
+                                              const RegisterType regtype,
+                                              const int regnum,
+                                              const int written)
 {
     RegisterList *reg = NULL;
     if ((regtype == REG_TYPE_COLOROUT) && (regnum > 0))
@@ -580,6 +580,7 @@ static inline void set_used_register(Context *ctx, const RegisterType regtype,
     reg = reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
     if (reg && written)
         reg->written = 1;
+    return reg;
 } // set_used_register
 
 static inline int get_used_register(Context *ctx, const RegisterType regtype,
@@ -5861,7 +5862,17 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
     //    None of the constant floating-point registers can use the abs modifier.
 
     if (!isfail(ctx))
-        set_used_register(ctx, info->regtype, info->regnum, 0);
+    {
+        RegisterList *reg;
+        reg = set_used_register(ctx, info->regtype, info->regnum, 0);
+        // !!! FIXME: this test passes if you write to the register
+        // !!! FIXME:  in this same instruction, because we parse the
+        // !!! FIXME:  destination token first.
+        // !!! FIXME: Microsoft's shader validation explicitly checks temp
+        // !!! FIXME:  registers for this...do they check other writable ones?
+        if ((info->regtype == REG_TYPE_TEMP) && (reg) && (!reg->written))
+            failf(ctx, "Temp register r%d used uninitialized", info->regnum);
+    } // if
 
     return retval;
 } // parse_source_token
