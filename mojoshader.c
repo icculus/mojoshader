@@ -6653,7 +6653,7 @@ static void state_CND(Context *ctx)
     {
         const SourceArgInfo *src = &ctx->source_args[0];
         if ((src->regtype != REG_TYPE_TEMP) || (src->regnum != 0) ||
-            (src->swizzle != 0x0000))
+            (src->swizzle != 0xFF))
         {
             fail(ctx, "CND src must be r0.a in this shader model");
         } // if
