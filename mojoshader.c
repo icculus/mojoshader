@@ -10,6 +10,13 @@
 // !!! FIXME: this file really needs to be split up.
 // !!! FIXME: I keep changing coding styles for symbols and typedefs.
 
+// !!! FIXME: rules from MSDN about temp registers we probably don't check.
+// - There are limited temporaries: vs_1_1 has 12 (ps_1_1 has _2_!).
+// - SM2 apparently was variable, between 12 and 32. Shader Model 3 has 32.
+// - If a temporary register uses components that are not defined in previous
+//   code, shader validation will fail.
+// - A maximum of three temp registers can be used in a single instruction.
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
@@ -8464,6 +8471,10 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     } // while
 
     ctx->current_position = MOJOSHADER_POSITION_AFTER;
+
+    // !!! FIXME: for ps_1_*, the output color is written to r0...throw an
+    // !!! FIXME:  error if this register was never written. This isn't
+    // !!! FIXME:  important for vertex shaders, or shader model 2+.
 
     if (!failed)
     {
