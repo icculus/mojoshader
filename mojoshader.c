@@ -621,6 +621,7 @@ static inline void add_sampler(Context *ctx, const RegisterType rtype,
                                const int regnum, const TextureType ttype)
 {
     // !!! FIXME: make sure it doesn't exist?
+    // !!! FIXME:  (ps_1_1 assume we can add it multiple times...)
     RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
     item->index = (int) ttype;
 } // add_sampler
@@ -2234,7 +2235,19 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
     switch (regtype)
     {
         case REG_TYPE_ADDRESS:
-            output_line(ctx, "ivec4 %s;", varname);
+            if (shader_is_vertex(ctx))
+                output_line(ctx, "ivec4 %s;", varname);
+            else if (shader_is_pixel(ctx))  // actually REG_TYPE_TEXTURE.
+            {
+                // We have to map texture registers to temps for ps_1_1, since
+                //  they work like temps, initialize with tex coords, and the
+                //  ps_1_1 TEX opcode expects to overwrite it.
+                if (!shader_version_atleast(ctx, 1, 4))
+                {
+                    output_line(ctx, "vec4 %s = gl_TexCoord[%d];",
+                                varname, regnum);
+                } // if
+            } // else if
             break;
         case REG_TYPE_PREDICATE:
             output_line(ctx, "bvec4 %s;", varname);
@@ -2553,10 +2566,15 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         {
             if (usage == MOJOSHADER_USAGE_TEXCOORD)
             {
-                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
-                usage_str = "gl_TexCoord";
-                arrayleft = "[";
-                arrayright = "]";
+                // ps_1_1 does a different hack for this attribute.
+                //  Refer to emit_GLSL_global()'s REG_TYPE_TEXTURE code.
+                if (shader_version_atleast(ctx, 1, 4))
+                {
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+                    usage_str = "gl_TexCoord";
+                    arrayleft = "[";
+                    arrayright = "]";
+                } // if
             } // if
 
             else if (usage == MOJOSHADER_USAGE_COLOR)
@@ -3186,14 +3204,32 @@ static void emit_GLSL_TEXKILL(Context *ctx)
 
 static void glsl_texld(Context *ctx, const int texldd)
 {
-    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
-
-    if (!shader_version_atleast(ctx, 2, 0))
+    if (!shader_version_atleast(ctx, 1, 4))
     {
-        // ps_1_0 and ps_1_4 are both different, too!
-        fail(ctx, "TEXLD <= Shader Model 2.0 unimplemented.");  // !!! FIXME
-        return;
+        DestArgInfo *info = &ctx->dest_arg;
+        char dst[64];
+        char sampler[64];
+        char code[128];
+
+        assert(!texldd);
+
+        // Note that this code counts on the register not having swizzles, etc.
+        get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+        get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                                sampler, sizeof (sampler));
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "texture2D(%s, %s.xy)",
+                                 sampler, dst);
+        output_line(ctx, "%s", code);
     } // if
+
+    else if (!shader_version_atleast(ctx, 2, 0))
+    {
+        // ps_1_4 is different, too!
+        fail(ctx, "TEXLD == Shader Model 1.4 unimplemented.");  // !!! FIXME
+        return;
+    } // else if
+
     else
     {
         const SourceArgInfo *samp_arg = &ctx->source_args[1];
@@ -4118,6 +4154,22 @@ static void emit_ARB1_global(Context *ctx, RegisterType regtype, int regnum)
     switch (regtype)
     {
         case REG_TYPE_ADDRESS:
+            if (shader_is_pixel(ctx))  // actually REG_TYPE_TEXTURE.
+            {
+                // We have to map texture registers to temps for ps_1_1, since
+                //  they work like temps, initialize with tex coords, and the
+                //  ps_1_1 TEX opcode expects to overwrite it.
+                if (!shader_version_atleast(ctx, 1, 4))
+                {
+                    output_line(ctx, "%s %s;", arb1_float_temp(ctx), varname);
+                    push_output(ctx, &ctx->mainline_intro);
+                    output_line(ctx, "MOV %s, fragment.texcoord[%d];",
+                                varname, regnum);
+                    pop_output(ctx);
+                } // if
+                break;
+            } // if
+
             // nv4 replaced address registers with generic int registers.
             if (support_nv4(ctx))
                 output_line(ctx, "INT TEMP %s;", varname);
@@ -4428,10 +4480,15 @@ static void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
         {
             if (usage == MOJOSHADER_USAGE_TEXCOORD)
             {
-                snprintf(index_str, sizeof (index_str), "%u", (uint) index);
-                usage_str = "fragment.texcoord";
-                arrayleft = "[";
-                arrayright = "]";
+                // ps_1_1 does a different hack for this attribute.
+                //  Refer to emit_ARB1_global()'s REG_TYPE_TEXTURE code.
+                if (shader_version_atleast(ctx, 1, 4))
+                {
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+                    usage_str = "fragment.texcoord";
+                    arrayleft = "[";
+                    arrayright = "]";
+                } // if
             } // if
 
             else if (usage == MOJOSHADER_USAGE_COLOR)
@@ -5197,7 +5254,6 @@ static void arb1_texld(Context *ctx, const char *opcode, const int texldd)
     if ((ctx->dest_arg.result_mod & MOD_PP) && (support_nv4(ctx)))
         ctx->dest_arg.result_mod &= ~MOD_PP;
 
-    // !!! FIXME: do non-RGBA textures map to same default values as D3D?
     char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
     const SourceArgInfo *samp_arg = &ctx->source_args[1];
     RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
@@ -5362,10 +5418,23 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 
 static void emit_ARB1_TEXLD(Context *ctx)
 {
-    if (!shader_version_atleast(ctx, 2, 0))
+    if (!shader_version_atleast(ctx, 1, 4))
     {
-        // ps_1_0 and ps_1_4 are both different, too!
-        fail(ctx, "TEXLD <= Shader Model 2.0 unimplemented.");  // !!! FIXME
+        // Note that this code counts on the register not having swizzles, etc.
+        DestArgInfo *info = &ctx->dest_arg;
+        char regnum_str[16];
+        const char *dst = get_ARB1_register_string(ctx, info->regtype,
+                                                   info->regnum, regnum_str,
+                                                   sizeof (regnum_str));
+        output_line(ctx, "TEX %s%s, %s%s, texture[%d], 2D;",
+                    dst, regnum_str, dst, regnum_str, info->regnum);
+        return;
+    } // if
+
+    else if (!shader_version_atleast(ctx, 2, 0))
+    {
+        // ps_1_4 is different, too!
+        fail(ctx, "TEXLD == Shader Model 1.4 unimplemented.");  // !!! FIXME
         return;
     } // if
 
@@ -6806,7 +6875,23 @@ static void state_TEXLD(Context *ctx)
             ctx->instruction_count += 3;
     } // if
 
-    // !!! FIXME: checks for ps_1_4 and ps_1_0 versions here...
+    else if (shader_version_atleast(ctx, 1, 4))
+    {
+        // !!! FIXME: checks for ps_1_4 version here...
+    } // else if
+
+    else
+    {
+        // !!! FIXME: cubemaps? can you do that in ps_1_1?
+        // !!! FIXME: add (other?) checks for ps_1_1 version here...
+        const DestArgInfo *info = &ctx->dest_arg;
+        const int sampler = info->regnum;
+        if (info->regtype != REG_TYPE_TEXTURE)
+            fail(ctx, "TEX param must be a texture register");
+        add_sampler(ctx, REG_TYPE_SAMPLER, sampler, TEXTURE_TYPE_2D);
+        add_attribute_register(ctx, REG_TYPE_TEXTURE, sampler,
+                               MOJOSHADER_USAGE_TEXCOORD, sampler, 0xF, 0);
+    } // else
 } // state_TEXLD
 
 static void state_TEXLDL(Context *ctx)
