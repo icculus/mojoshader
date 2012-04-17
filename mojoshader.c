@@ -5263,6 +5263,8 @@ static void arb1_texbem(Context *ctx, const int luminance)
                     tmp, src, sampler, sampler);
         output_line(ctx, "MUL %s, %s, %s;", dst, dst, tmp);
     } // if
+
+    emit_ARB1_dest_modifiers(ctx);
 } // arb1_texbem
 
 static void emit_ARB1_TEXBEM(Context *ctx)
