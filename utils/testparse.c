@@ -370,6 +370,8 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
                 printf("    * %d: %s", s->index, typenames[(int) s->type]);
                 if (s->name != NULL)
                     printf(" (\"%s\")", s->name);
+                if (s->texbem)
+                    printf(" [TEXBEM]");
                 printf("\n");
             } // for
         } // else

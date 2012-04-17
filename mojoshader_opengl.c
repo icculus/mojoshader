@@ -81,6 +81,7 @@ struct MOJOSHADER_glProgram
     GLuint handle;
     uint32 generation;
     uint32 uniform_count;
+    uint32 texbem_count;
     UniformMap *uniforms;
     uint32 attribute_count;
     AttributeMap *attributes;
@@ -130,6 +131,7 @@ typedef WINGDIAPI void (APIENTRYP PFNGLDISABLEPROC) (GLenum cap);
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
+#define MAX_TEXBEMS 3  // ps_1_1 allows 4 texture stages, texbem can't use t0.
 
 struct MOJOSHADER_glContext
 {
@@ -148,6 +150,7 @@ struct MOJOSHADER_glContext
     GLint ps_reg_file_i[MAX_REG_FILE_I * 4];
     uint8 ps_reg_file_b[MAX_REG_FILE_B];
     GLuint sampler_reg_file[16];
+    GLfloat texbem_state[MAX_TEXBEMS * 6];
 
     // This increments every time we change the register files.
     uint32 generation;
@@ -769,6 +772,7 @@ static void impl_ARB1_PushUniforms(void)
     const GLint *srci = program->vs_uniforms_int4;
     const GLint *srcb = program->vs_uniforms_bool;
     GLint loc = 0;
+    GLint texbem_loc = 0;
     uint32 i;
 
     assert(count > 0);  // shouldn't call this with nothing to do!
@@ -786,6 +790,9 @@ static void impl_ARB1_PushUniforms(void)
         // Did we switch from vertex to pixel (to geometry, etc)?
         if (shader_type != uniform_shader_type)
         {
+            if (shader_type == MOJOSHADER_TYPE_PIXEL)
+                texbem_loc = loc;
+
             // we start with vertex, move to pixel, then to geometry, etc.
             //  The array should always be sorted as such.
             if (uniform_shader_type == MOJOSHADER_TYPE_PIXEL)
@@ -857,6 +864,20 @@ static void impl_ARB1_PushUniforms(void)
             } // else
         } // else if
     } // for
+
+    if (program->texbem_count)
+    {
+        const GLenum target = GL_FRAGMENT_PROGRAM_ARB;
+        GLfloat *srcf = program->ps_uniforms_float4;
+        srcf += (program->ps_uniforms_float4_count * 4) -
+                (program->texbem_count * 8);
+        loc = texbem_loc;
+        for (i = 0; i < program->texbem_count; i++, srcf += 8)
+        {
+            ctx->glProgramLocalParameter4fvARB(target, loc++, srcf);
+            ctx->glProgramLocalParameter4fvARB(target, loc++, srcf + 4);
+        } // for
+    } // if
 } // impl_ARB1_PushUniforms
 
 static void impl_ARB1_PushSampler(GLint loc, GLuint sampler)
@@ -1538,6 +1559,18 @@ static int lookup_uniforms(MOJOSHADER_glProgram *program,
             } // if
         } // else
     } // for
+
+    if (shader_type == MOJOSHADER_TYPE_PIXEL)
+    {
+        for (i = 0; i < pd->sampler_count; i++)
+        {
+            if (pd->samplers[i].texbem)
+            {
+                float4_count += 2;
+                program->texbem_count++;
+            } // if
+        } // for
+    } // if
 
     #define MAKE_ARRAY(typ, gltyp, siz, count) \
         if (count) { \
@@ -2270,6 +2303,24 @@ void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
 } // MOJOSHADER_glGetPixelPreshaderUniformF
 
 
+void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
+                                      float mat01, float mat10, float mat11,
+                                      float lscale, float loffset)
+{
+    if ((sampler == 0) || (sampler > (MAX_TEXBEMS+1)))
+        return;
+
+    GLfloat *dstf = ctx->texbem_state + (6 * (sampler-1));
+    *(dstf++) = (GLfloat) mat00;
+    *(dstf++) = (GLfloat) mat01;
+    *(dstf++) = (GLfloat) mat10;
+    *(dstf++) = (GLfloat) mat11;
+    *(dstf++) = (GLfloat) lscale;
+    *(dstf++) = (GLfloat) loffset;
+    ctx->generation++;
+} // MOJOSHADER_glSetLegacyBumpMapEnv
+
+
 void MOJOSHADER_glProgramReady(void)
 {
     MOJOSHADER_glProgram *program = ctx->bound_program;
@@ -2290,7 +2341,8 @@ void MOJOSHADER_glProgramReady(void)
     } // if
 
     // push Uniforms to the program from our register files...
-    if ((program->uniform_count) && (program->generation != ctx->generation))
+    if ( ((program->uniform_count) || (program->texbem_count)) &&
+         (program->generation != ctx->generation))
     {
         // vertex shader uniforms come first in program->uniforms array.
         const uint32 count = program->uniform_count;
@@ -2304,6 +2356,7 @@ void MOJOSHADER_glProgramReady(void)
         const MOJOSHADER_preshader *preshader = NULL;
         uint32 i;
 
+        // !!! FIXME: shouldn't this run even if the generation hasn't changed?
         #if SUPPORT_PRESHADERS
         int ran_preshader = 0;
         if (program->vertex)
@@ -2392,6 +2445,36 @@ void MOJOSHADER_glProgramReady(void)
             } // else if
 
             // !!! FIXME: set constants that overlap the array.
+        } // for
+
+        if (program->texbem_count)
+        {
+            const MOJOSHADER_parseData *pd = program->fragment->parseData;
+            const int samp_count = pd->sampler_count;
+            const MOJOSHADER_sampler *samps = pd->samplers;
+            GLfloat *dstf = program->ps_uniforms_float4;
+            int texbem_count = 0;
+
+            dstf += (program->ps_uniforms_float4_count * 4) -
+                     (program->texbem_count * 8);
+
+            assert(program->texbem_count <= MAX_TEXBEMS);
+            for (i = 0; i < samp_count; i++)
+            {
+                if (samps[i].texbem)
+                {
+                    assert(samps[i].index > 0);
+                    assert(samps[i].index <= MAX_TEXBEMS);
+                    memcpy(dstf, &ctx->texbem_state[6 * (samps[i].index-1)],
+                           sizeof (GLfloat) * 6);
+                    dstf[6] = 0.0f;
+                    dstf[7] = 0.0f;
+                    dstf += 8;
+                    texbem_count++;
+                } // if
+            } // for
+
+            assert(texbem_count == program->texbem_count);
         } // for
 
         program->generation = ctx->generation;

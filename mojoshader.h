@@ -176,12 +176,18 @@ typedef enum
  *  before drawing with the shader.
  * (name) is a profile-specific variable name; it may be NULL if it isn't
  *  applicable to the requested profile.
+ * (texbem) will be non-zero if a TEXBEM opcode references this sampler. This
+ *  is only used in legacy shaders (ps_1_1 through ps_1_3), but it needs some
+ *  special support to work, as we have to load a magic uniform behind the
+ *  scenes to support it. Most code can ignore this field in general, and no
+ *  one has to touch it unless they really know what they're doing.
  */
 typedef struct MOJOSHADER_sampler
 {
     MOJOSHADER_samplerType type;
     int index;
     const char *name;
+    int texbem;
 } MOJOSHADER_sampler;
 
 /*
@@ -3012,6 +3018,45 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
  */
 void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
                                          unsigned int bcount);
+
+/*
+ * Set up the vector for the TEXBEM opcode. Most apps can ignore this API.
+ *
+ * Shader Model 1.1 through 1.3 had an instruction for "fake bump mapping"
+ *  called TEXBEM. To use it, you had to set some sampler states,
+ *  D3DTSS_BUMPENVMATxx, which would be referenced by the opcode.
+ *
+ * This functionality was removed from Shader Model 1.4 and later, because
+ *  it was special-purpose and limited. The functionality could be built on
+ *  more general opcodes, and the sampler state could be supplied in a more
+ *  general uniform.
+ *
+ * However, to support this opcode, we supply a way to specify that sampler
+ *  state, and the OpenGL glue code does the right thing to pass that
+ *  information to the shader.
+ *
+ * This call maps to IDirect3DDevice::SetTextureStageState() with the
+ *  D3DTSS_BUMPENVMAT00, D3DTSS_BUMPENVMAT01, D3DTSS_BUMPENVMAT10,
+ *  D3DTSS_BUMPENVMAT11, D3DTSS_BUMPENVLSCALE, and D3DTSS_BUMPENVLOFFSET
+ *  targets. This is only useful for Shader Model < 1.4 pixel shaders, if
+ *  they use the TEXBEM or TEXBEML opcode. If you aren't sure, you don't need
+ *  this function.
+ *
+ * Like the rest of your uniforms, you must call MOJOSHADER_glProgramReady()
+ *  between setting new values and drawing with them.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * These values are not shared between contexts.
+ */
+void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
+                                      float mat01, float mat10, float mat11,
+                                      float lscale, float loffset);
 
 /*
  * Connect a client-side array to the currently-bound program.

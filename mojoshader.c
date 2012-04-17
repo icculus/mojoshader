@@ -220,7 +220,8 @@ typedef void (*emit_uniform)(Context *ctx, RegisterType regtype, int regnum,
                              const VariableList *var);
 
 // one emit function for samplers in each profile.
-typedef void (*emit_sampler)(Context *ctx, int stage, TextureType ttype);
+typedef void (*emit_sampler)(Context *ctx, int stage, TextureType ttype,
+                             int texbem);
 
 // one emit function for attributes in each profile.
 typedef void (*emit_attribute)(Context *ctx, RegisterType regtype, int regnum,
@@ -618,12 +619,14 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
 } // add_attribute_register
 
 static inline void add_sampler(Context *ctx, const RegisterType rtype,
-                               const int regnum, const TextureType ttype)
+                               const int regnum, const TextureType ttype,
+                               const int texbem)
 {
     // !!! FIXME: make sure it doesn't exist?
     // !!! FIXME:  (ps_1_1 assume we can add it multiple times...)
     RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
     item->index = (int) ttype;
+    item->misc |= texbem;
 } // add_sampler
 
 
@@ -1154,7 +1157,7 @@ static void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum,
 } // emit_D3D_uniform
 
 
-static void emit_D3D_sampler(Context *ctx, int stage, TextureType ttype)
+static void emit_D3D_sampler(Context *ctx, int s, TextureType ttype, int tb)
 {
     // no-op.
 } // emit_D3D_sampler
@@ -1561,7 +1564,7 @@ static void emit_BYTECODE_phase(Context *ctx) {}
 static void emit_BYTECODE_finalize(Context *ctx) {}
 static void emit_BYTECODE_global(Context *ctx, RegisterType t, int n) {}
 static void emit_BYTECODE_array(Context *ctx, VariableList *var) {}
-static void emit_BYTECODE_sampler(Context *ctx, int s, TextureType ttype) {}
+static void emit_BYTECODE_sampler(Context *c, int s, TextureType t, int tb) {}
 static void emit_BYTECODE_const_array(Context *ctx, const ConstantsList *c,
                                          int base, int size) {}
 static void emit_BYTECODE_uniform(Context *ctx, RegisterType t, int n,
@@ -2391,7 +2394,7 @@ static void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
     pop_output(ctx);
 } // emit_GLSL_uniform
 
-static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
+static void emit_GLSL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 {
     const char *type = "";
     switch (ttype)
@@ -2407,6 +2410,15 @@ static void emit_GLSL_sampler(Context *ctx, int stage, TextureType ttype)
 
     push_output(ctx, &ctx->globals);
     output_line(ctx, "uniform %s %s;", type, var);
+    if (tb)  // This sampler used a ps_1_1 TEXBEM opcode?
+    {
+        char name[64];
+        const int index = ctx->uniform_float4_count;
+        ctx->uniform_float4_count += 2;
+        get_GLSL_uniform_array_varname(ctx, REG_TYPE_CONST, name, sizeof (name));
+        output_line(ctx, "#define %s_texbem %s[%d]", var, name, index);
+        output_line(ctx, "#define %s_texbeml %s[%d]", var, name, index+1);
+    } // if
     pop_output(ctx);
 } // emit_GLSL_sampler
 
@@ -3329,8 +3341,53 @@ static void emit_GLSL_TEXLD(Context *ctx)
 } // emit_GLSL_TEXLD
     
 
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)  // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXBEML) // !!! FIXME
+static void emit_GLSL_TEXBEM(Context *ctx)
+{
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64]; get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+    char src[64]; get_GLSL_srcarg_varname(ctx, 0, src, sizeof (src));
+    char sampler[64];
+    char code[512];
+
+    // Note that this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "texture2D(%s, vec2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))",
+        sampler,
+        dst, sampler, src, sampler, src,
+        dst, sampler, src, sampler, src);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXBEM
+
+
+static void emit_GLSL_TEXBEML(Context *ctx)
+{
+    // Note that this code counts on the register not having swizzles, etc.
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64]; get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+    char src[64]; get_GLSL_srcarg_varname(ctx, 0, src, sizeof (src));
+    char sampler[64];
+    char code[512];
+
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "(texture2D(%s, vec2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))) *"
+        " ((%s.z * %s_texbeml.x) + %s_texbem.y)",
+        sampler,
+        dst, sampler, src, sampler, src,
+        dst, sampler, src, sampler, src,
+        src, sampler, sampler);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXBEML
+
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD) // !!! FIXME
@@ -4303,9 +4360,22 @@ static void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum,
     pop_output(ctx);
 } // emit_ARB1_uniform
 
-static void emit_ARB1_sampler(Context *ctx, int stage, TextureType ttype)
+static void emit_ARB1_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 {
-    // this is a no-op...you don't predeclare samplers in arb1.
+    // this is mostly a no-op...you don't predeclare samplers in arb1.
+
+    if (tb)  // This sampler used a ps_1_1 TEXBEM opcode?
+    {
+        const int index = ctx->uniform_float4_count + ctx->uniform_int4_count +
+                          ctx->uniform_bool_count;
+        char var[64];
+        get_ARB1_varname_in_buf(ctx, REG_TYPE_SAMPLER, stage, var, sizeof(var));
+        push_output(ctx, &ctx->globals);
+        output_line(ctx, "PARAM %s_texbem = program.local[%d];", var, index);
+        output_line(ctx, "PARAM %s_texbeml = program.local[%d];", var, index+1);
+        pop_output(ctx);
+        ctx->uniform_float4_count += 2;
+    } // if
 } // emit_ARB1_sampler
 
 // !!! FIXME: a lot of cut-and-paste here from emit_GLSL_attribute().
@@ -5171,8 +5241,40 @@ static void emit_ARB1_TEXKILL(Context *ctx)
     output_line(ctx, "KIL %s.xyzx;", dst);
 } // emit_ARB1_TEXKILL
 
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEM)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXBEML)
+static void arb1_texbem(Context *ctx, const int luminance)
+{
+    // Note that this code counts on the register not having swizzles, etc.
+    const int stage = ctx->dest_arg.regnum;
+    char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+    char src[64]; get_ARB1_srcarg_varname(ctx, 0, src, sizeof (src));
+    char tmp[64]; allocate_ARB1_scratch_reg_name(ctx, tmp, sizeof (tmp));
+    char sampler[64];
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_SAMPLER, stage,
+                            sampler, sizeof (sampler));
+
+    output_line(ctx, "MUL %s, %s_texbem.xzyw, %s.xyxy;", tmp, sampler, src);
+    output_line(ctx, "ADD %s.xy, %s.xzxx, %s.ywxx;", tmp, tmp, tmp);
+    output_line(ctx, "ADD %s.xy, %s, %s;", tmp, tmp, dst);
+    output_line(ctx, "TEX %s, %s, texture[%d], 2D;", dst, tmp, stage);
+
+    if (luminance)  // TEXBEML, not just TEXBEM?
+    {
+        output_line(ctx, "MAD %s, %s.zzzz, %s_texbeml.xxxx, %s_texbeml.yyyy;",
+                    tmp, src, sampler, sampler);
+        output_line(ctx, "MUL %s, %s, %s;", dst, dst, tmp);
+    } // if
+} // arb1_texbem
+
+static void emit_ARB1_TEXBEM(Context *ctx)
+{
+    arb1_texbem(ctx, 0);
+} // emit_ARB1_TEXBEM
+
+static void emit_ARB1_TEXBEML(Context *ctx)
+{
+    arb1_texbem(ctx, 1);
+} // emit_ARB1_TEXBEML
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD)
@@ -6411,7 +6513,7 @@ static void state_DCL(Context *ctx)
     else if (shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_SAMPLER)
-            add_sampler(ctx, regtype, regnum, (TextureType) ctx->dwords[0]);
+            add_sampler(ctx, regtype, regnum, (TextureType) ctx->dwords[0], 0);
         else
         {
             const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
@@ -6822,6 +6924,65 @@ static void state_TEXKILL(Context *ctx)
     // !!! FIXME: there are further limitations in ps_1_3 and earlier.
 } // state_TEXKILL
 
+static void state_texbem(Context *ctx, const char *opcode)
+{
+    // The TEXBEM equasion, according to MSDN:
+    //u' = TextureCoordinates(stage m)u + D3DTSS_BUMPENVMAT00(stage m)*t(n)R
+    //         + D3DTSS_BUMPENVMAT10(stage m)*t(n)G
+    //v' = TextureCoordinates(stage m)v + D3DTSS_BUMPENVMAT01(stage m)*t(n)R
+    //         + D3DTSS_BUMPENVMAT11(stage m)*t(n)G
+    //t(m)RGBA = TextureSample(stage m)
+    //
+    // ...TEXBEML adds this at the end:
+    //t(m)RGBA = t(m)RGBA * [(t(n)B * D3DTSS_BUMPENVLSCALE(stage m)) +
+    //           D3DTSS_BUMPENVLOFFSET(stage m)]
+
+    if (shader_version_atleast(ctx, 1, 4))
+        failf(ctx, "%s opcode not available after Shader Model 1.3", opcode);
+
+    if (!shader_version_atleast(ctx, 1, 2))
+    {
+        if (ctx->source_args[0].src_mod == SRCMOD_SIGN)
+            failf(ctx, "%s forbids _bx2 on source reg before ps_1_2", opcode);
+    } // if
+
+    // !!! FIXME: MSDN:
+    // !!! FIXME: Register data that has been read by a texbem
+    // !!! FIXME:  or texbeml instruction cannot be read later,
+    // !!! FIXME:  except by another texbem or texbeml.
+
+    const DestArgInfo *dst = &ctx->dest_arg;
+    const SourceArgInfo *src = &ctx->source_args[0];
+    if (dst->regtype != REG_TYPE_TEXTURE)
+        failf(ctx, "%s destination must be a texture register", opcode);
+    if (src->regtype != REG_TYPE_TEXTURE)
+        failf(ctx, "%s source must be a texture register", opcode);
+    if (src->regnum >= dst->regnum)  // so says MSDN.
+        failf(ctx, "%s dest must be a higher register than source", opcode);
+
+    add_sampler(ctx, REG_TYPE_SAMPLER, dst->regnum, TEXTURE_TYPE_2D, 1);
+    add_attribute_register(ctx, REG_TYPE_TEXTURE, dst->regnum,
+                           MOJOSHADER_USAGE_TEXCOORD, dst->regnum, 0xF, 0);
+
+    // Strictly speaking, there should be a TEX opcode prior to this call that
+    //  should fill in this metadata, but I'm not sure that's required for the
+    //  shader to assemble in D3D, so we'll do this so we don't fail with a
+    //  cryptic error message even if the developer didn't do the TEX.
+    add_sampler(ctx, REG_TYPE_SAMPLER, src->regnum, TEXTURE_TYPE_2D, 0);
+    add_attribute_register(ctx, REG_TYPE_TEXTURE, src->regnum,
+                           MOJOSHADER_USAGE_TEXCOORD, src->regnum, 0xF, 0);
+} // state_texbem
+
+static void state_TEXBEM(Context *ctx)
+{
+    state_texbem(ctx, "TEXBEM");
+} // state_TEXBEM
+
+static void state_TEXBEML(Context *ctx)
+{
+    state_texbem(ctx, "TEXBEML");
+} // state_TEXBEML
+
 static void state_TEXLD(Context *ctx)
 {
     if (shader_version_atleast(ctx, 2, 0))
@@ -6885,7 +7046,7 @@ static void state_TEXLD(Context *ctx)
         const int sampler = info->regnum;
         if (info->regtype != REG_TYPE_TEXTURE)
             fail(ctx, "TEX param must be a texture register");
-        add_sampler(ctx, REG_TYPE_SAMPLER, sampler, TEXTURE_TYPE_2D);
+        add_sampler(ctx, REG_TYPE_SAMPLER, sampler, TEXTURE_TYPE_2D, 0);
         add_attribute_register(ctx, REG_TYPE_TEXTURE, sampler,
                                MOJOSHADER_USAGE_TEXCOORD, sampler, 0xF, 0);
     } // else
@@ -8053,6 +8214,7 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
             retval[i].type = type;
             retval[i].index = item->regnum;
             retval[i].name = alloc_varname(ctx, item);
+            retval[i].texbem = (item->misc != 0) ? 1 : 0;
             item = item->next;
         } // for
     } // if
@@ -8469,7 +8631,8 @@ static void process_definitions(Context *ctx)
     {
         ctx->sampler_count++;
         ctx->profile->sampler_emitter(ctx, item->regnum,
-                                      (TextureType) item->index);
+                                      (TextureType) item->index,
+                                      item->misc != 0);
     } // for
 
     // ...and attributes...
