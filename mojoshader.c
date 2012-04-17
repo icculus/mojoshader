@@ -1945,11 +1945,13 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
             break;
 
         case SRCMOD_BIASNEGATE:
-            premod_str = "-";
-            // fall through.
+            premod_str = "-(";
+            postmod_str = " - 0.5)";
+            break;
+
         case SRCMOD_BIAS:
-            fail(ctx, "SRCMOD_BIAS unsupported"); return buf; // !!! FIXME
-            postmod_str = "_bias";
+            premod_str = "(";
+            postmod_str = " - 0.5)";
             break;
 
         case SRCMOD_SIGNNEGATE:
