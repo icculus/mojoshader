@@ -5289,7 +5289,23 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
 static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 static void emit_ARB1_LOGP(Context *ctx) { arb1_log(ctx, "LG2"); }
 
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(CND)
+static void emit_ARB1_CND(Context *ctx)
+{
+    char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
+    char src0[64]; make_ARB1_srcarg_string(ctx, 0, src0, sizeof (src0));
+    char src1[64]; make_ARB1_srcarg_string(ctx, 1, src1, sizeof (src1));
+    char src2[64]; make_ARB1_srcarg_string(ctx, 2, src2, sizeof (src2));
+    char tmp[64]; allocate_ARB1_scratch_reg_name(ctx, tmp, sizeof (tmp));
+
+    // CND compares against 0.5, but we need to compare against 0.0...
+    //  ...subtract to make up the difference.
+    output_line(ctx, "SUB %s, %s, { 0.5, 0.5, 0.5, 0.5 };", tmp, src0);
+    // D3D tests (src0 >= 0.0), but ARB1 tests (src0 < 0.0) ... so just
+    //  switch src1 and src2 to get the same results.
+    output_line(ctx, "CMP%s, %s, %s, %s;", dst, tmp, src2, src1);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_CND
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH)
