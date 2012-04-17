@@ -5422,12 +5422,9 @@ static void emit_ARB1_TEXLD(Context *ctx)
     {
         // Note that this code counts on the register not having swizzles, etc.
         DestArgInfo *info = &ctx->dest_arg;
-        char regnum_str[16];
-        const char *dst = get_ARB1_register_string(ctx, info->regtype,
-                                                   info->regnum, regnum_str,
-                                                   sizeof (regnum_str));
-        output_line(ctx, "TEX %s%s, %s%s, texture[%d], 2D;",
-                    dst, regnum_str, dst, regnum_str, info->regnum);
+        char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+        output_line(ctx, "TEX %s, %s, texture[%d], 2D;",
+                    dst, dst, info->regnum);
         return;
     } // if
 
