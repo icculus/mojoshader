@@ -117,6 +117,7 @@ typedef struct Context
     int instruction_count;
     uint32 instruction_controls;
     uint32 previous_opcode;
+    int coissue;
     int loops;
     int reps;
     int max_reps;
@@ -1196,7 +1197,7 @@ static void emit_D3D_opcode_d(Context *ctx, const char *opcode)
 {
     char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s%s", opcode, dst);
+    output_line(ctx, "%s%s%s", ctx->coissue ? "+" : "", opcode, dst);
 } // emit_D3D_opcode_d
 
 
@@ -1204,7 +1205,7 @@ static void emit_D3D_opcode_s(Context *ctx, const char *opcode)
 {
     char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s %s", opcode, src0);
+    output_line(ctx, "%s%s %s", ctx->coissue ? "+" : "", opcode, src0);
 } // emit_D3D_opcode_s
 
 
@@ -1213,7 +1214,7 @@ static void emit_D3D_opcode_ss(Context *ctx, const char *opcode)
     char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
     char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s %s, %s", opcode, src0, src1);
+    output_line(ctx, "%s%s %s, %s", ctx->coissue ? "+" : "", opcode, src0, src1);
 } // emit_D3D_opcode_ss
 
 
@@ -1222,7 +1223,7 @@ static void emit_D3D_opcode_ds(Context *ctx, const char *opcode)
     char dst[64]; make_D3D_destarg_string(ctx, dst, sizeof (dst));
     char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s%s, %s", opcode, dst, src0);
+    output_line(ctx, "%s%s%s, %s", ctx->coissue ? "+" : "", opcode, dst, src0);
 } // emit_D3D_opcode_ds
 
 
@@ -1232,7 +1233,8 @@ static void emit_D3D_opcode_dss(Context *ctx, const char *opcode)
     char src0[64]; make_D3D_srcarg_string(ctx, 0, src0, sizeof (src0));
     char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s%s, %s, %s", opcode, dst, src0, src1);
+    output_line(ctx, "%s%s%s, %s, %s", ctx->coissue ? "+" : "",
+                opcode, dst, src0, src1);
 } // emit_D3D_opcode_dss
 
 
@@ -1243,7 +1245,8 @@ static void emit_D3D_opcode_dsss(Context *ctx, const char *opcode)
     char src1[64]; make_D3D_srcarg_string(ctx, 1, src1, sizeof (src1));
     char src2[64]; make_D3D_srcarg_string(ctx, 2, src2, sizeof (src2));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s%s, %s, %s, %s", opcode, dst, src0, src1, src2);
+    output_line(ctx, "%s%s%s, %s, %s, %s", ctx->coissue ? "+" : "", 
+                opcode, dst, src0, src1, src2);
 } // emit_D3D_opcode_dsss
 
 
@@ -1255,15 +1258,16 @@ static void emit_D3D_opcode_dssss(Context *ctx, const char *opcode)
     char src2[64]; make_D3D_srcarg_string(ctx, 2, src2, sizeof (src2));
     char src3[64]; make_D3D_srcarg_string(ctx, 3, src3, sizeof (src3));
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx,"%s%s, %s, %s, %s, %s",opcode,dst,src0,src1,src2,src3);
+    output_line(ctx,"%s%s%s, %s, %s, %s, %s", ctx->coissue ? "+" : "",
+                opcode, dst, src0, src1, src2, src3);
 } // emit_D3D_opcode_dssss
 
 
 static void emit_D3D_opcode(Context *ctx, const char *opcode)
 {
     opcode = lowercase((char *) alloca(strlen(opcode) + 1), opcode);
-    output_line(ctx, "%s", opcode);
-} // emit_D3D_opcode_dssss
+    output_line(ctx, "%s%s", ctx->coissue ? "+" : "", opcode);
+} // emit_D3D_opcode
 
 
 #define EMIT_D3D_OPCODE_FUNC(op) \
@@ -7152,14 +7156,13 @@ static int parse_instruction_token(Context *ctx)
         return insttoks + 1;  // pray that you resync later.
     } // if
 
+    ctx->coissue = coissue;
     if (coissue)
     {
         if (!shader_is_pixel(ctx))
             fail(ctx, "coissue instruction on non-pixel shader");
         if (shader_version_atleast(ctx, 2, 0))
             fail(ctx, "coissue instruction in Shader Model >= 2.0");
-        // !!! FIXME: I'm not sure what this actually means, yet.
-        fail(ctx, "coissue instructions unsupported");
     } // if
 
     if ((ctx->shader_type & instruction->shader_types) == 0)
