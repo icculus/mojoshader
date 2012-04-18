@@ -3807,10 +3807,9 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_SIGN:
-            output_line(ctx, "SUB %s, %s, { 0.5, 0.5, 0.5, 0.5 };",
-                        regtype_str, buf);
-            output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };",
-                        regtype_str, regtype_str);
+            output_line(ctx,
+                "MAD %s, %s, { 2.0, 2.0, 2.0, 2.0 }, { -1.0, -1.0, -1.0, -1.0 };",
+                regtype_str, buf);
             break;
 
         case SRCMOD_COMPLEMENT:
