@@ -1933,7 +1933,6 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
         return buf;
     } // if
 
-// !!! FIXME: not right.
     const SourceArgInfo *arg = &ctx->source_args[idx];
 
     const char *premod_str = "";
@@ -1955,27 +1954,26 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
             break;
 
         case SRCMOD_SIGNNEGATE:
-            premod_str = "-";
-            // fall through.
+            premod_str = "-((";
+            postmod_str = " - 0.5) * 2.0)";
+            break;
+
         case SRCMOD_SIGN:
-            fail(ctx, "SRCMOD_SIGN unsupported"); return buf; // !!! FIXME
-            postmod_str = "_bx2";
+            premod_str = "((";
+            postmod_str = " - 0.5) * 2.0)";
             break;
 
         case SRCMOD_COMPLEMENT:
-            fail(ctx, "SRCMOD_COMPLEMENT unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
-            premod_str = "(1.0 - (";
-            postmod_str = "))";
+            premod_str = "(1.0 - ";
+            postmod_str = ")";
             break;
 
         case SRCMOD_X2NEGATE:
-            fail(ctx, "SRCMOD_X2NEGATE unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
             premod_str = "-(";
             postmod_str = " * 2.0)";
             break;
 
         case SRCMOD_X2:
-            fail(ctx, "SRCMOD_X2 unsupported"); return buf; // !!! FIXME  (need to handle vecsize)
             premod_str = "(";
             postmod_str = " * 2.0)";
             break;
