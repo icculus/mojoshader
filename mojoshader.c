@@ -3673,6 +3673,33 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
                                                   const SourceArgInfo *arg,
                                                   char *buf, size_t buflen)
 {
+    // !!! FIXME: this can hit pathological cases where we look like this...
+    //
+    //    dp3 r1.xyz, t0_bx2, t0_bx2
+    //    mad r1.xyz, t0_bias, 1-r1, t0_bx2
+    //
+    // ...which do a lot of duplicate work in arb1...
+    //
+    //    SUB scratch0, t0, { 0.5, 0.5, 0.5, 0.5 };
+    //    MUL scratch0, scratch0, { 2.0, 2.0, 2.0, 2.0 };
+    //    SUB scratch1, t0, { 0.5, 0.5, 0.5, 0.5 };
+    //    MUL scratch1, scratch1, { 2.0, 2.0, 2.0, 2.0 };
+    //    DP3 r1.xyz, scratch0, scratch1;
+    //    SUB scratch0, t0, { 0.5, 0.5, 0.5, 0.5 };
+    //    SUB scratch1, { 1.0, 1.0, 1.0, 1.0 }, r1;
+    //    SUB scratch2, t0, { 0.5, 0.5, 0.5, 0.5 };
+    //    MUL scratch2, scratch2, { 2.0, 2.0, 2.0, 2.0 };
+    //    MAD r1.xyz, scratch0, scratch1, scratch2;
+    //
+    // ...notice that the dp3 calculates the same value into two scratch
+    //  registers. This case is easier to handle; just see if multiple
+    //  source args are identical, build it up once, and use the same
+    //  scratch register for multiple arguments in that opcode.
+    //  Even better still, only calculate things once across instructions,
+    //  and be smart about letting it linger in a scratch register until we
+    //  definitely don't need the calculation anymore. That's harder to
+    //  write, though.
+
     char regnum_str[16] = { '\0' };
 
     // !!! FIXME: use get_ARB1_varname_in_buf() instead?
@@ -3743,10 +3770,26 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 
     // Some of the source mods need to generate instructions to a temp
     //  register, in which case we'll replace the register name.
+    const SourceMod mod = arg->src_mod;
+    const int inplace = ( (mod == SRCMOD_NONE) || (mod == SRCMOD_NEGATE) ||
+                          ((mod == SRCMOD_ABS) && support_nv2(ctx)) );
+
+    if (!inplace)
+    {
+        const size_t len = 64;
+        char *stackbuf = (char *) alloca(len);
+        regtype_str = allocate_ARB1_scratch_reg_name(ctx, stackbuf, len);
+        regnum_str[0] = '\0'; // move value to scratch register.
+        rel_lbracket = "";   // scratch register won't use array.
+        rel_rbracket = "";
+        rel_offset[0] = '\0';
+        rel_swizzle[0] = '\0';
+        rel_regtype_str = "";
+    } // if
 
     const char *premod_str = "";
     const char *postmod_str = "";
-    switch (arg->src_mod)
+    switch (mod)
     {
         case SRCMOD_NEGATE:
             premod_str = "-";
@@ -3756,29 +3799,31 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_BIAS:
-            fail(ctx, "SRCMOD_BIAS currently unsupported in arb1");
-            postmod_str = "_bias";
+            output_line(ctx, "SUB %s, %s, { 0.5, 0.5, 0.5, 0.5 };",
+                        regtype_str, buf);
             break;
 
         case SRCMOD_SIGNNEGATE:
             premod_str = "-";
             // fall through.
         case SRCMOD_SIGN:
-            fail(ctx, "SRCMOD_SIGN currently unsupported in arb1");
-            postmod_str = "_bx2";
+            output_line(ctx, "SUB %s, %s, { 0.5, 0.5, 0.5, 0.5 };",
+                        regtype_str, buf);
+            output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };",
+                        regtype_str, regtype_str);
             break;
 
         case SRCMOD_COMPLEMENT:
-            fail(ctx, "SRCMOD_COMPLEMENT currently unsupported in arb1");
-            premod_str = "1-";
+            output_line(ctx, "SUB %s, { 1.0, 1.0, 1.0, 1.0 }, %s;",
+                        regtype_str, buf);
             break;
 
         case SRCMOD_X2NEGATE:
             premod_str = "-";
             // fall through.
         case SRCMOD_X2:
-            fail(ctx, "SRCMOD_X2 currently unsupported in arb1");
-            postmod_str = "_x2";
+            output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };",
+                        regtype_str, buf);
             break;
 
         case SRCMOD_DZ:
@@ -3795,22 +3840,12 @@ static const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
             premod_str = "-";
             // fall through.
         case SRCMOD_ABS:
-            if (support_nv2(ctx))  // GL_NV_vertex_program2_option adds this.
-            {
-                premod_str = (arg->src_mod == SRCMOD_ABSNEGATE) ? "-|" : "|";
-                postmod_str = "|";
-            } // if
+            if (!support_nv2(ctx))  // GL_NV_vertex_program2_option adds this.
+                output_line(ctx, "ABS %s, %s;", regtype_str, buf);
             else
             {
-                regtype_str = allocate_ARB1_scratch_reg_name(ctx,
-                                                    (char *) alloca(64), 64);
-                regnum_str[0] = '\0'; // move value to scratch register.
-                rel_lbracket = "";   // scratch register won't use array.
-                rel_rbracket = "";
-                rel_offset[0] = '\0';
-                rel_swizzle[0] = '\0';
-                rel_regtype_str = "";
-                output_line(ctx, "ABS %s, %s;", regtype_str, buf);
+                premod_str = (mod == SRCMOD_ABSNEGATE) ? "-|" : "|";
+                postmod_str = "|";
             } // else
             break;
 
