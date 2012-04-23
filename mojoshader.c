@@ -9077,6 +9077,17 @@ static void process_definitions(Context *ctx)
                     item = prev;
                     break;
 
+                case REG_TYPE_INPUT:
+                    // You don't have to dcl_ your inputs in Shader Model 1.
+                    if (shader_is_pixel(ctx)&&!shader_version_atleast(ctx,2,0))
+                    {
+                        add_attribute_register(ctx, regtype, regnum,
+                                               MOJOSHADER_USAGE_COLOR, regnum,
+                                               0xF, 0);
+                        break;
+                    } // if
+                    // fall through...
+
                 default:
                     fail(ctx, "BUG: we used a register we don't know how to define.");
             } // switch
