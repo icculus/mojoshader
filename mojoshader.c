@@ -9054,7 +9054,7 @@ static void process_definitions(Context *ctx)
 
                     // Apparently this is an attribute that wasn't DCL'd.
                     //  Add it to the attribute list; deal with it later.
-                    add_attribute_register(ctx, item->regtype, item->regnum,
+                    add_attribute_register(ctx, regtype, regnum,
                                            MOJOSHADER_USAGE_UNKNOWN, 0, 0xF, 0);
                     break;
 
