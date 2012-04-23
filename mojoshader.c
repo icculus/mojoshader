@@ -3695,7 +3695,40 @@ EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3) // !!! FIXME
+
+static void emit_GLSL_TEXM3X3(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char code[512];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "vec4(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), 1.0)",
+        src0, src1, src2, src3, dst, src4);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXM3X3
+
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH) // !!! FIXME
 
 static void emit_GLSL_CMP(Context *ctx)
@@ -5709,7 +5742,39 @@ EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2RGB)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3TEX)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2DEPTH)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDP3)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3)
+
+static void emit_ARB1_TEXM3X3(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+
+    output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
+    output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
+    output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
+    output_line(ctx, "MOV %s.w, { 1.0, 1.0, 1.0, 1.0 };", dst);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_TEXM3X3
+
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXDEPTH)
 
 static void emit_ARB1_CMP(Context *ctx)
@@ -7451,14 +7516,14 @@ static void state_TEXM3X3PAD(Context *ctx)
     } // else
 } // state_TEXM3X3PAD
 
-static void state_texm3x3(Context *ctx, const char *opcode)
+static void state_texm3x3(Context *ctx, const char *opcode, const int dims)
 {
     // !!! FIXME: check for correct opcode existance and order more rigorously?
     if (shader_version_atleast(ctx, 1, 4))
         failf(ctx, "%s opcode not available after Shader Model 1.3", opcode);
     if (ctx->texm3x3pad_dst1 == -1)
         failf(ctx, "%s opcode without matching TEXM3X3PADs", opcode);
-    state_texops(ctx, opcode, 3, 0);
+    state_texops(ctx, opcode, dims, 0);
     ctx->reset_texmpad = 1;
 } // state_texm3x3
 
@@ -7466,24 +7531,24 @@ static void state_TEXM3X3(Context *ctx)
 {
     if (!shader_version_atleast(ctx, 1, 2))
         fail(ctx, "TEXM3X3 opcode not available in Shader Model 1.1");
-    state_texm3x3(ctx, "TEXM3X3");
+    state_texm3x3(ctx, "TEXM3X3", 0);
 } // state_TEXM3X3
 
 static void state_TEXM3X3TEX(Context *ctx)
 {
-    state_texm3x3(ctx, "TEXM3X3TEX");
+    state_texm3x3(ctx, "TEXM3X3TEX", 3);
 } // state_TEXM3X3TEX
 
 static void state_TEXM3X3SPEC(Context *ctx)
 {
-    state_texm3x3(ctx, "TEXM3X3SPEC");
+    state_texm3x3(ctx, "TEXM3X3SPEC", 3);
     if (ctx->source_args[1].regtype != REG_TYPE_CONST)
         fail(ctx, "TEXM3X3SPEC final arg must be a constant register");
 } // state_TEXM3X3SPEC
 
 static void state_TEXM3X3VSPEC(Context *ctx)
 {
-    state_texm3x3(ctx, "TEXM3X3VSPEC");
+    state_texm3x3(ctx, "TEXM3X3VSPEC", 3);
 } // state_TEXM3X3VSPEC
 
 
