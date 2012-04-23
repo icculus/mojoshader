@@ -152,11 +152,19 @@ typedef struct Context
     int predicated;
     int uses_pointsize;
     int uses_fog;
-    int glsl_generated_lit_opcode;
+    int glsl_generated_lit_helper;
     int glsl_generated_texldd_setup;
+    int glsl_generated_texm3x3spec_helper;
     int arb1_wrote_position;
     int have_preshader;
     int ignores_ctab;
+    int reset_texmpad;
+    int texm3x2pad_dst0;
+    int texm3x2pad_src0;
+    int texm3x3pad_dst0;
+    int texm3x3pad_src0;
+    int texm3x3pad_dst1;
+    int texm3x3pad_src1;
     MOJOSHADER_preshader *preshader;
 
 #if SUPPORT_PROFILE_ARB1_NV
@@ -2822,10 +2830,10 @@ static void emit_GLSL_LIT_helper(Context *ctx)
 {
     const char *maxp = "127.9961"; // value from the dx9 reference.
 
-    if (ctx->glsl_generated_lit_opcode)
+    if (ctx->glsl_generated_lit_helper)
         return;
 
-    ctx->glsl_generated_lit_opcode = 1;
+    ctx->glsl_generated_lit_helper = 1;
 
     push_output(ctx, &ctx->helpers);
     output_line(ctx, "vec4 LIT(const vec4 src)");
@@ -2848,9 +2856,9 @@ static void emit_GLSL_LIT(Context *ctx)
 {
     char src0[64]; make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
     char code[128];
+    emit_GLSL_LIT_helper(ctx);
     make_GLSL_destarg_assign(ctx, code, sizeof (code), "LIT(%s)", src0);
     output_line(ctx, "%s", code);
-    emit_GLSL_LIT_helper(ctx);
 } // emit_GLSL_LIT
 
 static void emit_GLSL_DST(Context *ctx)
@@ -3229,7 +3237,7 @@ static void glsl_texld(Context *ctx, const int texldd)
 
         assert(!texldd);
 
-        // Note that this code counts on the register not having swizzles, etc.
+        // !!! FIXME: this code counts on the register not having swizzles, etc.
         get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
         get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                                 sampler, sizeof (sampler));
@@ -3353,7 +3361,7 @@ static void emit_GLSL_TEXBEM(Context *ctx)
     char sampler[64];
     char code[512];
 
-    // Note that this code counts on the register not having swizzles, etc.
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
     get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
 
@@ -3370,7 +3378,7 @@ static void emit_GLSL_TEXBEM(Context *ctx)
 
 static void emit_GLSL_TEXBEML(Context *ctx)
 {
-    // Note that this code counts on the register not having swizzles, etc.
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
     DestArgInfo *info = &ctx->dest_arg;
     char dst[64]; get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
     char src[64]; get_GLSL_srcarg_varname(ctx, 0, src, sizeof (src));
@@ -3394,12 +3402,207 @@ static void emit_GLSL_TEXBEML(Context *ctx)
 
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR) // !!! FIXME
 EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2TEX) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3PAD) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC) // !!! FIXME
-EMIT_GLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC) // !!! FIXME
+
+
+static void emit_GLSL_TEXM3X2PAD(Context *ctx)
+{
+    // no-op ... work happens in emit_GLSL_TEXM3X2TEX().
+} // emit_GLSL_TEXM3X2PAD
+
+static void emit_GLSL_TEXM3X2TEX(Context *ctx)
+{
+    if (ctx->texm3x2pad_src0 == -1)
+        return;
+
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char sampler[64];
+    char code[512];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_src0,
+                            src0, sizeof (src0));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_dst0,
+                            src1, sizeof (src1));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src2, sizeof (src2));
+    get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "texture2D(%s, vec2(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz)))",
+        sampler, src0, src1, src2, dst);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXM3X2TEX
+
+static void emit_GLSL_TEXM3X3PAD(Context *ctx)
+{
+    // no-op ... work happens in emit_GLSL_TEXM3X3*().
+} // emit_GLSL_TEXM3X3PAD
+
+static void emit_GLSL_TEXM3X3TEX(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char sampler[64];
+    char code[512];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "texture3D(%s,"
+            " vec3(dot(%s.xyz, %s.xyz),"
+            " dot(%s.xyz, %s.xyz),"
+            " dot(%s.xyz, %s.xyz)))",
+        sampler, src0, src1, src2, src3, dst, src4);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXM3X3TEX
+
+static void emit_GLSL_TEXM3X3SPEC_helper(Context *ctx)
+{
+    if (ctx->glsl_generated_texm3x3spec_helper)
+        return;
+
+    ctx->glsl_generated_texm3x3spec_helper = 1;
+
+    push_output(ctx, &ctx->helpers);
+    output_line(ctx, "vec3 TEXM3X3SPEC_reflection(const vec3 normal, const vec3 eyeray)");
+    output_line(ctx, "{"); ctx->indent++;
+    output_line(ctx,   "return (2.0 * ((normal * eyeray) / (normal * normal)) * normal) - eyeray;"); ctx->indent--;
+    output_line(ctx, "}");
+    output_blank_line(ctx);
+    pop_output(ctx);
+} // emit_GLSL_TEXM3X3SPEC_helper
+
+static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char src5[64];
+    char sampler[64];
+    char code[512];
+
+    emit_GLSL_TEXM3X3SPEC_helper(ctx);
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[1].regnum,
+                            src5, sizeof (src5));
+    get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "texture3D(%s, "
+            "TEXM3X3SPEC_reflection("
+                "vec3("
+                    "dot(%s.xyz, %s.xyz), "
+                    "dot(%s.xyz, %s.xyz), "
+                    "dot(%s.xyz, %s.xyz)"
+                "),"
+                "%s.xyz,"
+            ")"
+        ")",
+        sampler, src0, src1, src2, src3, dst, src4, src5);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXM3X3SPEC
+
+static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    DestArgInfo *info = &ctx->dest_arg;
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char sampler[64];
+    char code[512];
+
+    emit_GLSL_TEXM3X3SPEC_helper(ctx);
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
+                            sampler, sizeof (sampler));
+
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
+
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+        "texture3D(%s, "
+            "TEXM3X3SPEC_reflection("
+                "vec3("
+                    "dot(%s.xyz, %s.xyz), "
+                    "dot(%s.xyz, %s.xyz), "
+                    "dot(%s.xyz, %s.xyz)"
+                "), "
+                "vec3(%s.w, %s.w, %s.w)"
+            ")"
+        ")",
+        sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
+
+    output_line(ctx, "%s", code);
+} // emit_GLSL_TEXM3X3VSPEC
 
 static void emit_GLSL_EXPP(Context *ctx)
 {
@@ -5281,7 +5484,7 @@ static void emit_ARB1_TEXKILL(Context *ctx)
 
 static void arb1_texbem(Context *ctx, const int luminance)
 {
-    // Note that this code counts on the register not having swizzles, etc.
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
     const int stage = ctx->dest_arg.regnum;
     char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
     char src[64]; get_ARB1_srcarg_varname(ctx, 0, src, sizeof (src));
@@ -5317,12 +5520,170 @@ static void emit_ARB1_TEXBEML(Context *ctx)
 
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR)
 EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2PAD)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X2TEX)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3PAD)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3TEX)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3SPEC)
-EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC(TEXM3X3VSPEC)
+
+
+static void emit_ARB1_TEXM3X2PAD(Context *ctx)
+{
+    // no-op ... work happens in emit_ARB1_TEXM3X2TEX().
+} // emit_ARB1_TEXM3X2PAD
+
+static void emit_ARB1_TEXM3X2TEX(Context *ctx)
+{
+    if (ctx->texm3x2pad_src0 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    const int stage = ctx->dest_arg.regnum;
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_src0,
+                            src0, sizeof (src0));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_dst0,
+                            src1, sizeof (src1));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src2, sizeof (src2));
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+
+    output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, dst);
+    output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
+    output_line(ctx, "TEX %s, %s, texture[%d], 2D;", dst, dst, stage);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_TEXM3X2TEX
+
+
+static void emit_ARB1_TEXM3X3PAD(Context *ctx)
+{
+    // no-op ... work happens in emit_ARB1_TEXM3X3*().
+} // emit_ARB1_TEXM3X3PAD
+
+
+static void emit_ARB1_TEXM3X3TEX(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    const int stage = ctx->dest_arg.regnum;
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+
+    output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
+    output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
+    output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
+    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, dst, stage);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_TEXM3X3TEX
+
+static void emit_ARB1_TEXM3X3SPEC(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char src5[64];
+    char tmp[64];
+    char tmp2[64];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    const int stage = ctx->dest_arg.regnum;
+    allocate_ARB1_scratch_reg_name(ctx, tmp, sizeof (tmp));
+    allocate_ARB1_scratch_reg_name(ctx, tmp2, sizeof (tmp2));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[1].regnum,
+                            src5, sizeof (src5));
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+
+    output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
+    output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
+    output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
+    output_line(ctx, "MUL %s, %s, %s;", tmp, dst, dst);    // normal * normal
+    output_line(ctx, "MUL %s, %s, %s;", tmp2, dst, src5);  // normal * eyeray
+    output_line(ctx, "DIV %s, %s, %s;", tmp, tmp, tmp2);
+    output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };", tmp, tmp);
+    output_line(ctx, "MAD %s, %s, %s, -%s;", tmp, tmp, dst, src5);
+    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, tmp, stage);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_TEXM3X3SPEC
+
+static void emit_ARB1_TEXM3X3VSPEC(Context *ctx)
+{
+    if (ctx->texm3x3pad_src1 == -1)
+        return;
+
+    char dst[64];
+    char src0[64];
+    char src1[64];
+    char src2[64];
+    char src3[64];
+    char src4[64];
+    char tmp[64];
+    char tmp2[64];
+    char tmp3[64];
+
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
+    const int stage = ctx->dest_arg.regnum;
+    allocate_ARB1_scratch_reg_name(ctx, tmp, sizeof (tmp));
+    allocate_ARB1_scratch_reg_name(ctx, tmp2, sizeof (tmp2));
+    allocate_ARB1_scratch_reg_name(ctx, tmp3, sizeof (tmp3));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst0,
+                            src0, sizeof (src0));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src0,
+                            src1, sizeof (src1));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_dst1,
+                            src2, sizeof (src2));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x3pad_src1,
+                            src3, sizeof (src3));
+    get_ARB1_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->source_args[0].regnum,
+                            src4, sizeof (src4));
+    get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
+
+    output_line(ctx, "MOV %s.x, %s.w;", tmp3, src0);
+    output_line(ctx, "MOV %s.y, %s.w;", tmp3, src2);
+    output_line(ctx, "MOV %s.z, %s.w;", tmp3, dst);
+    output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
+    output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
+    output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
+    output_line(ctx, "MUL %s, %s, %s;", tmp, dst, dst);    // normal * normal
+    output_line(ctx, "MUL %s, %s, %s;", tmp2, dst, tmp3);  // normal * eyeray
+    output_line(ctx, "DIV %s, %s, %s;", tmp, tmp, tmp2);
+    output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };", tmp, tmp);
+    output_line(ctx, "MAD %s, %s, %s, -%s;", tmp, tmp, dst, tmp3);
+    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, tmp, stage);
+    emit_ARB1_dest_modifiers(ctx);
+} // emit_ARB1_TEXM3X3VSPEC
 
 static void emit_ARB1_EXPP(Context *ctx) { emit_ARB1_opcode_ds(ctx, "EX2"); }
 static void emit_ARB1_LOGP(Context *ctx) { arb1_log(ctx, "LG2"); }
@@ -5578,7 +5939,7 @@ static void emit_ARB1_TEXLD(Context *ctx)
 {
     if (!shader_version_atleast(ctx, 1, 4))
     {
-        // Note that this code counts on the register not having swizzles, etc.
+        // !!! FIXME: this code counts on the register not having swizzles, etc.
         DestArgInfo *info = &ctx->dest_arg;
         char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
         output_line(ctx, "TEX %s, %s, texture[%d], 2D;",
@@ -6980,6 +7341,36 @@ static void state_TEXKILL(Context *ctx)
     // !!! FIXME: there are further limitations in ps_1_3 and earlier.
 } // state_TEXKILL
 
+// Some rules that apply to some of the fruity ps_1_1 texture opcodes...
+static void state_texops(Context *ctx, const char *opcode,
+                         const int dims, const int texbem)
+{
+    const DestArgInfo *dst = &ctx->dest_arg;
+    const SourceArgInfo *src = &ctx->source_args[0];
+    if (dst->regtype != REG_TYPE_TEXTURE)
+        failf(ctx, "%s destination must be a texture register", opcode);
+    if (src->regtype != REG_TYPE_TEXTURE)
+        failf(ctx, "%s source must be a texture register", opcode);
+    if (src->regnum >= dst->regnum)  // so says MSDN.
+        failf(ctx, "%s dest must be a higher register than source", opcode);
+
+    if (dims)
+    {
+        TextureType ttyp = (dims == 2) ? TEXTURE_TYPE_2D : TEXTURE_TYPE_VOLUME;
+        add_sampler(ctx, REG_TYPE_SAMPLER, dst->regnum, ttyp, texbem);
+    } // if
+
+    add_attribute_register(ctx, REG_TYPE_TEXTURE, dst->regnum,
+                           MOJOSHADER_USAGE_TEXCOORD, dst->regnum, 0xF, 0);
+
+    // Strictly speaking, there should be a TEX opcode prior to this call that
+    //  should fill in this metadata, but I'm not sure that's required for the
+    //  shader to assemble in D3D, so we'll do this so we don't fail with a
+    //  cryptic error message even if the developer didn't do the TEX.
+    add_attribute_register(ctx, REG_TYPE_TEXTURE, src->regnum,
+                           MOJOSHADER_USAGE_TEXCOORD, src->regnum, 0xF, 0);
+} // state_texops
+
 static void state_texbem(Context *ctx, const char *opcode)
 {
     // The TEXBEM equasion, according to MSDN:
@@ -7007,26 +7398,7 @@ static void state_texbem(Context *ctx, const char *opcode)
     // !!! FIXME:  or texbeml instruction cannot be read later,
     // !!! FIXME:  except by another texbem or texbeml.
 
-    const DestArgInfo *dst = &ctx->dest_arg;
-    const SourceArgInfo *src = &ctx->source_args[0];
-    if (dst->regtype != REG_TYPE_TEXTURE)
-        failf(ctx, "%s destination must be a texture register", opcode);
-    if (src->regtype != REG_TYPE_TEXTURE)
-        failf(ctx, "%s source must be a texture register", opcode);
-    if (src->regnum >= dst->regnum)  // so says MSDN.
-        failf(ctx, "%s dest must be a higher register than source", opcode);
-
-    add_sampler(ctx, REG_TYPE_SAMPLER, dst->regnum, TEXTURE_TYPE_2D, 1);
-    add_attribute_register(ctx, REG_TYPE_TEXTURE, dst->regnum,
-                           MOJOSHADER_USAGE_TEXCOORD, dst->regnum, 0xF, 0);
-
-    // Strictly speaking, there should be a TEX opcode prior to this call that
-    //  should fill in this metadata, but I'm not sure that's required for the
-    //  shader to assemble in D3D, so we'll do this so we don't fail with a
-    //  cryptic error message even if the developer didn't do the TEX.
-    add_sampler(ctx, REG_TYPE_SAMPLER, src->regnum, TEXTURE_TYPE_2D, 0);
-    add_attribute_register(ctx, REG_TYPE_TEXTURE, src->regnum,
-                           MOJOSHADER_USAGE_TEXCOORD, src->regnum, 0xF, 0);
+    state_texops(ctx, opcode, 2, 1);
 } // state_texbem
 
 static void state_TEXBEM(Context *ctx)
@@ -7038,6 +7410,82 @@ static void state_TEXBEML(Context *ctx)
 {
     state_texbem(ctx, "TEXBEML");
 } // state_TEXBEML
+
+static void state_TEXM3X2PAD(Context *ctx)
+{
+    if (shader_version_atleast(ctx, 1, 4))
+        fail(ctx, "TEXM3X2PAD opcode not available after Shader Model 1.3");
+    state_texops(ctx, "TEXM3X2PAD", 0, 0);
+    // !!! FIXME: check for correct opcode existance and order more rigorously?
+    ctx->texm3x2pad_src0 = ctx->source_args[0].regnum;
+    ctx->texm3x2pad_dst0 = ctx->dest_arg.regnum;
+} // state_TEXM3X2PAD
+
+static void state_TEXM3X2TEX(Context *ctx)
+{
+    if (shader_version_atleast(ctx, 1, 4))
+        fail(ctx, "TEXM3X2TEX opcode not available after Shader Model 1.3");
+    if (ctx->texm3x2pad_dst0 == -1)
+        fail(ctx, "TEXM3X2TEX opcode without matching TEXM3X2PAD");
+    // !!! FIXME: check for correct opcode existance and order more rigorously?
+    state_texops(ctx, "TEXM3X2TEX", 2, 0);
+    ctx->reset_texmpad = 1;
+} // state_TEXM3X2TEX
+
+static void state_TEXM3X3PAD(Context *ctx)
+{
+    if (shader_version_atleast(ctx, 1, 4))
+        fail(ctx, "TEXM3X2TEX opcode not available after Shader Model 1.3");
+    state_texops(ctx, "TEXM3X3PAD", 0, 0);
+
+    // !!! FIXME: check for correct opcode existance and order more rigorously?
+    if (ctx->texm3x3pad_dst0 == -1)
+    {
+        ctx->texm3x3pad_src0 = ctx->source_args[0].regnum;
+        ctx->texm3x3pad_dst0 = ctx->dest_arg.regnum;
+    } // if
+    else if (ctx->texm3x3pad_dst1 == -1)
+    {
+        ctx->texm3x3pad_src1 = ctx->source_args[0].regnum;
+        ctx->texm3x3pad_dst1 = ctx->dest_arg.regnum;
+    } // else
+} // state_TEXM3X3PAD
+
+static void state_texm3x3(Context *ctx, const char *opcode)
+{
+    // !!! FIXME: check for correct opcode existance and order more rigorously?
+    if (shader_version_atleast(ctx, 1, 4))
+        failf(ctx, "%s opcode not available after Shader Model 1.3", opcode);
+    if (ctx->texm3x3pad_dst1 == -1)
+        failf(ctx, "%s opcode without matching TEXM3X3PADs", opcode);
+    state_texops(ctx, opcode, 3, 0);
+    ctx->reset_texmpad = 1;
+} // state_texm3x3
+
+static void state_TEXM3X3(Context *ctx)
+{
+    if (!shader_version_atleast(ctx, 1, 2))
+        fail(ctx, "TEXM3X3 opcode not available in Shader Model 1.1");
+    state_texm3x3(ctx, "TEXM3X3");
+} // state_TEXM3X3
+
+static void state_TEXM3X3TEX(Context *ctx)
+{
+    state_texm3x3(ctx, "TEXM3X3TEX");
+} // state_TEXM3X3TEX
+
+static void state_TEXM3X3SPEC(Context *ctx)
+{
+    state_texm3x3(ctx, "TEXM3X3SPEC");
+    if (ctx->source_args[1].regtype != REG_TYPE_CONST)
+        fail(ctx, "TEXM3X3SPEC final arg must be a constant register");
+} // state_TEXM3X3SPEC
+
+static void state_TEXM3X3VSPEC(Context *ctx)
+{
+    state_texm3x3(ctx, "TEXM3X3VSPEC");
+} // state_TEXM3X3VSPEC
+
 
 static void state_TEXLD(Context *ctx)
 {
@@ -7228,6 +7676,17 @@ static int parse_instruction_token(Context *ctx)
 
     if (!isfail(ctx))
         emitter(ctx);  // call the profile's emitter.
+
+    if (ctx->reset_texmpad)
+    {
+        ctx->texm3x2pad_dst0 = -1;
+        ctx->texm3x2pad_src0 = -1;
+        ctx->texm3x3pad_dst0 = -1;
+        ctx->texm3x3pad_src0 = -1;
+        ctx->texm3x3pad_dst1 = -1;
+        ctx->texm3x3pad_src1 = -1;
+        ctx->reset_texmpad = 0;
+    } // if
 
     ctx->previous_opcode = opcode;
     ctx->scratch_registers = 0;  // reset after every instruction.
@@ -7972,6 +8431,12 @@ static Context *build_context(const char *profile,
     ctx->endline_len = strlen(ctx->endline);
     ctx->last_address_reg_component = -1;
     ctx->current_position = MOJOSHADER_POSITION_BEFORE;
+    ctx->texm3x2pad_dst0 = -1;
+    ctx->texm3x2pad_src0 = -1;
+    ctx->texm3x3pad_dst0 = -1;
+    ctx->texm3x3pad_src0 = -1;
+    ctx->texm3x3pad_dst1 = -1;
+    ctx->texm3x3pad_src1 = -1;
 
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
     if (ctx->errors == NULL)
