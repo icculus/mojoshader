@@ -89,6 +89,8 @@ typedef struct Context
     uint32 tokencount;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
+    const MOJOSHADER_samplerMap *samplermap;
+    unsigned int samplermap_count;
     Buffer *output;
     Buffer *preflight;
     Buffer *globals;
@@ -487,6 +489,16 @@ static void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
     } // else
 } // floatstr
 
+static inline TextureType cvtMojoToD3DSamplerType(const MOJOSHADER_samplerType type)
+{
+    return (TextureType) (((int) type) + 2);
+} // cvtMojoToD3DSamplerType
+
+static inline MOJOSHADER_samplerType cvtD3DToMojoSamplerType(const TextureType type)
+{
+    return (MOJOSHADER_samplerType) (((int) type) - 2);
+} // cvtD3DToMojoSamplerType
+
 
 // Deal with register lists...  !!! FIXME: I sort of hate this.
 
@@ -627,13 +639,28 @@ static void add_attribute_register(Context *ctx, const RegisterType rtype,
         ctx->uses_fog = 1;  // note that we have to check this later.
 } // add_attribute_register
 
-static inline void add_sampler(Context *ctx, const RegisterType rtype,
-                               const int regnum, const TextureType ttype,
-                               const int texbem)
+static inline void add_sampler(Context *ctx, const int regnum,
+                               TextureType ttype, const int texbem)
 {
+    const RegisterType rtype = REG_TYPE_SAMPLER;
+
     // !!! FIXME: make sure it doesn't exist?
     // !!! FIXME:  (ps_1_1 assume we can add it multiple times...)
     RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
+
+    if (ctx->samplermap != NULL)
+    {
+        unsigned int i;
+        for (i = 0; i < ctx->samplermap_count; i++)
+        {
+            if (ctx->samplermap[i].index == regnum)
+            {
+                ttype = cvtMojoToD3DSamplerType(ctx->samplermap[i].type);
+                break;
+            } // if
+        } // for
+    } // if
+
     item->index = (int) ttype;
     item->misc |= texbem;
 } // add_sampler
@@ -7011,7 +7038,7 @@ static void state_DCL(Context *ctx)
     else if (shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_SAMPLER)
-            add_sampler(ctx, regtype, regnum, (TextureType) ctx->dwords[0], 0);
+            add_sampler(ctx, regnum, (TextureType) ctx->dwords[0], 0);
         else
         {
             const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
@@ -7438,7 +7465,7 @@ static void state_texops(Context *ctx, const char *opcode,
     if (dims)
     {
         TextureType ttyp = (dims == 2) ? TEXTURE_TYPE_2D : TEXTURE_TYPE_VOLUME;
-        add_sampler(ctx, REG_TYPE_SAMPLER, dst->regnum, ttyp, texbem);
+        add_sampler(ctx, dst->regnum, ttyp, texbem);
     } // if
 
     add_attribute_register(ctx, REG_TYPE_TEXTURE, dst->regnum,
@@ -7625,13 +7652,12 @@ static void state_TEXLD(Context *ctx)
 
     else
     {
-        // !!! FIXME: cubemaps? can you do that in ps_1_1?
         // !!! FIXME: add (other?) checks for ps_1_1 version here...
         const DestArgInfo *info = &ctx->dest_arg;
         const int sampler = info->regnum;
         if (info->regtype != REG_TYPE_TEXTURE)
             fail(ctx, "TEX param must be a texture register");
-        add_sampler(ctx, REG_TYPE_SAMPLER, sampler, TEXTURE_TYPE_2D, 0);
+        add_sampler(ctx, sampler, TEXTURE_TYPE_2D, 0);
         add_attribute_register(ctx, REG_TYPE_TEXTURE, sampler,
                                MOJOSHADER_USAGE_TEXCOORD, sampler, 0xF, 0);
     } // else
@@ -8490,6 +8516,8 @@ static Context *build_context(const char *profile,
                               const unsigned int bufsize,
                               const MOJOSHADER_swizzle *swiz,
                               const unsigned int swizcount,
+                              const MOJOSHADER_samplerMap *smap,
+                              const unsigned int smapcount,
                               MOJOSHADER_malloc m, MOJOSHADER_free f, void *d)
 {
     if (m == NULL) m = MOJOSHADER_internal_malloc;
@@ -8508,6 +8536,8 @@ static Context *build_context(const char *profile,
     ctx->tokencount = bufsize / sizeof (uint32);
     ctx->swizzles = swiz;
     ctx->swizzles_count = swizcount;
+    ctx->samplermap = smap;
+    ctx->samplermap_count = smapcount;
     ctx->endline = ENDLINE_STR;
     ctx->endline_len = strlen(ctx->endline);
     ctx->last_address_reg_component = -1;
@@ -8779,7 +8809,6 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
     if (retval != NULL)
     {
         RegisterList *item = ctx->samplers.next;
-        MOJOSHADER_samplerType type = MOJOSHADER_SAMPLER_2D;
         int i;
 
         memset(retval, '\0', len);
@@ -8793,26 +8822,7 @@ static MOJOSHADER_sampler *build_samplers(Context *ctx)
             } // if
 
             assert(item->regtype == REG_TYPE_SAMPLER);
-            switch ((const TextureType) item->index)
-            {
-                case TEXTURE_TYPE_2D:
-                    type = MOJOSHADER_SAMPLER_2D;
-                    break;
-
-                case TEXTURE_TYPE_CUBE:
-                    type = MOJOSHADER_SAMPLER_CUBE;
-                    break;
-
-                case TEXTURE_TYPE_VOLUME:
-                    type = MOJOSHADER_SAMPLER_VOLUME;
-                    break;
-
-                default:
-                    fail(ctx, "Unknown sampler type");
-                    break;
-            } // switch
-
-            retval[i].type = type;
+            retval[i].type = cvtD3DToMojoSamplerType((TextureType) item->index);
             retval[i].index = item->regnum;
             retval[i].name = alloc_varname(ctx, item);
             retval[i].texbem = (item->misc != 0) ? 1 : 0;
@@ -9285,6 +9295,8 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
                                              const unsigned int bufsize,
                                              const MOJOSHADER_swizzle *swiz,
                                              const unsigned int swizcount,
+                                             const MOJOSHADER_samplerMap *smap,
+                                             const unsigned int smapcount,
                                              MOJOSHADER_malloc m,
                                              MOJOSHADER_free f, void *d)
 {
@@ -9296,7 +9308,8 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
         return &MOJOSHADER_out_of_mem_data;  // supply both or neither.
 
-    ctx = build_context(profile, tokenbuf, bufsize, swiz, swizcount, m, f, d);
+    ctx = build_context(profile, tokenbuf, bufsize, swiz, swizcount,
+                        smap, smapcount, m, f, d);
     if (ctx == NULL)
         return &MOJOSHADER_out_of_mem_data;
 	

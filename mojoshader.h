@@ -190,6 +190,21 @@ typedef struct MOJOSHADER_sampler
     int texbem;
 } MOJOSHADER_sampler;
 
+
+/*
+ * This struct is used if you have to force a sampler to a specific type.
+ *  Generally, you can ignore this, but if you have, say, a ps_1_1
+ *  shader, you might need to specify what the samplers are meant to be
+ *  to get correct results, as Shader Model 1 samples textures according
+ *  to what is bound to a sampler at the moment instead of what the shader
+ *  is hardcoded to expect.
+ */
+typedef struct MOJOSHADER_samplerMap
+{
+    int index;
+    MOJOSHADER_samplerType type;
+} MOJOSHADER_samplerMap;
+
 /*
  * Data types for attributes. See MOJOSHADER_attribute for more information.
  */
@@ -695,6 +710,18 @@ int MOJOSHADER_maxShaderModel(const char *profile);
  *  input register in the code would produce reg.ywzx, that swizzle would
  *  change it to reg.wzxy ... (swiz) can be NULL.
  *
+ * You can force the shader to expect samplers of certain types. Generally
+ *  you don't need this, as Shader Model 2 and later always specify what they
+ *  expect samplers to be (2D, cubemap, etc). Shader Model 1, however, just
+ *  uses whatever is bound to a given sampler at draw time, but this doesn't
+ *  work in OpenGL, etc. In these cases, MojoShader will default to
+ *  2D texture sampling, which works 75% of the time, but if you really
+ *  needed something else, you'll need to specify it here. This can also be
+ *  used, at your own risk, to override DCL opcodes in shaders: if the
+ *  shader explicit says 2D, but you want Cubemap, for example, you can use
+ *  this to override. If you aren't sure about any of this stuff, you can
+ *  almost certainly ignore it: (smap) can be NULL.
+ *
  * This function is thread safe, so long as (m) and (f) are too, and that
  *  (tokenbuf) remains intact for the duration of the call. This allows you
  *  to parse several shaders on separate CPU cores at the same time.
@@ -704,6 +731,8 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
                                              const unsigned int bufsize,
                                              const MOJOSHADER_swizzle *swiz,
                                              const unsigned int swizcount,
+                                             const MOJOSHADER_samplerMap *smap,
+                                             const unsigned int smapcount,
                                              MOJOSHADER_malloc m,
                                              MOJOSHADER_free f,
                                              void *d);
@@ -854,6 +883,8 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
                                                 const unsigned int _len,
                                                 const MOJOSHADER_swizzle *swiz,
                                                 const unsigned int swizcount,
+                                                const MOJOSHADER_samplerMap *smap,
+                                                const unsigned int smapcount,
                                                 MOJOSHADER_malloc m,
                                                 MOJOSHADER_free f,
                                                 void *d);
@@ -2634,7 +2665,8 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
  *
  *   (tokenbuf) is a buffer of Direct3D shader bytecode.
  *   (bufsize) is the size, in bytes, of the bytecode buffer.
- *   (swiz) and (swizcount) are passed to MOJOSHADER_parse() unmolested.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
  *
  * Returns NULL on error, or a shader handle on success.
  *
@@ -2650,7 +2682,9 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
 MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                 const unsigned int bufsize,
                                                 const MOJOSHADER_swizzle *swiz,
-                                                const unsigned int swizcount);
+                                                const unsigned int swizcount,
+                                                const MOJOSHADER_samplerMap *smap,
+                                                const unsigned int smapcount);
 
 
 /*

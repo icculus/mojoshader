@@ -208,6 +208,8 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
                                                 const unsigned int _len,
                                                 const MOJOSHADER_swizzle *swiz,
                                                 const unsigned int swizcount,
+                                                const MOJOSHADER_samplerMap *smap,
+                                                const unsigned int smapcount,
                                                 MOJOSHADER_malloc m,
                                                 MOJOSHADER_free f,
                                                 void *d)
@@ -515,7 +517,8 @@ const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
             shader->technique = technique;
             shader->pass = pass;
             shader->shader = MOJOSHADER_parse(profile, ptr, shadersize,
-                                              swiz, swizcount, m, f, d);
+                                              swiz, swizcount, smap, smapcount,
+                                              m, f, d);
 
             // !!! FIXME: check for errors.
 
