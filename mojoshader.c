@@ -3503,12 +3503,17 @@ static void emit_GLSL_TEXM3X3TEX(Context *ctx)
                             src4, sizeof (src4));
     get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      info->regnum);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
+
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture3D(%s,"
+        "texture%s(%s,"
             " vec3(dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz)))",
-        sampler, src0, src1, src2, src3, dst, src4);
+        ttypestr, sampler, src0, src1, src2, src3, dst, src4);
 
     output_line(ctx, "%s", code);
 } // emit_GLSL_TEXM3X3TEX
@@ -3565,8 +3570,13 @@ static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
                             src5, sizeof (src5));
     get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      info->regnum);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
+
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture3D(%s, "
+        "texture%s(%s, "
             "TEXM3X3SPEC_reflection("
                 "vec3("
                     "dot(%s.xyz, %s.xyz), "
@@ -3576,7 +3586,7 @@ static void emit_GLSL_TEXM3X3SPEC(Context *ctx)
                 "%s.xyz,"
             ")"
         ")",
-        sampler, src0, src1, src2, src3, dst, src4, src5);
+        ttypestr, sampler, src0, src1, src2, src3, dst, src4, src5);
 
     output_line(ctx, "%s", code);
 } // emit_GLSL_TEXM3X3SPEC
@@ -3614,8 +3624,13 @@ static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
                             src4, sizeof (src4));
     get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      info->regnum);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
+
     make_GLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture3D(%s, "
+        "texture%s(%s, "
             "TEXM3X3SPEC_reflection("
                 "vec3("
                     "dot(%s.xyz, %s.xyz), "
@@ -3625,7 +3640,7 @@ static void emit_GLSL_TEXM3X3VSPEC(Context *ctx)
                 "vec3(%s.w, %s.w, %s.w)"
             ")"
         ")",
-        sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
+        ttypestr, sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
 
     output_line(ctx, "%s", code);
 } // emit_GLSL_TEXM3X3VSPEC
