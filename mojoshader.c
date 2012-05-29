@@ -3260,17 +3260,41 @@ static void glsl_texld(Context *ctx, const int texldd)
         DestArgInfo *info = &ctx->dest_arg;
         char dst[64];
         char sampler[64];
-        char code[128];
+        char code[128] = {0};
 
         assert(!texldd);
+
+        RegisterList *sreg;
+        sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, info->regnum);
+        const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
 
         // !!! FIXME: this code counts on the register not having swizzles, etc.
         get_GLSL_destarg_varname(ctx, dst, sizeof (dst));
         get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                                 sampler, sizeof (sampler));
-        make_GLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "texture2D(%s, %s.xy)",
-                                 sampler, dst);
+
+        if (ttype == TEXTURE_TYPE_2D)
+        {
+            make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                     "texture2D(%s, %s.xy)",
+                                     sampler, dst);
+        }
+        else if (ttype == TEXTURE_TYPE_CUBE)
+        {
+            make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                     "textureCube(%s, %s.xyz)",
+                                     sampler, dst);
+        }
+        else if (ttype == TEXTURE_TYPE_VOLUME)
+        {
+            make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                     "texture3D(%s, %s.xyz)",
+                                     sampler, dst);
+        }
+        else
+        {
+            fail(ctx, "unexpected texture type");
+        } // else
         output_line(ctx, "%s", code);
     } // if
 
@@ -5908,11 +5932,17 @@ static void arb1_texld(Context *ctx, const char *opcode, const int texldd)
         ctx->dest_arg.result_mod &= ~MOD_PP;
 
     char dst[64]; make_ARB1_destarg_string(ctx, dst, sizeof (dst));
-    const SourceArgInfo *samp_arg = &ctx->source_args[1];
-    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
-                                      samp_arg->regnum);
+
+    const int sm1 = !shader_version_atleast(ctx, 1, 4);
+    const int regnum = sm1 ? ctx->dest_arg.regnum : ctx->source_args[1].regnum;
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, regnum);
+
     const char *ttype = NULL;
-    char src0[64]; get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
+    char src0[64];
+    if (sm1)
+        get_ARB1_destarg_varname(ctx, src0, sizeof (src0));
+    else
+        get_ARB1_srcarg_varname(ctx, 0, src0, sizeof (src0));
     //char src1[64]; get_ARB1_srcarg_varname(ctx, 1, src1, sizeof (src1));  // !!! FIXME: SRC_MOD?
 
     char src2[64] = { 0 };
@@ -5931,7 +5961,8 @@ static void arb1_texld(Context *ctx, const char *opcode, const int texldd)
         return;
     } // if
 
-    if (!no_swizzle(samp_arg->swizzle))
+    // SM1 only specifies dst, so don't check swizzle there.
+    if ( !sm1 && (!no_swizzle(ctx->source_args[1].swizzle)) )
     {
         // !!! FIXME: does this ever actually happen?
         fail(ctx, "BUG: can't handle TEXLD with sampler swizzle at the moment");
@@ -5948,12 +5979,12 @@ static void arb1_texld(Context *ctx, const char *opcode, const int texldd)
     if (texldd)
     {
         output_line(ctx, "%s%s, %s, %s, %s, texture[%d], %s;", opcode, dst,
-                    src0, src2, src3, samp_arg->regnum, ttype);
+                    src0, src2, src3, regnum, ttype);
     } // if
     else
     {
         output_line(ctx, "%s%s, %s, texture[%d], %s;", opcode, dst, src0,
-                    samp_arg->regnum, ttype);
+                    regnum, ttype);
     } // else
 } // arb1_texld
 
@@ -6073,11 +6104,7 @@ static void emit_ARB1_TEXLD(Context *ctx)
 {
     if (!shader_version_atleast(ctx, 1, 4))
     {
-        // !!! FIXME: this code counts on the register not having swizzles, etc.
-        DestArgInfo *info = &ctx->dest_arg;
-        char dst[64]; get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
-        output_line(ctx, "TEX %s, %s, texture[%d], 2D;",
-                    dst, dst, info->regnum);
+        arb1_texld(ctx, "TEX", 0);
         return;
     } // if
 
