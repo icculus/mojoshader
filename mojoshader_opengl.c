@@ -1667,6 +1667,9 @@ static void lookup_samplers(MOJOSHADER_glProgram *program,
 static void lookup_outputs(MOJOSHADER_glProgram *program,
                            MOJOSHADER_glShader *shader)
 {
+    if (shader == NULL)
+        return;
+
     const MOJOSHADER_parseData *pd = shader->parseData;
     int i;
 
