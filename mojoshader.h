@@ -715,12 +715,13 @@ int MOJOSHADER_maxShaderModel(const char *profile);
  *  expect samplers to be (2D, cubemap, etc). Shader Model 1, however, just
  *  uses whatever is bound to a given sampler at draw time, but this doesn't
  *  work in OpenGL, etc. In these cases, MojoShader will default to
- *  2D texture sampling, which works 75% of the time, but if you really
- *  needed something else, you'll need to specify it here. This can also be
- *  used, at your own risk, to override DCL opcodes in shaders: if the
- *  shader explicit says 2D, but you want Cubemap, for example, you can use
- *  this to override. If you aren't sure about any of this stuff, you can
- *  almost certainly ignore it: (smap) can be NULL.
+ *  2D texture sampling (or cubemap sampling, in cases where it makes sense,
+ *  like the TEXM3X3TEX opcode), which works 75% of the time, but if you
+ *  really needed something else, you'll need to specify it here. This can
+ *  also be used, at your own risk, to override DCL opcodes in shaders: if
+ *  the shader explicit says 2D, but you want Cubemap, for example, you can
+ *  use this to override. If you aren't sure about any of this stuff, you can
+ *  (and should) almost certainly ignore it: (smap) can be NULL.
  *
  * This function is thread safe, so long as (m) and (f) are too, and that
  *  (tokenbuf) remains intact for the duration of the call. This allows you

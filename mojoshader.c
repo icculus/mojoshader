@@ -3452,7 +3452,6 @@ static void emit_GLSL_TEXM3X2TEX(Context *ctx)
     // !!! FIXME: this code counts on the register not having swizzles, etc.
     get_GLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
-
     get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_src0,
                             src0, sizeof (src0));
     get_GLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, ctx->texm3x2pad_dst0,
@@ -7464,7 +7463,7 @@ static void state_texops(Context *ctx, const char *opcode,
 
     if (dims)
     {
-        TextureType ttyp = (dims == 2) ? TEXTURE_TYPE_2D : TEXTURE_TYPE_VOLUME;
+        TextureType ttyp = (dims == 2) ? TEXTURE_TYPE_2D : TEXTURE_TYPE_CUBE;
         add_sampler(ctx, dst->regnum, ttyp, texbem);
     } // if
 
@@ -7538,6 +7537,14 @@ static void state_TEXM3X2TEX(Context *ctx)
     // !!! FIXME: check for correct opcode existance and order more rigorously?
     state_texops(ctx, "TEXM3X2TEX", 2, 0);
     ctx->reset_texmpad = 1;
+
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      ctx->dest_arg.regnum);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+
+    // A samplermap might change this to something nonsensical.
+    if (ttype != TEXTURE_TYPE_2D)
+        fail(ctx, "TEXM3X2TEX needs a 2D sampler");
 } // state_TEXM3X2TEX
 
 static void state_TEXM3X3PAD(Context *ctx)
@@ -7568,6 +7575,14 @@ static void state_texm3x3(Context *ctx, const char *opcode, const int dims)
         failf(ctx, "%s opcode without matching TEXM3X3PADs", opcode);
     state_texops(ctx, opcode, dims, 0);
     ctx->reset_texmpad = 1;
+
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                      ctx->dest_arg.regnum);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+
+    // A samplermap might change this to something nonsensical.
+    if ((ttype != TEXTURE_TYPE_VOLUME) && (ttype != TEXTURE_TYPE_CUBE))
+        failf(ctx, "%s needs a 3D or Cubemap sampler", opcode);
 } // state_texm3x3
 
 static void state_TEXM3X3(Context *ctx)
