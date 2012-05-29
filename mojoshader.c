@@ -5660,10 +5660,14 @@ static void emit_ARB1_TEXM3X3TEX(Context *ctx)
                             src4, sizeof (src4));
     get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, stage);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "CUBE" : "3D";
+
     output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
     output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
     output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
-    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, dst, stage);
+    output_line(ctx, "TEX %s, %s, texture[%d], %s;", dst, dst, stage, ttypestr);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_TEXM3X3TEX
 
@@ -5700,6 +5704,10 @@ static void emit_ARB1_TEXM3X3SPEC(Context *ctx)
                             src5, sizeof (src5));
     get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, stage);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "CUBE" : "3D";
+
     output_line(ctx, "DP3 %s.z, %s, %s;", dst, dst, src4);
     output_line(ctx, "DP3 %s.x, %s, %s;", dst, src0, src1);
     output_line(ctx, "DP3 %s.y, %s, %s;", dst, src2, src3);
@@ -5716,7 +5724,7 @@ static void emit_ARB1_TEXM3X3SPEC(Context *ctx)
 
     output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };", tmp, tmp);
     output_line(ctx, "MAD %s, %s, %s, -%s;", tmp, tmp, dst, src5);
-    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, tmp, stage);
+    output_line(ctx, "TEX %s, %s, texture[%d], %s;", dst, tmp, stage, ttypestr);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_TEXM3X3SPEC
 
@@ -5752,6 +5760,10 @@ static void emit_ARB1_TEXM3X3VSPEC(Context *ctx)
                             src4, sizeof (src4));
     get_ARB1_destarg_varname(ctx, dst, sizeof (dst));
 
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, stage);
+    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
+    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "CUBE" : "3D";
+
     output_line(ctx, "MOV %s.x, %s.w;", tmp3, src0);
     output_line(ctx, "MOV %s.y, %s.w;", tmp3, src2);
     output_line(ctx, "MOV %s.z, %s.w;", tmp3, dst);
@@ -5771,7 +5783,7 @@ static void emit_ARB1_TEXM3X3VSPEC(Context *ctx)
 
     output_line(ctx, "MUL %s, %s, { 2.0, 2.0, 2.0, 2.0 };", tmp, tmp);
     output_line(ctx, "MAD %s, %s, %s, -%s;", tmp, tmp, dst, tmp3);
-    output_line(ctx, "TEX %s, %s, texture[%d], 3D;", dst, tmp, stage);
+    output_line(ctx, "TEX %s, %s, texture[%d], %s;", dst, tmp, stage, ttypestr);
     emit_ARB1_dest_modifiers(ctx);
 } // emit_ARB1_TEXM3X3VSPEC
 
