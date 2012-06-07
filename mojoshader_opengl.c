@@ -2526,9 +2526,9 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     MOJOSHADER_glContext *current_ctx = ctx;
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
-    lookup_entry_points(NULL, NULL);   // !!! FIXME: is there a value to this?
     if (ctx->linker_cache)
         hash_destroy(ctx->linker_cache);
+    lookup_entry_points(NULL, NULL);   // !!! FIXME: is there a value to this?
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_glDestroyContext
