@@ -7008,11 +7008,14 @@ static void state_DEF(Context *ctx)
     else
     {
         ConstantsList *item = alloc_constant_listitem(ctx);
-        item->constant.index = regnum;
-        item->constant.type = MOJOSHADER_UNIFORM_FLOAT;
-        memcpy(item->constant.value.f, ctx->dwords,
-               sizeof (item->constant.value.f));
-        set_defined_register(ctx, regtype, regnum);
+        if (item != NULL)
+        {
+            item->constant.index = regnum;
+            item->constant.type = MOJOSHADER_UNIFORM_FLOAT;
+            memcpy(item->constant.value.f, ctx->dwords,
+                   sizeof (item->constant.value.f));
+            set_defined_register(ctx, regtype, regnum);
+        } // if
     } // else
 } // state_DEF
 
@@ -7030,12 +7033,15 @@ static void state_DEFI(Context *ctx)
     else
     {
         ConstantsList *item = alloc_constant_listitem(ctx);
-        item->constant.index = regnum;
-        item->constant.type = MOJOSHADER_UNIFORM_INT;
-        memcpy(item->constant.value.i, ctx->dwords,
-               sizeof (item->constant.value.i));
+        if (item != NULL)
+        {
+            item->constant.index = regnum;
+            item->constant.type = MOJOSHADER_UNIFORM_INT;
+            memcpy(item->constant.value.i, ctx->dwords,
+                   sizeof (item->constant.value.i));
 
-        set_defined_register(ctx, regtype, regnum);
+            set_defined_register(ctx, regtype, regnum);
+        } // if
     } // else
 } // state_DEFI
 
@@ -7053,10 +7059,13 @@ static void state_DEFB(Context *ctx)
     else
     {
         ConstantsList *item = alloc_constant_listitem(ctx);
-        item->constant.index = regnum;
-        item->constant.type = MOJOSHADER_UNIFORM_BOOL;
-        item->constant.value.b = ctx->dwords[0] ? 1 : 0;
-        set_defined_register(ctx, regtype, regnum);
+        if (item != NULL)
+        {
+            item->constant.index = regnum;
+            item->constant.type = MOJOSHADER_UNIFORM_BOOL;
+            item->constant.value.b = ctx->dwords[0] ? 1 : 0;
+            set_defined_register(ctx, regtype, regnum);
+        } // if
     } // else
 } // state_DEFB
 

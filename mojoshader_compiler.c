@@ -2325,6 +2325,9 @@ static int datatype_elems(Context *ctx, const MOJOSHADER_astDataType *dt)
 static const MOJOSHADER_astDataType *datatype_base(Context *ctx, const MOJOSHADER_astDataType *dt)
 {
     dt = reduce_datatype(ctx, dt);
+    if (dt == NULL)
+        return dt;
+
     switch (dt->type)
     {
         case MOJOSHADER_AST_DATATYPE_VECTOR:
@@ -4600,6 +4603,7 @@ static MOJOSHADER_irExpression *new_ir_binop(Context *ctx,
                                        MOJOSHADER_irExpression *left,
                                        MOJOSHADER_irExpression *right)
 {
+    if ((!left) || (!right)) return NULL;
     NEW_IR_EXPR(retval, MOJOSHADER_irBinOp, MOJOSHADER_IR_BINOP, left->info.type, left->info.elements);
     assert(left->info.type == right->info.type);
     assert(left->info.elements == right->info.elements);
@@ -4613,6 +4617,7 @@ static MOJOSHADER_irExpression *new_ir_eseq(Context *ctx,
                                       MOJOSHADER_irStatement *stmt,
                                       MOJOSHADER_irExpression *expr)
 {
+    if (!expr) return NULL;
     NEW_IR_EXPR(retval, MOJOSHADER_irESeq, MOJOSHADER_IR_ESEQ, expr->info.type, expr->info.elements);
     retval->stmt = stmt;
     retval->expr = expr;
@@ -4779,8 +4784,8 @@ static MOJOSHADER_irStatement *new_ir_move(Context *ctx,
                                       const int writemask)
 {
     NEW_IR_NODE(retval, MOJOSHADER_irMove, MOJOSHADER_IR_MOVE);
-    assert(dst->info.type == src->info.type);
-    assert(dst->info.elements == src->info.elements);
+    assert(dst && src && (dst->info.type == src->info.type));
+    assert(dst && src && (dst->info.elements == src->info.elements));
     retval->dst = dst;
     retval->src = src;
     retval->writemask = writemask;
@@ -4832,8 +4837,8 @@ static MOJOSHADER_irExpression *build_ir_compare(Context *ctx,
     const int join = generate_ir_label(ctx);
     const int tmp = generate_ir_temp(ctx);
 
-    assert(tval->info.type == fval->info.type);
-    assert(tval->info.elements == fval->info.elements);
+    assert(tval && fval && (tval->info.type == fval->info.type));
+    assert(tval && fval && (tval->info.elements == fval->info.elements));
 
     const MOJOSHADER_astDataTypeType dt = tval->info.type;
     const int elements = tval->info.elements;
@@ -5319,6 +5324,9 @@ static MOJOSHADER_irExpression *build_ir_derefstruct(Context *ctx, const MOJOSHA
     const int elems = datatype_elems(ctx, dt);
     MOJOSHADER_irExpression *expr = build_ir_expr(ctx, ast->identifier);
     MOJOSHADER_irExpression *finalexpr = expr;
+
+    if (expr == NULL)
+        return NULL;
 
     assert(!ast->isswizzle);
 

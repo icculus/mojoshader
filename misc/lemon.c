@@ -2821,7 +2821,7 @@ PRIVATE FILE *file_open(
   */
   if(( *mode=='w' ) && (strcmp(suffix, ".out") != 0)){
     const char **ptr = (const char **)
-        realloc(made_files, sizeof (const char **) * (made_files_count + 1));
+        realloc(made_files, sizeof (const char *) * (made_files_count + 1));
     const char *fname = Strsafe(lemp->outname);
     if ((ptr == NULL) || (fname == NULL)) {
         free(ptr);
@@ -3460,7 +3460,7 @@ void print_stack_union(
   int *plineno,               /* Pointer to the line number */
   int mhflag                  /* True if generating makeheaders output */
 ){
-  int lineno = *plineno;    /* The line number of the output */
+  int lineno = 0;           /* The line number of the output */
   char **types;             /* A hash table of datatypes */
   int arraysize;            /* Size of the "types" array */
   int maxdtlength;          /* Maximum length of any ".datatype" field. */

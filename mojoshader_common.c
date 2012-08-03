@@ -259,7 +259,8 @@ StringMap *stringmap_create(const int copy, MOJOSHADER_malloc m,
     HashTable_NukeFn nuke = copy ? stringmap_nuke : stringmap_nuke_noop;
     StringMap *smap;
     smap = hash_create(0,hash_hash_string,hash_keymatch_string,nuke,0,m,f,d);
-    smap->data = smap;
+    if (smap != NULL)
+        smap->data = smap;
     return smap;
 } // stringmap_create
 
