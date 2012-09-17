@@ -727,7 +727,7 @@ int buffer_append(Buffer *buffer, const void *_data, size_t len)
 
     if (len > 0)
     {
-        assert((!buffer->tail) || (buffer->tail->bytes == blocksize));
+        assert((!buffer->tail) || (buffer->tail->bytes >= blocksize));
         const size_t bytecount = len > blocksize ? len : blocksize;
         const size_t malloc_len = sizeof (BufferBlock) + bytecount;
         BufferBlock *item = (BufferBlock *) buffer->m(malloc_len, buffer->d);
