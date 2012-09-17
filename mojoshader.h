@@ -2813,8 +2813,8 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  *  are undefined if you request data past the end of the register file or
  *  previously uninitialized registers.
  *
- * This is a "fast" call; we're just reading memory from internal memory. We
- *  do not query the GPU or the GL for this information.
+ * This is a "fast" call; we're just reading from internal memory. We do not
+ *  query the GPU or the GL for this information.
  *
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
@@ -2868,8 +2868,8 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
  *  are undefined if you request data past the end of the register file or
  *  previously uninitialized registers.
  *
- * This is a "fast" call; we're just reading memory from internal memory. We
- *  do not query the GPU or the GL for this information.
+ * This is a "fast" call; we're just reading from internal memory. We do not
+ *  query the GPU or the GL for this information.
  *
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
@@ -2934,8 +2934,8 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  *  are undefined if you request data past the end of the register file or
  *  previously uninitialized registers.
  *
- * This is a "fast" call; we're just reading memory from internal memory. We
- *  do not query the GPU or the GL for this information.
+ * This is a "fast" call; we're just reading from internal memory. We do not
+ *  query the GPU or the GL for this information.
  *
  * This call is NOT thread safe! As most OpenGL implementations are not thread
  *  safe, you should probably only call this from the same thread that created
