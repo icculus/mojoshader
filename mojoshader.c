@@ -4280,15 +4280,15 @@ static const char *make_ARB1_destarg_string(Context *ctx, char *buf,
     writemask_str[i] = '\0';
     assert(i < sizeof (writemask_str));
 
-    const char *pred_left = "";
-    const char *pred_right = "";
+    //const char *pred_left = "";
+    //const char *pred_right = "";
     char pred[32] = { '\0' };
     if (ctx->predicated)
     {
         fail(ctx, "dest register predication currently unsupported in arb1");
         return buf;
-        pred_left = "(";
-        pred_right = ") ";
+        //pred_left = "(";
+        //pred_right = ") ";
         make_ARB1_srcarg_string_in_buf(ctx, &ctx->predicate_arg,
                                        pred, sizeof (pred));
     } // if
