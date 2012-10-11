@@ -328,13 +328,16 @@ struct StringCache
     void *d;
 };
 
+
 const char *stringcache(StringCache *cache, const char *str)
 {
     return stringcache_len(cache, str, strlen(str));
 } // stringcache
 
-const char *stringcache_len(StringCache *cache, const char *str,
-                             const unsigned int len)
+static const char *stringcache_len_internal(StringCache *cache,
+                                            const char *str,
+                                            const unsigned int len,
+                                            const int addmissing)
 {
     const uint8 hash = hash_string(str, len) & (cache->table_size-1);
     StringBucket *bucket = cache->hashtable[hash];
@@ -358,7 +361,11 @@ const char *stringcache_len(StringCache *cache, const char *str,
         bucket = bucket->next;
     } // while
 
-    // no match, add to the table.
+    // no match!
+    if (!addmissing)
+        return NULL;
+
+    // add to the table.
     bucket = (StringBucket *) cache->m(sizeof (StringBucket), cache->d);
     if (bucket == NULL)
         return NULL;
@@ -373,7 +380,18 @@ const char *stringcache_len(StringCache *cache, const char *str,
     bucket->next = cache->hashtable[hash];
     cache->hashtable[hash] = bucket;
     return bucket->string;
+} // stringcache_len_internal
+
+const char *stringcache_len(StringCache *cache, const char *str,
+                            const unsigned int len)
+{
+    return stringcache_len_internal(cache, str, len, 1);
 } // stringcache_len
+
+int stringcache_iscached(StringCache *cache, const char *str)
+{
+    return (stringcache_len_internal(cache, str, strlen(str), 0) != NULL);
+} // stringcache_iscached
 
 const char *stringcache_fmt(StringCache *cache, const char *fmt, ...)
 {

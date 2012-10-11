@@ -217,6 +217,7 @@ const char *stringcache(StringCache *cache, const char *str);
 const char *stringcache_len(StringCache *cache, const char *str,
                             const unsigned int len);
 const char *stringcache_fmt(StringCache *cache, const char *fmt, ...);
+int stringcache_iscached(StringCache *cache, const char *str);
 void stringcache_destroy(StringCache *cache);
 
 
