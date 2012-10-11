@@ -1117,19 +1117,23 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
             while (1)
             {
                 const char ch = *str;
-                if (ch == '\0')
-                    break;
-                else if (!iswhitespace(ch))
+                if (ch && (!iswhitespace(ch)))
                 {
                     str++;
                     continue;
                 } // else if
 
-                if (!stringcache_len(exts, ext, (unsigned int) (str - ext)))
+                if (str != ext)
                 {
-                    out_of_memory();
-                    break;
+                    if (!stringcache_len(exts, ext, (unsigned int) (str - ext)))
+                    {
+                        out_of_memory();
+                        break;
+                    } // if
                 } // if
+
+                if (ch == '\0')
+                    break;
 
                 str++;
                 while (*str && iswhitespace(*str))
