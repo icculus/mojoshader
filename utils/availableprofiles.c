@@ -20,11 +20,11 @@ static void *lookup(const char *fnname, void *unused)
 static int check_available(void)
 {
     const char **avail = NULL;
-    int total = MOJOSHADER_glAvailableProfiles(lookup, NULL, NULL, 0);
+    int total = MOJOSHADER_glAvailableProfiles(lookup, NULL, NULL, 0, NULL, NULL, NULL);
     if (total > 0)
     {
         avail = (const char **) alloca(sizeof (const char *) * total);
-        total = MOJOSHADER_glAvailableProfiles(lookup, NULL, avail, total);
+        total = MOJOSHADER_glAvailableProfiles(lookup, NULL, avail, total, NULL, NULL, NULL);
     } // if
 
     if (total <= 0)

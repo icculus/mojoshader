@@ -2520,9 +2520,17 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *
  * You can only call this AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
- *  through the callback you supply, via (lookup) and (d). The lookup function
- *  is neither stored nor used by MojoShader after this function returns, nor
- *  are the functions it might look up.
+ *  through the callback you supply, via (lookup) and (lookup_d). The lookup
+ *  function is neither stored nor used by MojoShader after this function
+ *  returns, nor are the functions it might look up.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
  *
  * You should not free any strings returned from this function; they are
  *  pointers to internal, probably static, memory.
@@ -2531,8 +2539,11 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
-                                   const char **profs, const int size);
+int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
+                                   void *lookup_d,
+                                   const char **profs, const int size,
+                                   MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                   void *malloc_d);
 
 
 /*
@@ -2540,14 +2551,22 @@ int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
  *
  * You can only call this AFTER you have successfully built your GL context
  *  and made it current. This function will lookup the GL functions it needs
- *  through the callback you supply via (lookup) and (d). The lookup function
- *  is neither stored nor used by MojoShader after this function returns, nor
- *  are the functions it might look up.
+ *  through the callback you supply via (lookup) and (lookup_d). The lookup
+ *  function is neither stored nor used by MojoShader after this function
+ *  returns, nor are the functions it might look up.
  *
  * Returns the name of the "best" profile on success, NULL if none of the
  *  available profiles will work on this system. "Best" is a relative term,
  *  but it generally means the best trade off between feature set and
  *  performance. The selection algorithm may be arbitrary and complex.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
  *
  * The returned value is an internal static string, and should not be free()'d
  *  by the caller. If you get a NULL, calling MOJOSHADER_glGetError() might
@@ -2557,8 +2576,10 @@ int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup, void *d);
-
+const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup,
+                                   void *lookup_d,
+                                   MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                   void *malloc_d);
 
 /*
  * Prepare MojoShader to manage OpenGL shaders.

@@ -37,7 +37,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "SDL_SetVideoMode() error: %s\n", SDL_GetError());
         else
         {
-            const char *best = MOJOSHADER_glBestProfile(lookup, NULL);
+            const char *best = MOJOSHADER_glBestProfile(lookup, NULL, NULL, NULL, NULL);
             MOJOSHADER_glContext *ctx;
             ctx = MOJOSHADER_glCreateContext(best, lookup, 0, 0, 0, 0);
             if (ctx == NULL)

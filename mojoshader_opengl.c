@@ -177,6 +177,7 @@ struct MOJOSHADER_glContext
     // Extensions...
     int have_core_opengl;
     int have_opengl_2;  // different entry points than ARB extensions.
+    int have_opengl_3;  // different extension query.
     int have_GL_ARB_vertex_program;
     int have_GL_ARB_fragment_program;
     int have_GL_NV_vertex_program2_option;
@@ -193,6 +194,7 @@ struct MOJOSHADER_glContext
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;
+    PFNGLGETSTRINGIPROC glGetStringi;
     PFNGLGETERRORPROC glGetError;
     PFNGLGETINTEGERVPROC glGetIntegerv;
     PFNGLENABLEPROC glEnable;
@@ -919,6 +921,7 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(core_opengl, PFNGLGETINTEGERVPROC, glGetIntegerv);
     DO_LOOKUP(core_opengl, PFNGLENABLEPROC, glEnable);
     DO_LOOKUP(core_opengl, PFNGLDISABLEPROC, glDisable);
+    DO_LOOKUP(opengl_3, PFNGLGETSTRINGIPROC, glGetStringi);
     DO_LOOKUP(opengl_2, PFNGLDELETESHADERPROC, glDeleteShader);
     DO_LOOKUP(opengl_2, PFNGLDELETEPROGRAMPROC, glDeleteProgram);
     DO_LOOKUP(opengl_2, PFNGLATTACHSHADERPROC, glAttachShader);
@@ -977,7 +980,7 @@ static inline int opengl_version_atleast(const int major, const int minor)
              ((major << 16) | (minor & 0xFFFF)) );
 } // opengl_version_atleast
 
-static int verify_extension(const char *ext, int have, const char *extlist,
+static int verify_extension(const char *ext, int have, StringCache *exts,
                             int major, int minor)
 {
     if (have == 0)
@@ -991,15 +994,7 @@ static int verify_extension(const char *ext, int have, const char *extlist,
         return 1;
 
     // Not available in the GL version, check the extension list.
-    const char *ptr = strstr(extlist, ext);
-    if (ptr == NULL)
-        return 0;
-
-    const char endchar = ptr[strlen(ext)];
-    if ((endchar == '\0') || (endchar == ' '))
-        return 1;  // extension is in the list.
-
-    return 0;  // just not supported, fail.
+    return stringcache_iscached(exts, ext);
 } // verify_extension
 
 
@@ -1053,12 +1048,28 @@ static void detect_glsl_version(void)
 } // detect_glsl_version
 
 
+static int iswhitespace(const char ch)
+{
+    switch (ch)
+    {
+        case ' ': case '\t': case '\r': case '\n': return 1;
+        default: return 0;
+    } // switch
+} // iswhitespace
+
+
 static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
 {
-    const char *extlist = NULL;
+    StringCache *exts = stringcache_create(ctx->malloc_fn, ctx->free_fn, ctx->malloc_data);
+    if (!exts)
+    {
+        out_of_memory();
+        return;
+    } // if
 
     ctx->have_core_opengl = 1;
     ctx->have_opengl_2 = 1;
+    ctx->have_opengl_3 = 1;
     ctx->have_GL_ARB_vertex_program = 1;
     ctx->have_GL_ARB_fragment_program = 1;
     ctx->have_GL_NV_vertex_program2_option = 1;
@@ -1081,11 +1092,52 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     {
         const char *str = (const char *) ctx->glGetString(GL_VERSION);
         parse_opengl_version_str(str, &ctx->opengl_major, &ctx->opengl_minor);
-        extlist = (const char *) ctx->glGetString(GL_EXTENSIONS);
-    } // else
 
-    if (extlist == NULL)
-        extlist = "";  // just in case.
+        if ((ctx->have_opengl_3) && (opengl_version_atleast(3, 0)))
+        {
+            GLint i;
+            GLint num_exts = 0;
+            ctx->glGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
+            for (i = 0; i < num_exts; i++)
+            {
+                if (!stringcache(exts, (const char *) ctx->glGetStringi(GL_EXTENSIONS, i)))
+                    out_of_memory();
+            } // for
+        } // if
+        else
+        {
+            const char *str = (const char *) ctx->glGetString(GL_EXTENSIONS);
+            const char *ext;
+            ctx->have_opengl_3 = 0;
+
+            while (*str && iswhitespace(*str))
+                str++;
+            ext = str;
+
+            while (1)
+            {
+                const char ch = *str;
+                if (ch == '\0')
+                    break;
+                else if (!iswhitespace(ch))
+                {
+                    str++;
+                    continue;
+                } // else if
+
+                if (!stringcache_len(exts, ext, (unsigned int) (str - ext)))
+                {
+                    out_of_memory();
+                    break;
+                } // if
+
+                str++;
+                while (*str && iswhitespace(*str))
+                    str++;
+                ext = str;
+            } // while
+        } // else
+    } // else
 
     if ((ctx->have_opengl_2) && (!opengl_version_atleast(2, 0)))
     {
@@ -1105,7 +1157,7 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     } // if
 
     #define VERIFY_EXT(ext, major, minor) \
-        ctx->have_##ext = verify_extension(#ext, ctx->have_##ext, extlist, major, minor)
+        ctx->have_##ext = verify_extension(#ext, ctx->have_##ext, exts, major, minor)
 
     VERIFY_EXT(GL_ARB_vertex_program, -1, -1);
     VERIFY_EXT(GL_ARB_fragment_program, -1, -1);
@@ -1121,6 +1173,8 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     VERIFY_EXT(GL_OES_vertex_half_float, -1, -1);
 
     #undef VERIFY_EXT
+
+    stringcache_destroy(exts);
 
     detect_glsl_version();
 } // load_extensions
@@ -1220,16 +1274,26 @@ static const char *profile_priorities[] = {
 #endif
 };
 
-int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
-                                   const char **profs, const int size)
+int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
+                                   void *lookup_d,
+                                   const char **profs, const int size,
+                                   MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                   void *malloc_d)
 {
     int retval = 0;
     MOJOSHADER_glContext _ctx;
     MOJOSHADER_glContext *current_ctx = ctx;
 
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
+
     ctx = &_ctx;
     memset(ctx, '\0', sizeof (MOJOSHADER_glContext));
-    load_extensions(lookup, d);
+    ctx->malloc_fn = m;
+    ctx->free_fn = f;
+    ctx->malloc_data = malloc_d;
+
+    load_extensions(lookup, lookup_d);
 
     if (ctx->have_core_opengl)
     {
@@ -1251,10 +1315,16 @@ int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup, void *d,
 } // MOJOSHADER_glAvailableProfiles
 
 
-const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress gpa, void *d)
+const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress gpa,
+                                     void *lookup_d,
+                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                     void *malloc_d)
 {
     const char *prof[STATICARRAYLEN(profile_priorities)];
-    if (MOJOSHADER_glAvailableProfiles(gpa, d, prof, STATICARRAYLEN(prof)) <= 0)
+    const int avail = MOJOSHADER_glAvailableProfiles(gpa, lookup_d, prof,
+                                                     STATICARRAYLEN(prof),
+                                                     m, f, malloc_d);
+    if (avail <= 0)
     {
         set_error("no profiles available");
         return NULL;

@@ -204,7 +204,7 @@ int main(int argc, char **argv)
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_LoadLibrary(NULL);
         SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
-        printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(lookup, 0));
+        printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(lookup, 0, NULL, NULL, NULL));
         MOJOSHADER_glContext *ctx;
         ctx = MOJOSHADER_glCreateContext(profile, lookup, 0, 0, 0, 0);
         if (ctx == NULL)
