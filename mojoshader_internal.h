@@ -474,6 +474,13 @@ typedef enum
     TOKEN_HASH,
     TOKEN_HASHHASH,
 
+    // This is returned if the preprocessor isn't stripping comments. Note
+    //  that in asm files, the ';' counts as a single-line comment, same as
+    //  "//". Note that both eat newline tokens: all of the ones inside a
+    //  multiline comment, and the ending newline on a single-line comment.
+    TOKEN_MULTI_COMMENT,
+    TOKEN_SINGLE_COMMENT,
+
     // This is returned at the end of input...no more to process.
     TOKEN_EOI,
 
@@ -543,6 +550,7 @@ typedef struct IncludeState
     int pushedback;
     const unsigned char *lexer_marker;
     int report_whitespace;
+    int report_comments;
     int asm_comments;
     unsigned int orig_length;
     unsigned int bytes_left;

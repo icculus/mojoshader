@@ -1163,7 +1163,9 @@ yy191:
 yy192:
 	++YYCURSOR;
 	{
-                        if (saw_newline)
+                        if (s->report_comments)
+                            RET(TOKEN_MULTI_COMMENT);
+                        else if (saw_newline)
                             RET('\n');
                         else if (s->report_whitespace)
                             RET(' ');
@@ -1189,14 +1191,29 @@ singlelinecomment:
 	}
 	++YYCURSOR;
 yy197:
-	{ s->line++; token = matchptr; RET('\n'); }
+	{
+                        s->line++;
+                        if (s->report_comments)
+                            RET(TOKEN_SINGLE_COMMENT);
+                        token = matchptr;
+                        RET('\n');
+                    }
 yy198:
 	yych = *++YYCURSOR;
 	if (yych == '\n') goto yy203;
 	goto yy197;
 yy199:
 	++YYCURSOR;
-	{ if (eoi) { RET(TOKEN_EOI); } goto singlelinecomment; }
+	{
+                        if (eoi)
+                        {
+                            if (s->report_comments)
+                                RET(TOKEN_SINGLE_COMMENT);
+                            else
+                                RET(TOKEN_EOI);
+                        }
+                        goto singlelinecomment;
+                    }
 yy201:
 	++YYCURSOR;
 	{ goto singlelinecomment; }

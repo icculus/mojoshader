@@ -169,7 +169,9 @@ multilinecomment:
 // The "*\/" is just to avoid screwing up text editor syntax highlighting.
 /*!re2c
     "*\/"           {
-                        if (saw_newline)
+                        if (s->report_comments)
+                            RET(TOKEN_MULTI_COMMENT);
+                        else if (saw_newline)
                             RET('\n');
                         else if (s->report_whitespace)
                             RET(' ');
@@ -193,8 +195,23 @@ singlelinecomment:
     if (YYLIMIT == YYCURSOR) YYFILL(1);
     matchptr = cursor;
 /*!re2c
-    NEWLINE         { s->line++; token = matchptr; RET('\n'); }
-    "\000"          { if (eoi) { RET(TOKEN_EOI); } goto singlelinecomment; }
+    NEWLINE         {
+                        s->line++;
+                        if (s->report_comments)
+                            RET(TOKEN_SINGLE_COMMENT);
+                        token = matchptr;
+                        RET('\n');
+                    }
+    "\000"          {
+                        if (eoi)
+                        {
+                            if (s->report_comments)
+                                RET(TOKEN_SINGLE_COMMENT);
+                            else
+                                RET(TOKEN_EOI);
+                        }
+                        goto singlelinecomment;
+                    }
     ANY             { goto singlelinecomment; }
 */
 

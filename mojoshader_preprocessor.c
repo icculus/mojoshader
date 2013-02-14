@@ -180,6 +180,8 @@ void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
         TOKENCASE(TOKEN_PP_PRAGMA);
         TOKENCASE(TOKEN_INCOMPLETE_COMMENT);
         TOKENCASE(TOKEN_BAD_CHARS);
+        TOKENCASE(TOKEN_SINGLE_COMMENT);
+        TOKENCASE(TOKEN_MULTI_COMMENT);
         TOKENCASE(TOKEN_EOI);
         TOKENCASE(TOKEN_PREPROCESSING_ERROR);
         #undef TOKENCASE
@@ -543,6 +545,10 @@ static int push_source(Context *ctx, const char *fname, const char *source,
             return 0;
         } // if
     } // if
+
+    #if !MATCH_MICROSOFT_PREPROCESSOR
+    state->report_comments = 1;
+    #endif
 
     state->close_callback = close_callback;
     state->source_base = source;
@@ -2119,6 +2125,12 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         {
             if (handle_pp_identifier(ctx))
                 continue;  // pushed the include_stack.
+        } // else if
+
+        // you don't ever see these unless you enable state->report_comments.
+        else if ((token == TOKEN_SINGLE_COMMENT) || (token == TOKEN_MULTI_COMMENT))
+        {
+            print_debug_lexing_position(state);
         } // else if
 
         else if (token == ((Token) '\n'))
