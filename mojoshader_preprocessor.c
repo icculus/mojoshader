@@ -60,6 +60,12 @@ typedef struct Context
     void *malloc_data;
 } Context;
 
+// Microsoft's preprocessor has some quirks. In some ways, it doesn't work
+//  like you'd expect a C preprocessor to function.
+#ifndef MATCH_MICROSOFT_PREPROCESSOR
+#define MATCH_MICROSOFT_PREPROCESSOR 1
+#endif
+
 
 // Convenience functions for allocators...
 
@@ -720,6 +726,10 @@ static inline void pushback(IncludeState *state)
 
 static Token lexer(IncludeState *state)
 {
+    #if !MATCH_MICROSOFT_PREPROCESSOR
+    state->report_whitespace = 1;
+    #endif
+
     if (!state->pushedback)
         return preprocessor_lexer(state);
     state->pushedback = 0;
@@ -2118,8 +2128,10 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
                 ctx->parsing_pragma = 0;
             else
             {
+                #if MATCH_MICROSOFT_PREPROCESSOR
                 // preprocessor is line-oriented, nothing else gets newlines.
                 continue;  // get the next thing.
+                #endif
             } // else
         } // else if
 
@@ -2161,6 +2173,7 @@ const char *preprocessor_sourcepos(Preprocessor *_ctx, unsigned int *pos)
 
 static void indent_buffer(Buffer *buffer, int n, const int newline)
 {
+#if MATCH_MICROSOFT_PREPROCESSOR
     static char spaces[4] = { ' ', ' ', ' ', ' ' };
     if (newline)
     {
@@ -2175,6 +2188,7 @@ static void indent_buffer(Buffer *buffer, int n, const int newline)
         if (!buffer_append(buffer, spaces, 1))
             return;
     } // else
+#endif
 } // indent_buffer
 
 
@@ -2241,11 +2255,18 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
         if (preprocessor_outofmemory(pp))
             goto preprocess_out_of_mem;
 
+        if (token == ((Token) '\n'))
+        {
+            buffer_append(buffer, endline, sizeof (endline));
+            isnewline = 1;
+        } // else if
+
+        #if MATCH_MICROSOFT_PREPROCESSOR
         // Microsoft's preprocessor is weird.
         // It ignores newlines, and then inserts its own around certain
         //  tokens. For example, after a semicolon. This allows HLSL code to
         //  be mostly readable, instead of a stream of tokens.
-        if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
+        else if ( (token == ((Token) '}')) || (token == ((Token) ';')) )
         {
             if ( (token == ((Token) '}')) && (indent > 0) )
                 indent--;
@@ -2257,12 +2278,6 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
             isnewline = 1;
         } // if
 
-        else if (token == ((Token) '\n'))
-        {
-            buffer_append(buffer, endline, sizeof (endline));
-            isnewline = 1;
-        } // else if
-
         else if (token == ((Token) '{'))
         {
             buffer_append(buffer, endline, sizeof (endline));
@@ -2272,6 +2287,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
             indent++;
             isnewline = 1;
         } // else if
+        #endif
 
         else if (token == TOKEN_PREPROCESSING_ERROR)
         {
