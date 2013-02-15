@@ -546,10 +546,6 @@ static int push_source(Context *ctx, const char *fname, const char *source,
         } // if
     } // if
 
-    #if !MATCH_MICROSOFT_PREPROCESSOR
-    state->report_comments = 1;
-    #endif
-
     state->close_callback = close_callback;
     state->source_base = source;
     state->source = source;
@@ -732,10 +728,6 @@ static inline void pushback(IncludeState *state)
 
 static Token lexer(IncludeState *state)
 {
-    #if !MATCH_MICROSOFT_PREPROCESSOR
-    state->report_whitespace = 1;
-    #endif
-
     if (!state->pushedback)
         return preprocessor_lexer(state);
     state->pushedback = 0;
@@ -2022,7 +2014,17 @@ static inline const char *_preprocessor_nexttoken(Preprocessor *_ctx,
         const Conditional *cond = state->conditional_stack;
         const int skipping = ((cond != NULL) && (cond->skipping));
 
+        #if !MATCH_MICROSOFT_PREPROCESSOR
+        state->report_whitespace = 1;
+        state->report_comments = 1;
+        #endif
+
         const Token token = lexer(state);
+
+        #if !MATCH_MICROSOFT_PREPROCESSOR
+        state->report_whitespace = 0;
+        state->report_comments = 0;
+        #endif
 
         if (token != TOKEN_IDENTIFIER)
             ctx->recursion_count = 0;
