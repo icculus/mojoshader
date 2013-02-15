@@ -64,7 +64,6 @@ Token preprocessor_lexer(IncludeState *s)
     const uchar *matchptr;
     const uchar *limit = cursor + s->bytes_left;
     int eoi = 0;
-    int saw_newline = 0;
 
 /*!re2c
     ANY = [\000-\377];
@@ -171,16 +170,12 @@ multilinecomment:
     "*\/"           {
                         if (s->report_comments)
                             RET(TOKEN_MULTI_COMMENT);
-                        else if (saw_newline)
-                            RET('\n');
                         else if (s->report_whitespace)
                             RET(' ');
                         goto scanner_loop;
                     }
     NEWLINE         {
                         s->line++;
-                        token = matchptr;
-                        saw_newline = 1;
                         goto multilinecomment;
                     }
     "\000"          {
@@ -198,7 +193,10 @@ singlelinecomment:
     NEWLINE         {
                         s->line++;
                         if (s->report_comments)
+                        {
+                            cursor = matchptr;  // so we RET('\n') next.
                             RET(TOKEN_SINGLE_COMMENT);
+                        }
                         token = matchptr;
                         RET('\n');
                     }
