@@ -402,6 +402,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
             GLsizei len = 0;
             ctx->glGetInfoLogARB(shader, sizeof (error_buffer), &len,
                                  (GLchar *) error_buffer);
+            ctx->glDeleteShader(shader);
             *s = 0;
             return 0;
         } // if
@@ -421,6 +422,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
             GLsizei len = 0;
             ctx->glGetInfoLogARB(shader, sizeof (error_buffer), &len,
                                  (GLcharARB *) error_buffer);
+            ctx->glDeleteObjectARB(shader);
             *s = 0;
             return 0;
         } // if
