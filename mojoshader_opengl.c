@@ -209,6 +209,7 @@ struct MOJOSHADER_glContext
     PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
     PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
     PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
+    PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
     PFNGLGETSHADERIVPROC glGetShaderiv;
     PFNGLGETPROGRAMIVPROC glGetProgramiv;
     PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
@@ -400,7 +401,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
         if (!ok)
         {
             GLsizei len = 0;
-            ctx->glGetInfoLogARB(shader, sizeof (error_buffer), &len,
+            ctx->glGetShaderInfoLog(shader, sizeof (error_buffer), &len,
                                  (GLchar *) error_buffer);
             ctx->glDeleteShader(shader);
             *s = 0;
@@ -934,6 +935,7 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(opengl_2, PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray);
     DO_LOOKUP(opengl_2, PFNGLGETATTRIBLOCATIONPROC, glGetAttribLocation);
     DO_LOOKUP(opengl_2, PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog);
+    DO_LOOKUP(opengl_2, PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog);
     DO_LOOKUP(opengl_2, PFNGLGETSHADERIVPROC, glGetShaderiv);
     DO_LOOKUP(opengl_2, PFNGLGETPROGRAMIVPROC, glGetProgramiv);
     DO_LOOKUP(opengl_2, PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation);
