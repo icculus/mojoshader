@@ -1691,12 +1691,16 @@ static int reduce_pp_expression(Context *ctx)
             isleft = 0;
         else if (token == ((Token) '-'))
         {
-            if ((isleft = (previous_token == TOKEN_INT_LITERAL)) == 0)
+            isleft = ((previous_token == TOKEN_INT_LITERAL) ||
+                      (previous_token == ((Token) ')')));
+            if (!isleft)
                 token = TOKEN_PP_UNARY_MINUS;
         } // else if
         else if (token == ((Token) '+'))
         {
-            if ((isleft = (previous_token == TOKEN_INT_LITERAL)) == 0)
+            isleft = ((previous_token == TOKEN_INT_LITERAL) ||
+                      (previous_token == ((Token) ')')));
+            if (!isleft)
                 token = TOKEN_PP_UNARY_PLUS;
         } // else if
 
