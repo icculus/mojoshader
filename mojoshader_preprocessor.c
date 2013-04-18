@@ -437,7 +437,22 @@ static int remove_define(Context *ctx, const char *sym)
 
 static const Define *find_define(Context *ctx, const char *sym)
 {
-    if ( (ctx->file_macro) && (strcmp(sym, "__FILE__") == 0) )
+    const uint8 hash = hash_define(sym);
+    Define *bucket = ctx->define_hashtable[hash];
+    while (bucket)
+    {
+        if (strcmp(bucket->identifier, sym) == 0)
+            return bucket;
+        bucket = bucket->next;
+    } // while
+
+    const uint8 filestrhash = 67;
+    assert(hash_define("__FILE__") == filestrhash);
+
+    const uint8 linestrhash = 75;
+    assert(hash_define("__LINE__") == linestrhash);
+
+    if ( (hash == filestrhash) && (ctx->file_macro) && (strcmp(sym, "__FILE__") == 0) )
     {
         Free(ctx, (char *) ctx->file_macro->definition);
         const IncludeState *state = ctx->include_stack;
@@ -453,7 +468,7 @@ static const Define *find_define(Context *ctx, const char *sym)
         return ctx->file_macro;
     } // if
 
-    else if ( (ctx->line_macro) && (strcmp(sym, "__LINE__") == 0) )
+    else if ( (hash == linestrhash) && (ctx->line_macro) && (strcmp(sym, "__LINE__") == 0) )
     {
         Free(ctx, (char *) ctx->line_macro->definition);
         const IncludeState *state = ctx->include_stack;
@@ -468,14 +483,6 @@ static const Define *find_define(Context *ctx, const char *sym)
         return ctx->line_macro;
     } // else
 
-    const uint8 hash = hash_define(sym);
-    Define *bucket = ctx->define_hashtable[hash];
-    while (bucket)
-    {
-        if (strcmp(bucket->identifier, sym) == 0)
-            return bucket;
-        bucket = bucket->next;
-    } // while
     return NULL;
 } // find_define
 
