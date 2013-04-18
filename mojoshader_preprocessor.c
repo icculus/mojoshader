@@ -478,7 +478,7 @@ static const Define *find_define(Context *ctx, const char *sym)
             return 0;
 
         const size_t len = snprintf(str, bufsize, "%u", state->line);
-        assert(len < bufsize);
+        assert(len < bufsize); (void) len;
         ctx->line_macro->definition = str;
         return ctx->line_macro;
     } // else
