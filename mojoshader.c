@@ -3400,7 +3400,7 @@ static void glsl_texld(Context *ctx, const int texldd)
 
 static void emit_GLSL_TEXLD(Context *ctx)
 {
-     glsl_texld(ctx, 0);
+    glsl_texld(ctx, 0);
 } // emit_GLSL_TEXLD
     
 
