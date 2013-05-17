@@ -962,6 +962,8 @@ static int parse_args_DCL(Context *ctx)
         fail(ctx, "Invalid usage");
     else if (samplerreg)
         ctx->tokenbuf[0] = (usage << 27) | 0x80000000;
+    else if (shader_is_pixel(ctx))  // all other pixel shader types are zero'd.
+        ctx->tokenbuf[0] = 0x80000000;
     else
         ctx->tokenbuf[0] = usage | (index << 16) | 0x80000000;
 
