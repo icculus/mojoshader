@@ -285,13 +285,21 @@ static inline int macosx_version_atleast(int x, int y, int z)
 
     if (!checked)
     {
-        SInt32 ver, major, minor, patch;
+        SInt32 ver = 0;
+        SInt32 major = 0;
+        SInt32 minor = 0;
+        SInt32 patch = 0;
         int convert = 0;
 
         if (Gestalt(gestaltSystemVersion, &ver) != noErr)
+        {
             ver = 0x1000;  // oh well.
-        else if (ver < 0x1030)
             convert = 1;  // split (ver) into (major),(minor),(patch).
+        }
+        else if (ver < 0x1030)
+        {
+            convert = 1;  // split (ver) into (major),(minor),(patch).
+        }
         else
         {
             // presumably this won't fail. But if it does, we'll just use the
