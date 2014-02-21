@@ -29,6 +29,12 @@ typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 #define GL_MAX_BINDABLE_UNIFORM_SIZE_EXT 0x8DED
 #endif
 
+static int is_atleast_gl3(const char *str)
+{
+    int maj, min;
+    sscanf(str, "%d.%d", &maj, &min);
+    return ( ((maj << 16) | min) >= ((3 << 16) | 0) );
+}
 
 int main(int argc, char **argv)
 {
@@ -57,6 +63,7 @@ int main(int argc, char **argv)
     PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC) SDL_GL_GetProcAddress("glGetString");
     PFNGLGETINTEGERVPROC pglGetIntegerv = (PFNGLGETINTEGERVPROC) SDL_GL_GetProcAddress("glGetIntegerv");
     PFNGLGETPROGRAMIVARBPROC pglGetProgramivARB = (PFNGLGETPROGRAMIVARBPROC) SDL_GL_GetProcAddress("glGetProgramivARB");
+    PFNGLGETSTRINGIPROC pglGetStringi = (PFNGLGETSTRINGIPROC) SDL_GL_GetProcAddress("glGetStringi");
 
     printf("Basic strings...\n\n");
 
@@ -70,16 +77,27 @@ int main(int argc, char **argv)
 
     printf("\nExtensions...\n\n");
 
-    const GLubyte *ext = pglGetString(GL_EXTENSIONS);
-    while (*ext)
+    if (is_atleast_gl3((const char *) pglGetString(GL_VERSION)))
     {
-        fputc((*ext == ' ') ? '\n' : ((int) *ext), stdout);
-        ext++;
-    } // while
+        GLint i;
+        GLint num_exts = 0;
+        pglGetIntegerv(GL_NUM_EXTENSIONS, &num_exts);
+        for (i = 0; i < num_exts; i++)
+            printf("%s\n", (const char *) pglGetStringi(GL_EXTENSIONS, i));
+    }
+    else
+    {
+        const GLubyte *ext = pglGetString(GL_EXTENSIONS);
+        while (*ext)
+        {
+            fputc((*ext == ' ') ? '\n' : ((int) *ext), stdout);
+            ext++;
+        } // while
 
-    ext--;
-    if (*ext != ' ')
-        printf("\n");
+        ext--;
+        if (*ext != ' ')
+            printf("\n");
+    }
 
     printf("\nARB1 values...\n\n");
 
