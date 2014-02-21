@@ -32,12 +32,27 @@ typedef WINGDIAPI const GLubyte * (APIENTRYP PFNGLGETSTRINGPROC) (GLenum name);
 
 int main(int argc, char **argv)
 {
+    int retval = 1;
     GLint val = 0;
     const char *str = NULL;
+    SDL_Window *sdlwindow = NULL;
 
-    SDL_Init(SDL_INIT_VIDEO);
-    SDL_GL_LoadLibrary(NULL);
-    SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
+    if (SDL_Init(SDL_INIT_VIDEO) == -1)
+        fprintf(stderr, "SDL_Init() error: %s\n", SDL_GetError());
+    else if (SDL_GL_LoadLibrary(NULL) == -1)
+        fprintf(stderr, "SDL_GL_LoadLibrary() error: %s\n", SDL_GetError());
+    else if ((sdlwindow = SDL_CreateWindow(argv[0], SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_OPENGL)) == NULL)
+        fprintf(stderr, "SDL_CreateWindow() error: %s\n", SDL_GetError());
+    if (SDL_GL_CreateContext(sdlwindow) == NULL)
+        fprintf(stderr, "SDL_GL_CreateContext() error: %s\n", SDL_GetError());
+    else
+        retval = 0;
+
+    if (retval != 0)
+    {
+        SDL_Quit();
+        return retval;
+    } // if
 
     PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC) SDL_GL_GetProcAddress("glGetString");
     PFNGLGETINTEGERVPROC pglGetIntegerv = (PFNGLGETINTEGERVPROC) SDL_GL_GetProcAddress("glGetIntegerv");

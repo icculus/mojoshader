@@ -18,6 +18,7 @@
 
 #if FINDERRORS_COMPILE_SHADERS
 #include "SDL.h"
+static SDL_Window *sdlwindow = NULL;
 static void *lookup(const char *fnname, void *unused)
 {
     (void) unused;
@@ -47,7 +48,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         if (e.type == SDL_QUIT)
             do_quit = 1;
     } // while
-    SDL_GL_SwapBuffers();
+    SDL_GL_SwapWindow(sdlwindow);
     #endif
 
     if (do_quit)
@@ -196,33 +197,43 @@ int main(int argc, char **argv)
         printf("\n\nUSAGE: %s <profile> [dir1] ... [dirN]\n\n", argv[0]);
     else
     {
+        int okay = 0;
         int total = 0;
         int i;
         const char *profile = argv[1];
 
         #if FINDERRORS_COMPILE_SHADERS
-        SDL_Init(SDL_INIT_VIDEO);
-        SDL_GL_LoadLibrary(NULL);
-        SDL_SetVideoMode(640, 480, 0, SDL_OPENGL);
-        printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(lookup, 0, NULL, NULL, NULL));
-        MOJOSHADER_glContext *ctx;
-        ctx = MOJOSHADER_glCreateContext(profile, lookup, 0, 0, 0, 0);
-        if (ctx == NULL)
+        MOJOSHADER_glContext *ctx = NULL;
+        if (SDL_Init(SDL_INIT_VIDEO) == -1)
+            fprintf(stderr, "SDL_Init() error: %s\n", SDL_GetError());
+        else if (SDL_GL_LoadLibrary(NULL) == -1)
+            fprintf(stderr, "SDL_GL_LoadLibrary() error: %s\n", SDL_GetError());
+        else if ((sdlwindow = SDL_CreateWindow(argv[0], SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_OPENGL)) == NULL)
+            fprintf(stderr, "SDL_CreateWindow() error: %s\n", SDL_GetError());
+        else if (SDL_GL_CreateContext(sdlwindow) == NULL)
+            fprintf(stderr, "SDL_GL_CreateContext() error: %s\n", SDL_GetError());
+        else if ((ctx = MOJOSHADER_glCreateContext(profile, lookup, 0, 0, 0, 0)) == NULL)
+            fprintf(stderr, "MOJOSHADER_glCreateContext() fail: %s\n", MOJOSHADER_glGetError());
+        else
         {
-            printf("MOJOSHADER_glCreateContext() fail: %s\n", MOJOSHADER_glGetError());
-            SDL_Quit();
-            return 1;
-        } // if
-        MOJOSHADER_glMakeContextCurrent(ctx);
+            printf("Best profile is '%s'\n", MOJOSHADER_glBestProfile(lookup, 0, NULL, NULL, NULL));
+            MOJOSHADER_glMakeContextCurrent(ctx);
+            okay = 1;
+        }
+        #else
+        okay = 1;
         #endif
 
-        for (i = 2; i < argc; i++)
-            total += do_dir(argv[i], profile);
-
-        printf("Saw %d files.\n", total);
+        if (okay)
+        {
+            for (i = 2; i < argc; i++)
+                total += do_dir(argv[i], profile);
+            printf("Saw %d files.\n", total);
+        } // if
 
         #if FINDERRORS_COMPILE_SHADERS
-        MOJOSHADER_glDestroyContext(ctx);
+        if (ctx)
+            MOJOSHADER_glDestroyContext(ctx);
         SDL_Quit();
         #endif
     } // else

@@ -94,32 +94,37 @@ ELSE(NOT RE2C)
     )
 ENDIF(NOT RE2C)
 
-FIND_PACKAGE(SDL)
-IF(SDL_FOUND)
-    INCLUDE_DIRECTORIES(${SDL_INCLUDE_DIR})
+IF(APPLE)
+    find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
+ENDIF(APPLE)
+
+find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES include/SDL2)
+find_library(SDL2 NAMES SDL2 PATH_SUFFIXES lib)
+IF(SDL2)
+    INCLUDE_DIRECTORIES(${SDL2_INCLUDE_DIR})
     ADD_EXECUTABLE(glcaps utils/glcaps.c)
-    TARGET_LINK_LIBRARIES(glcaps ${SDL_LIBRARY} ${LIBM})
+    TARGET_LINK_LIBRARIES(glcaps ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
     ADD_EXECUTABLE(bestprofile utils/bestprofile.c)
-    TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL_LIBRARY} ${LIBM})
+    TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
     ADD_EXECUTABLE(availableprofiles utils/availableprofiles.c)
-    TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL_LIBRARY} ${LIBM})
-ENDIF(SDL_FOUND)
+    TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
+ENDIF(SDL2)
 
 ADD_EXECUTABLE(finderrors utils/finderrors.c)
-TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL_LIBRARY} ${LIBM})
-IF(SDL_FOUND)
+TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
+IF(SDL2)
     SET_SOURCE_FILES_PROPERTIES(
         utils/finderrors.c
         PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
     )
-ENDIF(SDL_FOUND)
+ENDIF(SDL2)
 
 ADD_EXECUTABLE(testparse utils/testparse.c)
-TARGET_LINK_LIBRARIES(testparse mojoshader ${LIBM})
+TARGET_LINK_LIBRARIES(testparse mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
-TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM})
+TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
-TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM})
+TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 
 # Unit tests...
 ADD_CUSTOM_TARGET(
