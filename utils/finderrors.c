@@ -33,13 +33,34 @@ static void *lookup(const char *fnname, void *unused)
 #define snprintf _snprintf
 #else
 #include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 #define report printf
 
+static int isdir(const char *dname)
+{
+#ifdef _MSC_VER
+    WIN32_FILE_ATTRIBUTE_DATA winstat;
+    if (!GetFileAttributesExA(dname, GetFileExInfoStandard, &winstat))
+        return 0;
+    return winstat.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+#else
+    struct stat statbuf;
+    if (stat(dname, &statbuf) == -1)
+        return 0;
+    return S_ISDIR(statbuf.st_mode);
+#endif
+}
+
+static int do_dir(const char *dname, const char *profile);
+
 static int do_file(const char *profile, const char *dname, const char *fn, int *total)
 {
     int do_quit = 0;
+
+    if ((strcmp(fn, ".") == 0) || (strcmp(fn, "..") == 0))
+        return 1;  // skip these.
 
     #if FINDERRORS_COMPILE_SHADERS
     SDL_Event e;  // pump event queue to keep OS happy.
@@ -57,6 +78,15 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         return 0;
     } // if
 
+    char *fname = (char *) alloca(strlen(fn) + strlen(dname) + 2);
+    sprintf(fname, "%s/%s", dname, fn);
+
+    if (isdir(fname))
+    {
+        *total += do_dir(fname, profile);
+        return 1;
+    } // if
+
     int assembly = 0;
     if (strstr(fn, ".bytecode") != NULL)
         assembly = 0;
@@ -67,8 +97,6 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
 
     (*total)++;
 
-    char *fname = (char *) alloca(strlen(fn) + strlen(dname) + 2);
-    sprintf(fname, "%s/%s", dname, fn);
     FILE *io = fopen(fname, "rb");
     if (io == NULL)
     {
