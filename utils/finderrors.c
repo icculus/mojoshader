@@ -67,7 +67,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
 
     (*total)++;
 
-    char *fname = (char *) alloca(strlen(fn) + strlen(dname) + 1);
+    char *fname = (char *) alloca(strlen(fn) + strlen(dname) + 2);
     sprintf(fname, "%s/%s", dname, fn);
     FILE *io = fopen(fname, "rb");
     if (io == NULL)
