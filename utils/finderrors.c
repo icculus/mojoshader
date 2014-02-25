@@ -156,9 +156,12 @@ static int do_dir(const char *dname, const char *profile)
     int total = 0;
 
 #ifdef _MSC_VER
-    WIN32_FIND_DATA dent;
-    HANDLE dirp = INVALID_HANDLE_VALUE;
-    FindFirstFileA(dname, &dent);
+	const size_t wildcardlen = strlen(dname) + 3;
+	char *wildcard = (char *) alloca(wildcardlen);
+	SDL_snprintf(wildcard, wildcardlen, "%s\\*", dname);
+
+    WIN32_FIND_DATAA dent;
+    HANDLE dirp = FindFirstFileA(wildcard, &dent);
     if (dirp != INVALID_HANDLE_VALUE)
     {
         do
@@ -166,7 +169,7 @@ static int do_dir(const char *dname, const char *profile)
             if (!do_file(profile, dname, dent.cFileName, &total))
                 break;
         } while (FindNextFileA(dirp, &dent) != 0);
-        CloseHandle(dirp);
+        FindClose(dirp);
     } // if
 #else
     struct dirent *dent = NULL;
