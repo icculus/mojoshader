@@ -6485,39 +6485,53 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         if ( (shader_is_pixel(ctx)) && (!shader_version_atleast(ctx, 3, 0)) )
             fail(ctx, "Relative addressing in pixel shader version < 3.0");
 
-        const uint32 reltoken = SWAP32(*(ctx->tokens));
-        // swallow token for now, for multiple calls in a row.
-        adjust_token_position(ctx, 1);
-
-        const int relswiz = (int) ((reltoken >> 16) & 0xFF);
-        info->relative_regnum = (int) (reltoken & 0x7ff);
-        info->relative_regtype = (RegisterType)
-                                    (((reltoken >> 28) & 0x7) |
-                                    ((reltoken >> 8) & 0x18));
-
-        if (((reltoken >> 31) & 0x1) == 0)
-            fail(ctx, "bit #31 in relative address must be set");
-
-        if ((reltoken & 0xF00E000) != 0)  // usused bits.
-            fail(ctx, "relative address reserved bit must be zero");
-
-        switch (info->relative_regtype)
+        // Shader Model 1 doesn't have an extra token to specify the
+        //  relative register: it's always a0.x.
+        if (!shader_version_atleast(ctx, 2, 0))
         {
-            case REG_TYPE_LOOP:
-            case REG_TYPE_ADDRESS:
-                break;
-            default:
+            info->relative_regnum = 0;
+            info->relative_regtype = REG_TYPE_ADDRESS;
+            info->relative_component = 0;
+        } // if
+
+        else  // Shader Model 2 and later...
+        {
+            const uint32 reltoken = SWAP32(*(ctx->tokens));
+            // swallow token for now, for multiple calls in a row.
+            adjust_token_position(ctx, 1);
+
+            const int relswiz = (int) ((reltoken >> 16) & 0xFF);
+            info->relative_regnum = (int) (reltoken & 0x7ff);
+            info->relative_regtype = (RegisterType)
+                                        (((reltoken >> 28) & 0x7) |
+                                        ((reltoken >> 8) & 0x18));
+
+            if (((reltoken >> 31) & 0x1) == 0)
+                fail(ctx, "bit #31 in relative address must be set");
+
+            if ((reltoken & 0xF00E000) != 0)  // usused bits.
+                fail(ctx, "relative address reserved bit must be zero");
+
+            switch (info->relative_regtype)
+            {
+                case REG_TYPE_LOOP:
+                case REG_TYPE_ADDRESS:
+                    break;
+                default:
+                    fail(ctx, "invalid register for relative address");
+                    break;
+            } // switch
+
+            if (info->relative_regnum != 0)  // true for now.
                 fail(ctx, "invalid register for relative address");
-                break;
-        } // switch
 
-        if (info->relative_regnum != 0)  // true for now.
-            fail(ctx, "invalid register for relative address");
+            if (!replicate_swizzle(relswiz))
+                fail(ctx, "relative address needs replicate swizzle");
 
-        if (!replicate_swizzle(relswiz))
-            fail(ctx, "relative address needs replicate swizzle");
+            info->relative_component = (relswiz & 0x3);
 
-        info->relative_component = (relswiz & 0x3);
+            retval++;
+        } // else
 
         if (info->regtype == REG_TYPE_INPUT)
         {
@@ -6560,8 +6574,6 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
         {
             fail(ctx, "relative addressing of invalid register");
         } // else
-
-        retval++;
     } // if
 
     switch (info->src_mod)
