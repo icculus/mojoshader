@@ -366,15 +366,10 @@ static const char *stringcache_len_internal(StringCache *cache,
         return NULL;
 
     // add to the table.
-    bucket = (StringBucket *) cache->m(sizeof (StringBucket), cache->d);
+    bucket = (StringBucket *) cache->m(sizeof (StringBucket) + len + 1, cache->d);
     if (bucket == NULL)
         return NULL;
-    bucket->string = (char *) cache->m(len + 1, cache->d);
-    if (bucket->string == NULL)
-    {
-        cache->f(bucket, cache->d);
-        return NULL;
-    } // if
+    bucket->string = (char *)(bucket + 1);
     memcpy(bucket->string, str, len);
     bucket->string[len] = '\0';
     bucket->next = cache->hashtable[hash];
@@ -462,7 +457,6 @@ void stringcache_destroy(StringCache *cache)
         while (bucket)
         {
             StringBucket *next = bucket->next;
-            f(bucket->string, d);
             f(bucket, d);
             bucket = next;
         } // while
