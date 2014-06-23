@@ -799,7 +799,7 @@ int buffer_append_va(Buffer *buffer, const char *fmt, va_list va)
     va_copy(ap, va);
     vsnprintf(buf, len + 1, fmt, ap);  // rebuild it.
     va_end(ap);
-    const int retval = buffer_append(buffer, scratch, len);
+    const int retval = buffer_append(buffer, buf, len);
     buffer->f(buf, buffer->d);
     return retval;
 } // buffer_append_va
