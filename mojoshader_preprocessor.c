@@ -60,12 +60,6 @@ typedef struct Context
     void *malloc_data;
 } Context;
 
-// Microsoft's preprocessor has some quirks. In some ways, it doesn't work
-//  like you'd expect a C preprocessor to function.
-#ifndef MATCH_MICROSOFT_PREPROCESSOR
-#define MATCH_MICROSOFT_PREPROCESSOR 1
-#endif
-
 
 // Convenience functions for allocators...
 

@@ -172,6 +172,18 @@ multilinecomment:
                             RET(TOKEN_MULTI_COMMENT);
                         else if (s->report_whitespace)
                             RET(' ');
+
+                        // Microsoft's preprocessor allows multiline comments
+                        //  before a preprocessor directive, even though C/C++
+                        //  doesn't. See if we've hit this case.
+                        #if MATCH_MICROSOFT_PREPROCESSOR
+                        if (s->tokenval == ((Token) '\n'))  // was start of line?
+                        {
+                            update_state(s, eoi, cursor, token, (Token) '\n');
+                            goto ppdirective;  // may jump back to scanner_loop.
+                        }
+                        #endif
+
                         goto scanner_loop;
                     }
     NEWLINE         {
