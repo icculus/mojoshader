@@ -87,6 +87,7 @@ typedef struct Context
     const uint32 *orig_tokens;
     const uint32 *tokens;
     uint32 tokencount;
+    int know_shader_size;
     const MOJOSHADER_swizzle *swizzles;
     unsigned int swizzles_count;
     const MOJOSHADER_samplerMap *samplermap;
@@ -1589,18 +1590,20 @@ static void emit_D3D_SINCOS(Context *ctx)
 static void emit_BYTECODE_start(Context *ctx, const char *profilestr)
 {
     ctx->ignores_ctab = 1;
+} // emit_BYTECODE_start
 
+static void emit_BYTECODE_finalize(Context *ctx)
+{
     // just copy the whole token stream and make all other emitters no-ops.
     if (set_output(ctx, &ctx->mainline))
     {
-        const size_t len = ctx->tokencount * sizeof (uint32);
+        const size_t len = ((size_t) (ctx->tokens - ctx->orig_tokens)) * sizeof (uint32);
         buffer_append(ctx->mainline, (const char *) ctx->tokens, len);
     } // if
-} // emit_BYTECODE_start
+} // emit_BYTECODE_finalize
 
 static void emit_BYTECODE_end(Context *ctx) {}
 static void emit_BYTECODE_phase(Context *ctx) {}
-static void emit_BYTECODE_finalize(Context *ctx) {}
 static void emit_BYTECODE_global(Context *ctx, RegisterType t, int n) {}
 static void emit_BYTECODE_array(Context *ctx, VariableList *var) {}
 static void emit_BYTECODE_sampler(Context *c, int s, TextureType t, int tb) {}
@@ -8525,7 +8528,9 @@ static int parse_end_token(Context *ctx)
     if (SWAP32(*(ctx->tokens)) != 0x0000FFFF)   // end token always 0x0000FFFF.
         return 0;  // not us, eat no tokens.
 
-    if (ctx->tokencount != 1)  // we _must_ be last. If not: fail.
+    if (!ctx->know_shader_size)  // this is the end of stream!
+        ctx->tokencount = 1;
+    else if (ctx->tokencount != 1)  // we _must_ be last. If not: fail.
         fail(ctx, "end token before end of stream");
 
     if (!isfail(ctx))
@@ -8623,7 +8628,8 @@ static Context *build_context(const char *profile,
     ctx->malloc_data = d;
     ctx->tokens = (const uint32 *) tokenbuf;
     ctx->orig_tokens = (const uint32 *) tokenbuf;
-    ctx->tokencount = bufsize / sizeof (uint32);
+    ctx->know_shader_size = (bufsize != 0);
+    ctx->tokencount = ctx->know_shader_size ? (bufsize / sizeof (uint32)) : 0xFFFFFFFF;
     ctx->swizzles = swiz;
     ctx->swizzles_count = swizcount;
     ctx->samplermap = smap;
@@ -9436,6 +9442,9 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
     // parse out the rest of the tokens after the version token...
     while (ctx->tokencount > 0)
     {
+        if (!ctx->know_shader_size)
+            ctx->tokencount = 0xFFFFFFFF;  // keep this value obscenely large.
+
         // reset for each token.
         if (isfail(ctx))
         {

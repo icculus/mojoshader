@@ -723,6 +723,11 @@ int MOJOSHADER_maxShaderModel(const char *profile);
  *  use this to override. If you aren't sure about any of this stuff, you can
  *  (and should) almost certainly ignore it: (smap) can be NULL.
  *
+ * (bufsize) is the size in bytes of (tokenbuf). If (bufsize) is zero,
+ *  MojoShader will attempt to figure out the size of the buffer, but you
+ *  risk a buffer overflow if you have corrupt data, etc. Supply the value
+ *  if you can.
+ *
  * This function is thread safe, so long as (m) and (f) are too, and that
  *  (tokenbuf) remains intact for the duration of the call. This allows you
  *  to parse several shaders on separate CPU cores at the same time.
