@@ -1888,22 +1888,23 @@ static const MOJOSHADER_astDataType *build_function_datatype(Context *ctx,
                                         const MOJOSHADER_astDataType **params,
                                         const int intrinsic)
 {
-    if ( ((paramcount > 0) && (params == NULL)) ||
-         ((paramcount == 0) && (params != NULL)) )
-        return NULL;
+    const MOJOSHADER_astDataType **dtparams = NULL;
+    void *ptr;
 
-    // !!! FIXME: this is hacky.
-    const MOJOSHADER_astDataType **dtparams;
-    void *ptr = Malloc(ctx, sizeof (*params) * paramcount);
-    if (ptr == NULL)
-        return NULL;
-    if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+    if (paramcount > 0)
     {
-        Free(ctx, ptr);
-        return NULL;
-    } // if
-    dtparams = (const MOJOSHADER_astDataType **) ptr;
-    memcpy(dtparams, params, sizeof (*params) * paramcount);
+        // !!! FIXME: this is hacky.
+        ptr = Malloc(ctx, sizeof (*params) * paramcount);
+        if (ptr == NULL)
+            return NULL;
+        if (!buffer_append(ctx->garbage, &ptr, sizeof (ptr)))
+        {
+            Free(ctx, ptr);
+            return NULL;
+        } // if
+        dtparams = (const MOJOSHADER_astDataType **) ptr;
+        memcpy(dtparams, params, sizeof (*params) * paramcount);
+    }
 
     ptr = Malloc(ctx, sizeof (MOJOSHADER_astDataType));
     if (ptr == NULL)
