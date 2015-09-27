@@ -10,8 +10,8 @@
 // This was originally based on examples/pp-c.re from re2c: http://re2c.org/
 //   re2c is public domain code.
 //
-// You build mojoshader_lexer_preprocessor.c from the .re file with re2c...
-// re2c -is -o mojoshader_lexer_preprocessor.c mojoshader_lexer_preprocessor.re
+// You build mojoshader_lexer.c from the .re file with re2c...
+// re2c -is -o mojoshader_lexer.c mojoshader_lexer.re
 //
 // Changes to the lexer are done to the .re file, not the C code!
 //
@@ -272,5 +272,5 @@ bad_chars:
     RET(TOKEN_UNKNOWN);
 } // preprocessor_lexer
 
-// end of mojoshader_lexer_preprocessor.re (or .c) ...
+// end of mojoshader_lexer.re (or .c) ...
 
