@@ -1582,7 +1582,7 @@ static void emit_BYTECODE_finalize(Context *ctx)
     if (set_output(ctx, &ctx->mainline))
     {
         const size_t len = ((size_t) (ctx->tokens - ctx->orig_tokens)) * sizeof (uint32);
-        buffer_append(ctx->mainline, (const char *) ctx->tokens, len);
+        buffer_append(ctx->mainline, (const char *) ctx->orig_tokens, len);
     } // if
 } // emit_BYTECODE_finalize
 
