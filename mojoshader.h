@@ -27,6 +27,22 @@ extern "C" {
 #define MOJOSHADER_CHANGESET "???"
 #endif
 
+#ifndef DECLSPEC
+#ifdef _WIN32
+#define DECLSPEC __declspec(dllexport)
+#else
+#define DECLSPEC
+#endif
+#endif
+
+#ifndef MOJOSHADERCALL
+#ifdef _WIN32
+#define MOJOSHADERCALL __stdcall
+#else
+#define MOJOSHADERCALL
+#endif
+#endif
+
 /*
  * For determining the version of MojoShader you are using:
  *    const int compiled_against = MOJOSHADER_VERSION;
@@ -34,7 +50,7 @@ extern "C" {
  *
  * The version is a single integer that increments, not a major/minor value.
  */
-int MOJOSHADER_version(void);
+DECLSPEC int MOJOSHADER_version(void);
 
 /*
  * For determining the revision control changeset of MojoShader you are using:
@@ -47,7 +63,7 @@ int MOJOSHADER_version(void);
  *
  * Do not attempt to free this string; it's statically allocated.
  */
-const char *MOJOSHADER_changeset(void);
+DECLSPEC const char *MOJOSHADER_changeset(void);
 
 /*
  * These allocators work just like the C runtime's malloc() and free()
@@ -57,8 +73,8 @@ const char *MOJOSHADER_changeset(void);
  *  callbacks, in case you need instance-specific data...it is passed through
  *  to your allocator unmolested, and can be NULL if you like.
  */
-typedef void *(*MOJOSHADER_malloc)(int bytes, void *data);
-typedef void (*MOJOSHADER_free)(void *ptr, void *data);
+typedef void *(MOJOSHADERCALL *MOJOSHADER_malloc)(int bytes, void *data);
+typedef void (MOJOSHADERCALL *MOJOSHADER_free)(void *ptr, void *data);
 
 
 /*
@@ -428,6 +444,8 @@ typedef struct MOJOSHADER_preshaderOperand
 {
     MOJOSHADER_preshaderOperandType type;
     unsigned int index;
+    unsigned int array_register_count;
+    unsigned int *array_registers;
 } MOJOSHADER_preshaderOperand;
 
 typedef struct MOJOSHADER_preshaderInstruction
@@ -435,7 +453,7 @@ typedef struct MOJOSHADER_preshaderInstruction
     MOJOSHADER_preshaderOpcode opcode;
     unsigned int element_count;
     unsigned int operand_count;
-    MOJOSHADER_preshaderOperand operands[3];
+    MOJOSHADER_preshaderOperand operands[4];
 } MOJOSHADER_preshaderInstruction;
 
 typedef struct MOJOSHADER_preshader
@@ -447,6 +465,8 @@ typedef struct MOJOSHADER_preshader
     MOJOSHADER_symbol *symbols;
     unsigned int instruction_count;
     MOJOSHADER_preshaderInstruction *instructions;
+    unsigned int register_count;
+    float *registers;
 } MOJOSHADER_preshader;
 
 /*
@@ -651,6 +671,11 @@ typedef struct MOJOSHADER_parseData
 #define MOJOSHADER_PROFILE_GLSL120 "glsl120"
 
 /*
+ * Profile string for GLSL ES: minor changes to GLSL output for ES compliance.
+ */
+#define MOJOSHADER_PROFILE_GLSLES "glsles"
+
+/*
  * Profile string for OpenGL ARB 1.0 shaders: GL_ARB_(vertex|fragment)_program.
  */
 #define MOJOSHADER_PROFILE_ARB1 "arb1"
@@ -676,7 +701,7 @@ typedef struct MOJOSHADER_parseData
 /*
  * Determine the highest supported Shader Model for a profile.
  */
-int MOJOSHADER_maxShaderModel(const char *profile);
+DECLSPEC int MOJOSHADER_maxShaderModel(const char *profile);
 
 
 /*
@@ -732,16 +757,17 @@ int MOJOSHADER_maxShaderModel(const char *profile);
  *  (tokenbuf) remains intact for the duration of the call. This allows you
  *  to parse several shaders on separate CPU cores at the same time.
  */
-const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
-                                             const unsigned char *tokenbuf,
-                                             const unsigned int bufsize,
-                                             const MOJOSHADER_swizzle *swiz,
-                                             const unsigned int swizcount,
-                                             const MOJOSHADER_samplerMap *smap,
-                                             const unsigned int smapcount,
-                                             MOJOSHADER_malloc m,
-                                             MOJOSHADER_free f,
-                                             void *d);
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
+                                                      const unsigned char *tokenbuf,
+                                                      const unsigned int bufsize,
+                                                      const MOJOSHADER_swizzle *swiz,
+                                                      const unsigned int swizcount,
+                                                      const MOJOSHADER_samplerMap *smap,
+                                                      const unsigned int smapcount,
+                                                      MOJOSHADER_malloc m,
+                                                      MOJOSHADER_free f,
+                                                      void *d);
+
 
 /*
  * Call this to dispose of parsing results when you are done with them.
@@ -752,152 +778,25 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
  * This function is thread safe, so long as any allocator you passed into
  *  MOJOSHADER_parse() is, too.
  */
-void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
-
-
-/* Effects interface... */  /* !!! FIXME: THIS API IS NOT STABLE YET! */
-
-typedef struct MOJOSHADER_effectParam
-{
-    const char *name;
-    const char *semantic;
-} MOJOSHADER_effectParam;
-
-typedef struct MOJOSHADER_effectState
-{
-    unsigned int type;
-} MOJOSHADER_effectState;
-
-typedef struct MOJOSHADER_effectPass
-{
-    const char *name;
-    unsigned int state_count;
-    MOJOSHADER_effectState *states;
-} MOJOSHADER_effectPass;
-
-typedef struct MOJOSHADER_effectTechnique
-{
-    const char *name;
-    unsigned int pass_count;
-    MOJOSHADER_effectPass *passes;
-} MOJOSHADER_effectTechnique;
-
-typedef struct MOJOSHADER_effectTexture
-{
-    unsigned int param;
-    const char *name;
-} MOJOSHADER_effectTexture;
-
-typedef struct MOJOSHADER_effectShader
-{
-    unsigned int technique;
-    unsigned int pass;
-    const MOJOSHADER_parseData *shader;
-} MOJOSHADER_effectShader;
-
-/*
- * Structure used to return data from parsing of an effect file...
- */
-/* !!! FIXME: most of these ints should be unsigned. */
-typedef struct MOJOSHADER_effect
-{
-    /*
-     * The number of elements pointed to by (errors).
-     */
-    int error_count;
-
-    /*
-     * (error_count) elements of data that specify errors that were generated
-     *  by parsing this shader.
-     * This can be NULL if there were no errors or if (error_count) is zero.
-     */
-    MOJOSHADER_error *errors;
-
-    /*
-     * The name of the profile used to parse the shader. Will be NULL on error.
-     */
-    const char *profile;
-
-    /*
-     * The number of params pointed to by (params).
-     */
-    int param_count;
-
-    /*
-     * (param_count) elements of data that specify parameter bind points for
-     *  this effect.
-     * This can be NULL on error or if (param_count) is zero.
-     */
-    MOJOSHADER_effectParam *params;
-
-    /*
-     * The number of elements pointed to by (techniques).
-     */
-    int technique_count;
-
-    /*
-     * (technique_count) elements of data that specify techniques used in
-     *  this effect. Each technique contains a series of passes, and each pass
-     *  specifies state and shaders that affect rendering.
-     * This can be NULL on error or if (technique_count) is zero.
-     */
-    MOJOSHADER_effectTechnique *techniques;
-
-    /*
-     * The number of elements pointed to by (textures).
-     */
-    int texture_count;
-
-    /*
-     * (texture_count) elements of data that specify textures used in
-     *  this effect.
-     * This can be NULL on error or if (texture_count) is zero.
-     */
-    MOJOSHADER_effectTexture *textures;
-
-    /*
-     * The number of elements pointed to by (shaders).
-     */
-    int shader_count;
-
-    /*
-     * (shader_count) elements of data that specify shaders used in
-     *  this effect.
-     * This can be NULL on error or if (shader_count) is zero.
-     */
-    MOJOSHADER_effectShader *shaders;
-
-    /*
-     * This is the malloc implementation you passed to MOJOSHADER_parseEffect().
-     */
-    MOJOSHADER_malloc malloc;
-
-    /*
-     * This is the free implementation you passed to MOJOSHADER_parseEffect().
-     */
-    MOJOSHADER_free free;
-
-    /*
-     * This is the pointer you passed as opaque data for your allocator.
-     */
-    void *malloc_data;
-} MOJOSHADER_effect;
-
-/* !!! FIXME: document me. */
-const MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
-                                                const unsigned char *buf,
-                                                const unsigned int _len,
-                                                const MOJOSHADER_swizzle *swiz,
-                                                const unsigned int swizcount,
-                                                const MOJOSHADER_samplerMap *smap,
-                                                const unsigned int smapcount,
-                                                MOJOSHADER_malloc m,
-                                                MOJOSHADER_free f,
-                                                void *d);
+DECLSPEC void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *data);
 
 
 /* !!! FIXME: document me. */
-void MOJOSHADER_freeEffect(const MOJOSHADER_effect *effect);
+DECLSPEC const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
+                                                               const unsigned int len,
+                                                               MOJOSHADER_malloc m,
+                                                               MOJOSHADER_free f,
+                                                               void *d);
+
+
+/* !!! FIXME: document me. */
+DECLSPEC void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader,
+                                       MOJOSHADER_free f,
+                                       void *d);
+
+
+/* Effects interface... */
+#include "mojoshader_effects.h"
 
 
 /* Preprocessor interface... */
@@ -1001,7 +900,7 @@ typedef struct MOJOSHADER_preprocessData
  *
  * If you supply an includeOpen callback, you must supply includeClose, too.
  */
-typedef int (*MOJOSHADER_includeOpen)(MOJOSHADER_includeType inctype,
+typedef int (MOJOSHADERCALL *MOJOSHADER_includeOpen)(MOJOSHADER_includeType inctype,
                             const char *fname, const char *parent,
                             const char **outdata, unsigned int *outbytes,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
@@ -1019,7 +918,7 @@ typedef int (*MOJOSHADER_includeOpen)(MOJOSHADER_includeType inctype,
  *
  * If you supply an includeClose callback, you must supply includeOpen, too.
  */
-typedef void (*MOJOSHADER_includeClose)(const char *data,
+typedef void (MOJOSHADERCALL *MOJOSHADER_includeClose)(const char *data,
                             MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
 
 
@@ -1079,7 +978,7 @@ typedef void (*MOJOSHADER_includeClose)(const char *data,
  *  call. This allows you to preprocess several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
+DECLSPEC const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
                              const char *source, unsigned int sourcelen,
                              const MOJOSHADER_preprocessorDefine *defines,
                              unsigned int define_count,
@@ -1097,7 +996,7 @@ const MOJOSHADER_preprocessData *MOJOSHADER_preprocess(const char *filename,
  * This function is thread safe, so long as any allocator you passed into
  *  MOJOSHADER_preprocess() is, too.
  */
-void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
+DECLSPEC void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
 
 
 /* Assembler interface... */
@@ -1159,7 +1058,7 @@ void MOJOSHADER_freePreprocessData(const MOJOSHADER_preprocessData *data);
  *  call. This allows you to assemble several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_assemble(const char *filename,
                              const char *source, unsigned int sourcelen,
                              const char **comments, unsigned int comment_count,
                              const MOJOSHADER_symbol *symbols,
@@ -2010,7 +1909,7 @@ typedef struct MOJOSHADER_astData
  *  call. This allows you to parse several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
+DECLSPEC const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
                                     const char *filename, const char *source,
                                     unsigned int sourcelen,
                                     const MOJOSHADER_preprocessorDefine *defs,
@@ -2033,7 +1932,7 @@ const MOJOSHADER_astData *MOJOSHADER_parseAst(const char *srcprofile,
  * This function is thread safe, so long as any allocator you passed into
  *  MOJOSHADER_parseAst() is, too.
  */
-void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data);
+DECLSPEC void MOJOSHADER_freeAstData(const MOJOSHADER_astData *data);
 
 
 /* Intermediate Representation interface... */
@@ -2450,7 +2349,7 @@ typedef struct MOJOSHADER_compileData
  *  call. This allows you to compile several shaders on separate CPU cores
  *  at the same time.
  */
-const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
+DECLSPEC const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
                                     const char *filename, const char *source,
                                     unsigned int sourcelen,
                                     const MOJOSHADER_preprocessorDefine *defs,
@@ -2470,7 +2369,7 @@ const MOJOSHADER_compileData *MOJOSHADER_compile(const char *srcprofile,
  * This function is thread safe, so long as any allocator you passed into
  *  MOJOSHADER_compile() is, too.
  */
-void MOJOSHADER_freeCompileData(const MOJOSHADER_compileData *data);
+DECLSPEC void MOJOSHADER_freeCompileData(const MOJOSHADER_compileData *data);
 
 
 /* OpenGL interface... */
@@ -2493,7 +2392,7 @@ void MOJOSHADER_freeCompileData(const MOJOSHADER_compileData *data);
  *  to check two places to find the desired entry point, depending on your
  *  platform (Windows might need to look in OpenGL32.dll and use WGL, etc).
  */
-typedef void *(*MOJOSHADER_glGetProcAddress)(const char *fnname, void *data);
+typedef void *(MOJOSHADERCALL *MOJOSHADER_glGetProcAddress)(const char *fnname, void *data);
 
 
 /*
@@ -2544,11 +2443,11 @@ typedef struct MOJOSHADER_glProgram MOJOSHADER_glProgram;
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
-                                   void *lookup_d,
-                                   const char **profs, const int size,
-                                   MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                   void *malloc_d);
+DECLSPEC int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
+                                            void *lookup_d,
+                                            const char **profs, const int size,
+                                            MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                            void *malloc_d);
 
 
 /*
@@ -2581,7 +2480,7 @@ int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
  *  safe, you should probably only call this from the same thread that created
  *  the GL context.
  */
-const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup,
+DECLSPEC const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup,
                                    void *lookup_d,
                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
                                    void *malloc_d);
@@ -2623,7 +2522,7 @@ const char *MOJOSHADER_glBestProfile(MOJOSHADER_glGetProcAddress lookup,
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
+DECLSPEC MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
                                         MOJOSHADER_glGetProcAddress lookup,
                                         void *lookup_d,
                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
@@ -2640,7 +2539,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
  * It is legal to call this with a NULL pointer to make no context current,
  *  but you need a valid context to be current to use most of MojoShader.
  */
-void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
+DECLSPEC void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
 
 /*
  * Get any error state we might have picked up. MojoShader will NOT call
@@ -2667,7 +2566,7 @@ void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
  *  current. The error buffer is shared between contexts, so you can get
  *  error results from a failed MOJOSHADER_glCreateContext().
  */
-const char *MOJOSHADER_glGetError(void);
+DECLSPEC const char *MOJOSHADER_glGetError(void);
 
 /*
  * Get the maximum uniforms a shader can support for the current GL context,
@@ -2684,7 +2583,7 @@ const char *MOJOSHADER_glGetError(void);
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
+DECLSPEC int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
 
 /*
  * Compile a buffer of Direct3D shader bytecode into an OpenGL shader.
@@ -2706,12 +2605,12 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
  *
  * Compiled shaders from this function may not be shared between contexts.
  */
-MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
-                                                const unsigned int bufsize,
-                                                const MOJOSHADER_swizzle *swiz,
-                                                const unsigned int swizcount,
-                                                const MOJOSHADER_samplerMap *smap,
-                                                const unsigned int smapcount);
+DECLSPEC MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
+                                                         const unsigned int bufsize,
+                                                         const MOJOSHADER_swizzle *swiz,
+                                                         const unsigned int swizcount,
+                                                         const MOJOSHADER_samplerMap *smap,
+                                                         const unsigned int smapcount);
 
 
 /*
@@ -2721,7 +2620,7 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
  * This data is read-only, and you should NOT attempt to free it. This
  *  pointer remains valid until the shader is deleted.
  */
-const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
                                                 MOJOSHADER_glShader *shader);
 /*
  * Link a vertex and pixel shader into an OpenGL program.
@@ -2746,8 +2645,8 @@ const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
  *
  * Linked programs from this function may not be shared between contexts.
  */
-MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
-                                               MOJOSHADER_glShader *pshader);
+DECLSPEC MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
+                                                        MOJOSHADER_glShader *pshader);
 
 /*
  * This binds the program (using, for example, glUseProgramObjectARB()), and
@@ -2770,7 +2669,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
+DECLSPEC void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
 
 /*
  * This binds individual shaders as if you had linked them with
@@ -2797,8 +2696,8 @@ void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
-                              MOJOSHADER_glShader *pshader);
+DECLSPEC void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
+                                       MOJOSHADER_glShader *pshader);
 
 /*
  * Set a floating-point uniform value (what Direct3D calls a "constant").
@@ -2821,8 +2720,8 @@ void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
-                                          unsigned int vec4count);
+DECLSPEC void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
+                                                   unsigned int vec4count);
 
 /*
  * Retrieve a floating-point uniform value (what Direct3D calls a "constant").
@@ -2851,8 +2750,8 @@ void MOJOSHADER_glSetVertexShaderUniformF(unsigned int idx, const float *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetVertexShaderUniformF(unsigned int idx, float *data,
-                                          unsigned int vec4count);
+DECLSPEC void MOJOSHADER_glGetVertexShaderUniformF(unsigned int idx, float *data,
+                                                   unsigned int vec4count);
 
 
 /*
@@ -2876,8 +2775,8 @@ void MOJOSHADER_glGetVertexShaderUniformF(unsigned int idx, float *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
-                                          unsigned int ivec4count);
+DECLSPEC void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
+                                                   unsigned int ivec4count);
 
 /*
  * Retrieve an integer uniform value (what Direct3D calls a "constant").
@@ -2906,8 +2805,8 @@ void MOJOSHADER_glSetVertexShaderUniformI(unsigned int idx, const int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetVertexShaderUniformI(unsigned int idx, int *data,
-                                          unsigned int ivec4count);
+DECLSPEC void MOJOSHADER_glGetVertexShaderUniformI(unsigned int idx, int *data,
+                                                   unsigned int ivec4count);
 
 /*
  * Set a boolean uniform value (what Direct3D calls a "constant").
@@ -2935,8 +2834,8 @@ void MOJOSHADER_glGetVertexShaderUniformI(unsigned int idx, int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
-                                          unsigned int bcount);
+DECLSPEC void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
+                                                   unsigned int bcount);
 
 /*
  * Retrieve a boolean uniform value (what Direct3D calls a "constant").
@@ -2972,8 +2871,8 @@ void MOJOSHADER_glSetVertexShaderUniformB(unsigned int idx, const int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetVertexShaderUniformB(unsigned int idx, int *data,
-                                          unsigned int bcount);
+DECLSPEC void MOJOSHADER_glGetVertexShaderUniformB(unsigned int idx, int *data,
+                                                   unsigned int bcount);
 
 /*
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformF() for pixel
@@ -2989,8 +2888,8 @@ void MOJOSHADER_glGetVertexShaderUniformB(unsigned int idx, int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
-                                         unsigned int vec4count);
+DECLSPEC void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
+                                                  unsigned int vec4count);
 
 
 /*
@@ -3007,8 +2906,8 @@ void MOJOSHADER_glSetPixelShaderUniformF(unsigned int idx, const float *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetPixelShaderUniformF(unsigned int idx, float *data,
-                                         unsigned int vec4count);
+DECLSPEC void MOJOSHADER_glGetPixelShaderUniformF(unsigned int idx, float *data,
+                                                  unsigned int vec4count);
 
 
 /*
@@ -3025,8 +2924,8 @@ void MOJOSHADER_glGetPixelShaderUniformF(unsigned int idx, float *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
-                                         unsigned int ivec4count);
+DECLSPEC void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
+                                                  unsigned int ivec4count);
 
 
 /*
@@ -3043,8 +2942,8 @@ void MOJOSHADER_glSetPixelShaderUniformI(unsigned int idx, const int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetPixelShaderUniformI(unsigned int idx, int *data,
-                                         unsigned int ivec4count);
+DECLSPEC void MOJOSHADER_glGetPixelShaderUniformI(unsigned int idx, int *data,
+                                                  unsigned int ivec4count);
 
 /*
  * The equivalent of MOJOSHADER_glSetVertexShaderUniformB() for pixel
@@ -3060,8 +2959,8 @@ void MOJOSHADER_glGetPixelShaderUniformI(unsigned int idx, int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
-                                         unsigned int bcount);
+DECLSPEC void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
+                                                  unsigned int bcount);
 
 /*
  * The equivalent of MOJOSHADER_glGetVertexShaderUniformB() for pixel
@@ -3077,8 +2976,8 @@ void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *data,
  *
  * Uniforms are not shared between contexts.
  */
-void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
-                                         unsigned int bcount);
+DECLSPEC void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
+                                                  unsigned int bcount);
 
 /*
  * Set up the vector for the TEXBEM opcode. Most apps can ignore this API.
@@ -3115,9 +3014,23 @@ void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
  *
  * These values are not shared between contexts.
  */
-void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
-                                      float mat01, float mat10, float mat11,
-                                      float lscale, float loffset);
+DECLSPEC void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
+                                               float mat01, float mat10, float mat11,
+                                               float lscale, float loffset);
+
+/*
+ * Return the location of a vertex attribute for the currently-bound program.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be sent to
+ *  glVertexAttribPointer, or -1 if the stream is not used.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC int MOJOSHADER_glGetVertexAttribLocation(MOJOSHADER_usage usage, int index);
 
 /*
  * Connect a client-side array to the currently-bound program.
@@ -3146,30 +3059,30 @@ void MOJOSHADER_glSetLegacyBumpMapEnv(unsigned int sampler, float mat00,
  */
  /* !!! FIXME: this should probably be "input" and not "attribute" */
  /* !!! FIXME: or maybe "vertex array" or something. */
-void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
-                                     int index, unsigned int size,
-                                     MOJOSHADER_attributeType type,
-                                     int normalized, unsigned int stride,
-                                     const void *ptr);
+DECLSPEC void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
+                                              int index, unsigned int size,
+                                              MOJOSHADER_attributeType type,
+                                              int normalized, unsigned int stride,
+                                              const void *ptr);
 
-
-
-
-/* These below functions are temporary and will be removed from the API once
-    the real Effects API is written. Do not use! */
-void MOJOSHADER_glSetVertexPreshaderUniformF(unsigned int idx, const float *data,
-                                             unsigned int vec4n);
-void MOJOSHADER_glGetVertexPreshaderUniformF(unsigned int idx, float *data,
-                                             unsigned int vec4n);
-void MOJOSHADER_glSetPixelPreshaderUniformF(unsigned int idx, const float *data,
-                                            unsigned int vec4n);
-void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
-                                            unsigned int vec4n);
-/* These above functions are temporary and will be removed from the API once
-    the real Effects API is written. Do not use! */
-
-
-
+/*
+ *  Modify the rate at which this vertex attribute advances during instanced
+ *  rendering.
+ *
+ * This should be called alongside glSetVertexAttribute, as this does not flag
+ *  the vertex array as being in use. This just calls glVertexAttribDivisorARB.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ *
+ * Vertex attributes are not shared between contexts.
+ */
+DECLSPEC void MOJOSHADER_glSetVertexAttribDivisor(MOJOSHADER_usage usage,
+                                                  int index, unsigned int divisor);
 
 /*
  * Inform MojoShader that it should commit any pending state to the GL. This
@@ -3184,7 +3097,12 @@ void MOJOSHADER_glGetPixelPreshaderUniformF(unsigned int idx, float *data,
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-void MOJOSHADER_glProgramReady(void);
+DECLSPEC void MOJOSHADER_glProgramReady(void);
+
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+// !!! FIXME: Document me.
+DECLSPEC void MOJOSHADER_glProgramViewportFlip(int flip);
+#endif
 
 /*
  * Free the resources of a linked program. This will delete the GL object
@@ -3200,7 +3118,7 @@ void MOJOSHADER_glProgramReady(void);
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
+DECLSPEC void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
 
 /*
  * Free the resources of a compiled shader. This will delete the GL object
@@ -3217,7 +3135,7 @@ void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program);
  * This call requires a valid MOJOSHADER_glContext to have been made current,
  *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
  */
-void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
+DECLSPEC void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
 
 /*
  * Deinitialize MojoShader's OpenGL shader management.
@@ -3241,7 +3159,7 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
  *  are not thread safe, you should probably only call this from the same
  *  thread that created the GL context.
  */
-void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
+DECLSPEC void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 
 #ifdef __cplusplus
 }

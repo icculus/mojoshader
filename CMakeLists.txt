@@ -1,6 +1,18 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(MojoShader)
 
+OPTION(BUILD_SHARED "Build MojoShader as a shared library" OFF)
+OPTION(PROFILE_D3D "Build MojoShader with support for the D3D profile" ON)
+OPTION(PROFILE_BYTECODE "Build MojoShader with support for the BYTECODE profile" ON)
+OPTION(PROFILE_GLSL120 "Build MojoShader with support for the GLSL120 profile" ON)
+OPTION(PROFILE_GLSL "Build MojoShader with support for the GLSL profile" ON)
+OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
+OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
+OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" OFF)
+OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
+OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
+OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
+
 INCLUDE_DIRECTORIES(.)
 
 FIND_PROGRAM(HG hg DOC "Path to hg command line app: http://www.selenic.com/mercurial/")
@@ -61,7 +73,55 @@ ADD_CUSTOM_COMMAND(
     ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
 )
 
-ADD_LIBRARY(mojoshader STATIC
+IF(APPLE)
+    find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
+ENDIF(APPLE)
+
+IF(NOT PROFILE_D3D)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_D3D=0)
+ENDIF(NOT PROFILE_D3D)
+IF(NOT PROFILE_BYTECODE)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_BYTECODE=0)
+ENDIF(NOT PROFILE_BYTECODE)
+IF(NOT PROFILE_GLSL120)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_GLSL120=0)
+ENDIF(NOT PROFILE_GLSL120)
+IF(NOT PROFILE_GLSL)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_GLSL=0)
+ENDIF(NOT PROFILE_GLSL)
+IF(NOT PROFILE_ARB1)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_ARB1=0)
+ENDIF(NOT PROFILE_ARB1)
+IF(NOT PROFILE_ARB1_NV)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_ARB1_NV=0)
+ENDIF(NOT PROFILE_ARB1_NV)
+
+IF(EFFECT_SUPPORT)
+    IF(UNIX)
+        SET(LIBM -lm)
+    ENDIF(UNIX)
+    ADD_DEFINITIONS(-DMOJOSHADER_EFFECT_SUPPORT)
+ENDIF(EFFECT_SUPPORT)
+
+IF(FLIP_VIEWPORT)
+    ADD_DEFINITIONS(-DMOJOSHADER_FLIP_RENDERTARGET)
+ENDIF(FLIP_VIEWPORT)
+
+IF(DEPTH_CLIPPING)
+    ADD_DEFINITIONS(-DMOJOSHADER_DEPTH_CLIPPING)
+ENDIF(DEPTH_CLIPPING)
+
+IF(XNA4_VERTEXTEXTURE)
+    ADD_DEFINITIONS(-DMOJOSHADER_XNA4_VERTEX_TEXTURES)
+ENDIF(XNA4_VERTEXTEXTURE)
+
+IF(BUILD_SHARED)
+    SET(LIBRARY_FORMAT SHARED)
+ELSE(BUILD_SHARED)
+    SET(LIBRARY_FORMAT STATIC)
+ENDIF(BUILD_SHARED)
+
+ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     mojoshader.c
     mojoshader_common.c
     mojoshader_effects.c
@@ -71,10 +131,9 @@ ADD_LIBRARY(mojoshader STATIC
     mojoshader_assembler.c
     mojoshader_opengl.c
 )
-
-IF(UNIX)
-    SET(LIBM -lm)
-ENDIF(UNIX)
+IF(BUILD_SHARED)
+    TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${CARBON_FRAMEWORK})
+ENDIF(BUILD_SHARED)
 
 SET_SOURCE_FILES_PROPERTIES(
     mojoshader_compiler.c
@@ -93,10 +152,6 @@ ELSE(NOT RE2C)
         ARGS -is --no-generation-date -o "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re"
     )
 ENDIF(NOT RE2C)
-
-IF(APPLE)
-    find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
-ENDIF(APPLE)
 
 find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES include/SDL2)
 find_library(SDL2 NAMES SDL2 PATH_SUFFIXES lib)

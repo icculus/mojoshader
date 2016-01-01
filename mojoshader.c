@@ -178,6 +178,9 @@ typedef struct Context
 #if SUPPORT_PROFILE_GLSL120
     int profile_supports_glsl120;
 #endif
+#if SUPPORT_PROFILE_GLSLES
+    int profile_supports_glsles;
+#endif
 } Context;
 
 
@@ -196,6 +199,12 @@ typedef struct Context
 #define support_glsl120(ctx) ((ctx)->profile_supports_glsl120)
 #else
 #define support_glsl120(ctx) (0)
+#endif
+
+#if SUPPORT_PROFILE_GLSLES
+#define support_glsles(ctx) ((ctx)->profile_supports_glsles)
+#else
+#define support_glsles(ctx) (0)
 #endif
 
 
@@ -300,12 +309,12 @@ static inline void Free(Context *ctx, void *ptr)
     ctx->free(ptr, ctx->malloc_data);
 } // Free
 
-static void *MallocBridge(int bytes, void *data)
+static void * MOJOSHADERCALL MallocBridge(int bytes, void *data)
 {
     return Malloc((Context *) data, (size_t) bytes);
 } // MallocBridge
 
-static void FreeBridge(void *ptr, void *data)
+static void MOJOSHADERCALL FreeBridge(void *ptr, void *data)
 {
     Free((Context *) data, ptr);
 } // FreeBridge
@@ -446,7 +455,7 @@ static inline void output_blank_line(Context *ctx)
 static void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
                      int leavedecimal)
 {
-    const size_t len = snprintf(buf, bufsize, "%f", f);
+    const size_t len = MOJOSHADER_printFloat(buf, bufsize, f);
     if ((len+2) >= bufsize)
         fail(ctx, "BUG: internal buffer is too small");
     else
@@ -2185,6 +2194,24 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
     } // else if
     #endif
 
+    #if SUPPORT_PROFILE_GLSLES
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSLES) == 0)
+    {
+        ctx->profile_supports_glsles = 1;
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "#version 100");
+        if (shader_is_vertex(ctx))
+            output_line(ctx, "precision highp float;");
+        else
+            output_line(ctx, "precision mediump float;");
+        output_line(ctx, "precision mediump int;");
+        output_line(ctx, "varying vec4 v_FrontColor;");
+        output_line(ctx, "varying vec4 v_FrontSecondaryColor;");
+        output_line(ctx, "varying vec4 v_TexCoord[10];"); // 10 according to SM3
+        pop_output(ctx);
+    } // else if
+    #endif
+
     else
     {
         failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
@@ -2212,6 +2239,15 @@ static void emit_GLSL_end(Context *ctx)
         set_used_register(ctx, REG_TYPE_COLOROUT, 0, 1);
         output_line(ctx, "%s_oC0 = %s_r0;", shstr, shstr);
     } // if
+    else if (shader_is_vertex(ctx))
+    {
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+        output_line(ctx, "gl_Position.y = gl_Position.y * vpFlip;");
+#endif
+#ifdef MOJOSHADER_DEPTH_CLIPPING
+        output_line(ctx, "gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;");
+#endif
+    } // else if
 
     // force a RET opcode if we're at the end of the stream without one.
     if (ctx->previous_opcode != OPCODE_RET)
@@ -2230,7 +2266,19 @@ static void output_GLSL_uniform_array(Context *ctx, const RegisterType regtype,
     {
         char buf[64];
         get_GLSL_uniform_array_varname(ctx, regtype, buf, sizeof (buf));
-        output_line(ctx, "uniform vec4 %s[%d];", buf, size);
+        const char *typ;
+        switch (regtype)
+        {
+            case REG_TYPE_CONST: typ = "vec4"; break;
+            case REG_TYPE_CONSTINT: typ ="ivec4"; break;
+            case REG_TYPE_CONSTBOOL: typ = "bool"; break;
+            default:
+            {
+                fail(ctx, "BUG: used a uniform we don't know how to define.");
+                return;
+            } // default
+        } // switch
+        output_line(ctx, "uniform %s %s[%d];", typ, buf, size);
     } // if
 } // output_GLSL_uniform_array
 
@@ -2252,6 +2300,10 @@ static void emit_GLSL_finalize(Context *ctx)
     output_GLSL_uniform_array(ctx, REG_TYPE_CONST, ctx->uniform_float4_count);
     output_GLSL_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count);
     output_GLSL_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count);
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+    if (shader_is_vertex(ctx))
+        output_line(ctx, "uniform float vpFlip;");
+#endif
     pop_output(ctx);
 } // emit_GLSL_finalize
 
@@ -2535,15 +2587,34 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 case MOJOSHADER_USAGE_COLOR:
                     index_str[0] = '\0';  // no explicit number.
                     if (index == 0)
+                    {
+#if SUPPORT_PROFILE_GLSLES
+                        if (support_glsles(ctx))
+                            usage_str = "v_FrontColor";
+                        else
+#endif
                         usage_str = "gl_FrontColor";
+                    } // if
                     else if (index == 1)
+                    {
+#if SUPPORT_PROFILE_GLSLES
+                        if (support_glsles(ctx))
+                            usage_str = "v_FrontSecondaryColor";
+                        else
+#endif
                         usage_str = "gl_FrontSecondaryColor";
+                    } // else if
                     break;
                 case MOJOSHADER_USAGE_FOG:
                     usage_str = "gl_FogFragCoord";
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        usage_str = "v_TexCoord";
+                    else
+#endif
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
@@ -2609,6 +2680,11 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (shader_version_atleast(ctx, 1, 4))
                 {
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        usage_str = "v_TexCoord";
+                    else
+#endif
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
@@ -2619,11 +2695,32 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 index_str[0] = '\0';  // no explicit number.
                 if (index == 0)
+                {
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        usage_str = "v_FrontColor";
+                    else
+#endif
                     usage_str = "gl_Color";
+                } // if
                 else if (index == 1)
+                {
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        usage_str = "v_FrontSecondaryColor";
+                    else
+#endif
                     usage_str = "gl_SecondaryColor";
+                } // else if
                 else
                     fail(ctx, "unsupported color index");
+            } // else if
+
+            else if (usage == MOJOSHADER_USAGE_DEPTH) // !!! FIXME: Possibly more! -flibit
+            {
+                push_output(ctx, &ctx->globals);
+                output_line(ctx, "attribute vec4 %s;", var);
+                pop_output(ctx);
             } // else if
         } // else if
 
@@ -6155,6 +6252,7 @@ static const Profile profiles[] =
 // This is for profiles that extend other profiles...
 static const struct { const char *from; const char *to; } profileMap[] =
 {
+    { MOJOSHADER_PROFILE_GLSLES, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_GLSL120, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
     { MOJOSHADER_PROFILE_NV3, MOJOSHADER_PROFILE_ARB1 },
@@ -6843,6 +6941,35 @@ static int parse_args_DCL(Context *ctx)
             ctx->dwords[0] = usage;
             ctx->dwords[1] = index;
         } // if
+        else if (regtype == REG_TYPE_TEXTURE)
+        {
+            const uint32 usage = (token & 0xF);
+            const uint32 index = ((token >> 16) & 0xF);
+            if (usage == MOJOSHADER_USAGE_TEXCOORD)
+            {
+                if (index > 7)
+                    fail(ctx, "DCL texcoord usage must have 0-7 index");
+            } // if
+            else if (usage == MOJOSHADER_USAGE_COLOR)
+            {
+                if (index != 0)
+                    fail(ctx, "DCL texcoord usage must have 0 index");
+            } // else if
+            else
+                fail(ctx, "Invalid DCL texture usage");
+
+            reserved_mask = 0x7FF0FFE0;
+            ctx->dwords[0] = usage;
+            ctx->dwords[1] = index;
+        } // else if
+        else if (regtype == REG_TYPE_SAMPLER)
+        {
+            const uint32 ttype = ((token >> 27) & 0xF);
+            if (!valid_texture_type(ttype))
+                fail(ctx, "Unknown sampler texture type");
+            reserved_mask = 0x6FFFFFFF;
+            ctx->dwords[0] = ttype;
+        } // else if
         else
         {
             unsupported = 1;
@@ -7086,14 +7213,19 @@ static void state_DCL(Context *ctx)
 
     else if (shader_is_vertex(ctx))
     {
-        const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
-        const int index = ctx->dwords[1];
-        if (usage >= MOJOSHADER_USAGE_TOTAL)
+        if (regtype == REG_TYPE_SAMPLER)
+            add_sampler(ctx, regnum, (TextureType) ctx->dwords[0], 0);
+        else
         {
-            fail(ctx, "unknown DCL usage");
-            return;
-        } // if
-        add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
+            const MOJOSHADER_usage usage = (const MOJOSHADER_usage) ctx->dwords[0];
+            const int index = ctx->dwords[1];
+            if (usage >= MOJOSHADER_USAGE_TOTAL)
+            {
+                fail(ctx, "unknown DCL usage");
+                return;
+            } // if
+            add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
+        } // else
     } // if
 
     else if (shader_is_pixel(ctx))
@@ -7470,8 +7602,6 @@ static void state_IF(Context *ctx)
     const RegisterType regtype = ctx->source_args[0].regtype;
     if ((regtype != REG_TYPE_PREDICATE) && (regtype != REG_TYPE_CONSTBOOL))
         fail(ctx, "IF src0 must be CONSTBOOL or PREDICATE");
-    else if (!replicate_swizzle(ctx->source_args[0].swizzle))
-        fail(ctx, "IF src0 must have replicate swizzle");
     // !!! FIXME: track if nesting depth.
 } // state_IF
 
@@ -8061,7 +8191,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
     // !!! FIXME: check that (start+target) points to "ps_3_0", etc.
 
     ctab->symbol_count = constants;
-    ctab->symbols = Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
+    ctab->symbols = (MOJOSHADER_symbol *) Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
     if (ctab->symbols == NULL)
         return;
     memset(ctab->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
@@ -8173,8 +8303,8 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     if ((tokcount < 2) || (SWAP32(tokens[1]) != PRES_ID))
         return;  // not a preshader.
 
-#if !SUPPORT_PRESHADERS
-    fail(ctx, "Preshader found, but preshader support is disabled!");
+#ifndef MOJOSHADER_EFFECT_SUPPORT
+    fail(ctx, "Preshader found, but effect support is disabled!");
 #else
 
     assert(ctx->have_preshader == 0);  // !!! FIXME: can you have more than one?
@@ -8183,10 +8313,12 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     // !!! FIXME: I don't know what specific versions signify, but we need to
     // !!! FIXME:  save this to test against the CTAB version field, if
     // !!! FIXME:  nothing else.
-    // !!! FIXME: 0x02 0x01 is probably the version (fx_2_1),
+    // !!! FIXME: 0x02 0x0? is probably the version (fx_2_?),
     // !!! FIXME:  and 0x4658 is the magic, like a real shader's version token.
-    const uint32 okay_version = 0x46580201;
-    if (SWAP32(tokens[2]) != okay_version)
+    const uint32 min_version = 0x46580200;
+    const uint32 max_version = 0x46580201;
+    const uint32 version = SWAP32(tokens[2]);
+    if (version < min_version || version > max_version)
     {
         fail(ctx, "Unsupported preshader version.");
         return;  // fail because the shader will malfunction w/o this.
@@ -8313,7 +8445,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
     // Now we'll figure out the CTAB...
     CtabData ctabdata = { 0, 0, 0 };
     parse_constant_table(ctx, ctab.tokens - 1, ctab.tokcount * 4,
-                         okay_version, 0, &ctabdata);
+                         version, 0, &ctabdata);
 
     // preshader owns this now. Don't free it in this function.
     preshader->symbol_count = ctabdata.symbol_count;
@@ -8412,7 +8544,7 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
             {
                 case 1:  // literal from CLIT block.
                 {
-                    if (item >= preshader->literal_count)
+                    if (item > preshader->literal_count)
                     {
                         fail(ctx, "Bogus preshader literal index.");
                         break;
@@ -8480,6 +8612,27 @@ static void parse_preshader(Context *ctx, uint32 tokcount)
 
         inst++;
     } // while
+
+    // Registers need to be vec4, round up to nearest 4
+    preshader->temp_count = (preshader->temp_count + 3) & ~3;
+
+    unsigned int largest = 0;
+    const MOJOSHADER_symbol *sym = preshader->symbols;
+    int i;
+    for (i = 0; i < preshader->symbol_count; i++, sym++)
+    {
+        const unsigned int val = sym->register_index + sym->register_count;
+        if (val > largest)
+            largest = val;
+    } // for
+
+    if (largest > 0)
+    {
+        const size_t len = largest * sizeof (float) * 4;
+        preshader->registers = (float *) Malloc(ctx, len);
+        memset(preshader->registers, '\0', len);
+        preshader->register_count = largest;
+    } // if
 #endif
 } // parse_preshader
 
@@ -8702,19 +8855,6 @@ static void free_symbols(MOJOSHADER_free f, void *d, MOJOSHADER_symbol *syms,
 } // free_symbols
 
 
-static void free_preshader(MOJOSHADER_free f, void *d,
-                           MOJOSHADER_preshader *preshader)
-{
-    if (preshader != NULL)
-    {
-        f((void *) preshader->literals, d);
-        f((void *) preshader->instructions, d);
-        free_symbols(f, d, preshader->symbols, preshader->symbol_count);
-        f((void *) preshader, d);
-    } // if
-} // free_preshader
-
-
 static void destroy_context(Context *ctx)
 {
     if (ctx != NULL)
@@ -8737,7 +8877,7 @@ static void destroy_context(Context *ctx)
         free_variable_list(f, d, ctx->variables);
         errorlist_destroy(ctx->errors);
         free_symbols(f, d, ctx->ctab.symbols, ctx->ctab.symbol_count);
-        free_preshader(f, d, ctx->preshader);
+        MOJOSHADER_freePreshader(ctx->preshader, f, d);
         f(ctx, d);
     } // if
 } // destroy_context
@@ -9514,7 +9654,7 @@ void MOJOSHADER_freeParseData(const MOJOSHADER_parseData *_data)
     f((void *) data->samplers, d);
 
     free_symbols(f, d, data->symbols, data->symbol_count);
-    free_preshader(f, d, data->preshader);
+    MOJOSHADER_freePreshader(data->preshader, f, d);
 
     f(data, d);
 } // MOJOSHADER_freeParseData
@@ -9539,6 +9679,7 @@ int MOJOSHADER_maxShaderModel(const char *profile)
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_BYTECODE, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_GLSL, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_GLSL120, 3);
+    PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_GLSLES, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_ARB1, 2);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_NV2, 2);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_NV3, 2);
@@ -9546,6 +9687,379 @@ int MOJOSHADER_maxShaderModel(const char *profile)
     #undef PROFILE_SHADER_MODEL
     return -1;  // unknown profile?
 } // MOJOSHADER_maxShaderModel
+
+
+const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
+                                                      const unsigned int _len,
+                                                      MOJOSHADER_malloc m,
+                                                      MOJOSHADER_free f,
+                                                      void *d)
+{
+    // !!! FIXME: This is copypasta ripped from parse_preshader -flibit
+    int i;
+
+    const uint32 *tokens = (const uint32 *) buf;
+    uint32 tokcount = _len / 4;
+
+    // !!! FIXME: This is stupid. -flibit
+    Context fillerContext;
+    fillerContext.malloc = m;
+    fillerContext.free = f;
+    fillerContext.malloc_data = d;
+    fillerContext.out_of_memory = 0;
+
+    MOJOSHADER_preshader *preshader = NULL;
+
+    const uint32 version_magic = 0x46580000;
+    const uint32 min_version = 0x00000200 | version_magic;
+    const uint32 max_version = 0x00000201 | version_magic;
+    const uint32 version = SWAP32(tokens[0]);
+    if (version < min_version || version > max_version)
+    {
+        // fail because the shader will malfunction w/o this.
+        goto parsePreshader_notAPreshader;
+    } // if
+
+    tokens++;
+    tokcount++;
+
+    // All sections of a preshader are packed into separate comment tokens,
+    //  inside the containing comment token block. Find them all before
+    //  we start, so we don't care about the order they appear in the file.
+    PreshaderBlockInfo ctab = { 0, 0, 0 };
+    PreshaderBlockInfo prsi = { 0, 0, 0 };
+    PreshaderBlockInfo fxlc = { 0, 0, 0 };
+    PreshaderBlockInfo clit = { 0, 0, 0 };
+
+    while (tokcount > 0)
+    {
+        uint32 subtokcount = 0;
+        // !!! FIXME: Passing a NULL ctx! -flibit
+        if ( (!is_comment_token(&fillerContext, *tokens, &subtokcount)) ||
+             (subtokcount > tokcount) )
+        {
+            goto parsePreshader_notAPreshader;
+        } // if
+
+        tokens++;
+        tokcount--;
+
+        const uint32 *nexttokens = tokens + subtokcount;
+        const uint32 nexttokcount = tokcount - subtokcount;
+
+        if (subtokcount > 0)
+        {
+            switch (SWAP32(*tokens))
+            {
+                #define PRESHADER_BLOCK_CASE(id, var) \
+                    case id##_ID: { \
+                        if (var.seen) \
+                            goto parsePreshader_notAPreshader; \
+                        var.tokens = tokens; \
+                        var.tokcount = subtokcount; \
+                        var.seen = 1; \
+                        break; \
+                    }
+                PRESHADER_BLOCK_CASE(CTAB, ctab);
+                PRESHADER_BLOCK_CASE(PRSI, prsi);
+                PRESHADER_BLOCK_CASE(FXLC, fxlc);
+                PRESHADER_BLOCK_CASE(CLIT, clit);
+                default:
+                    // Bogus preshader section
+                    goto parsePreshader_notAPreshader;
+                #undef PRESHADER_BLOCK_CASE
+            } // switch
+        } // if
+
+        tokens = nexttokens;
+        tokcount = nexttokcount;
+    } // while
+
+    if (!ctab.seen) // No CTAB block in preshader
+        goto parsePreshader_notAPreshader;
+    if (!fxlc.seen) // No FXLC block in preshader
+        goto parsePreshader_notAPreshader;
+    if (!clit.seen) // No CLIT block in preshader
+        goto parsePreshader_notAPreshader;
+
+    preshader = (MOJOSHADER_preshader *) m(sizeof (MOJOSHADER_preshader), d);
+    if (preshader == NULL)
+        goto parsePreshader_outOfMemory;
+    memset(preshader, '\0', sizeof (MOJOSHADER_preshader));
+
+    // Let's set up the constant literals first...
+    if (clit.tokcount == 0) // Bogus CLIT block in preshader
+        goto parsePreshader_notAPreshader;
+    else
+    {
+        const uint32 lit_count = SWAP32(clit.tokens[1]);
+        if (lit_count > ((clit.tokcount - 2) / 2))
+            // Bogus CLIT block in preshader
+            goto parsePreshader_notAPreshader;
+        else if (lit_count > 0)
+        {
+            preshader->literal_count = (unsigned int) lit_count;
+            assert(sizeof (double) == 8);  // just in case.
+            const size_t len = sizeof (double) * lit_count;
+            preshader->literals = (double *) m(len, d);
+            if (preshader->literals == NULL)
+                goto parsePreshader_notAPreshader;  // oh well.
+            const double *litptr = (const double *) (clit.tokens + 2);
+            for (i = 0; i < lit_count; i++)
+                preshader->literals[i] = SWAPDBL(litptr[i]);
+        } // else if
+    } // else
+
+    // Parse out the PRSI block. This is used to map the output registers.
+    uint32 output_map_count = 0;
+    const uint32 *output_map = NULL;
+    if (prsi.seen)
+    {
+        if (prsi.tokcount < 8) // Bogus preshader PRSI data
+            goto parsePreshader_notAPreshader;
+
+        //const uint32 first_output_reg = SWAP32(prsi.tokens[1]);
+        // !!! FIXME: there are a lot of fields here I don't know about.
+        // !!! FIXME:  maybe [2] and [3] are for int4 and bool registers?
+        //const uint32 output_reg_count = SWAP32(prsi.tokens[4]);
+        // !!! FIXME:  maybe [5] and [6] are for int4 and bool registers?
+        output_map_count = SWAP32(prsi.tokens[7]);
+
+        prsi.tokcount -= 8;
+        prsi.tokens += 8;
+
+        if (prsi.tokcount < ((output_map_count + 1) * 2))
+            // Bogus preshader PRSI data
+            goto parsePreshader_notAPreshader;
+
+        output_map = prsi.tokens;
+    }
+
+    // Now we'll figure out the CTAB...
+    CtabData ctabdata = { 0, 0, 0 };
+    parse_constant_table(&fillerContext, ctab.tokens - 1, ctab.tokcount * 4,
+                         version, 0, &ctabdata);
+
+    // preshader owns this now. Don't free it in this function.
+    preshader->symbol_count = ctabdata.symbol_count;
+    preshader->symbols = ctabdata.symbols;
+
+    if (!ctabdata.have_ctab) // Bogus preshader CTAB data
+        goto parsePreshader_notAPreshader;
+
+    // The FXLC block has the actual instructions...
+    uint32 opcode_count = SWAP32(fxlc.tokens[1]);
+
+    size_t len = sizeof (MOJOSHADER_preshaderInstruction) * opcode_count;
+    preshader->instruction_count = (unsigned int) opcode_count;
+    preshader->instructions = (MOJOSHADER_preshaderInstruction *)
+                                m(len, d);
+    if (preshader->instructions == NULL)
+        goto parsePreshader_outOfMemory;
+    memset(preshader->instructions, '\0', len);
+
+    fxlc.tokens += 2;
+    fxlc.tokcount -= 2;
+    if (opcode_count > (fxlc.tokcount / 2)) // Bogus preshader FXLC block
+        goto parsePreshader_notAPreshader;
+
+    MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
+    while (opcode_count--)
+    {
+        const uint32 opcodetok = SWAP32(fxlc.tokens[0]);
+        MOJOSHADER_preshaderOpcode opcode = MOJOSHADER_PRESHADEROP_NOP;
+        switch ((opcodetok >> 16) & 0xFFFF)
+        {
+            case 0x1000: opcode = MOJOSHADER_PRESHADEROP_MOV; break;
+            case 0x1010: opcode = MOJOSHADER_PRESHADEROP_NEG; break;
+            case 0x1030: opcode = MOJOSHADER_PRESHADEROP_RCP; break;
+            case 0x1040: opcode = MOJOSHADER_PRESHADEROP_FRC; break;
+            case 0x1050: opcode = MOJOSHADER_PRESHADEROP_EXP; break;
+            case 0x1060: opcode = MOJOSHADER_PRESHADEROP_LOG; break;
+            case 0x1070: opcode = MOJOSHADER_PRESHADEROP_RSQ; break;
+            case 0x1080: opcode = MOJOSHADER_PRESHADEROP_SIN; break;
+            case 0x1090: opcode = MOJOSHADER_PRESHADEROP_COS; break;
+            case 0x10A0: opcode = MOJOSHADER_PRESHADEROP_ASIN; break;
+            case 0x10B0: opcode = MOJOSHADER_PRESHADEROP_ACOS; break;
+            case 0x10C0: opcode = MOJOSHADER_PRESHADEROP_ATAN; break;
+            case 0x2000: opcode = MOJOSHADER_PRESHADEROP_MIN; break;
+            case 0x2010: opcode = MOJOSHADER_PRESHADEROP_MAX; break;
+            case 0x2020: opcode = MOJOSHADER_PRESHADEROP_LT; break;
+            case 0x2030: opcode = MOJOSHADER_PRESHADEROP_GE; break;
+            case 0x2040: opcode = MOJOSHADER_PRESHADEROP_ADD; break;
+            case 0x2050: opcode = MOJOSHADER_PRESHADEROP_MUL; break;
+            case 0x2060: opcode = MOJOSHADER_PRESHADEROP_ATAN2; break;
+            case 0x2080: opcode = MOJOSHADER_PRESHADEROP_DIV; break;
+            case 0x3000: opcode = MOJOSHADER_PRESHADEROP_CMP; break;
+            case 0x3010: opcode = MOJOSHADER_PRESHADEROP_MOVC; break;
+            case 0x5000: opcode = MOJOSHADER_PRESHADEROP_DOT; break;
+            case 0x5020: opcode = MOJOSHADER_PRESHADEROP_NOISE; break;
+            case 0xA000: opcode = MOJOSHADER_PRESHADEROP_MIN_SCALAR; break;
+            case 0xA010: opcode = MOJOSHADER_PRESHADEROP_MAX_SCALAR; break;
+            case 0xA020: opcode = MOJOSHADER_PRESHADEROP_LT_SCALAR; break;
+            case 0xA030: opcode = MOJOSHADER_PRESHADEROP_GE_SCALAR; break;
+            case 0xA040: opcode = MOJOSHADER_PRESHADEROP_ADD_SCALAR; break;
+            case 0xA050: opcode = MOJOSHADER_PRESHADEROP_MUL_SCALAR; break;
+            case 0xA060: opcode = MOJOSHADER_PRESHADEROP_ATAN2_SCALAR; break;
+            case 0xA080: opcode = MOJOSHADER_PRESHADEROP_DIV_SCALAR; break;
+            case 0xD000: opcode = MOJOSHADER_PRESHADEROP_DOT_SCALAR; break;
+            case 0xD020: opcode = MOJOSHADER_PRESHADEROP_NOISE_SCALAR; break;
+            default:
+                // Unknown preshader opcode
+                goto parsePreshader_notAPreshader;
+        } // switch
+
+        uint32 operand_count = SWAP32(fxlc.tokens[1]) + 1;  // +1 for dest.
+
+        inst->opcode = opcode;
+        inst->element_count = (unsigned int) (opcodetok & 0xFF);
+        inst->operand_count = (unsigned int) operand_count;
+
+        fxlc.tokens += 2;
+        fxlc.tokcount -= 2;
+        if ((operand_count * 3) > fxlc.tokcount)
+            // Bogus preshader FXLC block
+            goto parsePreshader_notAPreshader;
+
+        MOJOSHADER_preshaderOperand *operand = inst->operands;
+        while (operand_count--)
+        {
+            const unsigned int item = (unsigned int) SWAP32(fxlc.tokens[2]);
+
+            // !!! FIXME: Is this used anywhere other than INPUT? -flibit
+            const uint32 numArrays = SWAP32(fxlc.tokens[0]);
+
+            switch (SWAP32(fxlc.tokens[1]))
+            {
+                case 1:  // literal from CLIT block.
+                {
+                    if ((item + inst->element_count) >= preshader->literal_count)
+                        // Bogus preshader literal index
+                        goto parsePreshader_notAPreshader;
+                    operand->type = MOJOSHADER_PRESHADEROPERAND_LITERAL;
+                    break;
+                } // case
+
+                case 2:  // item from ctabdata.
+                {
+                    MOJOSHADER_symbol *sym = ctabdata.symbols;
+                    for (i = 0; i < ctabdata.symbol_count; i++, sym++)
+                    {
+                        const uint32 base = sym->register_index * 4;
+                        const uint32 count = sym->register_count * 4;
+                        assert(sym->register_set==MOJOSHADER_SYMREGSET_FLOAT4);
+                        if ( (base <= item) && ((base + count) >= (item + inst->element_count)) )
+                            break;
+                    } // for
+                    if (i == ctabdata.symbol_count)
+                        // Bogus preshader input index
+                        goto parsePreshader_notAPreshader;
+                    operand->type = MOJOSHADER_PRESHADEROPERAND_INPUT;
+                    if (numArrays > 0)
+                    {
+                        // malloc the array symbol name array
+                        const uint32 siz = numArrays * sizeof (uint32);
+                        operand->array_register_count = numArrays;
+                        operand->array_registers = (uint32 *) m(siz, d);
+                        memset(operand->array_registers, '\0', siz);
+                        // Get each register base, indicating the arrays used.
+                        for (i = 0; i < numArrays; i++)
+                        {
+                            const uint32 jmp = SWAP32(fxlc.tokens[4]);
+                            const uint32 bigjmp = (jmp >> 4) * 4;
+                            const uint32 ltljmp = (jmp >> 2) & 3;
+                            operand->array_registers[i] = bigjmp + ltljmp;
+                            fxlc.tokens += 2;
+                            fxlc.tokcount -= 2;
+                        } // for
+                    } // if
+                    break;
+                } // case
+
+                case 4:
+                {
+                    operand->type = MOJOSHADER_PRESHADEROPERAND_OUTPUT;
+                    if (!prsi.seen)
+                        // No PRSI tokens, no output map.
+                        continue;
+                    for (i = 0; i < output_map_count; i++)
+                    {
+                        const uint32 base = output_map[(i*2)] * 4;
+                        const uint32 count = output_map[(i*2)+1] * 4;
+                        if ( (base <= item) && ((base + count) >= (item + inst->element_count)) )
+                            break;
+                    } // for
+                    if (i == output_map_count)
+                        // Bogus preshader output index
+                        goto parsePreshader_notAPreshader;
+                    break;
+                } // case
+
+                case 7:
+                {
+                    operand->type = MOJOSHADER_PRESHADEROPERAND_TEMP;
+                    if (item >= preshader->temp_count)
+                        preshader->temp_count = item + inst->element_count;
+                    break;
+                } // case
+            } // switch
+
+            operand->index = item;
+
+            fxlc.tokens += 3;
+            fxlc.tokcount -= 3;
+            operand++;
+        } // while
+
+        inst++;
+    } // while
+
+    // Registers need to be vec4, round up to nearest 4
+    preshader->temp_count = (preshader->temp_count + 3) & ~3;
+
+    unsigned int largest = 0;
+    const MOJOSHADER_symbol *sym = preshader->symbols;
+    for (i = 0; i < preshader->symbol_count; i++, sym++)
+    {
+        const unsigned int val = sym->register_index + sym->register_count;
+        if (val > largest)
+            largest = val;
+    } // for
+
+    if (largest > 0)
+    {
+        const size_t len = largest * sizeof (float) * 4;
+        preshader->registers = (float *) m(len, d);
+        memset(preshader->registers, '\0', len);
+        preshader->register_count = largest;
+    } // if
+
+    return preshader;
+
+parsePreshader_notAPreshader:
+parsePreshader_outOfMemory:
+    MOJOSHADER_freePreshader(preshader, f, d);
+    return NULL;
+} // MOJOSHADER_parsePreshader
+
+
+void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader,
+                              MOJOSHADER_free f,
+                              void *d)
+{
+    int i, j;
+    if (preshader != NULL)
+    {
+        f((void *) preshader->literals, d);
+        for (i = 0; i < preshader->instruction_count; i++)
+            for (j = 0; j < preshader->instructions[i].operand_count; j++)
+                f((void *) preshader->instructions[i].operands[j].array_registers, d);
+        f((void *) preshader->instructions, d);
+        f((void *) preshader->registers, d);
+        free_symbols(f, d, preshader->symbols, preshader->symbol_count);
+        f((void *) preshader, d);
+    } // if
+} // MOJOSHADER_freePreshader
 
 // end of mojoshader.c ...
 

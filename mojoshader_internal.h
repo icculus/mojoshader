@@ -52,6 +52,10 @@
 #define SUPPORT_PROFILE_GLSL120 1
 #endif
 
+#ifndef SUPPORT_PROFILE_GLSLES
+#define SUPPORT_PROFILE_GLSLES 1
+#endif
+
 #ifndef SUPPORT_PROFILE_ARB1
 #define SUPPORT_PROFILE_ARB1 1
 #endif
@@ -68,6 +72,10 @@
 #error glsl120 profile requires glsl profile. Fix your build.
 #endif
 
+#if SUPPORT_PROFILE_GLSLES && !SUPPORT_PROFILE_GLSL
+#error glsles profile requires glsl profile. Fix your build.
+#endif
+
 // Microsoft's preprocessor has some quirks. In some ways, it doesn't work
 //  like you'd expect a C preprocessor to function.
 #ifndef MATCH_MICROSOFT_PREPROCESSOR
@@ -76,16 +84,8 @@
 
 // Other stuff you can disable...
 
-// This removes the preshader parsing and execution code. You can save some
-//  bytes if you have normal shaders and not Effect files.
-#ifndef SUPPORT_PRESHADERS
-#define SUPPORT_PRESHADERS 1
-#endif
-
-#if SUPPORT_PRESHADERS
-void MOJOSHADER_runPreshader(const MOJOSHADER_preshader*, const float*, float*);
-#else
-#define MOJOSHADER_runPreshader(a, b)
+#ifdef MOJOSHADER_EFFECT_SUPPORT
+void MOJOSHADER_runPreshader(const MOJOSHADER_preshader*, float*);
 #endif
 
 
@@ -98,6 +98,9 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader*, const float*, float*);
 #endif
 
 typedef unsigned int uint;  // this is a printf() helper. don't use for code.
+
+// Locale-independent float printing replacement for snprintf
+size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg);
 
 #ifdef _MSC_VER
 #include <malloc.h>
@@ -293,8 +296,8 @@ ssize_t buffer_find(Buffer *buffer, const size_t start,
 #define MOJOSHADER_internal_malloc NULL
 #define MOJOSHADER_internal_free NULL
 #else
-void *MOJOSHADER_internal_malloc(int bytes, void *d);
-void MOJOSHADER_internal_free(void *ptr, void *d);
+void * MOJOSHADERCALL MOJOSHADER_internal_malloc(int bytes, void *d);
+void MOJOSHADERCALL MOJOSHADER_internal_free(void *ptr, void *d);
 #endif
 
 #if MOJOSHADER_FORCE_INCLUDE_CALLBACKS
