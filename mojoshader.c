@@ -8125,7 +8125,7 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
     } // else
 
     int i;
-    const uint32 *member = (const uint32 *)((const uint8 *) (&typeptr[6]));
+    const uint32 *member = (const uint32 *) (start + typeptr[6]);
     for (i = 0; i < info->member_count; i++)
     {
         MOJOSHADER_symbolStructMember *mbr = &info->members[i];

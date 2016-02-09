@@ -261,11 +261,11 @@ static void readvalue(const uint8 *base,
     const uint32 semantic = readui32(&typeptr, &typelen);
     const uint32 numelements = readui32(&typeptr, &typelen);
 
-    value->value_type = (MOJOSHADER_symbolType) type;
-    value->value_class = (MOJOSHADER_symbolClass) valclass;
+    value->type.parameter_type = (MOJOSHADER_symbolType) type;
+    value->type.parameter_class = (MOJOSHADER_symbolClass) valclass;
     value->name = readstring(base, name, m, d);
     value->semantic = readstring(base, semantic, m, d);
-    value->element_count = numelements;
+    value->type.elements = numelements;
 
     /* Class sanity check */
     assert(valclass >= MOJOSHADER_SYMCLASS_SCALAR && valclass <= MOJOSHADER_SYMCLASS_STRUCT);
@@ -281,8 +281,8 @@ static void readvalue(const uint8 *base,
         const uint32 columncount = readui32(&typeptr, &typelen);
         const uint32 rowcount = readui32(&typeptr, &typelen);
 
-        value->column_count = columncount;
-        value->row_count = rowcount;
+        value->type.columns = columncount;
+        value->type.rows = rowcount;
 
         uint32 siz = columncount * rowcount;
         if (numelements > 0)
@@ -346,8 +346,51 @@ static void readvalue(const uint8 *base,
     } // else if
     else if (valclass == MOJOSHADER_SYMCLASS_STRUCT)
     {
-        /* TODO: Maybe this is like parse_ctab_typeinfo? -flibit */
-        assert(0 && "Effect struct value parsing not implemented!");
+        uint32 siz;
+
+        value->type.member_count = readui32(&typeptr, &typelen);
+        siz = value->type.member_count * sizeof (MOJOSHADER_symbolStructMember);
+        value->type.members = (MOJOSHADER_symbolStructMember *) m(siz, d);
+
+        uint32 structsize = 0;
+        for (i = 0; i < value->type.member_count; i++)
+        {
+            MOJOSHADER_symbolStructMember *mem = &value->type.members[i];
+
+            mem->info.parameter_type = (MOJOSHADER_symbolType) readui32(&typeptr, &typelen);
+            mem->info.parameter_class = (MOJOSHADER_symbolClass) readui32(&typeptr, &typelen);
+
+            const uint32 memname = readui32(&typeptr, &typelen);
+            /*const uint32 memsemantic =*/ readui32(&typeptr, &typelen);
+            mem->name = readstring(base, memname, m, d);
+
+            mem->info.elements = readui32(&typeptr, &typelen);
+            mem->info.columns = readui32(&typeptr, &typelen);
+            mem->info.rows = readui32(&typeptr, &typelen);
+
+            // !!! FIXME: Nested structs! -flibit
+            assert(mem->info.parameter_class >= MOJOSHADER_SYMCLASS_SCALAR
+                && mem->info.parameter_class <= MOJOSHADER_SYMCLASS_VECTOR);
+            assert(mem->info.parameter_type >= MOJOSHADER_SYMTYPE_BOOL
+                && mem->info.parameter_type <= MOJOSHADER_SYMTYPE_FLOAT);
+            mem->info.member_count = 0;
+            mem->info.members = NULL;
+
+            uint32 memsize = mem->info.columns * mem->info.rows;
+            if (mem->info.elements > 0)
+                memsize *= mem->info.elements;
+            structsize += memsize;
+        } // for
+
+        value->type.columns = structsize;
+        value->type.rows = 1;
+        value->value_count = structsize;
+        if (numelements > 0)
+            value->value_count *= numelements;
+
+        siz = value->value_count * 4;
+        value->values = m(siz, d);
+        memcpy(value->values, typeptr, siz); /* Yes, typeptr. -flibit */
     } // else if
 } // readvalue
 
@@ -897,16 +940,30 @@ parseEffect_outOfMemory:
 } // MOJOSHADER_parseEffect
 
 
+void freetypeinfo(MOJOSHADER_symbolTypeInfo *typeinfo,
+                  MOJOSHADER_free f, void *d)
+{
+    int i;
+    for (i = 0; i < typeinfo->member_count; i++)
+    {
+        f((void *) typeinfo->members[i].name, d);
+        freetypeinfo(&typeinfo->members[i].info, f, d);
+    } // for
+    f((void *) typeinfo->members, d);
+} // freetypeinfo
+
+
 void freevalue(MOJOSHADER_effectValue *value, MOJOSHADER_free f, void *d)
 {
     int i;
     f((void *) value->name, d);
     f((void *) value->semantic, d);
-    if (value->value_type == MOJOSHADER_SYMTYPE_SAMPLER
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER1D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER2D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER3D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
+    freetypeinfo(&value->type, f, d);
+    if (value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER1D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER2D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER3D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
         for (i = 0; i < value->value_count; i++)
             freevalue(&value->valuesSS[i].value, f, d);
     f(value->values, d);
@@ -1007,6 +1064,39 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
 } // MOJOSHADER_freeEffect
 
 
+// !!! FIXME: Out of memory check!
+#define COPY_STRING(location) \
+    if (src->location != NULL) \
+    { \
+        siz = strlen(src->location) + 1; \
+        stringcopy = (char *) m(siz, d); \
+        strcpy(stringcopy, src->location); \
+        dst->location = stringcopy; \
+    } // if
+
+
+void copysymboltypeinfo(MOJOSHADER_symbolTypeInfo *dst,
+                        MOJOSHADER_symbolTypeInfo *src,
+                        MOJOSHADER_malloc m,
+                        void *d)
+{
+    int i;
+    uint32 siz = 0;
+    char *stringcopy = NULL;
+    memcpy(dst, src, sizeof (MOJOSHADER_symbolTypeInfo));
+    if (dst->member_count > 0)
+    {
+        siz = dst->member_count * sizeof (MOJOSHADER_symbolStructMember);
+        dst->members = (MOJOSHADER_symbolStructMember *) m(siz, d);
+        for (i = 0; i < dst->member_count; i++)
+        {
+            COPY_STRING(members[i].name)
+            copysymboltypeinfo(&dst->members[i].info, &src->members[i].info, m, d);
+        } // for
+    } // if
+} // copysymboltypeinfo
+
+
 void copyvalue(MOJOSHADER_effectValue *dst,
                MOJOSHADER_effectValue *src,
                MOJOSHADER_malloc m,
@@ -1016,42 +1106,29 @@ void copyvalue(MOJOSHADER_effectValue *dst,
     uint32 siz = 0;
     char *stringcopy = NULL;
 
-    // !!! FIXME: Out of memory check!
-    #define COPY_STRING(location) \
-        if (src->location != NULL) \
-        { \
-            siz = strlen(src->location) + 1; \
-            stringcopy = (char *) m(siz, d); \
-            strcpy(stringcopy, src->location); \
-            dst->location = stringcopy; \
-        } // if
-
     COPY_STRING(name)
     COPY_STRING(semantic)
-    dst->element_count = src->element_count;
-    dst->row_count = src->row_count;
-    dst->column_count = src->column_count;
-    dst->value_class = src->value_class;
-    dst->value_type = src->value_type;
+    copysymboltypeinfo(&dst->type, &src->type, m, d);
     dst->value_count = src->value_count;
 
-    if (dst->value_class == MOJOSHADER_SYMCLASS_SCALAR
-     || dst->value_class == MOJOSHADER_SYMCLASS_VECTOR
-     || dst->value_class == MOJOSHADER_SYMCLASS_MATRIX_ROWS
-     || dst->value_class == MOJOSHADER_SYMCLASS_MATRIX_COLUMNS)
+    if (dst->type.parameter_class == MOJOSHADER_SYMCLASS_SCALAR
+     || dst->type.parameter_class == MOJOSHADER_SYMCLASS_VECTOR
+     || dst->type.parameter_class == MOJOSHADER_SYMCLASS_MATRIX_ROWS
+     || dst->type.parameter_class == MOJOSHADER_SYMCLASS_MATRIX_COLUMNS
+     || dst->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
     {
         siz = dst->value_count * 4;
         dst->values = m(siz, d);
         // !!! FIXME: Out of memory check!
         memcpy(dst->values, src->values, siz);
     } // if
-    else if (dst->value_class == MOJOSHADER_SYMCLASS_OBJECT)
+    else if (dst->type.parameter_class == MOJOSHADER_SYMCLASS_OBJECT)
     {
-        if (dst->value_type == MOJOSHADER_SYMTYPE_SAMPLER
-         || dst->value_type == MOJOSHADER_SYMTYPE_SAMPLER1D
-         || dst->value_type == MOJOSHADER_SYMTYPE_SAMPLER2D
-         || dst->value_type == MOJOSHADER_SYMTYPE_SAMPLER3D
-         || dst->value_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
+        if (dst->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER
+         || dst->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER1D
+         || dst->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER2D
+         || dst->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER3D
+         || dst->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
         {
             siz = dst->value_count * sizeof (MOJOSHADER_effectSamplerState);
             dst->values = m(siz, d);
@@ -1073,13 +1150,11 @@ void copyvalue(MOJOSHADER_effectValue *dst,
             memcpy(dst->values, src->values, siz);
         } // else
     } // else if
-    else if (dst->value_class == MOJOSHADER_SYMCLASS_STRUCT)
-    {
-        /* TODO: See readvalue! -flibit */
-    } // else if
 
-    #undef COPY_STRING
 } // copyvalue
+
+
+#undef COPY_STRING
 
 
 void copysymbolinfo(MOJOSHADER_symbolTypeInfo *dst,

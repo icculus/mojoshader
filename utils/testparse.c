@@ -454,21 +454,21 @@ static void print_value(const MOJOSHADER_effectValue *value,
         "UNSUPPORTED"
     };
     do_indent(indent + 1);
-    printf("CLASS: %s\n", classes[value->value_class]);
+    printf("CLASS: %s\n", classes[value->type.parameter_class]);
     do_indent(indent + 1);
-    printf("TYPE: %s\n", types[value->value_type]);
+    printf("TYPE: %s\n", types[value->type.parameter_type]);
 
     do_indent(indent + 1);
     printf("ROWS/COLUMNS/ELEMENTS: %d, %d, %d\n",
-           value->row_count, value->column_count, value->element_count);
+           value->type.rows, value->type.columns, value->type.elements);
     do_indent(indent + 1);
     printf("TOTAL VALUES: %d\n", value->value_count);
 
-    if (value->value_type == MOJOSHADER_SYMTYPE_SAMPLER
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER1D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER2D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLER3D
-     || value->value_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
+    if (value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER1D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER2D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLER3D
+     || value->type.parameter_type == MOJOSHADER_SYMTYPE_SAMPLERCUBE)
     {
         do_indent(indent + 1);
         printf("SAMPLER VALUES:\n");
@@ -516,7 +516,7 @@ static void print_value(const MOJOSHADER_effectValue *value,
     else
     {
         do_indent(indent + 1);
-        printf("%s VALUES:\n", types[value->value_type]);
+        printf("%s VALUES:\n", types[value->type.parameter_type]);
         for (i = 0; i < value->value_count; i++)
         {
             do_indent(indent + 2);
@@ -541,10 +541,10 @@ static void print_value(const MOJOSHADER_effectValue *value,
                 "%d\n",
                 "%X\n"
             };
-            if (value->value_type == MOJOSHADER_SYMTYPE_FLOAT)
-                printf(prints[value->value_type], value->valuesF[i]);
+            if (value->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
+                printf(prints[value->type.parameter_type], value->valuesF[i]);
             else
-                printf(prints[value->value_type], value->valuesI[i]);
+                printf(prints[value->type.parameter_type], value->valuesI[i]);
         } // for
     } // else
 } // print_value

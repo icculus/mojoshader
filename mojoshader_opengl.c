@@ -2860,14 +2860,14 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
         // float/int registers are vec4, so they have 4 elements each
         const uint32 start = sym->register_index << 2;
 
-        if (param->value_type == MOJOSHADER_SYMTYPE_FLOAT)
+        if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
         {
             // Matrices have to be transposed from row-major to column-major!
-            if (param->value_class == MOJOSHADER_SYMCLASS_MATRIX_ROWS)
+            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_MATRIX_ROWS)
             {
-                if (param->element_count > 1)
+                if (param->type.elements > 1)
                 {
-                    const uint32 regcount = sym->register_count / param->element_count;
+                    const uint32 regcount = sym->register_count / param->type.elements;
                     j = 0;
                     do
                     {
@@ -2881,12 +2881,12 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
                                                    (r << 2) +
                                                   ((j << 2) * regcount);
                                 const uint32 src = r +
-                                                  (c * param->row_count) +
-                                                  (j * param->row_count * param->column_count);
+                                                  (c * param->type.rows) +
+                                                  (j * param->type.rows * param->type.columns);
                                 regf[dest] = param->valuesF[src];
-                            } while (++c < param->column_count);
+                            } while (++c < param->type.columns);
                         } while (++r < regcount);
-                    } while (++j < param->element_count);
+                    } while (++j < param->type.elements);
                 } // if
                 else
                 {
@@ -2896,8 +2896,8 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
                         c = 0;
                         do
                         {
-                            regf[start + (r << 2 ) + c] = param->valuesF[r + (c * param->row_count)];
-                        } while (++c < param->column_count);
+                            regf[start + (r << 2 ) + c] = param->valuesF[r + (c * param->type.rows)];
+                        } while (++c < param->type.columns);
                     } while (++r < sym->register_count);
                 } // else
             } // if
@@ -2907,25 +2907,46 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
                 do
                 {
                     memcpy(regf + start + (j << 2),
-                           param->valuesF + (j * param->column_count),
-                           param->column_count << 2);
+                           param->valuesF + (j * param->type.columns),
+                           param->type.columns << 2);
                 } while (++j < sym->register_count);
             } // else if
             else
-                memcpy(regf + start, param->valuesF, param->column_count << 2);
+                memcpy(regf + start, param->valuesF, param->type.columns << 2);
         } // if
         else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
         {
             // Sometimes int/bool parameters get thrown into float registers...
-            j = 0;
-            do
+            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
             {
-                c = 0;
+                float *struct_offset = param->valuesF;
+                r = 0; /* Register offset */
+                j = 0;
                 do
                 {
-                    regf[start + (j << 2) + c] = (float) param->valuesI[(j * param->column_count) + c];
-                } while (++c < param->column_count);
-            } while (++j < sym->register_count);
+                    c = 0;
+                    do
+                    {
+                        memcpy(regf + start + (r << 2),
+                               struct_offset,
+                               param->type.members[c].info.columns << 2);
+                        struct_offset += param->type.members[c].info.columns;
+                        r++;
+                    } while (++c < param->type.member_count);
+                } while (++j < param->type.elements);
+            } // if
+            else
+            {
+                j = 0;
+                do
+                {
+                    c = 0;
+                    do
+                    {
+                        regf[start + (j << 2) + c] = (float) param->valuesI[(j * param->type.columns) + c];
+                    } while (++c < param->type.columns);
+                } while (++j < sym->register_count);
+            } // else
         } // else if
         else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
         {
@@ -2935,12 +2956,12 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
                 do
                 {
                     memcpy(regi + start + (j << 2),
-                           param->valuesI + (j * param->column_count),
-                           param->column_count << 2);
+                           param->valuesI + (j * param->type.columns),
+                           param->type.columns << 2);
                 } while (++j < sym->register_count);
             } // if
             else
-                memcpy(regi + start, param->valuesI, param->column_count << 2);
+                memcpy(regi + start, param->valuesI, param->type.columns << 2);
         } // else if
         else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
         {

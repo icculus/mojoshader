@@ -316,11 +316,7 @@ typedef struct MOJOSHADER_effectValue
 {
     const char *name;
     const char *semantic;
-    unsigned int element_count;
-    unsigned int row_count;
-    unsigned int column_count;
-    MOJOSHADER_symbolClass value_class;
-    MOJOSHADER_symbolType value_type;
+    MOJOSHADER_symbolTypeInfo type;
     unsigned int value_count;
     union
     {
