@@ -557,8 +557,23 @@ int errorlist_add_va(ErrorList *list, const char *_fname,
     char scratch[128];
     va_list ap;
     va_copy(ap, va);
-    const int len = vsnprintf(scratch, sizeof (scratch), fmt, ap);
+    int len = vsnprintf(scratch, sizeof (scratch), fmt, ap);
     va_end(ap);
+
+    // on some versions of the windows C runtime, vsnprintf() returns -1
+    // if the buffer overflows instead of the length the string would have
+    // been as expected.
+    // In this case we make another copy of va and fetch the length only
+    // with another call to _vscprintf
+
+#ifdef _MSC_VER
+    if (len == -1)
+    {
+        va_copy(ap, va);
+        len = _vscprintf(fmt, ap);
+        va_end(ap);
+    }
+#endif
 
     char *failstr = (char *) list->m(len + 1, list->d);
     if (failstr == NULL)
