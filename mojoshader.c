@@ -3408,8 +3408,17 @@ static void glsl_texld(Context *ctx, const int texldd)
 
         if (texldd)
         {
-            make_GLSL_srcarg_string_vec2(ctx, 2, src2, sizeof (src2));
-            make_GLSL_srcarg_string_vec2(ctx, 3, src3, sizeof (src3));
+            if (sreg->index == TEXTURE_TYPE_2D)
+            {
+                make_GLSL_srcarg_string_vec2(ctx, 2, src2, sizeof (src2));
+                make_GLSL_srcarg_string_vec2(ctx, 3, src3, sizeof (src3));
+            } // if
+            else
+            {
+                assert((sreg->index == TEXTURE_TYPE_CUBE) || (sreg->index == TEXTURE_TYPE_VOLUME));
+                make_GLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
+                make_GLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
+            } // else
         } // if
 
         // !!! FIXME: can TEXLDD set instruction_controls?
