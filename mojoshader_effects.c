@@ -745,7 +745,7 @@ static void readlargeobjects(const uint32 numlargeobjects,
             } // if
             else
             {
-                object->shader.shader = MOJOSHADER_parse(emitter, *ptr, length,
+                object->shader.shader = MOJOSHADER_parse(emitter, NULL, *ptr, length,
                                                          swiz, swizcount, smap, smapcount,
                                                          m, f, d);
                 // !!! FIXME: check for errors.

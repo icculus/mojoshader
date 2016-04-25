@@ -535,6 +535,14 @@ typedef struct MOJOSHADER_parseData
     int minor_ver;
 
     /*
+     * This is the main function name of the shader. On profiles that need
+     *  the caller to supply this, this will be the caller-supplied string.
+     *  Otherwise, it'll be the name chosen by the profile ("main") or
+     *  whatnot.
+     */
+    const char *mainfn;
+
+    /*
      * The number of elements pointed to by (uniforms).
      */
     int uniform_count;
@@ -699,6 +707,11 @@ typedef struct MOJOSHADER_parseData
 #define MOJOSHADER_PROFILE_NV4 "nv4"
 
 /*
+ * Profile string for Metal: Apple's lowlevel API's high-level shader language.
+ */
+#define MOJOSHADER_PROFILE_METAL "metal"
+
+/*
  * Determine the highest supported Shader Model for a profile.
  */
 DECLSPEC int MOJOSHADER_maxShaderModel(const char *profile);
@@ -753,11 +766,18 @@ DECLSPEC int MOJOSHADER_maxShaderModel(const char *profile);
  *  risk a buffer overflow if you have corrupt data, etc. Supply the value
  *  if you can.
  *
+ * You should pass a name for your shader's main function in here, via the
+ *  (mainfn) param. Some profiles need this name to be unique. Passing a NULL
+ *  here will pick a reasonable default, and most profiles will ignore it
+ *  anyhow. As the name of the shader's main function, etc, so make it a
+ *  simple name that would match C's identifier rules. Keep it simple!
+ *
  * This function is thread safe, so long as (m) and (f) are too, and that
  *  (tokenbuf) remains intact for the duration of the call. This allows you
  *  to parse several shaders on separate CPU cores at the same time.
  */
 DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
+                                                      const char *mainfn,
                                                       const unsigned char *tokenbuf,
                                                       const unsigned int bufsize,
                                                       const MOJOSHADER_swizzle *swiz,

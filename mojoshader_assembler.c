@@ -1676,7 +1676,7 @@ static const MOJOSHADER_parseData *build_final_assembly(Context *ctx)
     // It also saves us the trouble of duplicating all the other work,
     //  like setting up the uniforms list, etc.
     MOJOSHADER_parseData *retval = (MOJOSHADER_parseData *)
-                            MOJOSHADER_parse(MOJOSHADER_PROFILE_BYTECODE,
+                            MOJOSHADER_parse(MOJOSHADER_PROFILE_BYTECODE, NULL,
                                     bytecode, output_len, NULL, 0, NULL, 0,
                                     ctx->malloc, ctx->free, ctx->malloc_data);
     Free(ctx, bytecode);

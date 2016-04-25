@@ -1537,8 +1537,11 @@ MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
 {
     MOJOSHADER_glShader *retval = NULL;
     GLuint shader = 0;
-    const MOJOSHADER_parseData *pd = MOJOSHADER_parse(ctx->profile, tokenbuf,
-                                                      bufsize, swiz, swizcount,
+
+    // This doesn't need a mainfn, since there's no GL lang that does.
+    const MOJOSHADER_parseData *pd = MOJOSHADER_parse(ctx->profile, NULL,
+                                                      tokenbuf, bufsize,
+                                                      swiz, swizcount,
                                                       smap, smapcount,
                                                       ctx->malloc_fn,
                                                       ctx->free_fn,

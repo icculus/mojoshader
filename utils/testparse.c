@@ -688,7 +688,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
     else  // do it as a regular compiled shader.
     {
         const MOJOSHADER_parseData *pd;
-        pd = MOJOSHADER_parse(prof, buf, len, NULL, 0,
+        pd = MOJOSHADER_parse(prof, NULL, buf, len, NULL, 0,
                               NULL, 0, Malloc, Free, NULL);
         retval = (pd->error_count == 0);
         printf("SHADER: %s\n", fname);

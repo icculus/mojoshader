@@ -160,7 +160,7 @@ static int do_file(const char *profile, const char *dname, const char *fn, int *
         MOJOSHADER_glDeleteShader(shader);
     }
     #else
-    const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, buf, rc, NULL, 0, NULL, 0, NULL, NULL, NULL);
+    const MOJOSHADER_parseData *pd = MOJOSHADER_parse(profile, NULL, buf, rc, NULL, 0, NULL, 0, NULL, NULL, NULL);
     if (pd->error_count == 0)
         report("PASS: %s\n", fname);
 	else

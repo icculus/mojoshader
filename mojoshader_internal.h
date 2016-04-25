@@ -64,6 +64,10 @@
 #define SUPPORT_PROFILE_ARB1_NV 1
 #endif
 
+#ifndef SUPPORT_PROFILE_METAL
+#define SUPPORT_PROFILE_METAL 1
+#endif
+
 #if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
 #error nv profiles require arb1 profile. Fix your build.
 #endif
