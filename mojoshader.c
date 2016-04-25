@@ -2351,7 +2351,7 @@ static void emit_GLSL_array(Context *ctx, VariableList *var)
 {
     // All uniforms (except constant arrays, which only get pushed once at
     //  compile time) are now packed into a single array, so we can batch
-    //  the uniform transfers. So this is doesn't actually define an array
+    //  the uniform transfers. So this doesn't actually define an array
     //  here; the one, big array is emitted during finalization instead.
     // However, we need to #define the offset into the one, big array here,
     //  and let dereferences use that #define.
@@ -2676,7 +2676,7 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             if (usage == MOJOSHADER_USAGE_TEXCOORD)
             {
                 // ps_1_1 does a different hack for this attribute.
-                //  Refer to emit_GLSL_global()'s REG_TYPE_TEXTURE code.
+                //  Refer to emit_GLSL_global()'s REG_TYPE_ADDRESS code.
                 if (shader_version_atleast(ctx, 1, 4))
                 {
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
