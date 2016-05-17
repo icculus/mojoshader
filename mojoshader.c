@@ -4699,8 +4699,6 @@ static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
     char varname[64];
     get_METAL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
 
-    // !!! FIXME: this needs to have a unique name so it doesn't clash when
-    // !!! FIXME:  building a metallib.
     const char *cstr = NULL;
     push_output(ctx, &ctx->globals);
     output_line(ctx, "constant float4 %s[%d] = {", varname, size);
