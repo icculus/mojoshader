@@ -4080,8 +4080,7 @@ static inline const char *get_METAL_const_array_varname_in_buf(Context *ctx,
                                                 const int base, const int size,
                                                 char *buf, const size_t buflen)
 {
-    const char *type = ctx->shader_type_str;
-    snprintf(buf, buflen, "%s_const_array_%d_%d", type, base, size);
+    snprintf(buf, buflen, "%s_const_array_%d_%d", ctx->mainfn, base, size);
     return buf;
 } // get_METAL_const_array_varname_in_buf
 
