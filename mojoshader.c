@@ -4482,10 +4482,6 @@ static void emit_METAL_start(Context *ctx, const char *profilestr)
             ctx->mainfn = StrDup(ctx, "FragmentShader");
     } // if
 
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "using namespace metal;");
-    pop_output(ctx);
-
     set_output(ctx, &ctx->mainline);
     ctx->indent++;
 } // emit_METAL_start
@@ -4551,9 +4547,12 @@ static void output_METAL_uniform_array(Context *ctx, const RegisterType regtype,
 static void emit_METAL_finalize(Context *ctx)
 {
     // throw some blank lines around to make source more readable.
-    push_output(ctx, &ctx->globals);
-    output_blank_line(ctx);
-    pop_output(ctx);
+    if (ctx->globals)  // don't add a blank line if the section is empty.
+    {
+        push_output(ctx, &ctx->globals);
+        output_blank_line(ctx);
+        pop_output(ctx);
+    } // if
 
     // If we had a relative addressing of REG_TYPE_INPUT, we need to build
     //  an array for it at the start of main(). GLSL doesn't let you specify
@@ -4575,6 +4574,8 @@ static void emit_METAL_finalize(Context *ctx)
     INC_METAL_HEADER(graphics);
     INC_METAL_HEADER(texture);
     #undef INC_METAL_HEADER
+    output_blank_line(ctx);
+    output_line(ctx, "using namespace metal;");
     output_blank_line(ctx);
     pop_output(ctx);
 
