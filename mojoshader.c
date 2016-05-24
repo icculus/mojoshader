@@ -193,7 +193,6 @@ typedef struct Context
 #endif
 
 #if SUPPORT_PROFILE_METAL
-    int metal_used_buffers;
     int metal_need_header_common;
     int metal_need_header_math;
     int metal_need_header_relational;
@@ -4106,7 +4105,7 @@ static const char *get_METAL_uniform_array_varname(Context *ctx,
 {
     const char *shadertype = ctx->shader_type_str;
     const char *type = get_METAL_uniform_type(ctx, regtype);
-    snprintf(buf, len, "uniforms_%s", type);
+    snprintf(buf, len, "uniforms.uniforms_%s", type);
     return buf;
 } // get_METAL_uniform_array_varname
 
@@ -4510,50 +4509,8 @@ static void emit_METAL_phase(Context *ctx)
     // no-op in Metal.
 } // emit_METAL_phase
 
-static void output_METAL_uniform_array(Context *ctx, const RegisterType regtype,
-                                       const int size, int *commas)
-{
-    if (size > 0)
-    {
-        char buf[64];
-        get_METAL_uniform_array_varname(ctx, regtype, buf, sizeof (buf));
-        const char *typ;
-        switch (regtype)
-        {
-            case REG_TYPE_CONST: typ = "float4"; break;
-            case REG_TYPE_CONSTINT: typ ="int4"; break;
-            case REG_TYPE_CONSTBOOL: typ = "bool"; break;
-            default:
-            {
-                fail(ctx, "BUG: used a uniform we don't know how to define.");
-                return;
-            } // default
-        } // switch
-
-        const char *commastr = "";
-        if (*commas > 0)
-        {
-            (*commas)--;
-            commastr = ",";
-        } // if
-
-        // !!! FIXME: Can we use size here?
-        output_line(ctx, "constant %s *%s [[buffer(%d)]]%s", typ, buf,
-                    ctx->metal_used_buffers, commastr);
-        ctx->metal_used_buffers++;
-    } // if
-} // output_METAL_uniform_array
-
 static void emit_METAL_finalize(Context *ctx)
 {
-    // throw some blank lines around to make source more readable.
-    if (ctx->globals)  // don't add a blank line if the section is empty.
-    {
-        push_output(ctx, &ctx->globals);
-        output_blank_line(ctx);
-        pop_output(ctx);
-    } // if
-
     // If we had a relative addressing of REG_TYPE_INPUT, we need to build
     //  an array for it at the start of main(). GLSL doesn't let you specify
     //  arrays of attributes.
@@ -4590,19 +4547,37 @@ static void emit_METAL_finalize(Context *ctx)
     push_output(ctx, &ctx->mainline_arguments);
     ctx->indent++;
 
+    const int uniform_count = ctx->uniform_float4_count + ctx->uniform_int4_count + ctx->uniform_bool_count;
     int commas = 0;
-    if (ctx->uniform_float4_count) commas++;
-    if (ctx->uniform_int4_count) commas++;
-    if (ctx->uniform_bool_count) commas++;
+    if (uniform_count) commas++;
     if (ctx->inputs) commas++;
     if (commas) commas--;
 
-    output_METAL_uniform_array(ctx, REG_TYPE_CONST, ctx->uniform_float4_count, &commas);
-    output_METAL_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count, &commas);
-    output_METAL_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count, &commas);
+    if (uniform_count > 0)
+    {
+        push_output(ctx, &ctx->globals);
+        output_line(ctx, "struct %sUniforms", ctx->mainfn);
+        output_line(ctx, "{");
+        ctx->indent++;
+        if (ctx->uniform_float4_count > 0)
+            output_line(ctx, "float4 uniforms_float4[%d];", ctx->uniform_float4_count);
+        if (ctx->uniform_int4_count > 0)
+            output_line(ctx, "int4 uniforms_int4[%d];", ctx->uniform_int4_count);
+        if (ctx->uniform_bool_count > 0)
+            output_line(ctx, "bool uniforms_bool[%d];", ctx->uniform_bool_count);
+        ctx->indent--;
+        output_line(ctx, "};");
+        pop_output(ctx);
+
+        output_line(ctx, "constant %sUniforms &uniforms [[buffer(16)]]%s", ctx->mainfn, commas ? "," : "");
+        commas--;
+    } // if
 
     if (ctx->inputs)
-        output_line(ctx, "%sInput input [[stage_in]]", ctx->mainfn);
+    {
+        output_line(ctx, "%sInput input [[stage_in]]%s", ctx->mainfn, commas ? "," : "");
+        commas--;
+    } // if
 
     ctx->indent--;
     output_line(ctx, ") {");
@@ -4630,6 +4605,14 @@ static void emit_METAL_finalize(Context *ctx)
     {
         push_output(ctx, &ctx->outputs);
         output_line(ctx, "};");
+        output_blank_line(ctx);
+        pop_output(ctx);
+    } // if
+
+    // throw some blank lines around to make source more readable.
+    if (ctx->globals)  // don't add a blank line if the section is empty.
+    {
+        push_output(ctx, &ctx->globals);
         output_blank_line(ctx);
         pop_output(ctx);
     } // if
@@ -4734,10 +4717,10 @@ static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
 static void emit_METAL_uniform(Context *ctx, RegisterType regtype, int regnum,
                               const VariableList *var)
 {
-    // Now that we're pushing all the uniforms as one big array, pack these
+    // Now that we're pushing all the uniforms as one struct, pack these
     //  down, so if we only use register c439, it'll actually map to
-    //  metal_uniforms_float4[0]. As we push one big array, this will prevent
-    //  uploading unused data.
+    //  uniforms.uniforms_float4[0]. As we push one big struct, this will
+    //  prevent uploading unused data.
 
     const char *utype = get_METAL_uniform_type(ctx, regtype);
     char varname[64];
