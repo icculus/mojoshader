@@ -12050,7 +12050,7 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
                                                       void *d)
 {
     // !!! FIXME: This is copypasta ripped from parse_preshader -flibit
-    int i;
+    unsigned int i;
 
     // All sections of a preshader are packed into separate comment tokens,
     //  inside the containing comment token block. Find them all before
@@ -12059,6 +12059,8 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
     PreshaderBlockInfo prsi = { 0, 0, 0 };
     PreshaderBlockInfo fxlc = { 0, 0, 0 };
     PreshaderBlockInfo clit = { 0, 0, 0 };
+
+    CtabData ctabdata = { 0, 0, 0 };
 
     const uint32 *tokens = (const uint32 *) buf;
     uint32 tokcount = _len / 4;
@@ -12190,7 +12192,6 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
     }
 
     // Now we'll figure out the CTAB...
-    CtabData ctabdata = { 0, 0, 0 };
     parse_constant_table(&fillerContext, ctab.tokens - 1, ctab.tokcount * 4,
                          version, 0, &ctabdata);
 
@@ -12297,7 +12298,7 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
                 case 2:  // item from ctabdata.
                 {
                     MOJOSHADER_symbol *sym = ctabdata.symbols;
-                    for (i = 0; i < ctabdata.symbol_count; i++, sym++)
+                    for (i = 0; i < (unsigned int) ctabdata.symbol_count; i++, sym++)
                     {
                         const uint32 base = sym->register_index * 4;
                         const uint32 count = sym->register_count * 4;
