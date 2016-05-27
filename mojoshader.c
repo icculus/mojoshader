@@ -10457,7 +10457,7 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
         memset(info->members, '\0', len);
     } // else
 
-    int i;
+    unsigned int i;
     const uint32 *member = (const uint32 *) (start + typeptr[6]);
     for (i = 0; i < info->member_count; i++)
     {
@@ -11171,7 +11171,7 @@ static void free_variable_list(MOJOSHADER_free f, void *d, VariableList *item)
 static void free_sym_typeinfo(MOJOSHADER_free f, void *d,
                               MOJOSHADER_symbolTypeInfo *typeinfo)
 {
-    int i;
+    unsigned int i;
     for (i = 0; i < typeinfo->member_count; i++)
     {
         f((void *) typeinfo->members[i].name, d);
@@ -12052,6 +12052,14 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
     // !!! FIXME: This is copypasta ripped from parse_preshader -flibit
     int i;
 
+    // All sections of a preshader are packed into separate comment tokens,
+    //  inside the containing comment token block. Find them all before
+    //  we start, so we don't care about the order they appear in the file.
+    PreshaderBlockInfo ctab = { 0, 0, 0 };
+    PreshaderBlockInfo prsi = { 0, 0, 0 };
+    PreshaderBlockInfo fxlc = { 0, 0, 0 };
+    PreshaderBlockInfo clit = { 0, 0, 0 };
+
     const uint32 *tokens = (const uint32 *) buf;
     uint32 tokcount = _len / 4;
 
@@ -12076,14 +12084,6 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
 
     tokens++;
     tokcount++;
-
-    // All sections of a preshader are packed into separate comment tokens,
-    //  inside the containing comment token block. Find them all before
-    //  we start, so we don't care about the order they appear in the file.
-    PreshaderBlockInfo ctab = { 0, 0, 0 };
-    PreshaderBlockInfo prsi = { 0, 0, 0 };
-    PreshaderBlockInfo fxlc = { 0, 0, 0 };
-    PreshaderBlockInfo clit = { 0, 0, 0 };
 
     while (tokcount > 0)
     {
@@ -12401,13 +12401,15 @@ void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader,
                               MOJOSHADER_free f,
                               void *d)
 {
-    int i, j;
+    unsigned int i, j;
     if (preshader != NULL)
     {
         f((void *) preshader->literals, d);
         for (i = 0; i < preshader->instruction_count; i++)
+        {
             for (j = 0; j < preshader->instructions[i].operand_count; j++)
                 f((void *) preshader->instructions[i].operands[j].array_registers, d);
+        } // for
         f((void *) preshader->instructions, d);
         f((void *) preshader->registers, d);
         free_symbols(f, d, preshader->symbols, preshader->symbol_count);

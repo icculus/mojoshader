@@ -104,7 +104,7 @@ int hash_iter(const HashTable *table, const void *key,
 int hash_iter_keys(const HashTable *table, const void **_key, void **iter)
 {
     HashItem *item = (HashItem *) *iter;
-    int idx = 0;
+    uint32 idx = 0;
 
     if (item != NULL)
     {
