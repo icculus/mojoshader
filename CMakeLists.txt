@@ -8,7 +8,7 @@ OPTION(PROFILE_GLSL120 "Build MojoShader with support for the GLSL120 profile" O
 OPTION(PROFILE_GLSL "Build MojoShader with support for the GLSL profile" ON)
 OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
 OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
-OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" OFF)
+OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
 OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
 OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
