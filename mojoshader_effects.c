@@ -624,7 +624,7 @@ static void readsmallobjects(const uint32 numsmallobjects,
         {
             object->shader.technique = -1;
             object->shader.pass = -1;
-            object->shader.shader = MOJOSHADER_parse(profile, *ptr, length,
+            object->shader.shader = MOJOSHADER_parse(profile, NULL, *ptr, length,
                                                      swiz, swizcount, smap, smapcount,
                                                      m, f, d);
             // !!! FIXME: check for errors.
