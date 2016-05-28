@@ -1041,7 +1041,7 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
          || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
             if (object->shader.is_preshader)
-                MOJOSHADER_freePreshader(object->shader.preshader, f, d);
+                MOJOSHADER_freePreshader(object->shader.preshader);
             else
                 MOJOSHADER_freeParseData(object->shader.shader);
             f((void *) object->shader.params, d);
