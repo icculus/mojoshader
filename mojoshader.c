@@ -4541,7 +4541,7 @@ static void emit_METAL_finalize(Context *ctx)
     output_line(ctx, "%s %s%s %s (",
                 shader_is_vertex(ctx) ? "vertex" : "fragment",
                 ctx->outputs ? ctx->mainfn : "void",
-                ctx->outputs ? "Output" : "", ctx->mainfn);
+                ctx->outputs ? "_Output" : "", ctx->mainfn);
     pop_output(ctx);
 
     push_output(ctx, &ctx->mainline_arguments);
@@ -4556,7 +4556,7 @@ static void emit_METAL_finalize(Context *ctx)
     if (uniform_count > 0)
     {
         push_output(ctx, &ctx->globals);
-        output_line(ctx, "struct %sUniforms", ctx->mainfn);
+        output_line(ctx, "struct %s_Uniforms", ctx->mainfn);
         output_line(ctx, "{");
         ctx->indent++;
         if (ctx->uniform_float4_count > 0)
@@ -4569,13 +4569,13 @@ static void emit_METAL_finalize(Context *ctx)
         output_line(ctx, "};");
         pop_output(ctx);
 
-        output_line(ctx, "constant %sUniforms &uniforms [[buffer(16)]]%s", ctx->mainfn, commas ? "," : "");
+        output_line(ctx, "constant %s_Uniforms &uniforms [[buffer(16)]]%s", ctx->mainfn, commas ? "," : "");
         commas--;
     } // if
 
     if (ctx->inputs)
     {
-        output_line(ctx, "%sInput input [[stage_in]]%s", ctx->mainfn, commas ? "," : "");
+        output_line(ctx, "%s_Input input [[stage_in]]%s", ctx->mainfn, commas ? "," : "");
         commas--;
     } // if
 
@@ -4584,7 +4584,7 @@ static void emit_METAL_finalize(Context *ctx)
     if (ctx->outputs)
     {
         ctx->indent++;
-        output_line(ctx, "%sOutput output;", ctx->mainfn);
+        output_line(ctx, "%s_Output output;", ctx->mainfn);
 
         push_output(ctx, &ctx->mainline);
         ctx->indent++;
@@ -4878,7 +4878,7 @@ static void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->inputs);
             if (buffer_size(ctx->inputs) == 0)
             {
-                output_line(ctx, "struct %sInput", ctx->mainfn);
+                output_line(ctx, "struct %s_Input", ctx->mainfn);
                 output_line(ctx, "{");
             } // if
 
@@ -4903,7 +4903,7 @@ static void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->outputs);
             if (buffer_size(ctx->outputs) == 0)
             {
-                output_line(ctx, "struct %sOutput", ctx->mainfn);
+                output_line(ctx, "struct %s_Output", ctx->mainfn);
                 output_line(ctx, "{");
             } // if
 
@@ -4966,7 +4966,7 @@ static void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->outputs);
             if (buffer_size(ctx->outputs) == 0)
             {
-                output_line(ctx, "struct %sOutput", ctx->mainfn);
+                output_line(ctx, "struct %s_Output", ctx->mainfn);
                 output_line(ctx, "{");
             } // if
             ctx->indent++;
@@ -4999,7 +4999,7 @@ static void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->inputs);
             if (buffer_size(ctx->inputs) == 0)
             {
-                output_line(ctx, "struct %sInput", ctx->mainfn);
+                output_line(ctx, "struct %s_Input", ctx->mainfn);
                 output_line(ctx, "{");
             } // if
             ctx->indent++;
