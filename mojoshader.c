@@ -4085,7 +4085,7 @@ static inline const char *get_METAL_const_array_varname_in_buf(Context *ctx,
 
 static const char *get_METAL_const_array_varname(Context *ctx, int base, int size)
 {
-    char buf[64];
+    char buf[128];
     get_METAL_const_array_varname_in_buf(ctx, base, size, buf, sizeof (buf));
     return StrDup(ctx, buf);
 } // get_METAL_const_array_varname
@@ -4362,7 +4362,7 @@ static const char *make_METAL_srcarg_string(Context *ctx, const size_t idx,
     if (arg->relative)
     {
         if (arg->regtype == REG_TYPE_INPUT)
-            regtype_str=get_METAL_input_array_varname(ctx,(char*)alloca(64),64);
+            regtype_str=get_METAL_input_array_varname(ctx,(char*)alloca(128),128);
         else
         {
             assert(arg->regtype == REG_TYPE_CONST);
@@ -4373,7 +4373,7 @@ static const char *make_METAL_srcarg_string(Context *ctx, const size_t idx,
             {
                 const int arraysize = arg->relative_array->count;
                 regtype_str = get_METAL_const_array_varname_in_buf(ctx,
-                                arrayidx, arraysize, (char *) alloca(64), 64);
+                                arrayidx, arraysize, (char *) alloca(128), 128);
                 if (offset != 0)
                     snprintf(rel_offset, sizeof (rel_offset), "%d + ", offset);
             } // if
@@ -4679,7 +4679,7 @@ static void emit_METAL_array(Context *ctx, VariableList *var)
 static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
                                    int base, int size)
 {
-    char varname[64];
+    char varname[128];
     get_METAL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
 
     const char *cstr = NULL;
@@ -4724,7 +4724,7 @@ static void emit_METAL_uniform(Context *ctx, RegisterType regtype, int regnum,
 
     const char *utype = get_METAL_uniform_type(ctx, regtype);
     char varname[64];
-    char name[64];
+    char name[128];
     int index = 0;
 
     get_METAL_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
