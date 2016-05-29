@@ -251,7 +251,7 @@ static void readvalue(const uint8 *base,
                       MOJOSHADER_malloc m,
                       void *d)
 {
-    int i;
+    int i, j, k;
     const uint8 *typeptr = base + typeoffset;
     const uint8 *valptr = base + valoffset;
     unsigned int typelen = 9999999;  // !!! FIXME
@@ -284,13 +284,16 @@ static void readvalue(const uint8 *base,
         value->type.columns = columncount;
         value->type.rows = rowcount;
 
-        uint32 siz = columncount * rowcount;
+        uint32 siz = 4 * rowcount;
         if (numelements > 0)
             siz *= numelements;
         value->value_count = siz;
         siz *= 4;
         value->values = m(siz, d);
-        memcpy(value->values, valptr, siz);
+        memset(value->values, '\0', siz);
+        siz /= 16;
+        for (i = 0; i < siz; i++)
+            memcpy(value->valuesF + (i << 2), valptr + ((columncount << 2) * i), columncount << 2);
     } // if
     else if (valclass == MOJOSHADER_SYMCLASS_OBJECT)
     {
@@ -376,7 +379,7 @@ static void readvalue(const uint8 *base,
             mem->info.member_count = 0;
             mem->info.members = NULL;
 
-            uint32 memsize = mem->info.columns * mem->info.rows;
+            uint32 memsize = 4 * mem->info.rows;
             if (mem->info.elements > 0)
                 memsize *= mem->info.elements;
             structsize += memsize;
@@ -390,7 +393,24 @@ static void readvalue(const uint8 *base,
 
         siz = value->value_count * 4;
         value->values = m(siz, d);
-        memcpy(value->values, typeptr, siz); /* Yes, typeptr. -flibit */
+        memset(value->values, '\0', siz);
+        int dst_offset = 0, src_offset = 0;
+        i = 0;
+        do
+        {
+            for (j = 0; j < value->type.member_count; j++)
+            {
+                siz = value->type.members[j].info.rows * value->type.members[j].info.elements;
+                for (k = 0; k < siz; k++)
+                {
+                    memcpy(value->valuesF + dst_offset,
+                           typeptr + src_offset, /* Yes, typeptr. -flibit */
+                           value->type.members[j].info.columns << 2);
+                    dst_offset += 4;
+                    src_offset += value->type.members[j].info.columns << 2;
+                } // for
+            }
+        } while (++i < numelements);
     } // else if
 } // readvalue
 
@@ -1639,8 +1659,8 @@ void MOJOSHADER_effectSetRawValueHandle(const MOJOSHADER_effectParam *parameter,
                                         const unsigned int offset,
                                         const unsigned int len)
 {
-    // !!! FIXME: uint32* case is arbitary, for Win32 -flibit
-    memcpy((uint32 *) parameter->value.values + offset, data, len);
+    // !!! FIXME: char* case is arbitary, for Win32 -flibit
+    memcpy((char *) parameter->value.values + offset, data, len);
 } // MOJOSHADER_effectSetRawValueHandle
 
 
@@ -1655,8 +1675,8 @@ void MOJOSHADER_effectSetRawValueName(const MOJOSHADER_effect *effect,
     {
         if (strcmp(name, effect->params[i].value.name) == 0)
         {
-            // !!! FIXME: uint32* case is arbitary, for Win32 -flibit
-            memcpy((uint32 *) effect->params[i].value.values + offset, data, len);
+            // !!! FIXME: char* case is arbitary, for Win32 -flibit
+            memcpy((char *) effect->params[i].value.values + offset, data, len);
             return;
         } // if
     } // for

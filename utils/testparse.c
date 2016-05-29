@@ -419,7 +419,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
 static void print_value(const MOJOSHADER_effectValue *value,
                         const unsigned int indent)
 {
-    int i;
+    int i, r, c;
 
     INDENT();
     printf("VALUE: %s -> %s\n", value->name, value->semantic);
@@ -518,35 +518,44 @@ static void print_value(const MOJOSHADER_effectValue *value,
     {
         do_indent(indent + 1);
         printf("%s VALUES:\n", types[value->type.parameter_type]);
-        for (i = 0; i < value->value_count; i++)
+        i = 0;
+        do
         {
-            do_indent(indent + 2);
             static const char *prints[] =
             {
-                "%X\n",
-                "%d\n",
-                "%d\n",
-                "%.2f\n",
-                "%d\n",
-                "%d\n",
-                "%d\n",
-                "%d\n",
-                "%d\n",
-                "%d\n",
-                "SAMPLER?!\n",
-                "SAMPLER?!\n",
-                "SAMPLER?!\n",
-                "SAMPLER?!\n",
-                "SAMPLER?!\n",
-                "%d\n",
-                "%d\n",
-                "%X\n"
+                "%X ",
+                "%d ",
+                "%d ",
+                "%.2f ",
+                "%d ",
+                "%d ",
+                "%d ",
+                "%d ",
+                "%d ",
+                "%d ",
+                "SAMPLER?! ",
+                "SAMPLER?! ",
+                "SAMPLER?! ",
+                "SAMPLER?! ",
+                "SAMPLER?! ",
+                "%d ",
+                "%d ",
+                "%X "
             };
-            if (value->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
-                printf(prints[value->type.parameter_type], value->valuesF[i]);
-            else
-                printf(prints[value->type.parameter_type], value->valuesI[i]);
-        } // for
+            for (r = 0; r < value->type.rows; r++)
+            {
+                do_indent(indent + 2);
+                for (c = 0; c < value->type.columns; c++)
+                {
+                    const int offset = (i * value->type.rows * 4) + (r * 4) + c;
+                    if (value->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
+                        printf(prints[value->type.parameter_type], value->valuesF[offset]);
+                    else
+                        printf(prints[value->type.parameter_type], value->valuesI[offset]);
+                } // for
+                printf("\n");
+            } // for
+        } while (++i < value->type.elements);
     } // else
 } // print_value
 

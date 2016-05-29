@@ -2224,9 +2224,10 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         else
             output_line(ctx, "precision mediump float;");
         output_line(ctx, "precision mediump int;");
-        output_line(ctx, "varying vec4 v_FrontColor;");
-        output_line(ctx, "varying vec4 v_FrontSecondaryColor;");
-        output_line(ctx, "varying vec4 v_TexCoord[10];"); // 10 according to SM3
+        // Some drivers don't like it when the precision varies between shaders. -ade
+        output_line(ctx, "varying highp vec4 v_FrontColor;");
+        output_line(ctx, "varying highp vec4 v_FrontSecondaryColor;");
+        output_line(ctx, "varying highp vec4 v_TexCoord[10];"); // 10 according to SM3
         pop_output(ctx);
     } // else if
     #endif
@@ -2344,6 +2345,12 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
                 //  ps_1_1 TEX opcode expects to overwrite it.
                 if (!shader_version_atleast(ctx, 1, 4))
                 {
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        output_line(ctx, "vec4 %s = v_TexCoord[%d];",
+                                    varname, regnum);
+                    else
+#endif
                     output_line(ctx, "vec4 %s = gl_TexCoord[%d];",
                                 varname, regnum);
                 } // if
@@ -2648,7 +2655,15 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             push_output(ctx, &ctx->globals);
             // no mapping to built-in var? Just make it a regular global, pray.
             if (usage_str == NULL)
-                output_line(ctx, "vec4 %s;", var);
+            {
+#if SUPPORT_PROFILE_GLSLES
+                if (support_glsles(ctx))
+                    output_line(ctx, "varying highp vec4 io_%i_%i;", usage, index);
+                else
+#endif
+                output_line(ctx, "varying vec4 io_%i_%i;", usage, index);
+                output_line(ctx, "#define %s io_%i_%i", var, usage, index);
+            } // if
             else
             {
                 output_line(ctx, "#define %s %s%s%s%s", var, usage_str,
@@ -2731,15 +2746,9 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 #endif
                     usage_str = "gl_SecondaryColor";
                 } // else if
-                else
-                    fail(ctx, "unsupported color index");
-            } // else if
-
-            else if (usage == MOJOSHADER_USAGE_DEPTH) // !!! FIXME: Possibly more! -flibit
-            {
-                push_output(ctx, &ctx->globals);
-                output_line(ctx, "attribute vec4 %s;", var);
-                pop_output(ctx);
+                // FIXME: Does this even matter when we have varyings? -flibit
+                // else
+                //    fail(ctx, "unsupported color index");
             } // else if
         } // else if
 
@@ -2768,13 +2777,24 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             fail(ctx, "unknown pixel shader attribute register");
         } // else
 
-        if (usage_str != NULL)
+        push_output(ctx, &ctx->globals);
+        // no mapping to built-in var? Just make it a regular global, pray.
+        if (usage_str == NULL)
         {
-            push_output(ctx, &ctx->globals);
+#if SUPPORT_PROFILE_GLSLES
+            if (support_glsles(ctx))
+                output_line(ctx, "varying highp vec4 io_%i_%i;", usage, index);
+            else
+#endif
+            output_line(ctx, "varying vec4 io_%i_%i;", usage, index);
+            output_line(ctx, "#define %s io_%i_%i", var, usage, index);
+        } // if
+        else
+        {
             output_line(ctx, "#define %s %s%s%s%s", var, usage_str,
                         arrayleft, index_str, arrayright);
-            pop_output(ctx);
-        } // if
+        } // else
+        pop_output(ctx);
     } // else if
 
     else
@@ -5031,15 +5051,6 @@ static void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
                 else if (usage == MOJOSHADER_USAGE_FOG)
                     output_line(ctx, "float4 %s [[user(fog)]];", var);
-
-                #if 0  // !!! FIXME: Ethan added this for GLSL, but I don't know what it does.  --ryan.
-                else if (usage == MOJOSHADER_USAGE_DEPTH) // !!! FIXME: Possibly more! -flibit
-                {
-                    push_output(ctx, &ctx->globals);
-                    output_line(ctx, "attribute vec4 %s;", var);
-                    pop_output(ctx);
-                } // else if
-                #endif
             } // else
 
             pop_output(ctx);

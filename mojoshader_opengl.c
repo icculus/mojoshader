@@ -726,7 +726,7 @@ static void impl_ARB1_DeleteShader(const GLuint _shader)
 static void impl_ARB1_DeleteProgram(const GLuint program)
 {
     // no-op. ARB1 doesn't have real linked programs.
-} // impl_GLSL_DeleteProgram
+} // impl_ARB1_DeleteProgram
 
 static GLint impl_ARB1_GetUniformLocation(MOJOSHADER_glProgram *program,
                                           MOJOSHADER_glShader *shader, int idx)
@@ -1074,8 +1074,10 @@ static void detect_glsl_version(void)
         const char *str = (const char *) ctx->glGetString(enumval);
         if (ctx->glGetError() == GL_INVALID_ENUM)
             str = NULL;
-        if (strstr(str, "OpenGL ES GLSL ES "))
-            str += 18;
+        if (strstr(str, "OpenGL ES GLSL "))
+            str += 15;
+        if (strstr(str, "ES "))
+            str += 3;
         parse_opengl_version_str(str, &ctx->glsl_major, &ctx->glsl_minor);
     } // if
 #endif
@@ -1279,7 +1281,7 @@ static int valid_profile(const char *profile)
     #if SUPPORT_PROFILE_GLSLES
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0)
     {
-        MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSLES, 1, 10);
+        MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSLES, 1, 00);
     } // else if
     #endif
 
@@ -2864,116 +2866,44 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
         const uint32 start = sym->register_index << 2;
 
         if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
-        {
-            // Matrices have to be transposed from row-major to column-major!
-            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_MATRIX_ROWS)
-            {
-                if (param->type.elements > 1)
-                {
-                    const uint32 regcount = sym->register_count / param->type.elements;
-                    j = 0;
-                    do
-                    {
-                        r = 0;
-                        do
-                        {
-                            c = 0;
-                            do
-                            {
-                                const uint32 dest = start + c +
-                                                   (r << 2) +
-                                                  ((j << 2) * regcount);
-                                const uint32 src = r +
-                                                  (c * param->type.rows) +
-                                                  (j * param->type.rows * param->type.columns);
-                                regf[dest] = param->valuesF[src];
-                            } while (++c < param->type.columns);
-                        } while (++r < regcount);
-                    } while (++j < param->type.elements);
-                } // if
-                else
-                {
-                    r = 0;
-                    do
-                    {
-                        c = 0;
-                        do
-                        {
-                            regf[start + (r << 2 ) + c] = param->valuesF[r + (c * param->type.rows)];
-                        } while (++c < param->type.columns);
-                    } while (++r < sym->register_count);
-                } // else
-            } // if
-            else if (sym->register_count > 1)
-            {
-                j = 0;
-                do
-                {
-                    memcpy(regf + start + (j << 2),
-                           param->valuesF + (j * param->type.columns),
-                           param->type.columns << 2);
-                } while (++j < sym->register_count);
-            } // else if
-            else
-                memcpy(regf + start, param->valuesF, param->type.columns << 2);
-        } // if
+            memcpy(regf + start, param->valuesF, sym->register_count << 4);
         else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
         {
-            // Sometimes int/bool parameters get thrown into float registers...
+            // Structs are a whole different world...
             if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
-            {
-                float *struct_offset = param->valuesF;
-                r = 0; /* Register offset */
-                j = 0;
-                do
-                {
-                    c = 0;
-                    do
-                    {
-                        memcpy(regf + start + (r << 2),
-                               struct_offset,
-                               param->type.members[c].info.columns << 2);
-                        struct_offset += param->type.members[c].info.columns;
-                        r++;
-                    } while (++c < param->type.member_count);
-                } while (++j < param->type.elements);
-            } // if
+                memcpy(regf + start, param->valuesF, sym->register_count << 4);
             else
             {
+                // Sometimes int/bool parameters get thrown into float registers...
                 j = 0;
                 do
                 {
                     c = 0;
                     do
                     {
-                        regf[start + (j << 2) + c] = (float) param->valuesI[(j * param->type.columns) + c];
+                        regf[start + (j << 2) + c] = (float) param->valuesI[(j << 2) + c];
                     } while (++c < param->type.columns);
                 } while (++j < sym->register_count);
             } // else
         } // else if
         else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
-        {
-            if (sym->register_count > 1)
-            {
-                j = 0;
-                do
-                {
-                    memcpy(regi + start + (j << 2),
-                           param->valuesI + (j * param->type.columns),
-                           param->type.columns << 2);
-                } while (++j < sym->register_count);
-            } // if
-            else
-                memcpy(regi + start, param->valuesI, param->type.columns << 2);
-        } // else if
+            memcpy(regi + start, param->valuesI, sym->register_count << 4);
         else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
         {
             j = 0;
+            r = 0;
             do
             {
-                // regb is not a vec4, enjoy this bitshift! -flibit
-                regb[(start >> 2) + j] = param->valuesI[j];
-            } while (++j < sym->register_count);
+                c = 0;
+                do
+                {
+                    // regb is not a vec4, enjoy that 'start' bitshift! -flibit
+                    regb[(start >> 2) + r + c] = param->valuesI[(j << 2) + c];
+                    c++;
+                } while (c < param->type.columns && ((r + c) < sym->register_count));
+                r += c;
+                j++;
+            } while (r < sym->register_count);
         } // else if
     } // for
 } // copy_parameter_data
@@ -2985,7 +2915,7 @@ void MOJOSHADER_glEffectCommitChanges(MOJOSHADER_glEffect *glEffect)
     MOJOSHADER_effectShader *rawFrag = glEffect->current_frag_raw;
 
     /* Used for shader selection from preshaders */
-    int i;
+    int i, j;
     MOJOSHADER_effectValue *param;
     float selector;
     int shader_object;
@@ -3003,9 +2933,10 @@ void MOJOSHADER_glEffectCommitChanges(MOJOSHADER_glEffect *glEffect)
             do \
             { \
                 param = &glEffect->effect->params[raw->preshader_params[i]].value; \
-                memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index, \
-                       param->values, \
-                       param->value_count << 2); \
+                for (j = 0; j < (param->value_count >> 2); j++) \
+                    memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index + j, \
+                           param->valuesI + (j << 2), \
+                           param->type.columns << 2); \
             } while (++i < raw->preshader->symbol_count); \
             MOJOSHADER_runPreshader(raw->preshader, &selector); \
             shader_object = glEffect->effect->params[raw->params[0]].value.valuesI[(int) selector]; \
@@ -3051,12 +2982,6 @@ void MOJOSHADER_glEffectCommitChanges(MOJOSHADER_glEffect *glEffect)
     #define COPY_PARAMETER_DATA(raw, stage) \
         if (raw != NULL) \
         { \
-            if (ctx->bound_program->stage##_float4_loc != -1) \
-                memset(ctx->stage##_reg_file_f, '\0', ctx->bound_program->stage##_uniforms_float4_count << 4); \
-            if (ctx->bound_program->stage##_int4_loc != -1) \
-                memset(ctx->stage##_reg_file_i, '\0', ctx->bound_program->stage##_uniforms_int4_count << 4); \
-            if (ctx->bound_program->stage##_bool_loc != -1) \
-                memset(ctx->stage##_reg_file_b, '\0', ctx->bound_program->stage##_uniforms_bool_count << 2); \
             copy_parameter_data(glEffect->effect->params, raw->params, \
                                 raw->shader->symbols, \
                                 raw->shader->symbol_count, \
