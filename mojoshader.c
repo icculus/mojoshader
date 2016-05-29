@@ -4705,6 +4705,7 @@ static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
 
     const char *cstr = NULL;
     push_output(ctx, &ctx->mainline_top);
+    ctx->indent++;
     output_line(ctx, "const float4 %s[%d] = {", varname, size);
     ctx->indent++;
 
