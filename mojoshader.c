@@ -11169,8 +11169,13 @@ static Context *build_context(const char *profile,
         return NULL;
     } // if
 
-    if (mainfn)
-        ctx->mainfn = StrDup(ctx, mainfn);
+    if (mainfn != NULL)
+    {
+        if (strlen(mainfn) > 55)  // !!! FIXME: just to keep things sane. Lots of hardcoded stack arrays...
+            failf(ctx, "Main function name '%s' is too big", mainfn);
+        else
+            ctx->mainfn = StrDup(ctx, mainfn);
+    } // if
 
     if (profile != NULL)
     {
