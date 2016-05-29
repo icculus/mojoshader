@@ -13,7 +13,8 @@ MOJOSHADER_error MOJOSHADER_out_of_mem_error = {
 
 MOJOSHADER_parseData MOJOSHADER_out_of_mem_data = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0,
-    MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0
+    MOJOSHADER_TYPE_UNKNOWN, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
 
