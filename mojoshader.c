@@ -4082,7 +4082,7 @@ static const char *get_METAL_varname_in_buf(Context *ctx, RegisterType rt,
 
     // We don't separate vars with vs_ or ps_ here, because, for the most part,
     //  there are only local vars in Metal shaders.
-    snprintf(buf,len,"%s%s", regtype_str, regnum_str);
+    snprintf(buf, len, "%s%s", regtype_str, regnum_str);
     return buf;
 } // get_METAL_varname_in_buf
 
@@ -4099,13 +4099,13 @@ static inline const char *get_METAL_const_array_varname_in_buf(Context *ctx,
                                                 const int base, const int size,
                                                 char *buf, const size_t buflen)
 {
-    snprintf(buf, buflen, "%s_const_array_%d_%d", ctx->mainfn, base, size);
+    snprintf(buf, buflen, "const_array_%d_%d", base, size);
     return buf;
 } // get_METAL_const_array_varname_in_buf
 
 static const char *get_METAL_const_array_varname(Context *ctx, int base, int size)
 {
-    char buf[128];
+    char buf[64];
     get_METAL_const_array_varname_in_buf(ctx, base, size, buf, sizeof (buf));
     return StrDup(ctx, buf);
 } // get_METAL_const_array_varname
@@ -4382,7 +4382,7 @@ static const char *make_METAL_srcarg_string(Context *ctx, const size_t idx,
     if (arg->relative)
     {
         if (arg->regtype == REG_TYPE_INPUT)
-            regtype_str=get_METAL_input_array_varname(ctx,(char*)alloca(128),128);
+            regtype_str=get_METAL_input_array_varname(ctx,(char*)alloca(64),64);
         else
         {
             assert(arg->regtype == REG_TYPE_CONST);
@@ -4393,7 +4393,7 @@ static const char *make_METAL_srcarg_string(Context *ctx, const size_t idx,
             {
                 const int arraysize = arg->relative_array->count;
                 regtype_str = get_METAL_const_array_varname_in_buf(ctx,
-                                arrayidx, arraysize, (char *) alloca(128), 128);
+                                arrayidx, arraysize, (char *) alloca(64), 64);
                 if (offset != 0)
                     snprintf(rel_offset, sizeof (rel_offset), "%d + ", offset);
             } // if
@@ -4681,10 +4681,11 @@ static void emit_METAL_global(Context *ctx, RegisterType regtype, int regnum)
 
 static void emit_METAL_array(Context *ctx, VariableList *var)
 {
-    // All uniforms (except constant arrays, which only get pushed once at
-    //  compile time) are now packed into a single array, so we can batch
-    //  the uniform transfers. So this doesn't actually define an array
-    //  here; the one, big array is emitted during finalization instead.
+    // All uniforms (except constant arrays, which are literally constant
+    //  data embedded in Metal shaders) are now packed into a single array,
+    //  so we can batch the uniform transfers. So this doesn't actually
+    //  define an array here; the one, big array is emitted during
+    //  finalization instead.
     // However, we need to #define the offset into the one, big array here,
     //  and let dereferences use that #define.
     const int base = var->index;
@@ -4699,12 +4700,12 @@ static void emit_METAL_array(Context *ctx, VariableList *var)
 static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
                                    int base, int size)
 {
-    char varname[128];
+    char varname[64];
     get_METAL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
 
     const char *cstr = NULL;
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "constant float4 %s[%d] = {", varname, size);
+    push_output(ctx, &ctx->mainline_top);
+    output_line(ctx, "const float4 %s[%d] = {", varname, size);
     ctx->indent++;
 
     int i;
@@ -4731,6 +4732,7 @@ static void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
 
     ctx->indent--;
     output_line(ctx, "};");
+    output_line(ctx, "(void) %s[0];", varname);  // stop compiler warnings.
     pop_output(ctx);
 } // emit_METAL_const_array
 
@@ -4744,7 +4746,7 @@ static void emit_METAL_uniform(Context *ctx, RegisterType regtype, int regnum,
 
     const char *utype = get_METAL_uniform_type(ctx, regtype);
     char varname[64];
-    char name[128];
+    char name[64];
     int index = 0;
 
     get_METAL_varname_in_buf(ctx, regtype, regnum, varname, sizeof (varname));
