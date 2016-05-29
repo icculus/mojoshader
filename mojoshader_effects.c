@@ -622,9 +622,11 @@ static void readsmallobjects(const uint32 numsmallobjects,
         else if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
               || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
+            char mainfn[32];
+            snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) index);
             object->shader.technique = -1;
             object->shader.pass = -1;
-            object->shader.shader = MOJOSHADER_parse(profile, NULL, *ptr, length,
+            object->shader.shader = MOJOSHADER_parse(profile, mainfn, *ptr, length,
                                                      swiz, swizcount, smap, smapcount,
                                                      m, f, d);
             // !!! FIXME: check for errors.
@@ -745,7 +747,9 @@ static void readlargeobjects(const uint32 numlargeobjects,
             } // if
             else
             {
-                object->shader.shader = MOJOSHADER_parse(emitter, NULL, *ptr, length,
+                char mainfn[32];
+                snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) objectIndex);
+                object->shader.shader = MOJOSHADER_parse(emitter, mainfn, *ptr, length,
                                                          swiz, swizcount, smap, smapcount,
                                                          m, f, d);
                 // !!! FIXME: check for errors.
