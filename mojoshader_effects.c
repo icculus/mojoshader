@@ -723,7 +723,7 @@ static void readlargeobjects(const uint32 numlargeobjects,
                  */
                 object->shader.is_preshader = 1;
                 const uint32 start = *((uint32 *) *ptr) + 4;
-                const uint32 end = 24; // FIXME: Why? -flibit
+                const uint32 end = 16; // FIXME: Why? -flibit
                 const char *array = readstring(*ptr, 0, m, d);
                 object->shader.param_count = 1;
                 object->shader.params = (uint32 *) m(sizeof (uint32), d);
