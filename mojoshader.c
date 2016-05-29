@@ -11158,7 +11158,6 @@ static Context *build_context(const char *profile,
     ctx->errors = errorlist_create(MallocBridge, FreeBridge, ctx);
     if (ctx->errors == NULL)
     {
-        f((void *) ctx->mainfn, d);
         f(ctx, d);
         return NULL;
     } // if
@@ -11166,7 +11165,6 @@ static Context *build_context(const char *profile,
     if (!set_output(ctx, &ctx->mainline))
     {
         errorlist_destroy(ctx->errors);
-        f((void *) ctx->mainfn, d);
         f(ctx, d);
         return NULL;
     } // if
