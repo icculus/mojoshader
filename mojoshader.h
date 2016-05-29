@@ -538,9 +538,11 @@ typedef struct MOJOSHADER_parseData
     int minor_ver;
 
     /*
-     * This is the main function name of the shader. On profiles that need
-     *  the caller to supply this, this will be the caller-supplied string.
-     *  Otherwise, it'll be the name chosen by the profile ("main") or
+     * This is the main function name of the shader. This will be the
+     *  caller-supplied string even if a given profile ignores it (GLSL,
+     *  for example, always uses "main" in the shader output out of necessity,
+     *  and Direct3D assembly has no concept of a "main function", etc).
+     *  Otherwise, it'll be a default name chosen by the profile ("main") or
      *  whatnot.
      */
     const char *mainfn;

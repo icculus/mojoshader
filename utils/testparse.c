@@ -296,6 +296,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
         INDENT(); printf("SHADER TYPE: %s\n", shader_type(pd->shader_type));
         INDENT(); printf("VERSION: %d.%d\n", pd->major_ver, pd->minor_ver);
         INDENT(); printf("INSTRUCTION COUNT: %d\n", (int) pd->instruction_count);
+        INDENT(); printf("MAIN FUNCTION: %s\n", pd->mainfn);
         print_attrs("INPUTS", pd->attribute_count, pd->attributes, indent);
         print_attrs("OUTPUTS", pd->output_count, pd->outputs, indent);
 
