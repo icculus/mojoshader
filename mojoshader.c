@@ -527,7 +527,7 @@ static void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
 
 static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
 {
-    return ( ((uint32) regtype) | (((uint32) regnum) << 16) );
+    return ( ((uint32) regnum) | (((uint32) regtype) << 16) );
 } // reg_to_uint32
 
 // !!! FIXME: ditch this for a hash table.
