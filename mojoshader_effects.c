@@ -745,7 +745,6 @@ static void readlargeobjects(const uint32 numlargeobjects,
                  */
                 object->shader.is_preshader = 1;
                 const uint32 start = *((uint32 *) *ptr) + 4;
-                const uint32 end = 16; // FIXME: Why? -flibit
                 const char *array = readstring(*ptr, 0, m, d);
                 object->shader.param_count = 1;
                 object->shader.params = (uint32 *) m(sizeof (uint32), d);
@@ -753,7 +752,7 @@ static void readlargeobjects(const uint32 numlargeobjects,
                                                          effect->param_count,
                                                          array);
                 f((void *) array, d);
-                object->shader.preshader = MOJOSHADER_parsePreshader(*ptr + start, length - end,
+                object->shader.preshader = MOJOSHADER_parsePreshader(*ptr + start, length,
                                                                      m, f, d);
                 // !!! FIXME: check for errors.
                 object->shader.preshader_param_count = object->shader.preshader->symbol_count;
