@@ -562,6 +562,7 @@ static RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
         item->index = 0;
         item->writemask = 0;
         item->misc = 0;
+        item->written = 0;
         item->array = NULL;
         item->next = prev->next;
         prev->next = item;
@@ -9739,9 +9740,10 @@ static void check_call_loop_wrappage(Context *ctx, const int regnum)
 
     const int current_usage = (ctx->loops > 0) ? 1 : -1;
     RegisterList *reg = reglist_find(&ctx->used_registers, REG_TYPE_LABEL, regnum);
-    assert(reg != NULL);
 
-    if (reg->misc == 0)
+    if (reg == NULL)
+        fail(ctx, "Invalid label for CALL");
+    else if (reg->misc == 0)
         reg->misc = current_usage;
     else if (reg->misc != current_usage)
     {
@@ -10442,9 +10444,10 @@ static int parse_ctab_string(const uint8 *start, const uint32 bytes,
 
 static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
                                const uint32 bytes, const uint32 pos,
-                               MOJOSHADER_symbolTypeInfo *info)
+                               MOJOSHADER_symbolTypeInfo *info,
+                               const int depth)
 {
-    if ((pos + 16) >= bytes)
+    if ((bytes <= pos) || ((bytes - pos) < 16))
         return 0;  // corrupt CTAB.
 
     const uint16 *typeptr = (const uint16 *) (start + pos);
@@ -10454,26 +10457,45 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
     info->rows = (unsigned int) SWAP16(typeptr[2]);
     info->columns = (unsigned int) SWAP16(typeptr[3]);
     info->elements = (unsigned int) SWAP16(typeptr[4]);
-    info->member_count = (unsigned int) SWAP16(typeptr[5]);
 
-    if ((pos + 16 + (info->member_count * 8)) >= bytes)
+    if (info->parameter_class >= MOJOSHADER_SYMCLASS_TOTAL)
+    {
+        failf(ctx, "Unknown parameter class (0x%X)", info->parameter_class);
+        info->parameter_class = MOJOSHADER_SYMCLASS_SCALAR;
+    } // if
+
+    if (info->parameter_type >= MOJOSHADER_SYMTYPE_TOTAL)
+    {
+        failf(ctx, "Unknown parameter type (0x%X)", info->parameter_type);
+        info->parameter_type = MOJOSHADER_SYMTYPE_INT;
+    } // if
+
+    const unsigned int member_count = (unsigned int) SWAP16(typeptr[5]);
+    info->member_count = 0;
+    info->members = NULL;
+
+    if ((pos + 16 + (member_count * 8)) >= bytes)
         return 0;  // corrupt CTAB.
 
-    if (info->member_count == 0)
-        info->members = NULL;
-    else
+    if (member_count > 0)
     {
-        const size_t len = sizeof (MOJOSHADER_symbolStructMember) *
-                            info->member_count;
+        if (depth > 300)  // make sure we aren't in an infinite loop here.
+        {
+            fail(ctx, "Possible infinite loop in CTAB structure.");
+            return 0;
+        } // if
+
+        const size_t len = sizeof (MOJOSHADER_symbolStructMember) * member_count;
         info->members = (MOJOSHADER_symbolStructMember *) Malloc(ctx, len);
         if (info->members == NULL)
             return 1;  // we'll check ctx->out_of_memory later.
         memset(info->members, '\0', len);
+        info->member_count = member_count;
     } // else
 
     unsigned int i;
     const uint32 *member = (const uint32 *) (start + typeptr[6]);
-    for (i = 0; i < info->member_count; i++)
+    for (i = 0; i < member_count; i++)
     {
         MOJOSHADER_symbolStructMember *mbr = &info->members[i];
         const uint32 name = SWAP32(member[0]);
@@ -10486,7 +10508,7 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
         mbr->name = StrDup(ctx, (const char *) (start + name));
         if (mbr->name == NULL)
             return 1;  // we'll check ctx->out_of_memory later.
-        if (!parse_ctab_typeinfo(ctx, start, bytes, memberinfopos, &mbr->info))
+        if (!parse_ctab_typeinfo(ctx, start, bytes, memberinfopos, &mbr->info, depth + 1))
             return 0;
         if (ctx->out_of_memory)
             return 1;  // drop out now.
@@ -10509,7 +10531,12 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
     if (id != CTAB_ID)
         return;  // not the constant table.
 
-    assert(ctab->have_ctab == 0);  // !!! FIXME: can you have more than one?
+    if (ctab->have_ctab)  // !!! FIXME: can you have more than one?
+    {
+        fail(ctx, "Shader has multiple CTAB sections");
+        return;
+    } // if
+
     ctab->have_ctab = 1;
 
     const uint8 *start = (uint8 *) &tokens[2];
@@ -10529,19 +10556,26 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
 
     if (size != CTAB_SIZE)
         goto corrupt_ctab;
+    else if (constants > 1000000)  // sanity check.
+        goto corrupt_ctab;
 
     if (version != okay_version) goto corrupt_ctab;
     if (creator >= bytes) goto corrupt_ctab;
-    if ((constantinfo + (constants * CINFO_SIZE)) >= bytes) goto corrupt_ctab;
+    if (constantinfo >= bytes) goto corrupt_ctab;
+    if ((bytes - constantinfo) < (constants * CINFO_SIZE)) goto corrupt_ctab;
     if (target >= bytes) goto corrupt_ctab;
     if (!parse_ctab_string(start, bytes, target)) goto corrupt_ctab;
     // !!! FIXME: check that (start+target) points to "ps_3_0", etc.
 
+    ctab->symbols = NULL;
+    if (constants > 0)
+    {
+        ctab->symbols = (MOJOSHADER_symbol *) Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
+        if (ctab->symbols == NULL)
+            return;
+        memset(ctab->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
+    } // if
     ctab->symbol_count = constants;
-    ctab->symbols = (MOJOSHADER_symbol *) Malloc(ctx, sizeof (MOJOSHADER_symbol) * constants);
-    if (ctab->symbols == NULL)
-        return;
-    memset(ctab->symbols, '\0', sizeof (MOJOSHADER_symbol) * constants);
 
     uint32 i = 0;
     for (i = 0; i < constants; i++)
@@ -10594,7 +10628,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
         sym->register_set = (MOJOSHADER_symbolRegisterSet) regset;
         sym->register_index = (unsigned int) regidx;
         sym->register_count = (unsigned int) regcnt;
-        if (!parse_ctab_typeinfo(ctx, start, bytes, typeinf, &sym->info))
+        if (!parse_ctab_typeinfo(ctx, start, bytes, typeinf, &sym->info, 0))
             goto corrupt_ctab;  // sym->name will get free()'d later.
         else if (ctx->out_of_memory)
             return;  // just bail now.

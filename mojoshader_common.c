@@ -1,5 +1,6 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
+#include <math.h>
 
 // Convenience functions for allocators...
 #if !MOJOSHADER_FORCE_ALLOCATOR
@@ -1037,7 +1038,25 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
 
     int precision = 9;
 
-    if (arg)
+    if (isnan(arg))
+    {
+        if (left > 3)
+        {
+            snprintf(text, left, "NaN");
+            left -= 3;
+        } // if
+        text += 3;
+    } // if
+    else if (isinf(arg))
+    {
+        if (left > 3)
+        {
+            snprintf(text, left, "inf");
+            left -= 3;
+        } // if
+        text += 3;
+    } // else if
+    else if (arg)
     {
         /* This isn't especially accurate, but hey, it's easy. :) */
         unsigned long value;
