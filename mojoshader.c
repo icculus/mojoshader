@@ -11852,8 +11852,8 @@ static void process_definitions(Context *ctx)
             {
                 ctx->profile->array_emitter(ctx, var);
                 ctx->uniform_float4_count += var->count;
-                ctx->uniform_count++;
             } // else
+            ctx->uniform_count++;
         } // if
     } // for
 
