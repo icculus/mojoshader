@@ -2227,10 +2227,6 @@ static void emit_GLSL_start(Context *ctx, const char *profilestr)
         else
             output_line(ctx, "precision mediump float;");
         output_line(ctx, "precision mediump int;");
-        // Some drivers don't like it when the precision varies between shaders. -ade
-        output_line(ctx, "varying highp vec4 v_FrontColor;");
-        output_line(ctx, "varying highp vec4 v_FrontSecondaryColor;");
-        output_line(ctx, "varying highp vec4 v_TexCoord[10];"); // 10 according to SM3
         pop_output(ctx);
     } // else if
     #endif
@@ -2349,9 +2345,10 @@ static void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
                 if (!shader_version_atleast(ctx, 1, 4))
                 {
 #if SUPPORT_PROFILE_GLSLES
+                    // GLSL ES does not have gl_TexCoord
                     if (support_glsles(ctx))
-                        output_line(ctx, "vec4 %s = v_TexCoord[%d];",
-                                    varname, regnum);
+                        output_line(ctx, "vec4 %s = io_%i_%i;",
+                                    varname, MOJOSHADER_USAGE_TEXCOORD, regnum);
                     else
 #endif
                     output_line(ctx, "vec4 %s = gl_TexCoord[%d];",
@@ -2614,23 +2611,17 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     usage_str = "gl_PointSize";
                     break;
                 case MOJOSHADER_USAGE_COLOR:
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        break; // GLSL ES does not have gl_FrontColor
+#endif
                     index_str[0] = '\0';  // no explicit number.
                     if (index == 0)
                     {
-#if SUPPORT_PROFILE_GLSLES
-                        if (support_glsles(ctx))
-                            usage_str = "v_FrontColor";
-                        else
-#endif
                         usage_str = "gl_FrontColor";
                     } // if
                     else if (index == 1)
                     {
-#if SUPPORT_PROFILE_GLSLES
-                        if (support_glsles(ctx))
-                            usage_str = "v_FrontSecondaryColor";
-                        else
-#endif
                         usage_str = "gl_FrontSecondaryColor";
                     } // else if
                     break;
@@ -2638,12 +2629,11 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     usage_str = "gl_FogFragCoord";
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
-                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
 #if SUPPORT_PROFILE_GLSLES
                     if (support_glsles(ctx))
-                        usage_str = "v_TexCoord";
-                    else
+                        break; // GLSL ES does not have gl_TexCoord
 #endif
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) index);
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
@@ -2710,6 +2700,10 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         // !!! FIXME: can you actualy have a texture register with COLOR usage?
         else if ((regtype == REG_TYPE_TEXTURE) || (regtype == REG_TYPE_INPUT))
         {
+#if SUPPORT_PROFILE_GLSLES
+            if (!support_glsles(ctx))
+            {
+#endif
             if (usage == MOJOSHADER_USAGE_TEXCOORD)
             {
                 // ps_1_1 does a different hack for this attribute.
@@ -2717,11 +2711,6 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (shader_version_atleast(ctx, 1, 4))
                 {
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
-#if SUPPORT_PROFILE_GLSLES
-                    if (support_glsles(ctx))
-                        usage_str = "v_TexCoord";
-                    else
-#endif
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
@@ -2733,26 +2722,19 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 index_str[0] = '\0';  // no explicit number.
                 if (index == 0)
                 {
-#if SUPPORT_PROFILE_GLSLES
-                    if (support_glsles(ctx))
-                        usage_str = "v_FrontColor";
-                    else
-#endif
                     usage_str = "gl_Color";
                 } // if
                 else if (index == 1)
                 {
-#if SUPPORT_PROFILE_GLSLES
-                    if (support_glsles(ctx))
-                        usage_str = "v_FrontSecondaryColor";
-                    else
-#endif
                     usage_str = "gl_SecondaryColor";
                 } // else if
                 // FIXME: Does this even matter when we have varyings? -flibit
                 // else
                 //    fail(ctx, "unsupported color index");
             } // else if
+#if SUPPORT_PROFILE_GLSLES
+            } // if
+#endif
         } // else if
 
         else if (regtype == REG_TYPE_MISCTYPE)
