@@ -68,9 +68,10 @@ static inline void out_of_memory(Context *ctx)
     ctx->out_of_memory = 1;
 } // out_of_memory
 
+static char zeromalloc = 0;
 static inline void *Malloc(Context *ctx, const size_t len)
 {
-    void *retval = ctx->malloc((int) len, ctx->malloc_data);
+    void *retval = (len == 0) ? &zeromalloc : ctx->malloc((int) len, ctx->malloc_data);
     if (retval == NULL)
         out_of_memory(ctx);
     return retval;
@@ -78,7 +79,8 @@ static inline void *Malloc(Context *ctx, const size_t len)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    ctx->free(ptr, ctx->malloc_data);
+    if ((ptr != &zeromalloc) && (ptr != NULL))
+        ctx->free(ptr, ctx->malloc_data);
 } // Free
 
 static void *MallocBridge(int bytes, void *data)
