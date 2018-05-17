@@ -10,6 +10,7 @@ OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
 OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
 OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" ON)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
+OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" ON)
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
 OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
 OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
@@ -64,15 +65,17 @@ IF(MSVC)
 ENDIF(MSVC)
 
 # We build lemon, then use it to generate parser C code.
-ADD_EXECUTABLE(lemon "misc/lemon.c")
-GET_TARGET_PROPERTY(LEMON lemon LOCATION)
-ADD_CUSTOM_COMMAND(
-    OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
-    MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
-    DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
-    COMMAND "${LEMON}"
-    ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
-)
+IF(COMPILER_SUPPORT)
+    ADD_EXECUTABLE(lemon "misc/lemon.c")
+    GET_TARGET_PROPERTY(LEMON lemon LOCATION)
+    ADD_CUSTOM_COMMAND(
+        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
+        MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
+        DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
+        COMMAND "${LEMON}"
+        ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
+    )
+ENDIF(COMPILER_SUPPORT)
 
 IF(APPLE)
     find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
@@ -98,7 +101,7 @@ IF(NOT PROFILE_ARB1_NV)
 ENDIF(NOT PROFILE_ARB1_NV)
 IF(NOT PROFILE_METAL)
     ADD_DEFINITIONS(-DSUPPORT_PROFILE_METAL=0)
-ENDIF(NOT PROFILE_ARB1_NV)
+ENDIF(NOT PROFILE_METAL)
 
 IF(EFFECT_SUPPORT)
     IF(UNIX)
@@ -128,13 +131,21 @@ ENDIF(BUILD_SHARED)
 ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     mojoshader.c
     mojoshader_common.c
-    mojoshader_effects.c
-    mojoshader_compiler.c
-    mojoshader_preprocessor.c
-    mojoshader_lexer.c
-    mojoshader_assembler.c
     mojoshader_opengl.c
 )
+IF(EFFECT_SUPPORT)
+    TARGET_SOURCES(mojoshader PRIVATE
+        mojoshader_effects.c
+    )
+ENDIF(EFFECT_SUPPORT)
+IF(COMPILER_SUPPORT)
+    TARGET_SOURCES(mojoshader PRIVATE
+        mojoshader_compiler.c
+        mojoshader_preprocessor.c
+        mojoshader_lexer.c
+        mojoshader_assembler.c
+    )
+ENDIF(COMPILER_SUPPORT)
 IF(BUILD_SHARED)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 ENDIF(BUILD_SHARED)
@@ -169,31 +180,37 @@ IF(SDL2)
     TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
 ENDIF(SDL2)
 
-ADD_EXECUTABLE(finderrors utils/finderrors.c)
-TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
-IF(SDL2)
-    SET_SOURCE_FILES_PROPERTIES(
-        utils/finderrors.c
-        PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
-    )
-ENDIF(SDL2)
+IF(COMPILER_SUPPORT)
+    ADD_EXECUTABLE(finderrors utils/finderrors.c)
+    TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2} ${LIBM} ${CARBON_FRAMEWORK})
+    IF(SDL2)
+        SET_SOURCE_FILES_PROPERTIES(
+            utils/finderrors.c
+            PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
+        )
+    ENDIF(SDL2)
+ENDIF(COMPILER_SUPPORT)
 
 ADD_EXECUTABLE(testparse utils/testparse.c)
 TARGET_LINK_LIBRARIES(testparse mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
 TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM} ${CARBON_FRAMEWORK})
-ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
-TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM} ${CARBON_FRAMEWORK})
+IF(COMPILER_SUPPORT)
+    ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
+    TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM} ${CARBON_FRAMEWORK})
+ENDIF(COMPILER_SUPPORT)
 
 # Unit tests...
-ADD_CUSTOM_TARGET(
-    test
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/run_tests.pl"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-    DEPENDS mojoshader-compiler
-    COMMENT "Running unit tests..."
-    VERBATIM
-)
+IF(COMPILER_SUPPORT)
+    ADD_CUSTOM_TARGET(
+        test
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/run_tests.pl"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        DEPENDS mojoshader-compiler
+        COMMENT "Running unit tests..."
+        VERBATIM
+    )
+ENDIF(COMPILER_SUPPORT)
 
 # End of CMakeLists.txt ...
 
