@@ -665,7 +665,7 @@ static void readsmallobjects(const uint32 numsmallobjects,
                 object->shader.params[j] = par;
                 if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                 {
-                    object->shader.samplers[curSampler].sampler_name = object->shader.shader->symbols[j].name;
+                    object->shader.samplers[curSampler].sampler_name = effect->params[par].value.name;
                     object->shader.samplers[curSampler].sampler_register = object->shader.shader->symbols[j].register_index;
                     object->shader.samplers[curSampler].sampler_state_count = effect->params[par].value.value_count;
                     object->shader.samplers[curSampler].sampler_states = effect->params[par].value.valuesSS;
@@ -787,7 +787,7 @@ static void readlargeobjects(const uint32 numlargeobjects,
                     object->shader.params[j] = par;
                     if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                     {
-                        object->shader.samplers[curSampler].sampler_name = object->shader.shader->symbols[j].name;
+                        object->shader.samplers[curSampler].sampler_name = effect->params[par].value.name;
                         object->shader.samplers[curSampler].sampler_register = object->shader.shader->symbols[j].register_index;
                         object->shader.samplers[curSampler].sampler_state_count = effect->params[par].value.value_count;
                         object->shader.samplers[curSampler].sampler_states = effect->params[par].value.valuesSS;
@@ -1622,7 +1622,7 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
             for (j = 0; j < clone->objects[i].shader.shader->symbol_count; j++)
                 if (clone->objects[i].shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                 {
-                    clone->objects[i].shader.samplers[curSampler].sampler_name = clone->objects[i].shader.shader->symbols[j].name;
+                    clone->objects[i].shader.samplers[curSampler].sampler_name = clone->params[clone->objects[i].shader.params[j]].value.name;
                     clone->objects[i].shader.samplers[curSampler].sampler_register = clone->objects[i].shader.shader->symbols[j].register_index;
                     clone->objects[i].shader.samplers[curSampler].sampler_state_count = clone->params[clone->objects[i].shader.params[j]].value.value_count;
                     clone->objects[i].shader.samplers[curSampler].sampler_states = clone->params[clone->objects[i].shader.params[j]].value.valuesSS;
