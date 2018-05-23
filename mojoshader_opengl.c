@@ -347,10 +347,9 @@ static inline void out_of_memory(void)
     set_error("out of memory");
 } // out_of_memory
 
-static char zeromalloc = 0;
 static inline void *Malloc(const size_t len)
 {
-    void *retval = (len == 0) ? &zeromalloc : ctx->malloc_fn((int) len, ctx->malloc_data);
+    void *retval = ctx->malloc_fn((int) len, ctx->malloc_data);
     if (retval == NULL)
         out_of_memory();
     return retval;
@@ -358,7 +357,7 @@ static inline void *Malloc(const size_t len)
 
 static inline void Free(void *ptr)
 {
-    if ((ptr != &zeromalloc) && (ptr != NULL))
+    if (ptr != NULL)
         ctx->free_fn(ptr, ctx->malloc_data);
 } // Free
 

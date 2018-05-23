@@ -307,10 +307,9 @@ static inline void out_of_memory(Context *ctx)
     ctx->isfail = ctx->out_of_memory = 1;
 } // out_of_memory
 
-static char zeromalloc = 0;
 static inline void *Malloc(Context *ctx, const size_t len)
 {
-    void *retval = (len == 0) ? &zeromalloc : ctx->malloc((int) len, ctx->malloc_data);
+    void *retval = ctx->malloc((int) len, ctx->malloc_data);
     if (retval == NULL)
         out_of_memory(ctx);
     return retval;
@@ -326,8 +325,7 @@ static inline char *StrDup(Context *ctx, const char *str)
 
 static inline void Free(Context *ctx, void *ptr)
 {
-    if ((ptr != &zeromalloc) && (ptr != NULL))
-        ctx->free(ptr, ctx->malloc_data);
+    ctx->free(ptr, ctx->malloc_data);
 } // Free
 
 static void * MOJOSHADERCALL MallocBridge(int bytes, void *data)

@@ -4,8 +4,16 @@
 
 // Convenience functions for allocators...
 #if !MOJOSHADER_FORCE_ALLOCATOR
-void * MOJOSHADERCALL MOJOSHADER_internal_malloc(int bytes, void *d) { return malloc(bytes); }
-void MOJOSHADERCALL MOJOSHADER_internal_free(void *ptr, void *d) { free(ptr); }
+static char zeromalloc = 0;
+void * MOJOSHADERCALL MOJOSHADER_internal_malloc(int bytes, void *d)
+{
+    return (bytes == 0) ? &zeromalloc : malloc(bytes);
+} // MOJOSHADER_internal_malloc
+void MOJOSHADERCALL MOJOSHADER_internal_free(void *ptr, void *d)
+{
+    if ((ptr != &zeromalloc) && (ptr != NULL))
+        free(ptr);
+} // MOJOSHADER_internal_free
 #endif
 
 MOJOSHADER_error MOJOSHADER_out_of_mem_error = {
