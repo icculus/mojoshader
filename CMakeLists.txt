@@ -18,11 +18,11 @@ OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior"
 INCLUDE_DIRECTORIES(.)
 
 FIND_PROGRAM(HG hg DOC "Path to hg command line app: http://www.selenic.com/mercurial/")
-IF(NOT HG)
+IF(NOT HG OR MOJOSHADER_NO_VERSION_INCLUDE)
     MESSAGE(STATUS "Mercurial (hg) not found. You can go on, but version info will be wrong.")
     SET(MOJOSHADER_VERSION -1)
     SET(MOJOSHADER_CHANGESET "???")
-ELSE(NOT HG)
+ELSE(NOT HG OR MOJOSHADER_NO_VERSION_INCLUDE)
     MARK_AS_ADVANCED(HG)
     EXECUTE_PROCESS(
         COMMAND hg tip --template {rev}
@@ -40,7 +40,7 @@ ELSE(NOT HG)
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-ENDIF(NOT HG)
+ENDIF(NOT HG OR MOJOSHADER_NO_VERSION_INCLUDE)
 
 WRITE_FILE(
     "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_version.h"
