@@ -35,7 +35,7 @@ public static class MojoShader
 {
 	#region Native Library Name
 
-	private const string nativeLibName = "MojoShader.dll";
+	private const string nativeLibName = "mojoshader";
 
 	#endregion
 
