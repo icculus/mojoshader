@@ -3,7 +3,7 @@
 
 build: clean
 	mkdir bin
-	dmcs /unsafe -debug -out:bin/MojoShader-CS.dll -target:library MojoShader.cs
+	mcs /unsafe -debug -out:bin/MojoShader-CS.dll -target:library MojoShader.cs
 
 clean:
 	rm -rf bin
