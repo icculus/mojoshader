@@ -23,10 +23,6 @@
 #define DEBUG_TOKENIZER \
     (DEBUG_PREPROCESSOR || DEBUG_ASSEMBLER_PARSER || DEBUG_LEXER)
 
-#if (defined(__APPLE__) && defined(__MACH__))
-#define PLATFORM_MACOSX 1
-#endif
-
 // This is the highest shader version we currently support.
 
 #define MAX_SHADER_MAJOR 3
