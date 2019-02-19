@@ -17,6 +17,7 @@ OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior"
 
 INCLUDE_DIRECTORIES(.)
 
+# If Mercurial is installed and we are in a mercurial repository, include the rev# and changeset as version information.
 FIND_PROGRAM(HG hg DOC "Path to hg command line app: http://www.selenic.com/mercurial/")
 IF(NOT HG)
     MESSAGE(STATUS "Mercurial (hg) not found. You can go on, but version info will be wrong.")
@@ -24,22 +25,37 @@ IF(NOT HG)
     SET(MOJOSHADER_CHANGESET "???")
 ELSE(NOT HG)
     MARK_AS_ADVANCED(HG)
+
+    # See if we are in an hg repository.
     EXECUTE_PROCESS(
-        COMMAND hg tip --template {rev}
+        COMMAND hg root
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         RESULT_VARIABLE HGVERSION_RC
-        OUTPUT_VARIABLE MOJOSHADER_VERSION
         ERROR_QUIET
-        OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    EXECUTE_PROCESS(
-        COMMAND hg tip --template hg-{rev}:{node|short}
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        RESULT_VARIABLE HGVERSION_RC
-        OUTPUT_VARIABLE MOJOSHADER_CHANGESET
-        ERROR_QUIET
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    IF(NOT HGVERSION_RC EQUAL 0)
+        MESSAGE(STATUS "Mercurial (hg) repository not found. You can go on, but version info will be wrong.")
+        SET(MOJOSHADER_VERSION -1)
+        SET(MOJOSHADER_CHANGESET "???")
+    ELSE(NOT HGVERSION_RC EQUAL 0)
+        # Query the rev and changeset.
+        EXECUTE_PROCESS(
+            COMMAND hg tip --template {rev}
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            RESULT_VARIABLE HGVERSION_RC
+            OUTPUT_VARIABLE MOJOSHADER_VERSION
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        EXECUTE_PROCESS(
+            COMMAND hg tip --template hg-{rev}:{node|short}
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            RESULT_VARIABLE HGVERSION_RC
+            OUTPUT_VARIABLE MOJOSHADER_CHANGESET
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    ENDIF(NOT HGVERSION_RC EQUAL 0)
 ENDIF(NOT HG)
 
 WRITE_FILE(
