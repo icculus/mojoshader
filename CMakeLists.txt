@@ -94,7 +94,9 @@ IF(COMPILER_SUPPORT)
 ENDIF(COMPILER_SUPPORT)
 
 IF(APPLE)
-    find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
+    IF(NOT IOS)
+        find_library(CARBON_FRAMEWORK Carbon)  # Stupid Gestalt.
+    ENDIF(NOT IOS)
 ENDIF(APPLE)
 
 IF(NOT PROFILE_D3D)

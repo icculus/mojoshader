@@ -20,8 +20,11 @@
 #endif
 
 #if (defined(__APPLE__) && defined(__MACH__))
+#include "TargetConditionals.h"
+#if !TARGET_OS_IPHONE && !TARGET_OS_TV
 #define PLATFORM_MACOSX 1
-#endif
+#endif /* !TARGET_OS_IPHONE && !TARGET_OS_TV */
+#endif /* (defined(__APPLE__) && defined(__MACH__)) */
 
 #if PLATFORM_MACOSX
 #include <Carbon/Carbon.h>
