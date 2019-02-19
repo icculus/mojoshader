@@ -990,9 +990,19 @@ static const char *make_D3D_srcarg_string_in_buf(Context *ctx,
     const char *rel_regtype_str = "";
     if (arg->relative)
     {
-        rel_swizzle[0] = '.';
-        rel_swizzle[1] = swizzle_channels[arg->relative_component];
-        rel_swizzle[2] = '\0';
+        if (arg->relative_regtype == REG_TYPE_LOOP)
+        {
+            rel_swizzle[0] = '\0';
+            rel_swizzle[1] = '\0';
+            rel_swizzle[2] = '\0';
+        } // if
+        else
+        {
+            rel_swizzle[0] = '.';
+            rel_swizzle[1] = swizzle_channels[arg->relative_component];
+            rel_swizzle[2] = '\0';
+        } // else
+
         rel_lbracket = "[";
         rel_rbracket = "]";
         rel_regtype_str = get_D3D_register_string(ctx, arg->relative_regtype,
@@ -2108,12 +2118,22 @@ static const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
 
         rel_lbracket = "[";
 
-        rel_regtype_str = get_GLSL_varname_in_buf(ctx, arg->relative_regtype,
-                                                  arg->relative_regnum,
-                                                  (char *) alloca(64), 64);
-        rel_swizzle[0] = '.';
-        rel_swizzle[1] = swizzle_channels[arg->relative_component];
-        rel_swizzle[2] = '\0';
+        if (arg->relative_regtype == REG_TYPE_LOOP)
+        {
+            rel_regtype_str = "aL";
+            rel_swizzle[0] = '\0';
+            rel_swizzle[1] = '\0';
+            rel_swizzle[2] = '\0';
+        } // if
+        else
+        {
+            rel_regtype_str = get_GLSL_varname_in_buf(ctx, arg->relative_regtype,
+                                                      arg->relative_regnum,
+                                                      (char *) alloca(64), 64);
+            rel_swizzle[0] = '.';
+            rel_swizzle[1] = swizzle_channels[arg->relative_component];
+            rel_swizzle[2] = '\0';
+        } // else
         rel_rbracket = "]";
     } // if
 
@@ -8940,7 +8960,7 @@ static int parse_source_token(Context *ctx, SourceArgInfo *info)
             if (info->relative_regnum != 0)  // true for now.
                 fail(ctx, "invalid register for relative address");
 
-            if (!replicate_swizzle(relswiz))
+            if ( (info->relative_regtype != REG_TYPE_LOOP) && !replicate_swizzle(relswiz) )
                 fail(ctx, "relative address needs replicate swizzle");
 
             info->relative_component = (relswiz & 0x3);
