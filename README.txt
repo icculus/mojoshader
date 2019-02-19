@@ -9,4 +9,3 @@ To use this in your project:
   your preprocessor definitions.
 
 // end of README.txt ...
-
