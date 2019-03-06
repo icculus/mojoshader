@@ -2623,7 +2623,10 @@ static void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
-                    usage_str = "gl_Position";
+                    if (index == 0)
+                    {
+                        usage_str = "gl_Position";
+                    } // if
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     usage_str = "gl_PointSize";
