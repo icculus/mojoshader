@@ -2,7 +2,7 @@
 #define _INCLUDE_MOJOSHADER_INTERNAL_H_
 
 #ifndef __MOJOSHADER_INTERNAL__
-//#error Do not include this header from your applications.
+#error Do not include this header from your applications.
 #endif
 
 // Shader bytecode format is described at MSDN:
