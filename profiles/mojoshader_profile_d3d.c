@@ -1,3 +1,4 @@
+#define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile_d3d.h"
 
 #if SUPPORT_PROFILE_D3D

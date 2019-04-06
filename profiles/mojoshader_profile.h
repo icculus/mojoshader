@@ -1,7 +1,6 @@
 #ifndef MOJOSHADER_PROFILE_H
 #define MOJOSHADER_PROFILE_H
 
-#define __MOJOSHADER_INTERNAL__ 1
 #include "../mojoshader_internal.h"
 
 typedef struct ConstantsList

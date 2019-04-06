@@ -1,3 +1,4 @@
+#define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
 void * MOJOSHADERCALL MallocBridge(int bytes, void *data)

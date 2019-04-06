@@ -1,3 +1,4 @@
+#define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile_glsl.h"
 
 #if SUPPORT_PROFILE_GLSL

@@ -1,3 +1,4 @@
+#define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile_metal.h"
 
 // !!! FIXME: A lot of this is cut-and-paste from the GLSL version.

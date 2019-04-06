@@ -1,3 +1,4 @@
+#define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile_bytecode.h"
 
 #if SUPPORT_PROFILE_BYTECODE
