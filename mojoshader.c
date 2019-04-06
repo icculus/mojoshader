@@ -16,7 +16,6 @@
 // - A maximum of three temp registers can be used in a single instruction.
 
 #define __MOJOSHADER_INTERNAL__ 1
-#include "mojoshader_internal.h"
 #include "profiles/mojoshader_profile.h"
 
 // Deal with register lists...  !!! FIXME: I sort of hate this.
