@@ -19,7 +19,99 @@
 #include "mojoshader_internal.h"
 #include "profiles/mojoshader_profile.h"
 
-// Load in the profiles...
+// Deal with register lists...  !!! FIXME: I sort of hate this.
+
+void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
+{
+    while (item != NULL)
+    {
+        RegisterList *next = item->next;
+        f(item, d);
+        item = next;
+    } // while
+} // free_reglist
+
+static inline const RegisterList *reglist_exists(RegisterList *prev,
+                                                 const RegisterType regtype,
+                                                 const int regnum)
+{
+    return (reglist_find(prev, regtype, regnum));
+} // reglist_exists
+
+static inline int register_was_written(Context *ctx, const RegisterType rtype,
+                                       const int regnum)
+{
+    RegisterList *reg = reglist_find(&ctx->used_registers, rtype, regnum);
+    return (reg && reg->written);
+} // register_was_written
+
+static inline int get_defined_register(Context *ctx, const RegisterType rtype,
+                                       const int regnum)
+{
+    return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
+} // get_defined_register
+
+void add_attribute_register(Context *ctx, const RegisterType rtype,
+                                const int regnum, const MOJOSHADER_usage usage,
+                                const int index, const int writemask, int flags)
+{
+    RegisterList *item = reglist_insert(ctx, &ctx->attributes, rtype, regnum);
+    item->usage = usage;
+    item->index = index;
+    item->writemask = writemask;
+    item->misc = flags;
+
+    if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_POINTSIZE))
+        ctx->uses_pointsize = 1;  // note that we have to check this later.
+    else if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_FOG))
+        ctx->uses_fog = 1;  // note that we have to check this later.
+} // add_attribute_register
+
+static inline TextureType cvtMojoToD3DSamplerType(const MOJOSHADER_samplerType type)
+{
+    return (TextureType) (((int) type) + 2);
+} // cvtMojoToD3DSamplerType
+
+static inline MOJOSHADER_samplerType cvtD3DToMojoSamplerType(const TextureType type)
+{
+    return (MOJOSHADER_samplerType) (((int) type) - 2);
+} // cvtD3DToMojoSamplerType
+
+static inline void add_sampler(Context *ctx, const int regnum,
+                               TextureType ttype, const int texbem)
+{
+    const RegisterType rtype = REG_TYPE_SAMPLER;
+
+    // !!! FIXME: make sure it doesn't exist?
+    // !!! FIXME:  (ps_1_1 assume we can add it multiple times...)
+    RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
+
+    if (ctx->samplermap != NULL)
+    {
+        unsigned int i;
+        for (i = 0; i < ctx->samplermap_count; i++)
+        {
+            if (ctx->samplermap[i].index == regnum)
+            {
+                ttype = cvtMojoToD3DSamplerType(ctx->samplermap[i].type);
+                break;
+            } // if
+        } // for
+    } // if
+
+    item->index = (int) ttype;
+    item->misc |= texbem;
+} // add_sampler
+
+static inline void adjust_token_position(Context *ctx, const int incr)
+{
+    ctx->tokens += incr;
+    ctx->tokencount -= incr;
+    ctx->current_position += incr * sizeof (uint32);
+} // adjust_token_position
+
+
+// Load the profiles...
 
 #define AT_LEAST_ONE_PROFILE 0
 
@@ -89,99 +181,6 @@ static const struct { const char *from; const char *to; } profileMap[] =
      PROFILE_EMITTER_ARB1(op) \
      PROFILE_EMITTER_METAL(op) \
 }
-
-
-static inline TextureType cvtMojoToD3DSamplerType(const MOJOSHADER_samplerType type)
-{
-    return (TextureType) (((int) type) + 2);
-} // cvtMojoToD3DSamplerType
-
-static inline MOJOSHADER_samplerType cvtD3DToMojoSamplerType(const TextureType type)
-{
-    return (MOJOSHADER_samplerType) (((int) type) - 2);
-} // cvtD3DToMojoSamplerType
-
-
-// Deal with register lists...  !!! FIXME: I sort of hate this.
-
-void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
-{
-    while (item != NULL)
-    {
-        RegisterList *next = item->next;
-        f(item, d);
-        item = next;
-    } // while
-} // free_reglist
-
-static inline const RegisterList *reglist_exists(RegisterList *prev,
-                                                 const RegisterType regtype,
-                                                 const int regnum)
-{
-    return (reglist_find(prev, regtype, regnum));
-} // reglist_exists
-
-static inline int register_was_written(Context *ctx, const RegisterType rtype,
-                                       const int regnum)
-{
-    RegisterList *reg = reglist_find(&ctx->used_registers, rtype, regnum);
-    return (reg && reg->written);
-} // register_was_written
-
-static inline int get_defined_register(Context *ctx, const RegisterType rtype,
-                                       const int regnum)
-{
-    return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
-} // get_defined_register
-
-void add_attribute_register(Context *ctx, const RegisterType rtype,
-                                const int regnum, const MOJOSHADER_usage usage,
-                                const int index, const int writemask, int flags)
-{
-    RegisterList *item = reglist_insert(ctx, &ctx->attributes, rtype, regnum);
-    item->usage = usage;
-    item->index = index;
-    item->writemask = writemask;
-    item->misc = flags;
-
-    if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_POINTSIZE))
-        ctx->uses_pointsize = 1;  // note that we have to check this later.
-    else if ((rtype == REG_TYPE_OUTPUT) && (usage == MOJOSHADER_USAGE_FOG))
-        ctx->uses_fog = 1;  // note that we have to check this later.
-} // add_attribute_register
-
-static inline void add_sampler(Context *ctx, const int regnum,
-                               TextureType ttype, const int texbem)
-{
-    const RegisterType rtype = REG_TYPE_SAMPLER;
-
-    // !!! FIXME: make sure it doesn't exist?
-    // !!! FIXME:  (ps_1_1 assume we can add it multiple times...)
-    RegisterList *item = reglist_insert(ctx, &ctx->samplers, rtype, regnum);
-
-    if (ctx->samplermap != NULL)
-    {
-        unsigned int i;
-        for (i = 0; i < ctx->samplermap_count; i++)
-        {
-            if (ctx->samplermap[i].index == regnum)
-            {
-                ttype = cvtMojoToD3DSamplerType(ctx->samplermap[i].type);
-                break;
-            } // if
-        } // for
-    } // if
-
-    item->index = (int) ttype;
-    item->misc |= texbem;
-} // add_sampler
-
-static inline void adjust_token_position(Context *ctx, const int incr)
-{
-    ctx->tokens += incr;
-    ctx->tokencount -= incr;
-    ctx->current_position += incr * sizeof (uint32);
-} // adjust_token_position
 
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
