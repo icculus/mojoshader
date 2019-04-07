@@ -20,7 +20,7 @@
 
 // Deal with register lists...  !!! FIXME: I sort of hate this.
 
-void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
+static void free_reglist(MOJOSHADER_free f, void *d, RegisterList *item)
 {
     while (item != NULL)
     {
@@ -50,7 +50,7 @@ static inline int get_defined_register(Context *ctx, const RegisterType rtype,
     return (reglist_exists(&ctx->defined_registers, rtype, regnum) != NULL);
 } // get_defined_register
 
-void add_attribute_register(Context *ctx, const RegisterType rtype,
+static void add_attribute_register(Context *ctx, const RegisterType rtype,
                                 const int regnum, const MOJOSHADER_usage usage,
                                 const int index, const int writemask, int flags)
 {
@@ -109,54 +109,7 @@ static inline void adjust_token_position(Context *ctx, const int incr)
     ctx->current_position += incr * sizeof (uint32);
 } // adjust_token_position
 
-
-// Check for profile support...
-
-#define AT_LEAST_ONE_PROFILE 0
-
-#if !SUPPORT_PROFILE_BYTECODE
-#define PROFILE_EMITTER_BYTECODE(op)
-#else
-#undef AT_LEAST_ONE_PROFILE
-#define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_BYTECODE(op) emit_BYTECODE_##op,
-#endif
-
-#if !SUPPORT_PROFILE_D3D
-#define PROFILE_EMITTER_D3D(op)
-#else
-#undef AT_LEAST_ONE_PROFILE
-#define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
-#endif
-
-#if !SUPPORT_PROFILE_GLSL
-#define PROFILE_EMITTER_GLSL(op)
-#else
-#undef AT_LEAST_ONE_PROFILE
-#define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
-#endif
-
-#if !SUPPORT_PROFILE_METAL
-#define PROFILE_EMITTER_METAL(op)
-#else
-#undef AT_LEAST_ONE_PROFILE
-#define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_METAL(op) emit_METAL_##op,
-#endif
-
-#if !SUPPORT_PROFILE_ARB1
-#define PROFILE_EMITTER_ARB1(op)
-#else
-#undef AT_LEAST_ONE_PROFILE
-#define AT_LEAST_ONE_PROFILE 1
-#define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
-#endif
-
-#if !AT_LEAST_ONE_PROFILE
-#error No profiles are supported. Fix your build.
-#endif
+// Generate emitter declarations for each profile with this macro...
 
 #define PREDECLARE_PROFILE(prof) \
     void emit_##prof##_start(Context *ctx, const char *profilestr); \
@@ -166,14 +119,14 @@ static inline void adjust_token_position(Context *ctx, const int incr)
     void emit_##prof##_global(Context *ctx, RegisterType regtype, int regnum);\
     void emit_##prof##_array(Context *ctx, VariableList *var); \
     void emit_##prof##_const_array(Context *ctx, const ConstantsList *clist, \
-                                  int base, int size); \
+                                   int base, int size); \
     void emit_##prof##_uniform(Context *ctx, RegisterType regtype, int regnum,\
-                              const VariableList *var); \
+                               const VariableList *var); \
     void emit_##prof##_sampler(Context *ctx, int stage, TextureType ttype, \
-                              int tb); \
+                               int tb); \
     void emit_##prof##_attribute(Context *ctx, RegisterType regtype, \
-                                int regnum, MOJOSHADER_usage usage, \
-                                int index, int wmask, int flags); \
+                                 int regnum, MOJOSHADER_usage usage, \
+                                 int index, int wmask, int flags); \
     void emit_##prof##_NOP(Context *ctx); \
     void emit_##prof##_MOV(Context *ctx); \
     void emit_##prof##_ADD(Context *ctx); \
@@ -257,15 +210,62 @@ static inline void adjust_token_position(Context *ctx, const int incr)
     void emit_##prof##_RESERVED(Context *ctx); \
     void emit_##prof##_RET(Context *ctx); \
     const char *get_##prof##_varname(Context *ctx, RegisterType rt, \
-                                    int regnum); \
+                                     int regnum); \
     const char *get_##prof##_const_array_varname(Context *ctx, \
-                                                int base, int size);
+                                                 int base, int size);
 
+// Check for profile support...
+
+#define AT_LEAST_ONE_PROFILE 0
+
+#if !SUPPORT_PROFILE_BYTECODE
+#define PROFILE_EMITTER_BYTECODE(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_BYTECODE(op) emit_BYTECODE_##op,
 PREDECLARE_PROFILE(BYTECODE)
+#endif
+
+#if !SUPPORT_PROFILE_D3D
+#define PROFILE_EMITTER_D3D(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
 PREDECLARE_PROFILE(D3D)
+#endif
+
+#if !SUPPORT_PROFILE_GLSL
+#define PROFILE_EMITTER_GLSL(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
 PREDECLARE_PROFILE(GLSL)
+#endif
+
+#if !SUPPORT_PROFILE_METAL
+#define PROFILE_EMITTER_METAL(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_METAL(op) emit_METAL_##op,
 PREDECLARE_PROFILE(METAL)
+#endif
+
+#if !SUPPORT_PROFILE_ARB1
+#define PROFILE_EMITTER_ARB1(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
 PREDECLARE_PROFILE(ARB1)
+#endif
+
+#if !AT_LEAST_ONE_PROFILE
+#error No profiles are supported. Fix your build.
+#endif
 
 #define DEFINE_PROFILE(prof) { \
     MOJOSHADER_PROFILE_##prof, \
@@ -314,7 +314,6 @@ static const struct { const char *from; const char *to; } profileMap[] =
     { MOJOSHADER_PROFILE_NV4, MOJOSHADER_PROFILE_ARB1 },
 };
 
-
 // The PROFILE_EMITTER_* items MUST be in the same order as profiles[]!
 #define PROFILE_EMITTERS(op) { \
      PROFILE_EMITTER_D3D(op) \
@@ -323,7 +322,6 @@ static const struct { const char *from; const char *to; } profileMap[] =
      PROFILE_EMITTER_ARB1(op) \
      PROFILE_EMITTER_METAL(op) \
 }
-
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
 {

@@ -196,7 +196,6 @@ typedef struct Context
 #endif
 } Context;
 
-
 // Use these macros so we can remove all bits of these profiles from the build.
 #if SUPPORT_PROFILE_ARB1_NV
 #define support_nv2(ctx) ((ctx)->profile_supports_nv2)
@@ -219,7 +218,6 @@ typedef struct Context
 #else
 #define support_glsles(ctx) (0)
 #endif
-
 
 // Profile entry points...
 
@@ -291,205 +289,63 @@ typedef struct Profile
     const_array_varname_function get_const_array_varname;
 } Profile;
 
-
 // Common utilities...
 
+void out_of_memory(Context *ctx);
+void *Malloc(Context *ctx, const size_t len);
+char *StrDup(Context *ctx, const char *str);
+void Free(Context *ctx, void *ptr);
 void * MOJOSHADERCALL MallocBridge(int bytes, void *data);
 void MOJOSHADERCALL FreeBridge(void *ptr, void *data);
 
-static inline void out_of_memory(Context *ctx)
-{
-    ctx->isfail = ctx->out_of_memory = 1;
-} // out_of_memory
-
-static inline void *Malloc(Context *ctx, const size_t len)
-{
-    void *retval = ctx->malloc((int) len, ctx->malloc_data);
-    if (retval == NULL)
-        out_of_memory(ctx);
-    return retval;
-} // Malloc
-
-static inline char *StrDup(Context *ctx, const char *str)
-{
-    char *retval = (char *) Malloc(ctx, strlen(str) + 1);
-    if (retval != NULL)
-        strcpy(retval, str);
-    return retval;
-} // StrDup
-
-static inline void Free(Context *ctx, void *ptr)
-{
-    ctx->free(ptr, ctx->malloc_data);
-} // Free
-
 int set_output(Context *ctx, Buffer **section);
 void push_output(Context *ctx, Buffer **section);
+void pop_output(Context *ctx);
 
-static inline void pop_output(Context *ctx)
-{
-    assert(ctx->output_stack_len > 0);
-    ctx->output_stack_len--;
-    ctx->output = ctx->output_stack[ctx->output_stack_len];
-    ctx->indent = ctx->indent_stack[ctx->output_stack_len];
-} // pop_output
+uint32 ver_ui32(const uint8 major, const uint8 minor);
+int shader_version_supported(const uint8 maj, const uint8 min);
+int shader_version_atleast(const Context *ctx, const uint8 maj,
+                           const uint8 min);
+int shader_version_exactly(const Context *ctx, const uint8 maj,
+                           const uint8 min);
+int shader_is_pixel(const Context *ctx);
+int shader_is_vertex(const Context *ctx);
 
-// Shader model version magic...
-
-static inline uint32 ver_ui32(const uint8 major, const uint8 minor)
-{
-    return ( (((uint32) major) << 16) | (((minor) == 0xFF) ? 1 : (minor)) );
-} // version_ui32
-
-static inline int shader_version_supported(const uint8 maj, const uint8 min)
-{
-    return (ver_ui32(maj,min) <= ver_ui32(MAX_SHADER_MAJOR, MAX_SHADER_MINOR));
-} // shader_version_supported
-
-static inline int shader_version_atleast(const Context *ctx, const uint8 maj,
-                                         const uint8 min)
-{
-    return (ver_ui32(ctx->major_ver, ctx->minor_ver) >= ver_ui32(maj, min));
-} // shader_version_atleast
-
-static inline int shader_version_exactly(const Context *ctx, const uint8 maj,
-                                         const uint8 min)
-{
-    return ((ctx->major_ver == maj) && (ctx->minor_ver == min));
-} // shader_version_exactly
-
-static inline int shader_is_pixel(const Context *ctx)
-{
-    return (ctx->shader_type == MOJOSHADER_TYPE_PIXEL);
-} // shader_is_pixel
-
-static inline int shader_is_vertex(const Context *ctx)
-{
-    return (ctx->shader_type == MOJOSHADER_TYPE_VERTEX);
-} // shader_is_vertex
-
-
-static inline int isfail(const Context *ctx)
-{
-    return ctx->isfail;
-} // isfail
-
+int isfail(const Context *ctx);
 void failf(Context *ctx, const char *fmt, ...);
-
-static inline void fail(Context *ctx, const char *reason)
-{
-    failf(ctx, "%s", reason);
-} // fail
+void fail(Context *ctx, const char *reason);
 
 void output_line(Context *ctx, const char *fmt, ...);
-
-static inline void output_blank_line(Context *ctx)
-{
-    assert(ctx->output != NULL);
-    if (!isfail(ctx))
-        buffer_append(ctx->output, ctx->endline, ctx->endline_len);
-} // output_blank_line
+void output_blank_line(Context *ctx);
 
 void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
-                     int leavedecimal);
+              int leavedecimal);
 
 RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
-                                    const RegisterType regtype,
-                                    const int regnum);
-
+                             const RegisterType regtype,
+                             const int regnum);
 RegisterList *reglist_find(const RegisterList *prev,
-                                const RegisterType rtype, const int regnum);
+                           const RegisterType rtype,
+                           const int regnum);
+RegisterList *set_used_register(Context *ctx,
+                                const RegisterType regtype,
+                                const int regnum,
+                                const int written);
+void set_defined_register(Context *ctx, const RegisterType rtype,
+                          const int regnum);
 
-static inline RegisterList *set_used_register(Context *ctx,
-                                              const RegisterType regtype,
-                                              const int regnum,
-                                              const int written)
-{
-    RegisterList *reg = NULL;
-    if ((regtype == REG_TYPE_COLOROUT) && (regnum > 0))
-        ctx->have_multi_color_outputs = 1;
-
-    reg = reglist_insert(ctx, &ctx->used_registers, regtype, regnum);
-    if (reg && written)
-        reg->written = 1;
-    return reg;
-} // set_used_register
-
-static inline void set_defined_register(Context *ctx, const RegisterType rtype,
-                                        const int regnum)
-{
-    reglist_insert(ctx, &ctx->defined_registers, rtype, regnum);
-} // set_defined_register
-
-static inline int writemask_xyzw(const int writemask)
-{
-    return (writemask == 0xF);  // 0xF == 1111. No explicit mask (full!).
-} // writemask_xyzw
-
-
-static inline int writemask_xyz(const int writemask)
-{
-    return (writemask == 0x7);  // 0x7 == 0111. (that is: xyz)
-} // writemask_xyz
-
-
-static inline int writemask_xy(const int writemask)
-{
-    return (writemask == 0x3);  // 0x3 == 0011. (that is: xy)
-} // writemask_xy
-
-
-static inline int writemask_x(const int writemask)
-{
-    return (writemask == 0x1);  // 0x1 == 0001. (that is: x)
-} // writemask_x
-
-
-static inline int writemask_y(const int writemask)
-{
-    return (writemask == 0x2);  // 0x1 == 0010. (that is: y)
-} // writemask_y
-
-
-static inline int replicate_swizzle(const int swizzle)
-{
-    return ( (((swizzle >> 0) & 0x3) == ((swizzle >> 2) & 0x3)) &&
-             (((swizzle >> 2) & 0x3) == ((swizzle >> 4) & 0x3)) &&
-             (((swizzle >> 4) & 0x3) == ((swizzle >> 6) & 0x3)) );
-} // replicate_swizzle
-
-
-static inline int no_swizzle(const int swizzle)
-{
-    return (swizzle == 0xE4);  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
-} // no_swizzle
-
-
-static inline int vecsize_from_writemask(const int m)
-{
-    return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
-} // vecsize_from_writemask
-
-
-static inline void set_dstarg_writemask(DestArgInfo *dst, const int mask)
-{
-    dst->writemask = mask;
-    dst->writemask0 = ((mask >> 0) & 1);
-    dst->writemask1 = ((mask >> 1) & 1);
-    dst->writemask2 = ((mask >> 2) & 1);
-    dst->writemask3 = ((mask >> 3) & 1);
-} // set_dstarg_writemask
-
-int allocate_scratch_register(Context *ctx);
-int allocate_branch_label(Context *ctx);
+int writemask_xyzw(const int writemask);
+int writemask_xyz(const int writemask);
+int writemask_xy(const int writemask);
+int writemask_x(const int writemask);
+int writemask_y(const int writemask);
+int replicate_swizzle(const int swizzle);
+int no_swizzle(const int swizzle);
+int vecsize_from_writemask(const int m);
+void set_dstarg_writemask(DestArgInfo *dst, const int mask);
 
 int isscalar(Context *ctx, const MOJOSHADER_shaderType shader_type,
-                    const RegisterType rtype, const int rnum);
-
-const char *get_D3D_register_string(Context *ctx,
-                                           RegisterType regtype,
-                                           int regnum, char *regnum_str,
-                                           size_t regnum_size);
+             const RegisterType rtype, const int rnum);
 
 static const char swizzle_channels[] = { 'x', 'y', 'z', 'w' };
 
@@ -499,10 +355,17 @@ static const char *usagestrs[] = {
     "_color", "_fog", "_depth", "_sample"
 };
 
-// d3d-specific parts that are used by arb1
+const char *get_D3D_register_string(Context *ctx,
+                                    RegisterType regtype,
+                                    int regnum, char *regnum_str,
+                                    size_t regnum_size);
+
+// !!! FIXME: These should stay in the mojoshader_profile_d3d file
+// !!! FIXME: but ARB1 relies on them, so we have to move them here.
+// !!! FIXME: If/when we kill off ARB1, we can move these back.
 const char *get_D3D_varname_in_buf(Context *ctx, RegisterType rt,
-                                           int regnum, char *buf,
-                                           const size_t len);
+                                   int regnum, char *buf,
+                                   const size_t len);
 const char *get_D3D_varname(Context *ctx, RegisterType rt, int regnum);
 
 #endif

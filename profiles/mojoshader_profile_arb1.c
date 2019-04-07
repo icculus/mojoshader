@@ -20,6 +20,19 @@ static inline const char *get_ARB1_register_string(Context *ctx,
     return get_D3D_register_string(ctx,regtype,regnum,regnum_str,regnum_size);
 } // get_ARB1_register_string
 
+int allocate_scratch_register(Context *ctx)
+{
+    const int retval = ctx->scratch_registers++;
+    if (retval >= ctx->max_scratch_registers)
+        ctx->max_scratch_registers = retval + 1;
+    return retval;
+} // allocate_scratch_register
+
+int allocate_branch_label(Context *ctx)
+{
+    return ctx->assigned_branch_labels++;
+} // allocate_branch_label
+
 const char *allocate_ARB1_scratch_reg_name(Context *ctx, char *buf,
                                                   const size_t buflen)
 {
