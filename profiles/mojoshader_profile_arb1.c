@@ -8,7 +8,7 @@
  */
 
 #define __MOJOSHADER_INTERNAL__ 1
-#include "mojoshader_profile_arb1.h"
+#include "mojoshader_profile.h"
 
 #if SUPPORT_PROFILE_ARB1
 

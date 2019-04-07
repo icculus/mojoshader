@@ -8,7 +8,7 @@
  */
 
 #define __MOJOSHADER_INTERNAL__ 1
-#include "mojoshader_profile_metal.h"
+#include "mojoshader_profile.h"
 
 // !!! FIXME: A lot of this is cut-and-paste from the GLSL version.
 #if SUPPORT_PROFILE_METAL

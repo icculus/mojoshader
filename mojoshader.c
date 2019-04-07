@@ -110,19 +110,162 @@ static inline void adjust_token_position(Context *ctx, const int incr)
 } // adjust_token_position
 
 
-// Load the profiles...
+// Check for profile support...
 
 #define AT_LEAST_ONE_PROFILE 0
 
-#include "profiles/mojoshader_profile_bytecode.h"
-#include "profiles/mojoshader_profile_d3d.h"
-#include "profiles/mojoshader_profile_glsl.h"
-#include "profiles/mojoshader_profile_metal.h"
-#include "profiles/mojoshader_profile_arb1.h"
+#if !SUPPORT_PROFILE_BYTECODE
+#define PROFILE_EMITTER_BYTECODE(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_BYTECODE(op) emit_BYTECODE_##op,
+#endif
+
+#if !SUPPORT_PROFILE_D3D
+#define PROFILE_EMITTER_D3D(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_D3D(op) emit_D3D_##op,
+#endif
+
+#if !SUPPORT_PROFILE_GLSL
+#define PROFILE_EMITTER_GLSL(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_GLSL(op) emit_GLSL_##op,
+#endif
+
+#if !SUPPORT_PROFILE_METAL
+#define PROFILE_EMITTER_METAL(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_METAL(op) emit_METAL_##op,
+#endif
+
+#if !SUPPORT_PROFILE_ARB1
+#define PROFILE_EMITTER_ARB1(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_ARB1(op) emit_ARB1_##op,
+#endif
 
 #if !AT_LEAST_ONE_PROFILE
 #error No profiles are supported. Fix your build.
 #endif
+
+#define PREDECLARE_PROFILE(prof) \
+    void emit_##prof##_start(Context *ctx, const char *profilestr); \
+    void emit_##prof##_end(Context *ctx); \
+    void emit_##prof##_phase(Context *ctx); \
+    void emit_##prof##_finalize(Context *ctx); \
+    void emit_##prof##_global(Context *ctx, RegisterType regtype, int regnum);\
+    void emit_##prof##_array(Context *ctx, VariableList *var); \
+    void emit_##prof##_const_array(Context *ctx, const ConstantsList *clist, \
+                                  int base, int size); \
+    void emit_##prof##_uniform(Context *ctx, RegisterType regtype, int regnum,\
+                              const VariableList *var); \
+    void emit_##prof##_sampler(Context *ctx, int stage, TextureType ttype, \
+                              int tb); \
+    void emit_##prof##_attribute(Context *ctx, RegisterType regtype, \
+                                int regnum, MOJOSHADER_usage usage, \
+                                int index, int wmask, int flags); \
+    void emit_##prof##_NOP(Context *ctx); \
+    void emit_##prof##_MOV(Context *ctx); \
+    void emit_##prof##_ADD(Context *ctx); \
+    void emit_##prof##_SUB(Context *ctx); \
+    void emit_##prof##_MAD(Context *ctx); \
+    void emit_##prof##_MUL(Context *ctx); \
+    void emit_##prof##_RCP(Context *ctx); \
+    void emit_##prof##_RSQ(Context *ctx); \
+    void emit_##prof##_DP3(Context *ctx); \
+    void emit_##prof##_DP4(Context *ctx); \
+    void emit_##prof##_MIN(Context *ctx); \
+    void emit_##prof##_MAX(Context *ctx); \
+    void emit_##prof##_SLT(Context *ctx); \
+    void emit_##prof##_SGE(Context *ctx); \
+    void emit_##prof##_EXP(Context *ctx); \
+    void emit_##prof##_LOG(Context *ctx); \
+    void emit_##prof##_LIT(Context *ctx); \
+    void emit_##prof##_DST(Context *ctx); \
+    void emit_##prof##_LRP(Context *ctx); \
+    void emit_##prof##_FRC(Context *ctx); \
+    void emit_##prof##_M4X4(Context *ctx); \
+    void emit_##prof##_M4X3(Context *ctx); \
+    void emit_##prof##_M3X4(Context *ctx); \
+    void emit_##prof##_M3X3(Context *ctx); \
+    void emit_##prof##_M3X2(Context *ctx); \
+    void emit_##prof##_CALL(Context *ctx); \
+    void emit_##prof##_CALLNZ(Context *ctx); \
+    void emit_##prof##_LOOP(Context *ctx); \
+    void emit_##prof##_ENDLOOP(Context *ctx); \
+    void emit_##prof##_LABEL(Context *ctx); \
+    void emit_##prof##_DCL(Context *ctx); \
+    void emit_##prof##_POW(Context *ctx); \
+    void emit_##prof##_CRS(Context *ctx); \
+    void emit_##prof##_SGN(Context *ctx); \
+    void emit_##prof##_ABS(Context *ctx); \
+    void emit_##prof##_NRM(Context *ctx); \
+    void emit_##prof##_SINCOS(Context *ctx); \
+    void emit_##prof##_REP(Context *ctx); \
+    void emit_##prof##_ENDREP(Context *ctx); \
+    void emit_##prof##_IF(Context *ctx); \
+    void emit_##prof##_IFC(Context *ctx); \
+    void emit_##prof##_ELSE(Context *ctx); \
+    void emit_##prof##_ENDIF(Context *ctx); \
+    void emit_##prof##_BREAK(Context *ctx); \
+    void emit_##prof##_BREAKC(Context *ctx); \
+    void emit_##prof##_MOVA(Context *ctx); \
+    void emit_##prof##_DEFB(Context *ctx); \
+    void emit_##prof##_DEFI(Context *ctx); \
+    void emit_##prof##_TEXCRD(Context *ctx); \
+    void emit_##prof##_TEXKILL(Context *ctx); \
+    void emit_##prof##_TEXLD(Context *ctx); \
+    void emit_##prof##_TEXBEM(Context *ctx); \
+    void emit_##prof##_TEXBEML(Context *ctx); \
+    void emit_##prof##_TEXREG2AR(Context *ctx); \
+    void emit_##prof##_TEXREG2GB(Context *ctx); \
+    void emit_##prof##_TEXM3X2PAD(Context *ctx); \
+    void emit_##prof##_TEXM3X2TEX(Context *ctx); \
+    void emit_##prof##_TEXM3X3PAD(Context *ctx); \
+    void emit_##prof##_TEXM3X3TEX(Context *ctx); \
+    void emit_##prof##_TEXM3X3SPEC(Context *ctx); \
+    void emit_##prof##_TEXM3X3VSPEC(Context *ctx); \
+    void emit_##prof##_EXPP(Context *ctx); \
+    void emit_##prof##_LOGP(Context *ctx); \
+    void emit_##prof##_CND(Context *ctx); \
+    void emit_##prof##_DEF(Context *ctx); \
+    void emit_##prof##_TEXREG2RGB(Context *ctx); \
+    void emit_##prof##_TEXDP3TEX(Context *ctx); \
+    void emit_##prof##_TEXM3X2DEPTH(Context *ctx); \
+    void emit_##prof##_TEXDP3(Context *ctx); \
+    void emit_##prof##_TEXM3X3(Context *ctx); \
+    void emit_##prof##_TEXDEPTH(Context *ctx); \
+    void emit_##prof##_CMP(Context *ctx); \
+    void emit_##prof##_BEM(Context *ctx); \
+    void emit_##prof##_DP2ADD(Context *ctx); \
+    void emit_##prof##_DSX(Context *ctx); \
+    void emit_##prof##_DSY(Context *ctx); \
+    void emit_##prof##_TEXLDD(Context *ctx); \
+    void emit_##prof##_SETP(Context *ctx); \
+    void emit_##prof##_TEXLDL(Context *ctx); \
+    void emit_##prof##_BREAKP(Context *ctx); \
+    void emit_##prof##_RESERVED(Context *ctx); \
+    void emit_##prof##_RET(Context *ctx); \
+    const char *get_##prof##_varname(Context *ctx, RegisterType rt, \
+                                    int regnum); \
+    const char *get_##prof##_const_array_varname(Context *ctx, \
+                                                int base, int size);
+
+PREDECLARE_PROFILE(BYTECODE)
+PREDECLARE_PROFILE(D3D)
+PREDECLARE_PROFILE(GLSL)
+PREDECLARE_PROFILE(METAL)
+PREDECLARE_PROFILE(ARB1)
 
 #define DEFINE_PROFILE(prof) { \
     MOJOSHADER_PROFILE_##prof, \
