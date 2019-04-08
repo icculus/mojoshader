@@ -211,7 +211,7 @@ void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
 
 // Deal with register lists...
 
-uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
+static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
 {
     return ( ((uint32) regnum) | (((uint32) regtype) << 16) );
 } // reg_to_uint32
