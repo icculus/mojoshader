@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#pragma GCC visibility push(hidden)
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
@@ -2301,3 +2303,5 @@ void emit_GLSL_RESERVED(Context *ctx)
 } // emit_GLSL_RESERVED
 
 #endif  // SUPPORT_PROFILE_GLSL
+
+#pragma GCC visibility pop

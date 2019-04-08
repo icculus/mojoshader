@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#pragma GCC visibility push(hidden)
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
@@ -2246,3 +2248,5 @@ void emit_ARB1_TEXLD(Context *ctx)
 #undef EMIT_ARB1_OPCODE_UNIMPLEMENTED_FUNC
 
 #endif  // SUPPORT_PROFILE_ARB1
+
+#pragma GCC visibility pop

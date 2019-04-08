@@ -349,12 +349,6 @@ int isscalar(Context *ctx, const MOJOSHADER_shaderType shader_type,
 
 static const char swizzle_channels[] = { 'x', 'y', 'z', 'w' };
 
-static const char *usagestrs[] = {
-    "_position", "_blendweight", "_blendindices", "_normal", "_psize",
-    "_texcoord", "_tangent", "_binormal", "_tessfactor", "_positiont",
-    "_color", "_fog", "_depth", "_sample"
-};
-
 const char *get_D3D_register_string(Context *ctx,
                                     RegisterType regtype,
                                     int regnum, char *regnum_str,

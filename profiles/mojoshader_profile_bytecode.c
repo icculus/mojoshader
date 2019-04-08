@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#pragma GCC visibility push(hidden)
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
@@ -146,3 +148,5 @@ EMIT_BYTECODE_OPCODE_FUNC(TEXLD)
 #undef EMIT_BYTECODE_OPCODE_FUNC
 
 #endif  // SUPPORT_PROFILE_BYTECODE
+
+#pragma GCC visibility pop

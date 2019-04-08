@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#pragma GCC visibility push(hidden)
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
@@ -587,6 +589,12 @@ void emit_D3D_DEFB(Context *ctx)
 } // emit_D3D_DEFB
 
 
+static const char *usagestrs[] = {
+    "_position", "_blendweight", "_blendindices", "_normal", "_psize",
+    "_texcoord", "_tangent", "_binormal", "_tessfactor", "_positiont",
+    "_color", "_fog", "_depth", "_sample"
+};
+
 void emit_D3D_DCL(Context *ctx)
 {
     char dst[64];
@@ -674,3 +682,5 @@ void emit_D3D_SINCOS(Context *ctx)
 } // emit_D3D_SINCOS
 
 #endif  // SUPPORT_PROFILE_D3D
+
+#pragma GCC visibility pop

@@ -7,6 +7,8 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#pragma GCC visibility push(hidden)
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
 
@@ -209,7 +211,7 @@ void floatstr(Context *ctx, char *buf, size_t bufsize, float f,
 
 // Deal with register lists...
 
-static inline uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
+uint32 reg_to_ui32(const RegisterType regtype, const int regnum)
 {
     return ( ((uint32) regnum) | (((uint32) regtype) << 16) );
 } // reg_to_uint32
@@ -498,3 +500,5 @@ const char *get_D3D_varname(Context *ctx, RegisterType rt, int regnum)
     get_D3D_varname_in_buf(ctx, rt, regnum, buf, sizeof (buf));
     return StrDup(ctx, buf);
 } // get_D3D_varname
+
+#pragma GCC visibility pop
