@@ -576,7 +576,7 @@ int errorlist_add_va(ErrorList *list, const char *_fname,
     // In this case we make another copy of va and fetch the length only
     // with another call to _vscprintf
 
-#ifdef _MSC_VER
+#ifdef _WIN32
     if (len == -1)
     {
         va_copy(ap, va);
