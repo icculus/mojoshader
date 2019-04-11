@@ -13,8 +13,7 @@
 #include <stdarg.h>
 #include <assert.h>
 
-// !!! FIXME: most of these _MSC_VER should probably be _WINDOWS?
-#ifdef _MSC_VER
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>  // GL headers need this for WINGDIAPI definition.
 #endif
