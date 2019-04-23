@@ -1916,7 +1916,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         if (!lookup_uniforms(retval, vshader, &bound))
             goto link_program_fail;
         lookup_samplers(retval, vshader, &bound);
-        lookup_outputs(retval, pshader);
+        lookup_outputs(retval, vshader);
         vshader->refcount++;
     } // if
 
