@@ -13,8 +13,7 @@
 #include <stdarg.h>
 #include <assert.h>
 
-// !!! FIXME: most of these _MSC_VER should probably be _WINDOWS?
-#ifdef _MSC_VER
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>  // GL headers need this for WINGDIAPI definition.
 #endif
@@ -280,6 +279,7 @@ struct MOJOSHADER_glContext
     void (*profilePushSampler)(GLint loc, GLuint sampler);
     int (*profileMustPushConstantArrays)(void);
     int (*profileMustPushSamplers)(void);
+    void (*profileToggleProgramPointSize)(int enable);
 };
 
 
@@ -920,6 +920,20 @@ static void impl_ARB1_PushSampler(GLint loc, GLuint sampler)
 
 #endif  // SUPPORT_PROFILE_ARB1
 
+#if SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_ARB1
+
+static void impl_REAL_ToggleProgramPointSize(int enable)
+{
+    toggle_gl_state(GL_PROGRAM_POINT_SIZE, enable);
+} // impl_REAL_ToggleProgramPointSize
+
+static void impl_NOOP_ToggleProgramPointSize(int enable)
+{
+    // No-op, this profile's GL context forces this to always be on
+} // impl_NOOP_ToggleProgramPointSize
+
+#endif // SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_ARB1
+
 
 const char *MOJOSHADER_glGetError(void)
 {
@@ -1464,6 +1478,10 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profilePushSampler = impl_GLSL_PushSampler;
         ctx->profileMustPushConstantArrays = impl_GLSL_MustPushConstantArrays;
         ctx->profileMustPushSamplers = impl_GLSL_MustPushSamplers;
+        if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0)
+            ctx->profileToggleProgramPointSize = impl_NOOP_ToggleProgramPointSize;
+        else
+            ctx->profileToggleProgramPointSize = impl_REAL_ToggleProgramPointSize;
     } // if
 #endif
 
@@ -1489,6 +1507,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profilePushSampler = impl_ARB1_PushSampler;
         ctx->profileMustPushConstantArrays = impl_ARB1_MustPushConstantArrays;
         ctx->profileMustPushSamplers = impl_ARB1_MustPushSamplers;
+        ctx->profileToggleProgramPointSize = impl_REAL_ToggleProgramPointSize;
     } // if
 #endif
 
@@ -1508,6 +1527,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     assert(ctx->profilePushSampler != NULL);
     assert(ctx->profileMustPushConstantArrays != NULL);
     assert(ctx->profileMustPushSamplers != NULL);
+    assert(ctx->profileToggleProgramPointSize != NULL);
 
     retval = ctx;
     ctx = current_ctx;
@@ -1917,7 +1937,7 @@ MOJOSHADER_glProgram *MOJOSHADER_glLinkProgram(MOJOSHADER_glShader *vshader,
         if (!lookup_uniforms(retval, vshader, &bound))
             goto link_program_fail;
         lookup_samplers(retval, vshader, &bound);
-        lookup_outputs(retval, pshader);
+        lookup_outputs(retval, vshader);
         vshader->refcount++;
     } // if
 
@@ -2403,10 +2423,7 @@ void MOJOSHADER_glProgramReady(void)
 
     if (program->uses_pointsize != ctx->pointsize_enabled)
     {
-        if (program->uses_pointsize)
-            ctx->glEnable(GL_PROGRAM_POINT_SIZE);
-        else
-            ctx->glDisable(GL_PROGRAM_POINT_SIZE);
+        ctx->profileToggleProgramPointSize(program->uses_pointsize);
         ctx->pointsize_enabled = program->uses_pointsize;
     } // if
 
