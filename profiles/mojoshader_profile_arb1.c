@@ -36,7 +36,7 @@ int allocate_branch_label(Context *ctx)
 } // allocate_branch_label
 
 const char *allocate_ARB1_scratch_reg_name(Context *ctx, char *buf,
-                                                  const size_t buflen)
+                                           const size_t buflen)
 {
     const int scratch = allocate_scratch_register(ctx);
     snprintf(buf, buflen, "scratch%d", scratch);
@@ -51,15 +51,15 @@ static inline const char *get_ARB1_branch_label_name(Context *ctx, const int id,
 } // get_ARB1_branch_label_name
 
 const char *get_ARB1_varname_in_buf(Context *ctx, const RegisterType rt,
-                                           const int regnum, char *buf,
-                                           const size_t buflen)
+                                    const int regnum, char *buf,
+                                    const size_t buflen)
 {
     // turns out these are identical at the moment.
     return get_D3D_varname_in_buf(ctx, rt, regnum, buf, buflen);
 } // get_ARB1_varname_in_buf
 
 const char *get_ARB1_varname(Context *ctx, const RegisterType rt,
-                                    const int regnum)
+                             const int regnum)
 {
     // turns out these are identical at the moment.
     return get_D3D_varname(ctx, rt, regnum);
@@ -84,8 +84,8 @@ const char *get_ARB1_const_array_varname(Context *ctx, int base, int size)
 
 
 const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
-                                                  const SourceArgInfo *arg,
-                                                  char *buf, size_t buflen)
+                                           const SourceArgInfo *arg,
+                                           char *buf, size_t buflen)
 {
     // !!! FIXME: this can hit pathological cases where we look like this...
     //
@@ -315,14 +315,14 @@ const char *make_ARB1_srcarg_string_in_buf(Context *ctx,
 } // make_ARB1_srcarg_string_in_buf
 
 const char *get_ARB1_destarg_varname(Context *ctx, char *buf,
-                                            const size_t buflen)
+                                     const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
     return get_ARB1_varname_in_buf(ctx, arg->regtype, arg->regnum, buf, buflen);
 } // get_ARB1_destarg_varname
 
 const char *get_ARB1_srcarg_varname(Context *ctx, const size_t idx,
-                                           char *buf, const size_t buflen)
+                                    char *buf, const size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -337,7 +337,7 @@ const char *get_ARB1_srcarg_varname(Context *ctx, const size_t idx,
 
 
 const char *make_ARB1_destarg_string(Context *ctx, char *buf,
-                                            const size_t buflen)
+                                     const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
 
@@ -454,7 +454,7 @@ void emit_ARB1_dest_modifiers(Context *ctx)
 
 
 const char *make_ARB1_srcarg_string(Context *ctx, const size_t idx,
-                                           char *buf, const size_t buflen)
+                                    char *buf, const size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -770,7 +770,7 @@ void emit_ARB1_const_array(Context *ctx, const ConstantsList *clist,
 } // emit_ARB1_const_array
 
 void emit_ARB1_uniform(Context *ctx, RegisterType regtype, int regnum,
-                              const VariableList *var)
+                       const VariableList *var)
 {
     // We pack these down into the program.local array, so if we only use
     //  register c439, it'll actually map to program.local[0]. This will
@@ -832,8 +832,8 @@ void emit_ARB1_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 
 // !!! FIXME: a lot of cut-and-paste here from emit_GLSL_attribute().
 void emit_ARB1_attribute(Context *ctx, RegisterType regtype, int regnum,
-                                MOJOSHADER_usage usage, int index, int wmask,
-                                int flags)
+                         MOJOSHADER_usage usage, int index, int wmask,
+                         int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *usage_str = NULL;

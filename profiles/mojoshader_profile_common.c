@@ -354,7 +354,7 @@ void set_dstarg_writemask(DestArgInfo *dst, const int mask)
 // D3D stuff that's used in more than just the d3d profile...
 
 int isscalar(Context *ctx, const MOJOSHADER_shaderType shader_type,
-                    const RegisterType rtype, const int rnum)
+             const RegisterType rtype, const int rnum)
 {
     const int uses_psize = ctx->uses_pointsize;
     const int uses_fog = ctx->uses_fog;
@@ -373,9 +373,9 @@ int isscalar(Context *ctx, const MOJOSHADER_shaderType shader_type,
 } // isscalar
 
 const char *get_D3D_register_string(Context *ctx,
-                                           RegisterType regtype,
-                                           int regnum, char *regnum_str,
-                                           size_t regnum_size)
+                                    RegisterType regtype,
+                                    int regnum, char *regnum_str,
+                                    size_t regnum_size)
 {
     const char *retval = NULL;
     int has_number = 1;
@@ -483,8 +483,8 @@ const char *get_D3D_register_string(Context *ctx,
 // !!! FIXME: If/when we kill off ARB1, we can move these back.
 
 const char *get_D3D_varname_in_buf(Context *ctx, RegisterType rt,
-                                           int regnum, char *buf,
-                                           const size_t len)
+                                   int regnum, char *buf,
+                                   const size_t len)
 {
     char regnum_str[16];
     const char *regtype_str = get_D3D_register_string(ctx, rt, regnum,

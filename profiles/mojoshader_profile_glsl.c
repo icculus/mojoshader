@@ -41,8 +41,8 @@ const char *get_GLSL_uniform_type(Context *ctx, const RegisterType rtype)
 } // get_GLSL_uniform_type
 
 const char *get_GLSL_varname_in_buf(Context *ctx, RegisterType rt,
-                                           int regnum, char *buf,
-                                           const size_t len)
+                                    int regnum, char *buf,
+                                    const size_t len)
 {
     char regnum_str[16];
     const char *regtype_str = get_GLSL_register_string(ctx, rt, regnum,
@@ -86,8 +86,8 @@ static inline const char *get_GLSL_input_array_varname(Context *ctx,
 
 
 const char *get_GLSL_uniform_array_varname(Context *ctx,
-                                                  const RegisterType regtype,
-                                                  char *buf, const size_t len)
+                                           const RegisterType regtype,
+                                           char *buf, const size_t len)
 {
     const char *shadertype = ctx->shader_type_str;
     const char *type = get_GLSL_uniform_type(ctx, regtype);
@@ -102,7 +102,7 @@ const char *get_GLSL_destarg_varname(Context *ctx, char *buf, size_t len)
 } // get_GLSL_destarg_varname
 
 const char *get_GLSL_srcarg_varname(Context *ctx, const size_t idx,
-                                           char *buf, size_t len)
+                                    char *buf, size_t len)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -117,11 +117,11 @@ const char *get_GLSL_srcarg_varname(Context *ctx, const size_t idx,
 
 
 const char *make_GLSL_destarg_assign(Context *, char *, const size_t,
-                                            const char *, ...) ISPRINTF(4,5);
+                                     const char *, ...) ISPRINTF(4,5);
 
 const char *make_GLSL_destarg_assign(Context *ctx, char *buf,
-                                            const size_t buflen,
-                                            const char *fmt, ...)
+                                     const size_t buflen,
+                                     const char *fmt, ...)
 {
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_arg;
@@ -216,7 +216,7 @@ const char *make_GLSL_destarg_assign(Context *ctx, char *buf,
 
 
 char *make_GLSL_swizzle_string(char *swiz_str, const size_t strsize,
-                                      const int swizzle, const int writemask)
+                               const int swizzle, const int writemask)
 {
     size_t i = 0;
     if ( (!no_swizzle(swizzle)) || (!writemask_xyzw(writemask)) )
@@ -244,8 +244,8 @@ char *make_GLSL_swizzle_string(char *swiz_str, const size_t strsize,
 
 
 const char *make_GLSL_srcarg_string(Context *ctx, const size_t idx,
-                                           const int writemask, char *buf,
-                                           const size_t buflen)
+                                    const int writemask, char *buf,
+                                    const size_t buflen)
 {
     *buf = '\0';
 
@@ -558,7 +558,7 @@ void emit_GLSL_phase(Context *ctx)
 } // emit_GLSL_phase
 
 void output_GLSL_uniform_array(Context *ctx, const RegisterType regtype,
-                                      const int size)
+                               const int size)
 {
     if (size > 0)
     {
@@ -669,7 +669,7 @@ void emit_GLSL_array(Context *ctx, VariableList *var)
 } // emit_GLSL_array
 
 void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
-                                  int base, int size)
+                           int base, int size)
 {
     char varname[64];
     get_GLSL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
@@ -724,7 +724,7 @@ void emit_GLSL_const_array(Context *ctx, const ConstantsList *clist,
 } // emit_GLSL_const_array
 
 void emit_GLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
-                              const VariableList *var)
+                       const VariableList *var)
 {
     // Now that we're pushing all the uniforms as one big array, pack these
     //  down, so if we only use register c439, it'll actually map to
@@ -806,8 +806,8 @@ void emit_GLSL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 } // emit_GLSL_sampler
 
 void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
-                                MOJOSHADER_usage usage, int index, int wmask,
-                                int flags)
+                         MOJOSHADER_usage usage, int index, int wmask,
+                         int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *usage_str = NULL;
@@ -1137,7 +1137,7 @@ void emit_GLSL_RSQ(Context *ctx)
 } // emit_GLSL_RSQ
 
 void emit_GLSL_dotprod(Context *ctx, const char *src0, const char *src1,
-                              const char *extra)
+                       const char *extra)
 {
     const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
     char castleft[16] = { '\0' };

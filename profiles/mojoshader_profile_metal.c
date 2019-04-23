@@ -42,8 +42,8 @@ const char *get_METAL_uniform_type(Context *ctx, const RegisterType rtype)
 } // get_METAL_uniform_type
 
 const char *get_METAL_varname_in_buf(Context *ctx, RegisterType rt,
-                                           int regnum, char *buf,
-                                           const size_t len)
+                                     int regnum, char *buf,
+                                     const size_t len)
 {
     char regnum_str[16];
     const char *regtype_str = get_METAL_register_string(ctx, rt, regnum,
@@ -89,8 +89,8 @@ static inline const char *get_METAL_input_array_varname(Context *ctx,
 
 
 const char *get_METAL_uniform_array_varname(Context *ctx,
-                                                  const RegisterType regtype,
-                                                  char *buf, const size_t len)
+                                            const RegisterType regtype,
+                                            char *buf, const size_t len)
 {
     const char *shadertype = ctx->shader_type_str;
     const char *type = get_METAL_uniform_type(ctx, regtype);
@@ -105,7 +105,7 @@ const char *get_METAL_destarg_varname(Context *ctx, char *buf, size_t len)
 } // get_METAL_destarg_varname
 
 const char *get_METAL_srcarg_varname(Context *ctx, const size_t idx,
-                                           char *buf, size_t len)
+                                     char *buf, size_t len)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -120,11 +120,11 @@ const char *get_METAL_srcarg_varname(Context *ctx, const size_t idx,
 
 
 const char *make_METAL_destarg_assign(Context *, char *, const size_t,
-                                            const char *, ...) ISPRINTF(4,5);
+                                      const char *, ...) ISPRINTF(4,5);
 
 const char *make_METAL_destarg_assign(Context *ctx, char *buf,
-                                            const size_t buflen,
-                                            const char *fmt, ...)
+                                      const size_t buflen,
+                                      const char *fmt, ...)
 {
     int need_parens = 0;
     const DestArgInfo *arg = &ctx->dest_arg;
@@ -220,7 +220,7 @@ const char *make_METAL_destarg_assign(Context *ctx, char *buf,
 
 
 char *make_METAL_swizzle_string(char *swiz_str, const size_t strsize,
-                                      const int swizzle, const int writemask)
+                                const int swizzle, const int writemask)
 {
     size_t i = 0;
     if ( (!no_swizzle(swizzle)) || (!writemask_xyzw(writemask)) )
@@ -248,8 +248,8 @@ char *make_METAL_swizzle_string(char *swiz_str, const size_t strsize,
 
 
 const char *make_METAL_srcarg_string(Context *ctx, const size_t idx,
-                                           const int writemask, char *buf,
-                                           const size_t buflen)
+                                     const int writemask, char *buf,
+                                     const size_t buflen)
 {
     *buf = '\0';
 
@@ -667,7 +667,7 @@ void emit_METAL_array(Context *ctx, VariableList *var)
 } // emit_METAL_array
 
 void emit_METAL_const_array(Context *ctx, const ConstantsList *clist,
-                                   int base, int size)
+                            int base, int size)
 {
     char varname[64];
     get_METAL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
@@ -810,8 +810,8 @@ void emit_METAL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 } // emit_METAL_sampler
 
 void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
-                                MOJOSHADER_usage usage, int index, int wmask,
-                                int flags)
+                          MOJOSHADER_usage usage, int index, int wmask,
+                          int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
     const char *usage_str = NULL;

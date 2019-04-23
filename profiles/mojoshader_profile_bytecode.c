@@ -35,12 +35,12 @@ void emit_BYTECODE_global(Context *ctx, RegisterType t, int n) {}
 void emit_BYTECODE_array(Context *ctx, VariableList *var) {}
 void emit_BYTECODE_sampler(Context *c, int s, TextureType t, int tb) {}
 void emit_BYTECODE_const_array(Context *ctx, const ConstantsList *c,
-                                         int base, int size) {}
+                               int base, int size) {}
 void emit_BYTECODE_uniform(Context *ctx, RegisterType t, int n,
-                                  const VariableList *var) {}
+                           const VariableList *var) {}
 void emit_BYTECODE_attribute(Context *ctx, RegisterType t, int n,
-                                       MOJOSHADER_usage u, int i, int w,
-                                       int f) {}
+                             MOJOSHADER_usage u, int i, int w,
+                             int f) {}
 
 const char *get_BYTECODE_varname(Context *ctx, RegisterType rt, int regnum)
 {

@@ -15,8 +15,8 @@
 #if SUPPORT_PROFILE_D3D
 
 const char *make_D3D_srcarg_string_in_buf(Context *ctx,
-                                                 const SourceArgInfo *arg,
-                                                 char *buf, size_t buflen)
+                                          const SourceArgInfo *arg,
+                                          char *buf, size_t buflen)
 {
     const char *premod_str = "";
     const char *postmod_str = "";
@@ -152,7 +152,7 @@ const char *make_D3D_srcarg_string_in_buf(Context *ctx,
 
 
 const char *make_D3D_destarg_string(Context *ctx, char *buf,
-                                           const size_t buflen)
+                                    const size_t buflen)
 {
     const DestArgInfo *arg = &ctx->dest_arg;
 
@@ -218,7 +218,7 @@ const char *make_D3D_destarg_string(Context *ctx, char *buf,
 
 
 const char *make_D3D_srcarg_string(Context *ctx, const size_t idx,
-                                          char *buf, size_t buflen)
+                                   char *buf, size_t buflen)
 {
     if (idx >= STATICARRAYLEN(ctx->source_args))
     {
@@ -289,14 +289,14 @@ void emit_D3D_array(Context *ctx, VariableList *var)
 
 
 void emit_D3D_const_array(Context *ctx, const ConstantsList *clist,
-                                 int base, int size)
+                          int base, int size)
 {
     // no-op.
 } // emit_D3D_const_array
 
 
 void emit_D3D_uniform(Context *ctx, RegisterType regtype, int regnum,
-                             const VariableList *var)
+                      const VariableList *var)
 {
     // no-op.
 } // emit_D3D_uniform
@@ -309,8 +309,8 @@ void emit_D3D_sampler(Context *ctx, int s, TextureType ttype, int tb)
 
 
 void emit_D3D_attribute(Context *ctx, RegisterType regtype, int regnum,
-                               MOJOSHADER_usage usage, int index, int wmask,
-                               int flags)
+                        MOJOSHADER_usage usage, int index, int wmask,
+                        int flags)
 {
     // no-op.
 } // emit_D3D_attribute
