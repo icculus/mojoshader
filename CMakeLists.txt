@@ -154,6 +154,12 @@ ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     mojoshader.c
     mojoshader_common.c
     mojoshader_opengl.c
+    profiles/mojoshader_profile_arb1.c
+    profiles/mojoshader_profile_bytecode.c
+    profiles/mojoshader_profile_d3d.c
+    profiles/mojoshader_profile_glsl.c
+    profiles/mojoshader_profile_metal.c
+    profiles/mojoshader_profile_common.c
 )
 IF(EFFECT_SUPPORT)
     TARGET_SOURCES(mojoshader PRIVATE
