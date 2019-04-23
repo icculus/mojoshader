@@ -7,10 +7,10 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#pragma GCC visibility push(hidden)
-
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_profile.h"
+
+#pragma GCC visibility push(hidden)
 
 #if SUPPORT_PROFILE_GLSL
 
