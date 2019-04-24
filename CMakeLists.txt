@@ -154,6 +154,7 @@ ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     mojoshader.c
     mojoshader_common.c
     mojoshader_opengl.c
+    mojoshader_metal.c
 )
 IF(EFFECT_SUPPORT)
     TARGET_SOURCES(mojoshader PRIVATE
