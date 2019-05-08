@@ -11,7 +11,7 @@ OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
 OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
 OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" ON)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
-OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" ON)
+OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" OFF)
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
 OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
 OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
@@ -155,6 +155,12 @@ ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     mojoshader_common.c
     mojoshader_opengl.c
     mojoshader_metal.c
+    profiles/mojoshader_profile_arb1.c
+    profiles/mojoshader_profile_bytecode.c
+    profiles/mojoshader_profile_d3d.c
+    profiles/mojoshader_profile_glsl.c
+    profiles/mojoshader_profile_metal.c
+    profiles/mojoshader_profile_common.c
 )
 IF(EFFECT_SUPPORT)
     TARGET_SOURCES(mojoshader PRIVATE
@@ -236,4 +242,3 @@ IF(COMPILER_SUPPORT)
 ENDIF(COMPILER_SUPPORT)
 
 # End of CMakeLists.txt ...
-
