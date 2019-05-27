@@ -373,7 +373,7 @@ static void readvalue(const uint8 *base,
 
             // !!! FIXME: Nested structs! -flibit
             assert(mem->info.parameter_class >= MOJOSHADER_SYMCLASS_SCALAR
-                && mem->info.parameter_class <= MOJOSHADER_SYMCLASS_VECTOR);
+                && mem->info.parameter_class <= MOJOSHADER_SYMCLASS_MATRIX_COLUMNS);
             assert(mem->info.parameter_type >= MOJOSHADER_SYMTYPE_BOOL
                 && mem->info.parameter_type <= MOJOSHADER_SYMTYPE_FLOAT);
             mem->info.member_count = 0;
