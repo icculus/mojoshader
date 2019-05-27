@@ -1027,6 +1027,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 push_output(ctx, &ctx->globals);
                 output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;", var);
                 pop_output(ctx);
+                return;
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
