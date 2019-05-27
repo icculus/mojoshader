@@ -599,8 +599,7 @@ void emit_GLSL_finalize(Context *ctx)
     output_GLSL_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count);
     output_GLSL_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count);
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
-    if (shader_is_vertex(ctx))
-        output_line(ctx, "uniform float vpFlip;");
+    output_line(ctx, "uniform float vpFlip;");
 #endif
     pop_output(ctx);
 } // emit_GLSL_finalize
@@ -1027,11 +1026,20 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 push_output(ctx, &ctx->globals);
                 output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;", var);
                 pop_output(ctx);
+                return;
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+                push_output(ctx, &ctx->globals);
+                // FIXME: This will have an upside-down y axis in some cases, vpFlip is not enough
+                output_line(ctx, "vec4 %s = vec4(gl_FragCoord.x, gl_FragCoord.y, gl_FragCoord.z, gl_FragCoord.w);", var);
+                pop_output(ctx);
+                return;
+#else
                 index_str[0] = '\0';  // no explicit number.
                 usage_str = "gl_FragCoord";  // !!! FIXME: is this the same coord space as D3D?
+#endif
             } // else if
             else
             {
