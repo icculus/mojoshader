@@ -386,6 +386,7 @@ static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
         return GL_FRAGMENT_SHADER;
 
     // !!! FIXME: geometry shaders?
+    assert(0 && "Unknown GLSL shader type!");
     return GL_NONE;
 } // glsl_shader_type
 
