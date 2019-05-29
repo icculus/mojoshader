@@ -2724,6 +2724,10 @@ static void parse_preshader(Context *ctx, const uint32 *tokens, uint32 tokcount)
                         preshader->temp_count = item + 1;
                     break;
                 } // case
+
+                default:
+                    assert(0 && "Unhandled fxlc.tokens[1] in parse_preshader!");
+                    break;
             } // switch
 
             operand->index = item;
