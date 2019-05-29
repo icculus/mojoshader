@@ -241,6 +241,7 @@ static int findparameter(const MOJOSHADER_effectParam *params,
         if (strcmp(name, params[i].value.name) == 0)
             return i;
     assert(0 && "Parameter not found!");
+    return -1;
 }
 
 static void readvalue(const uint8 *base,
@@ -1724,6 +1725,7 @@ const MOJOSHADER_effectTechnique *MOJOSHADER_effectFindNextValidTechnique(const 
         } // if
     } // for
     assert(0 && "Technique is not part of this effect!");
+    return NULL;
 } // MOJOSHADER_effectFindNextValidTechnique
 
 #endif // MOJOSHADER_EFFECT_SUPPORT
