@@ -17,7 +17,8 @@
 void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                              float *outregs)
 {
-    const float *inregs = preshader->registers;
+    bool made_temp_inregs = false;
+    float *inregs = preshader->registers;
 
     // this is fairly straightforward, as there aren't any branching
     //  opcodes in the preshader instruction set (at the moment, at least).
@@ -188,12 +189,28 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                     operand->index + (elemsbytes / sizeof (double)));
             memcpy(temps + operand->index, dst, elemsbytes);
         } // if
-        else
+        else if (operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT)
         {
-            assert(operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT);
             for (i = 0; i < elems; i++)
                 outregs[operand->index + i] = (float) dst[i];
-        } // else
+        } 
+        else if (operand->type == MOJOSHADER_PRESHADEROPERAND_INPUT)
+        {
+            if (!made_temp_inregs) {
+                made_temp_inregs = true;
+                uint size = preshader->register_count * sizeof(float);
+                float *new_inregs = (float *)alloca(size);
+                memcpy(new_inregs, inregs, size);
+            }
+            for (i = 0; i < elems; i++)
+                inregs[operand->index + i] = (float) dst[i];
+        }
+        else
+        {
+            assert(0 && "Unhandled preshader operand type");
+            // else
+        }
+
     } // for
 } // MOJOSHADER_runPreshader
 
