@@ -1125,6 +1125,72 @@ public static class MojoShader
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_glEffectEnd(IntPtr glEffect);
 
+	/* Metal effect interface... */
+
+	/* IntPtr refers to a MOJOSHADER_mtlEffect*
+	 * effect to a MOJOSHADER_effect*
+	 * mtlDevice to a MTLDevice*
+	 */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern IntPtr MOJOSHADER_mtlCompileEffect(
+		IntPtr effect,
+		IntPtr mtlDevice
+	);
+
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern string MOJOSHADER_mtlGetError();
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlDeleteEffect(IntPtr mtlEffect);
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEffectBegin(
+		IntPtr mtlEffect,
+		out uint numPasses,
+		int saveShaderState,
+		IntPtr stateChanges
+	);
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
+	 * newVert_Out refers to a MTLFunction*
+	 * newFrag_Out refers to a MTLFunction*
+	 */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEffectBeginPass(
+		IntPtr mtlEffect,
+		uint pass,
+		out IntPtr newVert_out,
+		out IntPtr newFrag_out
+	);
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
+	 * newVert_Out refers to a MTLFunction*
+	 * newFrag_Out refers to a MTLFunction*
+	 */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEffectCommitChanges(
+		IntPtr mtlEffect,
+		out IntPtr newVert_out,
+		out IntPtr newFrag_out
+	);
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEffectEndPass(IntPtr mtlEffect);
+
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
+	 * newVert_Out refers to a MTLFunction*
+	 * newFrag_Out refers to a MTLFunction*
+	 */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEffectEnd(
+		IntPtr mtlEffect,
+		out IntPtr newVert_out,
+		out IntPtr newFrag_out
+	);
+
 	#endregion
 
 	#region Preprocessor Interface
@@ -1455,4 +1521,5 @@ public static class MojoShader
 	public static extern void MOJOSHADER_glDestroyContext(IntPtr ctx);
 
 	#endregion
+
 }
