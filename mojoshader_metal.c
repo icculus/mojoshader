@@ -99,7 +99,7 @@ static void alloc_uniform_buffers(MOJOSHADER_mtlEffect *mtlEffect, void *mtlDevi
             mtlEffect->shaders[i].uniformBuffer = objc_msgSend(
                 (void *) mtlDevice,
                 sel_registerName("newBufferWithLength:options:"),
-                16 * count,
+                16 * count, // all register types are 16 bytes
                 NULL
             );
             assert(mtlEffect->shaders[i].uniformBuffer != NULL); // !!! FIXME: replace with something better
