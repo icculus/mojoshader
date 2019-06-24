@@ -1127,6 +1127,14 @@ public static class MojoShader
 
 	/* Metal effect interface... */
 
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern int MOJOSHADER_mtlGetVertexAttribLocation(
+		IntPtr mtlEffect,
+		MOJOSHADER_usage usage,
+		int index
+	);
+
 	/* IntPtr refers to a MOJOSHADER_mtlEffect*
 	 * effect to a MOJOSHADER_effect*
 	 * mtlDevice to a MTLDevice*
