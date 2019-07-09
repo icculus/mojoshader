@@ -623,15 +623,19 @@ void emit_GLSL_global(Context *ctx, RegisterType regtype, int regnum)
                 //  ps_1_1 TEX opcode expects to overwrite it.
                 if (!shader_version_atleast(ctx, 1, 4))
                 {
+                    // GLSL ES does not have gl_TexCoord!
+                    // Also, gl_TexCoord[4+] is unreliable!
 #if SUPPORT_PROFILE_GLSLES
-                    // GLSL ES does not have gl_TexCoord
-                    if (support_glsles(ctx))
+                    const int skipGLTexCoord = support_glsles(ctx) || (regnum >= 4);
+#else
+                    const int skipGLTexCoord = (regnum >= 4);
+#endif
+                    if (skipGLTexCoord)
                         output_line(ctx, "vec4 %s = io_%i_%i;",
                                     varname, MOJOSHADER_USAGE_TEXCOORD, regnum);
                     else
-#endif
-                    output_line(ctx, "vec4 %s = gl_TexCoord[%d];",
-                                varname, regnum);
+                        output_line(ctx, "vec4 %s = gl_TexCoord[%d];",
+                                    varname, regnum);
                 } // if
             } // else if
             break;
@@ -915,6 +919,8 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     if (support_glsles(ctx))
                         break; // GLSL ES does not have gl_TexCoord
 #endif
+                    if (index >= 4)
+                        break; // gl_TexCoord[4+] is unreliable!
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
@@ -990,7 +996,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 // ps_1_1 does a different hack for this attribute.
                 //  Refer to emit_GLSL_global()'s REG_TYPE_ADDRESS code.
-                if (shader_version_atleast(ctx, 1, 4))
+                if (shader_version_atleast(ctx, 1, 4) && (index < 4)) // gl_TexCoord[4+] is unreliable!
                 {
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
                     usage_str = "gl_TexCoord";
