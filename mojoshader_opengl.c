@@ -111,6 +111,10 @@ struct MOJOSHADER_glProgram
     GLint ps_float4_loc;
     GLint ps_int4_loc;
     GLint ps_bool_loc;
+
+    // Numerous fixes for coordinate system mismatches
+    GLint ps_vpos_flip_loc;
+    int current_vpos_flip[2];
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
     GLint vs_flip_loc;
     int current_flip;
@@ -228,6 +232,7 @@ struct MOJOSHADER_glContext
     PFNGLSHADERSOURCEPROC glShaderSource;
     PFNGLUNIFORM1IPROC glUniform1i;
     PFNGLUNIFORM1IVPROC glUniform1iv;
+    PFNGLUNIFORM2FPROC glUniform2f;
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
     PFNGLUNIFORM1FPROC glUniform1f;
 #endif
@@ -579,6 +584,7 @@ static void impl_GLSL_FinalInitProgram(MOJOSHADER_glProgram *program)
     program->ps_float4_loc = glsl_uniform_loc(program, "ps_uniforms_vec4");
     program->ps_int4_loc = glsl_uniform_loc(program, "ps_uniforms_ivec4");
     program->ps_bool_loc = glsl_uniform_loc(program, "ps_uniforms_bool");
+    program->ps_vpos_flip_loc = glsl_uniform_loc(program, "vposFlip");
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
     program->vs_flip_loc = glsl_uniform_loc(program, "vpFlip");
 #endif
@@ -985,6 +991,7 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(opengl_2, PFNGLSHADERSOURCEPROC, glShaderSource);
     DO_LOOKUP(opengl_2, PFNGLUNIFORM1IPROC, glUniform1i);
     DO_LOOKUP(opengl_2, PFNGLUNIFORM1IVPROC, glUniform1iv);
+    DO_LOOKUP(opengl_2, PFNGLUNIFORM2FPROC, glUniform2f);
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
     DO_LOOKUP(opengl_2, PFNGLUNIFORM1FPROC, glUniform1f);
 #endif
@@ -2557,6 +2564,56 @@ void MOJOSHADER_glProgramReady(void)
 } // MOJOSHADER_glProgramReady
 
 
+void MOJOSHADER_glProgramViewportInfo(int viewportW, int viewportH,
+                                      int backbufferW, int backbufferH,
+                                      int renderTargetBound)
+{
+    int vposFlip[2];
+
+    /* The uniform is only going to exist if VPOS is used! */
+    if (ctx->bound_program->ps_vpos_flip_loc != -1)
+    {
+        if (renderTargetBound)
+        {
+            vposFlip[0] = 1;
+            vposFlip[1] = 0;
+        } // if
+        else
+        {
+            vposFlip[0] = -1;
+            vposFlip[1] = backbufferH;
+        } // else
+        if ( (ctx->bound_program->current_vpos_flip[0] != vposFlip[0]) ||
+             (ctx->bound_program->current_vpos_flip[1] != vposFlip[1]) )
+        {
+            ctx->glUniform2f(
+                ctx->bound_program->ps_vpos_flip_loc,
+                (float) vposFlip[0],
+                (float) vposFlip[1]
+            );
+            ctx->bound_program->current_vpos_flip[0] = vposFlip[0];
+            ctx->bound_program->current_vpos_flip[1] = vposFlip[1];
+        } // if
+    } // if
+
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+    assert(ctx->bound_program->vs_flip_loc != -1);
+
+    /* Some compilers require that vpFlip be a float value, rather than int.
+     * However, there's no real reason for it to be a float in the API, so we
+     * do a cast in here. That's not so bad, right...?
+     * -flibit
+     */
+    const int flip = renderTargetBound ? -1 : 1;
+    if (flip != ctx->bound_program->current_flip)
+    {
+        ctx->glUniform1f(ctx->bound_program->vs_flip_loc, (float) flip);
+        ctx->bound_program->current_flip = flip;
+    } // if
+#endif
+} // MOJOSHADER_glViewportInfo
+
+
 void MOJOSHADER_glDeleteProgram(MOJOSHADER_glProgram *program)
 {
     program_unref(program);
@@ -2599,29 +2656,6 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_glDestroyContext
-
-
-#ifdef MOJOSHADER_FLIP_RENDERTARGET
-
-
-void MOJOSHADER_glProgramViewportFlip(int flip)
-{
-    assert(ctx->bound_program->vs_flip_loc != -1);
-
-    /* Some compilers require that vpFlip be a float value, rather than int.
-     * However, there's no real reason for it to be a float in the API, so we
-     * do a cast in here. That's not so bad, right...?
-     * -flibit
-     */
-    if (flip != ctx->bound_program->current_flip)
-    {
-        ctx->glUniform1f(ctx->bound_program->vs_flip_loc, (float) flip);
-        ctx->bound_program->current_flip = flip;
-    } // if
-}
-
-
-#endif
 
 
 #ifdef MOJOSHADER_EFFECT_SUPPORT
