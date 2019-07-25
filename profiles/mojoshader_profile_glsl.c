@@ -1037,8 +1037,11 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
-                index_str[0] = '\0';  // no explicit number.
-                usage_str = "gl_FragCoord";  // !!! FIXME: is this the same coord space as D3D?
+                push_output(ctx, &ctx->globals);
+                output_line(ctx, "uniform vec2 vposFlip;");
+                output_line(ctx, "vec4 %s = floor(vec4(gl_FragCoord.x, (gl_FragCoord.y * vposFlip.x) + vposFlip.y, gl_FragCoord.z, gl_FragCoord.w));", var);
+                pop_output(ctx);
+                return;
             } // else if
             else
             {

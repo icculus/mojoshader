@@ -3163,10 +3163,27 @@ DECLSPEC void MOJOSHADER_glSetVertexAttribDivisor(MOJOSHADER_usage usage,
  */
 DECLSPEC void MOJOSHADER_glProgramReady(void);
 
-#ifdef MOJOSHADER_FLIP_RENDERTARGET
-// !!! FIXME: Document me.
-DECLSPEC void MOJOSHADER_glProgramViewportFlip(int flip);
-#endif
+/*
+ * Provide information about the current viewport to the prepared shader
+ *  program.
+ *
+ * There are numerous components of OpenGL and Direct3D where the coordinate
+ *  systems do not match, and so the vertex/pixel shaders have to be modified to
+ *  compensate for these mismatches (for example, gl_FragCoord requires some
+ *  additional math on the Y coordinate to match vPos when rendering to the
+ *  backbuffer). Call this after MOJOSHADER_glProgramReady to apply all of the
+ *  relevant coordinate fixups at once.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glProgramViewportInfo(int viewportW, int viewportH,
+                                               int backbufferW, int backbufferH,
+                                               int renderTargetBound);
 
 /*
  * Free the resources of a linked program. This will delete the GL object
