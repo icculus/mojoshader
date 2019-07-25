@@ -3130,7 +3130,7 @@ DECLSPEC void MOJOSHADER_glSetVertexAttribute(MOJOSHADER_usage usage,
                                               const void *ptr);
 
 /*
- *  Modify the rate at which this vertex attribute advances during instanced
+ * Modify the rate at which this vertex attribute advances during instanced
  *  rendering.
  *
  * This should be called alongside glSetVertexAttribute, as this does not flag
