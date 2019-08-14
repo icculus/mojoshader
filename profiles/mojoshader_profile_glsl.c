@@ -1037,9 +1037,10 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
+                // TODO: For half-pixel offset compensation, floor() this value!
                 push_output(ctx, &ctx->globals);
                 output_line(ctx, "uniform vec2 vposFlip;");
-                output_line(ctx, "vec4 %s = floor(vec4(gl_FragCoord.x, (gl_FragCoord.y * vposFlip.x) + vposFlip.y, gl_FragCoord.z, gl_FragCoord.w));", var);
+                output_line(ctx, "vec4 %s = vec4(gl_FragCoord.x, (gl_FragCoord.y * vposFlip.x) + vposFlip.y, gl_FragCoord.z, gl_FragCoord.w);", var);
                 pop_output(ctx);
                 return;
             } // else if
