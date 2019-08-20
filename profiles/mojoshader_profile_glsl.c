@@ -1653,7 +1653,7 @@ void emit_GLSL_TEXKILL(Context *ctx)
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
-static void glsl_texld(Context *ctx, const int texldd)
+static void glsl_texld(Context *ctx, const int texldd, const int texldl)
 {
     if (!shader_version_atleast(ctx, 1, 4))
     {
@@ -1663,6 +1663,7 @@ static void glsl_texld(Context *ctx, const int texldd)
         char code[128] = {0};
 
         assert(!texldd);
+        assert(!texldl);
 
         RegisterList *sreg;
         sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, info->regnum);
@@ -1755,13 +1756,19 @@ static void glsl_texld(Context *ctx, const int texldd)
                     funcname = "texture2DProj";
                     make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
                 } // if
-                else  // texld/texldb
+                else  // texld/texldb/texldl
                 {
                     funcname = "texture2D";
-                    make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
+                    if (texldl)
+                        make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof(src0));
+                    else
+                        make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             case TEXTURE_TYPE_CUBE:
+                // !!! FIXME
+                assert(!texldl);
+
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                     fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
                 funcname = "textureCube";
@@ -1776,7 +1783,11 @@ static void glsl_texld(Context *ctx, const int texldd)
                 else  // texld/texldb
                 {
                     funcname = "texture3D";
-                    make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+                    // !!! FIXME: I have not tested this.
+                    if (texldl)
+                        make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof(src0));
+                    else
+                        make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             default:
@@ -1796,6 +1807,20 @@ static void glsl_texld(Context *ctx, const int texldd)
                                      "%sGrad(%s, %s, %s, %s)%s", funcname,
                                      src1, src0, src2, src3, swiz_str);
         } // if
+        else if (texldl)
+        {
+            // HLSL tex2dlod accepts (sampler, uv.xyz, uv.w) where uv.w is the LOD
+            // GLSL seems to want the dimensionality to match the sampler (.xy vs .xyz)
+            //  so we vary the swizzle accordingly
+            const char * pattern = 0;
+            if ((const TextureType)sreg->index == TEXTURE_TYPE_VOLUME)
+                pattern = "%sLod(%s, %s.xyz, %s.w)%s";
+            else
+                pattern = "%sLod(%s, %s.xy, %s.w)%s";
+            make_GLSL_destarg_assign(ctx, code, sizeof(code),
+                pattern, funcname,
+                src1, src0, src0, swiz_str);
+        } // else if
         else
         {
             make_GLSL_destarg_assign(ctx, code, sizeof (code),
@@ -1809,7 +1834,7 @@ static void glsl_texld(Context *ctx, const int texldd)
 
 void emit_GLSL_TEXLD(Context *ctx)
 {
-    glsl_texld(ctx, 0);
+    glsl_texld(ctx, 0, 0);
 } // emit_GLSL_TEXLD
     
 
@@ -2237,7 +2262,7 @@ void emit_GLSL_DSY(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
-void emit_GLSL_TEXLDD(Context *ctx)
+void emit_GLSL_TEXLDD_setup(Context *ctx)
 {
     // !!! FIXME:
     // GLSL 1.30 introduced textureGrad() for this, but it looks like the
@@ -2260,12 +2285,18 @@ void emit_GLSL_TEXLDD(Context *ctx)
         output_line(ctx, "#else");
         output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
         output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
+        output_line(ctx, "#define texture2DLod(a,b,c) texture2D(a,b)");
         output_line(ctx, "#endif");
         output_blank_line(ctx);
         pop_output(ctx);
     } // if
+}
 
-    glsl_texld(ctx, 1);
+void emit_GLSL_TEXLDD(Context *ctx)
+{
+    emit_GLSL_TEXLDD_setup(ctx);
+
+    glsl_texld(ctx, 1, 0);
 } // emit_GLSL_TEXLDD
 
 void emit_GLSL_SETP(Context *ctx)
@@ -2294,11 +2325,9 @@ void emit_GLSL_SETP(Context *ctx)
 
 void emit_GLSL_TEXLDL(Context *ctx)
 {
-    // !!! FIXME: The spec says we can't use GLSL's texture*Lod() built-ins
-    // !!! FIXME:  from fragment shaders for some inexplicable reason.
-    // !!! FIXME:  For now, you'll just have to suffer with the potentially
-    // !!! FIXME:  wrong mipmap until I can figure something out.
-    emit_GLSL_TEXLD(ctx);
+    emit_GLSL_TEXLDD_setup(ctx);
+
+    glsl_texld(ctx, 0, 1);
 } // emit_GLSL_TEXLDL
 
 void emit_GLSL_BREAKP(Context *ctx)
