@@ -1685,7 +1685,8 @@ void emit_GLSL_TEXLDD_setup(Context *ctx)
 
 static void glsl_texld(Context *ctx, const int texldd, const int texldl)
 {
-    emit_GLSL_TEXLDD_setup(ctx);
+    if (texldd || texldl)
+        emit_GLSL_TEXLDD_setup(ctx);
 
     if (!shader_version_atleast(ctx, 1, 4))
     {
