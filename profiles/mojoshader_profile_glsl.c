@@ -1653,8 +1653,40 @@ void emit_GLSL_TEXKILL(Context *ctx)
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
+void emit_GLSL_TEXLDD_setup(Context *ctx)
+{
+    // !!! FIXME:
+    // GLSL 1.30 introduced textureGrad() for this, but it looks like the
+    //  functions are overloaded instead of texture2DGrad() (etc).
+
+    // GL_shader_texture_lod and GL_EXT_gpu_shader4 added texture2DGrad*(),
+    //  so we'll use them if available. Failing that, we'll just fallback
+    //  to a regular texture2D call and hope the mipmap it chooses is close
+    //  enough.
+    if (!ctx->glsl_generated_texldd_setup)
+    {
+        ctx->glsl_generated_texldd_setup = 1;
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "#if GL_ARB_shader_texture_lod");
+        output_line(ctx, "#extension GL_ARB_shader_texture_lod : enable");
+        output_line(ctx, "#define texture2DGrad texture2DGradARB");
+        output_line(ctx, "#define texture2DProjGrad texture2DProjARB");
+        output_line(ctx, "#elif GL_EXT_gpu_shader4");
+        output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
+        output_line(ctx, "#else");
+        output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
+        output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
+        output_line(ctx, "#define texture2DLod(a,b,c) texture2D(a,b)");
+        output_line(ctx, "#endif");
+        output_blank_line(ctx);
+        pop_output(ctx);
+    } // if
+}
+
 static void glsl_texld(Context *ctx, const int texldd, const int texldl)
 {
+    emit_GLSL_TEXLDD_setup(ctx);
+
     if (!shader_version_atleast(ctx, 1, 4))
     {
         DestArgInfo *info = &ctx->dest_arg;
@@ -1766,7 +1798,6 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
                 } // else
                 break;
             case TEXTURE_TYPE_CUBE:
-                // !!! FIXME
                 assert(!texldl);
 
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
@@ -1783,7 +1814,6 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
                 else  // texld/texldb
                 {
                     funcname = "texture3D";
-                    // !!! FIXME: I have not tested this.
                     if (texldl)
                         make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof(src0));
                     else
@@ -1809,14 +1839,18 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
         } // if
         else if (texldl)
         {
+            const TextureType texType = (const TextureType) sreg->index;
+            assert(texType != TEXTURE_TYPE_CUBE);
+
             // HLSL tex2dlod accepts (sampler, uv.xyz, uv.w) where uv.w is the LOD
             // GLSL seems to want the dimensionality to match the sampler (.xy vs .xyz)
             //  so we vary the swizzle accordingly
             const char * pattern = 0;
-            if ((const TextureType)sreg->index == TEXTURE_TYPE_VOLUME)
+            if (texType == TEXTURE_TYPE_VOLUME)
                 pattern = "%sLod(%s, %s.xyz, %s.w)%s";
             else
                 pattern = "%sLod(%s, %s.xy, %s.w)%s";
+
             make_GLSL_destarg_assign(ctx, code, sizeof(code),
                 pattern, funcname,
                 src1, src0, src0, swiz_str);
@@ -2262,40 +2296,8 @@ void emit_GLSL_DSY(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_GLSL_DSY
 
-void emit_GLSL_TEXLDD_setup(Context *ctx)
-{
-    // !!! FIXME:
-    // GLSL 1.30 introduced textureGrad() for this, but it looks like the
-    //  functions are overloaded instead of texture2DGrad() (etc).
-
-    // GL_shader_texture_lod and GL_EXT_gpu_shader4 added texture2DGrad*(),
-    //  so we'll use them if available. Failing that, we'll just fallback
-    //  to a regular texture2D call and hope the mipmap it chooses is close
-    //  enough.
-    if (!ctx->glsl_generated_texldd_setup)
-    {
-        ctx->glsl_generated_texldd_setup = 1;
-        push_output(ctx, &ctx->preflight);
-        output_line(ctx, "#if GL_ARB_shader_texture_lod");
-        output_line(ctx, "#extension GL_ARB_shader_texture_lod : enable");
-        output_line(ctx, "#define texture2DGrad texture2DGradARB");
-        output_line(ctx, "#define texture2DProjGrad texture2DProjARB");
-        output_line(ctx, "#elif GL_EXT_gpu_shader4");
-        output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
-        output_line(ctx, "#else");
-        output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
-        output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
-        output_line(ctx, "#define texture2DLod(a,b,c) texture2D(a,b)");
-        output_line(ctx, "#endif");
-        output_blank_line(ctx);
-        pop_output(ctx);
-    } // if
-}
-
 void emit_GLSL_TEXLDD(Context *ctx)
 {
-    emit_GLSL_TEXLDD_setup(ctx);
-
     glsl_texld(ctx, 1, 0);
 } // emit_GLSL_TEXLDD
 
@@ -2325,8 +2327,6 @@ void emit_GLSL_SETP(Context *ctx)
 
 void emit_GLSL_TEXLDL(Context *ctx)
 {
-    emit_GLSL_TEXLDD_setup(ctx);
-
     glsl_texld(ctx, 0, 1);
 } // emit_GLSL_TEXLDL
 
