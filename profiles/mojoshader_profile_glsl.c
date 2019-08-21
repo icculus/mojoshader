@@ -1693,20 +1693,14 @@ void emit_GLSL_TEXKILL(Context *ctx)
     output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
 } // emit_GLSL_TEXKILL
 
-static void glsl_texld(Context *ctx, const int texldd, const int texldl)
+void emit_GLSL_TEXLD(Context *ctx)
 {
-    if (texldd || texldl)
-        prepend_glsl_texlod_extensions(ctx);
-
     if (!shader_version_atleast(ctx, 1, 4))
     {
         DestArgInfo *info = &ctx->dest_arg;
         char dst[64];
         char sampler[64];
         char code[128] = {0};
-
-        assert(!texldd);
-        assert(!texldl);
 
         RegisterList *sreg;
         sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER, info->regnum);
@@ -1757,8 +1751,6 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
         const char *funcname = NULL;
         char src0[64] = { '\0' };
         char src1[64]; get_GLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
-        char src2[64] = { '\0' };
-        char src3[64] = { '\0' };
 
         if (sreg == NULL)
         {
@@ -1766,22 +1758,6 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
             return;
         } // if
 
-        if (texldd)
-        {
-            if (sreg->index == TEXTURE_TYPE_2D)
-            {
-                make_GLSL_srcarg_string_vec2(ctx, 2, src2, sizeof (src2));
-                make_GLSL_srcarg_string_vec2(ctx, 3, src3, sizeof (src3));
-            } // if
-            else
-            {
-                assert((sreg->index == TEXTURE_TYPE_CUBE) || (sreg->index == TEXTURE_TYPE_VOLUME));
-                make_GLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
-                make_GLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
-            } // else
-        } // if
-
-        // !!! FIXME: can TEXLDD set instruction_controls?
         // !!! FIXME: does the d3d bias value map directly to GLSL?
         const char *biassep = "";
         char bias[64] = { '\0' };
@@ -1799,18 +1775,13 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
                     funcname = "texture2DProj";
                     make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
                 } // if
-                else  // texld/texldb/texldl
+                else  // texld/texldb
                 {
                     funcname = "texture2D";
-                    if (texldl)
-                        make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
-                    else
-                        make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
+                    make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             case TEXTURE_TYPE_CUBE:
-                assert(!texldl);
-
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                     fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
                 funcname = "textureCube";
@@ -1822,13 +1793,10 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
                     funcname = "texture3DProj";
                     make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
                 } // if
-                else  // texld/texldb/texldl
+                else  // texld/texldb
                 {
                     funcname = "texture3D";
-                    if (texldl)
-                        make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
-                    else
-                        make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+                    make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
                 } // else
                 break;
             default:
@@ -1842,44 +1810,12 @@ static void glsl_texld(Context *ctx, const int texldd, const int texldl)
                                  samp_arg->swizzle, ctx->dest_arg.writemask);
 
         char code[128];
-        if (texldd)
-        {
-            make_GLSL_destarg_assign(ctx, code, sizeof (code),
-                                     "%sGrad(%s, %s, %s, %s)%s", funcname,
-                                     src1, src0, src2, src3, swiz_str);
-        } // if
-        else if (texldl)
-        {
-            const TextureType texType = (const TextureType) sreg->index;
-            assert(texType != TEXTURE_TYPE_CUBE);
-
-            // HLSL tex2dlod accepts (sampler, uv.xyz, uv.w) where uv.w is the LOD
-            // GLSL seems to want the dimensionality to match the sampler (.xy vs .xyz)
-            //  so we vary the swizzle accordingly
-            const char * pattern = 0;
-            if (texType == TEXTURE_TYPE_VOLUME)
-                pattern = "%sLod(%s, %s.xyz, %s.w)%s";
-            else
-                pattern = "%sLod(%s, %s.xy, %s.w)%s";
-
-            make_GLSL_destarg_assign(ctx, code, sizeof(code),
-                pattern, funcname,
-                src1, src0, src0, swiz_str);
-        } // else if
-        else
-        {
-            make_GLSL_destarg_assign(ctx, code, sizeof (code),
-                                     "%s(%s, %s%s%s)%s", funcname,
-                                     src1, src0, biassep, bias, swiz_str);
-        } // else
+        make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                                 "%s(%s, %s%s%s)%s", funcname,
+                                 src1, src0, biassep, bias, swiz_str);
 
         output_line(ctx, "%s", code);
     } // else
-} // glsl_texld
-
-void emit_GLSL_TEXLD(Context *ctx)
-{
-    glsl_texld(ctx, 0, 0);
 } // emit_GLSL_TEXLD
     
 
@@ -2309,7 +2245,58 @@ void emit_GLSL_DSY(Context *ctx)
 
 void emit_GLSL_TEXLDD(Context *ctx)
 {
-    glsl_texld(ctx, 1, 0);
+    const SourceArgInfo *samp_arg = &ctx->source_args[1];
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                          samp_arg->regnum);
+    const char *funcname = NULL;
+    char src0[64] = { '\0' };
+    char src1[64]; get_GLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
+    char src2[64] = { '\0' };
+    char src3[64] = { '\0' };
+
+    if (sreg == NULL)
+    {
+        fail(ctx, "TEXLDD using undeclared sampler");
+        return;
+    } // if
+
+    switch ((const TextureType) sreg->index)
+    {
+        case TEXTURE_TYPE_2D:
+            funcname = "texture2D";
+            make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
+            make_GLSL_srcarg_string_vec2(ctx, 2, src2, sizeof (src2));
+            make_GLSL_srcarg_string_vec2(ctx, 3, src3, sizeof (src3));
+            break;
+        case TEXTURE_TYPE_CUBE:
+            funcname = "textureCube";
+            make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+            make_GLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
+            make_GLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
+            break;
+        case TEXTURE_TYPE_VOLUME:
+            funcname = "texture3D";
+            make_GLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
+            make_GLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
+            make_GLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
+            break;
+        default:
+            fail(ctx, "unknown texture type");
+            return;
+    } // switch
+
+    assert(!isscalar(ctx, ctx->shader_type, samp_arg->regtype, samp_arg->regnum));
+    char swiz_str[6] = { '\0' };
+    make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
+                             samp_arg->swizzle, ctx->dest_arg.writemask);
+
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof (code),
+                             "%sGrad(%s, %s, %s, %s)%s", funcname,
+                             src1, src0, src2, src3, swiz_str);
+
+    prepend_glsl_texlod_extensions(ctx);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_TEXLDD
 
 void emit_GLSL_SETP(Context *ctx)
@@ -2338,7 +2325,51 @@ void emit_GLSL_SETP(Context *ctx)
 
 void emit_GLSL_TEXLDL(Context *ctx)
 {
-    glsl_texld(ctx, 0, 1);
+    const SourceArgInfo *samp_arg = &ctx->source_args[1];
+    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
+                                          samp_arg->regnum);
+    const char *pattern = NULL;
+    char src0[64];
+    char src1[64];
+    make_GLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
+    get_GLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
+
+    if (sreg == NULL)
+    {
+        fail(ctx, "TEXLDL using undeclared sampler");
+        return;
+    } // if
+
+    // HLSL tex2dlod accepts (sampler, uv.xyz, uv.w) where uv.w is the LOD
+    // GLSL seems to want the dimensionality to match the sampler (.xy vs .xyz)
+    //  so we vary the swizzle accordingly
+    switch ((const TextureType) sreg->index)
+    {
+        case TEXTURE_TYPE_2D:
+            pattern = "texture2DLod(%s, %s.xy, %s.w)%s";
+            break;
+        case TEXTURE_TYPE_CUBE:
+            pattern = "textureCubeLod(%s, %s.xyz, %s.w)%s";
+            break;
+        case TEXTURE_TYPE_VOLUME:
+            pattern = "texture3DLod(%s, %s.xyz, %s.w)%s";
+            break;
+        default:
+            fail(ctx, "unknown texture type");
+            return;
+    } // switch
+
+    assert(!isscalar(ctx, ctx->shader_type, samp_arg->regtype, samp_arg->regnum));
+    char swiz_str[6] = { '\0' };
+    make_GLSL_swizzle_string(swiz_str, sizeof (swiz_str),
+                             samp_arg->swizzle, ctx->dest_arg.writemask);
+
+    char code[128];
+    make_GLSL_destarg_assign(ctx, code, sizeof(code),
+        pattern, src1, src0, src0, swiz_str);
+
+    prepend_glsl_texlod_extensions(ctx);
+    output_line(ctx, "%s", code);
 } // emit_GLSL_TEXLDL
 
 void emit_GLSL_BREAKP(Context *ctx)
