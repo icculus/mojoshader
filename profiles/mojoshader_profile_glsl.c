@@ -493,13 +493,13 @@ static void prepend_glsl_texlod_extensions(Context *ctx)
         output_line(ctx, "#extension GL_ARB_shader_texture_lod : enable");
         output_line(ctx, "#define texture2DGrad texture2DGradARB");
         output_line(ctx, "#define texture2DProjGrad texture2DProjARB");
-        output_line(ctx, "#define texture2DLod texture2DLodARB");
         output_line(ctx, "#elif GL_EXT_gpu_shader4");
         output_line(ctx, "#extension GL_EXT_gpu_shader4 : enable");
         output_line(ctx, "#else");
         output_line(ctx, "#define texture2DGrad(a,b,c,d) texture2D(a,b)");
         output_line(ctx, "#define texture2DProjGrad(a,b,c,d) texture2DProj(a,b)");
-        output_line(ctx, "#define texture2DLod(a,b,c) texture2D(a,b)");
+        if (shader_is_pixel(ctx))
+            output_line(ctx, "#define texture2DLod(a,b,c) texture2D(a,b)");
         output_line(ctx, "#endif");
         output_blank_line(ctx);
         pop_output(ctx);
