@@ -532,18 +532,9 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader, int isVertex)
 
     void *contents = objc_msgSend(shader->uniformBuffer, sel_registerName("contents"));
 
-    // printf("{");
-    // for (int j = 0; j < 16; j++)
-    // {
-    //     if (j > 0 && j % 4 == 0)
-    //         printf("\n");
-    //     printf("%f ", vs_reg_file_f[j]);
-    // }
-    // printf("}\n");
-
     for (int i = 0; i < uniformCount; i++)
     {
-        switch (shader->parseData->uniforms[0].type)
+        switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
                 memcpy(
