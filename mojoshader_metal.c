@@ -65,12 +65,11 @@ typedef struct MOJOSHADER_mtlEffect
     MOJOSHADER_mtlShader *current_frag;
     MOJOSHADER_effectShader *current_vert_raw;
     MOJOSHADER_effectShader *current_frag_raw;
+    MOJOSHADER_mtlShader *prev_vert;
+    MOJOSHADER_mtlShader *prev_frag;
 
-    void *prev_vert;                    // MTLShader*
-    void *prev_frag;                    // MTLShader*
-    void *library;                      // MTLLibrary*
-    void *prev_vertexUniformBuffer;     // MTLBuffer*
-    void *prev_fragmentUniformBuffer;   // MTLBuffer*
+    void *library;              // MTLLibrary*
+    void *prev_uniform_buffer;  // MTLBuffer*
 } MOJOSHADER_mtlEffect;
 
 const char *MOJOSHADER_mtlGetError(void)
@@ -97,7 +96,7 @@ static void alloc_uniform_buffers(MOJOSHADER_mtlEffect *mtlEffect, void *mtlDevi
         if (count > 0)
         {
             mtlEffect->shaders[i].uniformBuffer = objc_msgSend(
-                (void *) mtlDevice,
+                mtlDevice,
                 sel_registerName("newBufferWithLength:options:"),
                 16 * count, // all register types are 16 bytes
                 NULL
@@ -111,13 +110,8 @@ static void alloc_uniform_buffers(MOJOSHADER_mtlEffect *mtlEffect, void *mtlDevi
     }
 } // alloc_uniform_buffers
 
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlEffect *mtlEffect, MOJOSHADER_usage usage, int index)
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert, MOJOSHADER_usage usage, int index)
 {
-    if (mtlEffect == NULL)
-        return -1;
-
-    MOJOSHADER_mtlShader *vert = mtlEffect->current_vert;
-
     if (vert == NULL)
         return -1;
 
@@ -328,24 +322,21 @@ void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
     {
         mtlEffect->prev_vert = mtlEffect->current_vert;
         mtlEffect->prev_frag = mtlEffect->current_frag;
-        mtlEffect->prev_vertexUniformBuffer = mtlEffect->current_vert->uniformBuffer;
-        mtlEffect->prev_fragmentUniformBuffer = mtlEffect->current_frag->uniformBuffer;
+        mtlEffect->prev_uniform_buffer = mtlEffect->current_vert->uniformBuffer;
     }
 } // MOJOSHADER_mtlEffectBegin
 
 // Predeclare
 void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       void **newVert,
-                                       void **newFrag,
-                                       void **newVertexUniformBuffer,
-                                       void **newFragmentUniformBuffer);
+                                       MOJOSHADER_mtlShader **newVert,
+                                       MOJOSHADER_mtlShader **newFrag,
+                                       void **newUniformBuffer);
 
 void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
                                    unsigned int pass,
-                                   void **newVert,
-                                   void **newFrag,
-                                   void **newVertexUniformBuffer,
-                                   void **newFragmentUniformBuffer)
+                                   MOJOSHADER_mtlShader **newVert,
+                                   MOJOSHADER_mtlShader **newFrag,
+                                   void **newUniformBuffer)
 {
     int i, j;
     MOJOSHADER_effectPass *curPass;
@@ -402,24 +393,13 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
     {
         if (mtlEffect->current_vert != NULL)
         {
-            *newVert = mtlEffect->current_vert->handle;
-            *newVertexUniformBuffer = mtlEffect->current_vert->uniformBuffer;
-        }
-        else
-        {
-            *newVert = NULL;
-            *newVertexUniformBuffer = NULL;
+            *newVert = mtlEffect->current_vert;
+            *newUniformBuffer = mtlEffect->current_vert->uniformBuffer;
         }
 
         if (mtlEffect->current_frag != NULL)
         {
-            *newFrag = mtlEffect->current_frag->handle;
-            *newFragmentUniformBuffer = mtlEffect->current_frag->uniformBuffer;
-        }
-        else
-        {
-            *newFrag = NULL;
-            *newFragmentUniformBuffer = NULL;
+            *newFrag = mtlEffect->current_frag;
         }
 
         if (mtlEffect->current_vert_raw != NULL)
@@ -438,8 +418,7 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
         mtlEffect,
         newVert,
         newFrag,
-        newVertexUniformBuffer,
-        newFragmentUniformBuffer
+        newUniformBuffer
     );
 
 } // MOJOSHADER_mtlEffectBeginPass
@@ -519,7 +498,7 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
     } // for
 } // copy_parameter_data
 
-static void update_uniform_buffer(MOJOSHADER_mtlShader *shader, int isVertex)
+static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 {
     if (shader == NULL)
         return;
@@ -530,7 +509,10 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader, int isVertex)
     int uniformCount = shader->parseData->uniform_count;
     int offset = 0;
 
-    void *contents = objc_msgSend(shader->uniformBuffer, sel_registerName("contents"));
+    void *contents = objc_msgSend(
+        shader->uniformBuffer,
+        sel_registerName("contents")
+    );
 
     for (int i = 0; i < uniformCount; i++)
     {
@@ -541,9 +523,8 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader, int isVertex)
                     contents + offset,
                     &vs_reg_file_f[floatCount * 4],
                     16
-                ); // FIXME: Add pixel shader support
+                );
                 floatCount++;
-                offset += 16;
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
@@ -555,16 +536,17 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader, int isVertex)
                 break;
 
             default:
-                break; // This should never happen.
+                assert(0); // This should never happen.
+                break;
         }
+        offset += 16;
     }
 } // update_uniform_buffer
 
 void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       void **newVert,
-                                       void **newFrag,
-                                       void **newVertexUniformBuffer,
-                                       void **newFragmentUniformBuffer)
+                                       MOJOSHADER_mtlShader **newVert,
+                                       MOJOSHADER_mtlShader **newFrag,
+                                       void **newUniformBuffer)
 {
     MOJOSHADER_effectShader *rawVert = mtlEffect->current_vert_raw;
     MOJOSHADER_effectShader *rawFrag = mtlEffect->current_frag_raw;
@@ -614,24 +596,13 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
     {
         if (mtlEffect->current_vert != NULL)
         {
-            *newVert = mtlEffect->current_vert->handle;
-            *newVertexUniformBuffer = mtlEffect->current_vert->uniformBuffer;
-        }
-        else
-        {
-            *newVert = NULL;
-            *newVertexUniformBuffer = NULL;
+            *newVert = mtlEffect->current_vert;
+            *newUniformBuffer = mtlEffect->current_vert->uniformBuffer;
         }
 
         if (mtlEffect->current_frag != NULL)
         {
-            *newFrag = mtlEffect->current_frag->handle;
-            *newFragmentUniformBuffer = mtlEffect->current_frag->uniformBuffer;
-        }
-        else
-        {
-            *newFrag = NULL;
-            *newFragmentUniformBuffer = NULL;
+            *newFrag = mtlEffect->current_frag;
         }
 
         if (mtlEffect->current_vert_raw != NULL)
@@ -678,9 +649,7 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
     COPY_PARAMETER_DATA(rawFrag, ps)
     #undef COPY_PARAMETER_DATA
 
-    update_uniform_buffer(mtlEffect->current_vert, 1);
-    update_uniform_buffer(mtlEffect->current_frag, 0);
-
+    update_uniform_buffer(mtlEffect->current_vert);
 } // MOJOSHADER_mtlEffectCommitChanges
 
 
@@ -692,23 +661,25 @@ void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_mtlEffect *mtlEffect)
 
 
 void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
-                             void **newVert,
-                             void **newFrag,
-                             void **newVertexUniformBuffer,
-                             void **newFragmentUniformBuffer)
+                             MOJOSHADER_mtlShader **newVert,
+                             MOJOSHADER_mtlShader **newFrag,
+                             void **newUniformBuffer)
 {
     if (mtlEffect->effect->restore_shader_state)
     {
         mtlEffect->effect->restore_shader_state = 0;
-        *newVert = &mtlEffect->prev_vert;
-        *newFrag = &mtlEffect->prev_frag;
-        *newVertexUniformBuffer = &mtlEffect->prev_vertexUniformBuffer;
-        *newFragmentUniformBuffer = &mtlEffect->prev_fragmentUniformBuffer;
+        *newVert = mtlEffect->prev_vert;
+        *newFrag = mtlEffect->prev_frag;
+        *newUniformBuffer = &mtlEffect->prev_uniform_buffer;
     } // if
 
     mtlEffect->effect->state_changes = NULL;
 } // MOJOSHADER_mtlEffectEnd
 
+void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
+{
+    return shader->handle;
+}
 
 #endif // MOJOSHADER_EFFECT_SUPPORT
 #endif // SUPPORT_PROFILE_METAL

@@ -1130,7 +1130,7 @@ public static class MojoShader
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern int MOJOSHADER_mtlGetVertexAttribLocation(
-		IntPtr mtlEffect,
+		IntPtr mtlShader,
 		MOJOSHADER_usage usage,
 		int index
 	);
@@ -1162,10 +1162,9 @@ public static class MojoShader
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MTLFunction*
-	 * newFrag refers to a MTLFunction*
-	 * newVertexUniformBuffer refers to a MTLBuffer*
-	 * newFragmentUniformBuffer refers to a MTLBuffer*
+	 * newVert refers to a MOJOSHADER_mtlShader*
+	 * newFrag refers to a MOJOSHADER_mtlShader*
+	 * newUniformBuffer refers to a MTLBuffer*
 	 */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectBeginPass(
@@ -1173,23 +1172,20 @@ public static class MojoShader
 		uint pass,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newVertexUniformBuffer,
-		out IntPtr newFragmentUniformBuffer
+		out IntPtr newUniformBuffer
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MTLFunction*
-	 * newFrag refers to a MTLFunction*
-	 * newVertexUniformBuffer refers to a MTLBuffer*
-	 * newFragmentUniformBuffer refers to a MTLBuffer*
+	 * newVert refers to a MOJOSHADER_mtlShader*
+	 * newFrag refers to a MOJOSHADER_mtlShader*
+	 * newUniformBuffer refers to a MTLBuffer*
 	 */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectCommitChanges(
 		IntPtr mtlEffect,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newVertexUniformBuffer,
-		out IntPtr newFragmentUniformBuffer
+		out IntPtr newUniformBuffer
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
@@ -1197,18 +1193,21 @@ public static class MojoShader
 	public static extern void MOJOSHADER_mtlEffectEndPass(IntPtr mtlEffect);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MTLFunction*
-	 * newFrag refers to a MTLFunction*
-	 * newVertexUniformBuffer refers to a MTLBuffer*
-	 * newFragmentUniformBuffer refers to a MTLBuffer*
+	 * newVert refers to a MOJOSHADER_mtlShader*
+	 * newFrag refers to a MOJOSHADER_mtlShader*
+	 * newUniformBuffer refers to a MTLBuffer*
 	 */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectEnd(
 		IntPtr mtlEffect,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newVertexUniformBuffer,
-		out IntPtr newFragmentUniformBuffer
+		out IntPtr newUniformBuffer
+	);
+
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(
+		IntPtr mtlShader
 	);
 
 	#endregion

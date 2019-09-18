@@ -800,6 +800,8 @@ DECLSPEC void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *glEffect);
  */
 DECLSPEC void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect);
 
+// !!! FIXME: Add Metal interface
+
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 
 #endif /* MOJOSHADER_EFFECTS_H */
