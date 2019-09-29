@@ -1172,7 +1172,8 @@ public static class MojoShader
 		uint pass,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newUniformBuffer
+		out IntPtr newVertUniformBuffer,
+		out IntPtr newFragUniformBuffer
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
@@ -1185,7 +1186,8 @@ public static class MojoShader
 		IntPtr mtlEffect,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newUniformBuffer
+		out IntPtr newVertUniformBuffer,
+		out IntPtr newFragUniformBuffer
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
@@ -1202,7 +1204,8 @@ public static class MojoShader
 		IntPtr mtlEffect,
 		out IntPtr newVert,
 		out IntPtr newFrag,
-		out IntPtr newUniformBuffer
+		out IntPtr newVertUniformBuffer,
+		out IntPtr newFragUniformBuffer
 	);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
