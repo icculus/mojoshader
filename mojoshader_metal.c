@@ -261,7 +261,6 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
 				cstr_to_nsstr(object->shader.shader->mainfn)
 			);
 
-            //retval->shaders[current_shader].refcount = 1;
             retval->shader_indices[current_shader] = i;
             current_shader++;
         } // if
