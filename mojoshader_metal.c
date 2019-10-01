@@ -103,7 +103,6 @@ static void alloc_uniform_buffers(MOJOSHADER_mtlEffect *mtlEffect, void *mtlDevi
                 16 * count, // all register types are 16 bytes
                 NULL
             );
-            assert(mtlEffect->shaders[i].uniformBuffer != NULL); // !!! FIXME: replace with something better
         }
         else
         {
@@ -281,33 +280,35 @@ compile_shader_fail:
 
 void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
 {
-    // !!! FIXME: TODO
+    MOJOSHADER_free f = mtlEffect->effect->free;
+    void *d = mtlEffect->effect->malloc_data;
+    void *selRelease = sel_registerName("release");
 
-    // int i;
-    // MOJOSHADER_free f = glEffect->effect->free;
-    // void *d = glEffect->effect->malloc_data;
+    int i;
+    for (i = 0; i < mtlEffect->num_shaders; i++)
+    {
+        /* Release the uniform buffer */
+        objc_msgSend(
+            mtlEffect->shaders[i].uniformBuffer,
+            selRelease
+        );
 
-    // for (i = 0; i < glEffect->num_shaders; i++)
-    // {
-    //     /* Arbitarily add a reference to the refcount.
-    //      * We're going to be calling glDeleteShader so we can clean out the
-    //      * program cache, but we can NOT let it free() the array elements!
-    //      * We'll do that ourselves, as we malloc()'d in CompileEffect.
-    //      * -flibit
-    //      */
-    //     glEffect->shaders[i].refcount++;
-    //     MOJOSHADER_glDeleteShader(&glEffect->shaders[i]);
+        /* Release the shader function */
+        objc_msgSend(
+            mtlEffect->shaders[i].handle,
+            selRelease
+        );
+    }
 
-    //     /* Delete the shader, but do NOT delete the parse data!
-    //      * The parse data belongs to the parent effect.
-    //      * -flibit
-    //      */
-    //     ctx->profileDeleteShader(glEffect->shaders[i].handle);
-    // } // for
+    /* Release the library */
+    objc_msgSend(
+        mtlEffect->library,
+        selRelease
+    );
 
-    // f(glEffect->shader_indices, d);
-    // f(glEffect->preshader_indices, d);
-    // f(glEffect, d);
+    f(mtlEffect->shader_indices, d);
+    f(mtlEffect->preshader_indices, d);
+    f(mtlEffect, d);
 } // MOJOSHADER_mtlDeleteEffect
 
 
