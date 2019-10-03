@@ -1213,6 +1213,9 @@ public static class MojoShader
 		IntPtr mtlShader
 	);
 
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlResetUniformBuffers();
+
 	#endregion
 
 	#region Preprocessor Interface
