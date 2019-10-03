@@ -161,7 +161,6 @@ static const char *nsstr_to_cstr(void *str)
 
 /* Uniform buffer utilities */
 
-static int num_ubos = 0;
 static MOJOSHADER_mtlNode *ubos = NULL;
 
 static void alloc_buffer(MOJOSHADER_mtlShader *shader)
@@ -198,7 +197,6 @@ static void alloc_ubo(MOJOSHADER_mtlShader *shader, void *mtlDevice)
 
     MOJOSHADER_mtlNode *node = append_node(&ubos);
     node->data = shader->ubo;
-    num_ubos += 1;
 }
 
 static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
