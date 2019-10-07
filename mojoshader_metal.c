@@ -166,6 +166,17 @@ static void LL_remove_node(LLNODE **baseNode, void *data)
 
 /* Uniform buffer utilities */
 
+static inline int next_highest_alignment(int n)
+{
+    #if TARGET_OS_MAC
+    int align = 256;
+    #else
+    int align = 16;
+    #endif
+
+    return align * ((n + align - 1) / align);
+}
+
 static int UBO_buffer_length(void *buffer)
 {
     return (int) objc_msgSend(buffer, sel_registerName("length"));
@@ -176,7 +187,6 @@ static void *UBO_buffer_contents(void *buffer)
     return (void *) objc_msgSend(buffer, sel_registerName("contents"));
 }
 
-// !!! FIXME: All UBO offsets must be multiples of 256 on macOS. -caleb
 static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
 {
     void *oldBuffer = ubo->internalBuffers[f];
@@ -338,10 +348,10 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader, voi
     MOJOSHADER_mtlUniformBuffer *ubo = malloc(sizeof(MOJOSHADER_mtlUniformBuffer));
     ubo->device = mtlDevice;
     ubo->alreadyWritten = 0;
-    ubo->bufferSize = shader->parseData->uniform_count * 16;
+    ubo->bufferSize = next_highest_alignment(shader->parseData->uniform_count * 16);
     ubo->currentFrame = 0;
     ubo->numInternalBuffers = 3; /* triple buffer */
-    ubo->internalBufferSize = ubo->bufferSize * 2; /* allocate 2x space since this is dynamic */
+    ubo->internalBufferSize = ubo->bufferSize;
     ubo->internalBuffers = malloc(ubo->numInternalBuffers * sizeof(void*));
     ubo->internalOffset = 0;
 
