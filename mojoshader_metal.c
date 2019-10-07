@@ -52,66 +52,6 @@ static inline void out_of_memory(void)
 #if SUPPORT_PROFILE_METAL
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
-/* Linked list */
-
-typedef struct MOJOSHADER_mtlNode
-{
-    void *data;
-    struct MOJOSHADER_mtlNode *next;
-    struct MOJOSHADER_mtlNode *prev;
-} MOJOSHADER_mtlNode;
-
-static MOJOSHADER_mtlNode *append_node(MOJOSHADER_mtlNode **baseNode)
-{
-    MOJOSHADER_mtlNode *node = *baseNode;
-    MOJOSHADER_mtlNode *prev = NULL;
-
-    /* Append a new node to the end of the linked list. */
-    while (node != NULL)
-    {
-        prev = node;
-        node = node->next;
-    }
-    node = malloc(sizeof(MOJOSHADER_mtlNode));
-    node->next = NULL;
-    node->prev = prev;
-    if (prev != NULL)
-        prev->next = node;
-
-    /* Special case for the first node. */
-    if (*baseNode == NULL)
-        *baseNode = node;
-
-    return node;
-}
-
-static void remove_node(MOJOSHADER_mtlNode **baseNode, void *data)
-{
-    MOJOSHADER_mtlNode *node = *baseNode;
-    while (node != NULL && node->data != data)
-        node = node->next;
-
-    if (node == NULL)
-    {
-        set_error("No such node found!");
-        return;
-    }
-
-    MOJOSHADER_mtlNode *prev = node->prev;
-    MOJOSHADER_mtlNode *next = node->next;
-
-    if (prev != NULL)
-        prev->next = next;
-    if (next != NULL)
-        next->prev = prev;
-
-    /* Special case where the first node is removed */
-    if (prev == NULL && next != NULL)
-        *baseNode = next;
-
-    free(node);
-}
-
 /* Structs */
 
 typedef struct MOJOSHADER_mtlEffect
@@ -133,12 +73,14 @@ typedef struct MOJOSHADER_mtlEffect
 
 typedef struct MOJOSHADER_mtlUniformBuffer
 {
-    MOJOSHADER_mtlNode *base_node;
-    int num_buffers;
-    size_t buf_size;
-    int index;
-    int set_this_frame;
-    void *mtlDevice;
+    void *device; // MTLDevice
+    int bufferSize;
+    int numInternalBuffers;
+    void **internalBuffers; // MTLBuffer*
+    int internalBufferSize;
+    int internalOffset;
+    int currentFrame;
+    int alreadyWritten;
 } MOJOSHADER_mtlUniformBuffer;
 
 /* Helper functions */
@@ -159,96 +101,154 @@ static const char *nsstr_to_cstr(void *str)
 	return (char *) objc_msgSend(str, sel_registerName("UTF8String"));
 }
 
-/* Uniform buffer utilities */
+/* Linked list */
 
-static MOJOSHADER_mtlNode *ubos = NULL;
+typedef struct LLNODE {
+    void *data;
+    struct LLNODE *next;
+} LLNODE;
 
-static void alloc_buffer(MOJOSHADER_mtlShader *shader)
+static LLNODE *LL_append_node(LLNODE **baseNode)
 {
-    if (shader->ubo->buf_size == 0)
-        return;
+    LLNODE *prev = NULL;
+    LLNODE *node = *baseNode;
 
-    MOJOSHADER_mtlNode *node = append_node(&shader->ubo->base_node);
-    node->data = objc_msgSend(
-        shader->ubo->mtlDevice,
-        sel_registerName("newBufferWithLength:options:"),
-        shader->ubo->buf_size,
-        0
-    );
-    shader->ubo->num_buffers += 1;
-}
-
-static void alloc_ubo(MOJOSHADER_mtlShader *shader, void *mtlDevice)
-{
-    if (shader->parseData->uniform_count == 0)
-    {
-        shader->ubo = NULL;
-        return;
-    }
-
-    shader->ubo = malloc(sizeof(MOJOSHADER_mtlUniformBuffer));
-    shader->ubo->mtlDevice = mtlDevice;
-    shader->ubo->base_node = NULL;
-    shader->ubo->buf_size = shader->parseData->uniform_count * 16;
-    shader->ubo->index = 0;
-    shader->ubo->num_buffers = 0;
-    shader->ubo->set_this_frame = 0;
-    alloc_buffer(shader);
-
-    MOJOSHADER_mtlNode *node = append_node(&ubos);
-    node->data = shader->ubo;
-}
-
-static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
-{
-    if (shader->ubo == NULL)
-        return;
-
-    // Skip to the end of the buffers linked list
-    MOJOSHADER_mtlNode *node = shader->ubo->base_node;
-    for (int i = 0; i < shader->ubo->num_buffers - 1; i++)
-    {
-        node = node->next;
-    }
-
-    // Release and free all the buffer nodes
+    /* Append a new node to the end of the linked list. */
     while (node != NULL)
     {
-        MOJOSHADER_mtlNode *prev = node->prev;
-        objc_msgSend(node->data, sel_registerName("release"));
-        free(node);
-        node = prev;
+        prev = node;
+        node = node->next;
     }
+    node = malloc(sizeof(LLNODE));
+    node->next = NULL;
 
-    // Remove the ubo itself from the ubos list
-    remove_node(&ubos, shader->ubo);
+    /* Connect the old to the new. */
+    if (prev != NULL)
+        prev->next = node;
 
-    // Free the UBO itself
-    free(shader->ubo);
-    shader->ubo = NULL;
+    /* Special case for the first node. */
+    if (*baseNode == NULL)
+        *baseNode = node;
+
+    return node;
 }
 
-static void *get_uniform_buffer(MOJOSHADER_mtlShader *shader)
+static void LL_remove_node(LLNODE **baseNode, void *data)
 {
-    if (shader == NULL || shader->ubo == NULL)
+    LLNODE *prev = NULL;
+    LLNODE *node = *baseNode;
+
+    /* Search for node with matching data pointer. */
+    while (node != NULL && node->data != data)
     {
-        /* Nothing here. */
-        return NULL;
+        prev = node;
+        node = node->next;
+    }
+    if (node == NULL)
+    {
+        set_error("No such node found!");
+        return;
     }
 
-    int index = 0;
-    MOJOSHADER_mtlNode *node = shader->ubo->base_node;
-    while (index < shader->ubo->index)
+    /* Clear data pointer. The data must be freed separately. */
+    node->data = NULL;
+
+    /* Connect the old to the new. */
+    if (prev != NULL)
+        prev->next = node->next;
+
+    /* Special case where the first node is removed. */
+    if (prev == NULL && node->next != NULL)
+        *baseNode = node->next;
+
+    free(node);
+}
+
+/* Uniform buffer utilities */
+
+static int UBO_buffer_length(void *buffer)
+{
+    return (int) objc_msgSend(buffer, sel_registerName("length"));
+}
+
+static void *UBO_buffer_contents(void *buffer)
+{
+    return (void *) objc_msgSend(buffer, sel_registerName("contents"));
+}
+
+// !!! FIXME: All UBO offsets must be multiples of 256 on macOS. -caleb
+static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
+{
+    void *oldBuffer = ubo->internalBuffers[f];
+    void *newBuffer = objc_msgSend(
+        ubo->device,
+        sel_registerName("newBufferWithLength:options:"),
+        ubo->internalBufferSize,
+        NULL
+    );
+    if (oldBuffer != NULL)
     {
-        if (node == NULL || node->next == NULL)
-        {
-            set_error("Buffer does not exist in memory!"); // !!! FIXME: Phrasing? -caleb
-            return NULL;
-        }
-        node = node->next;
-        ++index;
+        // Copy over data from old buffer
+        memcpy(
+            UBO_buffer_contents(newBuffer),
+            UBO_buffer_contents(oldBuffer),
+            UBO_buffer_length(oldBuffer)
+        );
+
+        // Free the old buffer
+        objc_msgSend(oldBuffer, sel_registerName("release"));
     }
-    return node->data;
+    return newBuffer;
+}
+
+static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
+{
+    if (!ubo->alreadyWritten)
+    {
+        ubo->alreadyWritten = 1;
+        return;
+    }
+
+    ubo->internalOffset += ubo->bufferSize;
+
+    int buflen = UBO_buffer_length(ubo->internalBuffers[ubo->currentFrame]);
+    if (ubo->internalOffset >= buflen)
+    {
+        if (ubo->internalOffset >= ubo->internalBufferSize)
+        {
+            // Double capacity when we're out of room
+            printf("UBO: We need more space! Doubling internal buffer size!\n");
+            ubo->internalBufferSize *= 2;
+        }
+        ubo->internalBuffers[ubo->currentFrame] = UBO_create_backing_buffer(ubo, ubo->currentFrame);
+    }
+}
+
+static void UBO_copy_contents(MOJOSHADER_mtlUniformBuffer *ubo, int srcFrame, int dstFrame)
+{
+    int dstLen = UBO_buffer_length(ubo->internalBuffers[dstFrame]);
+    if (dstLen < ubo->internalBufferSize)
+    {
+        ubo->internalBuffers[dstFrame] = UBO_create_backing_buffer(ubo, dstFrame);
+    }
+    memcpy(
+        UBO_buffer_contents(ubo->internalBuffers[dstFrame]),
+        UBO_buffer_contents(ubo->internalBuffers[srcFrame]),
+        0 //ubo->internalBufferSize
+    );
+}
+
+static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
+{
+    int lastFrame = ubo->currentFrame;
+    ubo->internalOffset = 0;
+    ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
+    ubo->alreadyWritten = 0;
+
+    // FIXME: We need a dispatch_semaphore for synchronization! -caleb
+
+    // Copy the last frame's contents to the new one
+    UBO_copy_contents(ubo, lastFrame, ubo->currentFrame);
 }
 
 /* Internal register utilities */
@@ -328,6 +328,67 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
     } // for
 } // copy_parameter_data
 
+LLNODE *ubos = NULL; /* global linked list of all active UBOs */
+
+static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader, void *mtlDevice)
+{
+    if (shader->parseData->uniform_count == 0)
+        return NULL;
+
+    MOJOSHADER_mtlUniformBuffer *ubo = malloc(sizeof(MOJOSHADER_mtlUniformBuffer));
+    ubo->device = mtlDevice;
+    ubo->alreadyWritten = 0;
+    ubo->bufferSize = shader->parseData->uniform_count * 16;
+    ubo->currentFrame = 0;
+    ubo->numInternalBuffers = 3; /* triple buffer */
+    ubo->internalBufferSize = ubo->bufferSize * 2; /* allocate 2x space since this is dynamic */
+    ubo->internalBuffers = malloc(ubo->numInternalBuffers * sizeof(void*));
+    ubo->internalOffset = 0;
+
+    for (int i = 0; i < ubo->numInternalBuffers; i++)
+    {
+        ubo->internalBuffers[i] = NULL;
+        ubo->internalBuffers[i] = UBO_create_backing_buffer(ubo, i);
+    }
+
+    /* Add the UBO to the global list so it can be updated. */
+    LLNODE *node = LL_append_node(&ubos);
+    node->data = (void *) ubo;
+
+    return ubo;
+}
+
+static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
+{
+    if (shader->ubo == NULL)
+        return;
+
+    LL_remove_node(&ubos, shader->ubo);
+    for (int i = 0; i < shader->ubo->numInternalBuffers; i++)
+    {
+        objc_msgSend(shader->ubo->internalBuffers[i], sel_registerName("release"));
+        shader->ubo->internalBuffers[i] = NULL;
+    }
+    free(shader->ubo->internalBuffers);
+    free(shader->ubo);
+}
+
+static void *get_uniform_buffer(MOJOSHADER_mtlShader *shader)
+{
+    if (shader == NULL || shader->ubo == NULL)
+        return NULL;
+
+    return shader->ubo->internalBuffers[shader->ubo->currentFrame];
+}
+
+static int get_uniform_offset(MOJOSHADER_mtlShader *shader)
+{
+    if (shader == NULL || shader->ubo == NULL)
+        return 0;
+
+    return shader->ubo->internalOffset;
+}
+
 static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 {
     if (shader == NULL || shader->ubo == NULL)
@@ -350,20 +411,9 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
         regB = ps_reg_file_b;
     }
 
-    if (shader->ubo->set_this_frame)
-    {
-        shader->ubo->index += 1;
-        if (shader->ubo->num_buffers <= shader->ubo->index)
-        {
-            alloc_buffer(shader);
-        }
-    }
-    shader->ubo->set_this_frame = 1;
-
-    void *contents = objc_msgSend(
-        get_uniform_buffer(shader),
-        sel_registerName("contents")
-    );
+    UBO_predraw(shader->ubo);
+    void *buf = shader->ubo->internalBuffers[shader->ubo->currentFrame];
+    void *contents = UBO_buffer_contents(buf) + shader->ubo->internalOffset;
 
     for (int i = 0; i < uniformCount; i++)
     {
@@ -554,7 +604,10 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
 				sel_registerName("newFunctionWithName:"),
 				cstr_to_nsstr(object->shader.shader->mainfn)
 			);
-            alloc_ubo(&retval->shaders[current_shader], mtlDevice);
+            retval->shaders[current_shader].ubo = create_ubo(
+                &retval->shaders[current_shader],
+                mtlDevice
+            );
             retval->shader_indices[current_shader] = i;
 
             current_shader++;
@@ -625,14 +678,18 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
                                        MOJOSHADER_mtlShader **newVert,
                                        MOJOSHADER_mtlShader **newFrag,
                                        void **newVertUniformBuffer,
-                                       void **newFragUniformBuffer);
+                                       void **newFragUniformBuffer,
+                                       int *newVertUniformOffset,
+                                       int *newFragUniformOffset);
 
 void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
                                    unsigned int pass,
                                    MOJOSHADER_mtlShader **newVert,
                                    MOJOSHADER_mtlShader **newFrag,
                                    void **newVertUniformBuffer,
-                                   void **newFragUniformBuffer)
+                                   void **newFragUniformBuffer,
+                                   int *newVertUniformOffset,
+                                   int *newFragUniformOffset)
 {
     int i, j;
     MOJOSHADER_effectPass *curPass;
@@ -691,12 +748,14 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
         {
             *newVert = mtlEffect->current_vert;
             *newVertUniformBuffer = get_uniform_buffer(mtlEffect->current_vert);
+            *newVertUniformOffset = get_uniform_offset(mtlEffect->current_vert);
         }
 
         if (mtlEffect->current_frag != NULL)
         {
             *newFrag = mtlEffect->current_frag;
             *newFragUniformBuffer = get_uniform_buffer(mtlEffect->current_frag);
+            *newFragUniformOffset = get_uniform_offset(mtlEffect->current_frag);
         }
 
         if (mtlEffect->current_vert_raw != NULL)
@@ -716,7 +775,9 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
         newVert,
         newFrag,
         newVertUniformBuffer,
-        newFragUniformBuffer
+        newFragUniformBuffer,
+        newVertUniformOffset,
+        newFragUniformOffset
     );
 
 } // MOJOSHADER_mtlEffectBeginPass
@@ -725,7 +786,9 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
                                        MOJOSHADER_mtlShader **newVert,
                                        MOJOSHADER_mtlShader **newFrag,
                                        void **newVertUniformBuffer,
-                                       void **newFragUniformBuffer)
+                                       void **newFragUniformBuffer,
+                                       int *newVertUniformOffset,
+                                       int *newFragUniformOffset)
 {
     MOJOSHADER_effectShader *rawVert = mtlEffect->current_vert_raw;
     MOJOSHADER_effectShader *rawFrag = mtlEffect->current_frag_raw;
@@ -828,6 +891,8 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
 
     *newVertUniformBuffer = get_uniform_buffer(mtlEffect->current_vert);
     *newFragUniformBuffer = get_uniform_buffer(mtlEffect->current_frag);
+    *newVertUniformOffset = get_uniform_offset(mtlEffect->current_vert);
+    *newFragUniformOffset = get_uniform_offset(mtlEffect->current_frag);
 } // MOJOSHADER_mtlEffectCommitChanges
 
 
@@ -842,7 +907,9 @@ void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
                              MOJOSHADER_mtlShader **newVert,
                              MOJOSHADER_mtlShader **newFrag,
                              void **newVertUniformBuffer,
-                             void **newFragUniformBuffer)
+                             void **newFragUniformBuffer,
+                             int *newVertUniformOffset,
+                             int *newFragUniformOffset)
 {
     if (mtlEffect->effect->restore_shader_state)
     {
@@ -851,6 +918,8 @@ void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
         *newFrag = mtlEffect->prev_frag;
         *newVertUniformBuffer = get_uniform_buffer(mtlEffect->prev_vert);
         *newFragUniformBuffer = get_uniform_buffer(mtlEffect->prev_frag);
+        *newVertUniformOffset = get_uniform_offset(mtlEffect->prev_vert);
+        *newFragUniformOffset = get_uniform_offset(mtlEffect->prev_frag);
     } // if
 
     mtlEffect->effect->state_changes = NULL;
@@ -863,14 +932,12 @@ void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
     return shader->handle;
 }
 
-void MOJOSHADER_mtlResetUniformBuffers()
+void MOJOSHADER_mtlEndFrame()
 {
-    MOJOSHADER_mtlNode *node = ubos;
+    LLNODE *node = ubos;
     while (node != NULL)
     {
-        MOJOSHADER_mtlUniformBuffer *ubo = (MOJOSHADER_mtlUniformBuffer *) node->data;
-        ubo->set_this_frame = 0;
-        ubo->index = 0;
+        UBO_end_frame((MOJOSHADER_mtlUniformBuffer *) node->data);
         node = node->next;
     }
 }

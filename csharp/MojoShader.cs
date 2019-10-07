@@ -1173,7 +1173,9 @@ public static class MojoShader
 		out IntPtr newVert,
 		out IntPtr newFrag,
 		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer
+		out IntPtr newFragUniformBuffer,
+		out int newVertUniformOffset,
+		out int newFragUniformOffset
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
@@ -1187,7 +1189,9 @@ public static class MojoShader
 		out IntPtr newVert,
 		out IntPtr newFrag,
 		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer
+		out IntPtr newFragUniformBuffer,
+		out int newVertUniformOffset,
+		out int newFragUniformOffset
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
@@ -1205,7 +1209,9 @@ public static class MojoShader
 		out IntPtr newVert,
 		out IntPtr newFrag,
 		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer
+		out IntPtr newFragUniformBuffer,
+		out int newVertUniformOffset,
+		out int newFragUniformOffset
 	);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
@@ -1214,7 +1220,7 @@ public static class MojoShader
 	);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern void MOJOSHADER_mtlResetUniformBuffers();
+	public static extern void MOJOSHADER_mtlEndFrame();
 
 	#endregion
 
