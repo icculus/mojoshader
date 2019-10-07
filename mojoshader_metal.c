@@ -87,18 +87,18 @@ typedef struct MOJOSHADER_mtlUniformBuffer
 
 const char *MOJOSHADER_mtlGetError(void)
 {
-	return error_buffer;
+    return error_buffer;
 }
 
 static void *cstr_to_nsstr(const char *str)
 {
     void *nsstr = objc_msgSend((void *) objc_getClass("NSString"), sel_registerName("alloc"));
-	return objc_msgSend(nsstr, sel_registerName("initWithUTF8String:"), str);
+    return objc_msgSend(nsstr, sel_registerName("initWithUTF8String:"), str);
 }
 
 static const char *nsstr_to_cstr(void *str)
 {
-	return (char *) objc_msgSend(str, sel_registerName("UTF8String"));
+    return (char *) objc_msgSend(str, sel_registerName("UTF8String"));
 }
 
 /* Linked list */
@@ -491,7 +491,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
     void *d = effect->malloc_data;
     int current_shader = 0;
     int current_preshader = 0;
-	void *library;
+    void *library;
     int src_len = 0;
 
     MOJOSHADER_mtlEffect *retval = (MOJOSHADER_mtlEffect *) m(sizeof (MOJOSHADER_mtlEffect), d);
@@ -574,27 +574,32 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
         memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof (unsigned int));
     } // if
 
-	// Compile the source into a library
-	void *compileError = NULL;
-	void *selNewLibrary = sel_registerName("newLibraryWithSource:options:error:");
-	library = objc_msgSend(
-		mtlDevice,
-		selNewLibrary,
-		cstr_to_nsstr(shader_source),
-		NULL,
-		&compileError
-	);
-	retval->library = library;
+    // Compile the source into a library
+    void *compileError = NULL;
+    void *selNewLibrary = sel_registerName("newLibraryWithSource:options:error:");
+    void *shader_source_ns = cstr_to_nsstr(shader_source);
+    library = objc_msgSend(
+        mtlDevice,
+        selNewLibrary,
+        shader_source_ns,
+        NULL,
+        &compileError
+    );
+    retval->library = library;
     free(shader_source);
+    objc_msgSend(shader_source_ns, sel_registerName("release"));
 
-	if (library == NULL)
-	{
-		// Set the error
-		void *error_nsstr = objc_msgSend(compileError, sel_registerName("localizedDescription"));
-		set_error(nsstr_to_cstr(error_nsstr));
+    if (library == NULL)
+    {
+        // Set the error
+        void *error_nsstr = objc_msgSend(compileError, sel_registerName("localizedDescription"));
+        set_error(nsstr_to_cstr(error_nsstr));
 
-		goto compile_shader_fail;
-	} // if
+        goto compile_shader_fail;
+    } // if
+
+    // Don't let the library get accidentally released
+    objc_msgSend(library, sel_registerName("retain"));
 
     // Run through the shaders again, tracking the object indices
     for (i = 0; i < effect->object_count; i++)
@@ -609,11 +614,15 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
                 continue;
             } // if
             retval->shaders[current_shader].parseData = object->shader.shader;
+
+            void *fnname = cstr_to_nsstr(object->shader.shader->mainfn);
             retval->shaders[current_shader].handle = objc_msgSend(
-				library,
-				sel_registerName("newFunctionWithName:"),
-				cstr_to_nsstr(object->shader.shader->mainfn)
-			);
+                library,
+                sel_registerName("newFunctionWithName:"),
+                fnname
+            );
+            objc_msgSend(fnname, sel_registerName("release"));
+
             retval->shaders[current_shader].ubo = create_ubo(
                 &retval->shaders[current_shader],
                 mtlDevice
