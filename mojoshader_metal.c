@@ -32,6 +32,7 @@ typedef struct MOJOSHADER_mtlShader
     const MOJOSHADER_parseData *parseData;
     void *handle; // MTLFunction*
     MOJOSHADER_mtlUniformBuffer *ubo;
+    int numInternalBuffers;
 } MOJOSHADER_mtlShader;
 
 // Error state...
@@ -234,31 +235,12 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
     }
 }
 
-static void UBO_copy_contents(MOJOSHADER_mtlUniformBuffer *ubo, int srcFrame, int dstFrame)
-{
-    int dstLen = UBO_buffer_length(ubo->internalBuffers[dstFrame]);
-    if (dstLen < ubo->internalBufferSize)
-    {
-        ubo->internalBuffers[dstFrame] = UBO_create_backing_buffer(ubo, dstFrame);
-    }
-    memcpy(
-        UBO_buffer_contents(ubo->internalBuffers[dstFrame]),
-        UBO_buffer_contents(ubo->internalBuffers[srcFrame]),
-        0 //ubo->internalBufferSize
-    );
-}
-
 static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
 {
     int lastFrame = ubo->currentFrame;
     ubo->internalOffset = 0;
     ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
     ubo->alreadyWritten = 0;
-
-    // FIXME: We need a dispatch_semaphore for synchronization! -caleb
-
-    // Copy the last frame's contents to the new one
-    UBO_copy_contents(ubo, lastFrame, ubo->currentFrame);
 }
 
 /* Internal register utilities */
@@ -350,7 +332,7 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader, voi
     ubo->alreadyWritten = 0;
     ubo->bufferSize = next_highest_alignment(shader->parseData->uniform_count * 16);
     ubo->currentFrame = 0;
-    ubo->numInternalBuffers = 3; /* triple buffer */
+    ubo->numInternalBuffers = shader->numInternalBuffers;
     ubo->internalBufferSize = ubo->bufferSize;
     ubo->internalBuffers = malloc(ubo->numInternalBuffers * sizeof(void*));
     ubo->internalOffset = 0;
@@ -483,8 +465,11 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert, MOJOSHADER
     return -1;
 } // MOJOSHADER_mtlGetVertexAttribLocation
 
-MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, void *mtlDevice)
-{
+MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(
+    MOJOSHADER_effect *effect,
+    void *mtlDevice,
+    int numBackingBuffers
+) {
     int i;
     MOJOSHADER_malloc m = effect->malloc;
     MOJOSHADER_free f = effect->free;
@@ -598,9 +583,6 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
         goto compile_shader_fail;
     } // if
 
-    // Don't let the library get accidentally released
-    objc_msgSend(library, sel_registerName("retain"));
-
     // Run through the shaders again, tracking the object indices
     for (i = 0; i < effect->object_count; i++)
     {
@@ -623,6 +605,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect, voi
             );
             objc_msgSend(fnname, sel_registerName("release"));
 
+            retval->shaders[current_shader].numInternalBuffers = numBackingBuffers;
             retval->shaders[current_shader].ubo = create_ubo(
                 &retval->shaders[current_shader],
                 mtlDevice

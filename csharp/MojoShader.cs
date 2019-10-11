@@ -1142,7 +1142,8 @@ public static class MojoShader
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern IntPtr MOJOSHADER_mtlCompileEffect(
 		IntPtr effect,
-		IntPtr mtlDevice
+		IntPtr mtlDevice,
+		int numBackingBuffers
 	);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
