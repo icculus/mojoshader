@@ -888,13 +888,13 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
     COPY_PARAMETER_DATA(rawFrag, ps)
     #undef COPY_PARAMETER_DATA
 
-    update_uniform_buffer(mtlEffect->current_vert);
-    update_uniform_buffer(mtlEffect->current_frag);
+    update_uniform_buffer(*newVert);
+    update_uniform_buffer(*newFrag);
 
-    *newVertUniformBuffer = get_uniform_buffer(mtlEffect->current_vert);
-    *newFragUniformBuffer = get_uniform_buffer(mtlEffect->current_frag);
-    *newVertUniformOffset = get_uniform_offset(mtlEffect->current_vert);
-    *newFragUniformOffset = get_uniform_offset(mtlEffect->current_frag);
+    *newVertUniformBuffer = get_uniform_buffer(*newVert);
+    *newFragUniformBuffer = get_uniform_buffer(*newFrag);
+    *newVertUniformOffset = get_uniform_offset(*newVert);
+    *newFragUniformOffset = get_uniform_offset(*newFrag);
 } // MOJOSHADER_mtlEffectCommitChanges
 
 
