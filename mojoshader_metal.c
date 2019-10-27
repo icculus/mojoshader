@@ -333,7 +333,7 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader, voi
     ubo->bufferSize = next_highest_alignment(shader->parseData->uniform_count * 16);
     ubo->currentFrame = 0;
     ubo->numInternalBuffers = shader->numInternalBuffers;
-    ubo->internalBufferSize = ubo->bufferSize;
+    ubo->internalBufferSize = ubo->bufferSize * 16; /* Pre-allocate some extra room. */
     ubo->internalBuffers = malloc(ubo->numInternalBuffers * sizeof(void*));
     ubo->internalOffset = 0;
 
