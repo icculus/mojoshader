@@ -951,7 +951,14 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     } // else if
                     break;
                 case MOJOSHADER_USAGE_FOG:
-                    usage_str = "gl_FogFragCoord";
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        break; // GLSL ES does not have gl_FogFragCoord
+#endif
+                    if (index == 0)
+                    {
+                        usage_str = "gl_FogFragCoord";
+                    } // if
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
 #if SUPPORT_PROFILE_GLSLES
