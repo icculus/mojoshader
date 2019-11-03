@@ -1146,8 +1146,12 @@ public static class MojoShader
 		int numBackingBuffers
 	);
 
-	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern string MOJOSHADER_mtlGetError();
+	[DllImport(nativeLibName, EntryPoint = "MOJOSHADER_mtlGetError", CallingConvention = CallingConvention.Cdecl)]
+	private static extern IntPtr INTERNAL_mtlGetError();
+	public static string MOJOSHADER_mtlGetError()
+	{
+		return UTF8_ToManaged(INTERNAL_mtlGetError());
+	}
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]

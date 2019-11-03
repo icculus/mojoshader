@@ -14,14 +14,18 @@
 #include <assert.h>
 
 #if (defined(__APPLE__) && defined(__MACH__))
+
 #define PLATFORM_APPLE 1
 #include "TargetConditionals.h"
-#endif /* (defined(__APPLE__) && defined(__MACH__)) */
 
-#if PLATFORM_APPLE
 #define OBJC_OLD_DISPATCH_PROTOTYPES 1
 #include <objc/message.h>
-#endif /* PLATFORM_APPLE */
+#define objc_msgSend_STR ((void* (*)(void*, void*, const char*))objc_msgSend)
+#define objc_msgSend_PTR ((void* (*)(void*, void*, void*))objc_msgSend)
+#define objc_msgSend_INT_PTR ((void* (*)(void*, void*, int, void*))objc_msgSend)
+#define objc_msgSend_PTR_PTR_PTR ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)
+
+#endif /* (defined(__APPLE__) && defined(__MACH__)) */
 
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
@@ -50,7 +54,7 @@ static inline void out_of_memory(void)
 
 // profile-specific implementations...
 
-#if SUPPORT_PROFILE_METAL
+#if SUPPORT_PROFILE_METAL && PLATFORM_APPLE
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
 /* Structs */
@@ -94,7 +98,7 @@ const char *MOJOSHADER_mtlGetError(void)
 static void *cstr_to_nsstr(const char *str)
 {
     void *nsstr = objc_msgSend((void *) objc_getClass("NSString"), sel_registerName("alloc"));
-    return objc_msgSend(nsstr, sel_registerName("initWithUTF8String:"), str);
+    return objc_msgSend_STR(nsstr, sel_registerName("initWithUTF8String:"), str);
 }
 
 static const char *nsstr_to_cstr(void *str)
@@ -169,10 +173,10 @@ static void LL_remove_node(LLNODE **baseNode, void *data)
 
 static inline int next_highest_alignment(int n)
 {
-    #if TARGET_OS_MAC
-    int align = 256;
-    #else
+    #if TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_SIMULATOR
     int align = 16;
+    #else
+    int align = 256;
     #endif
 
     return align * ((n + align - 1) / align);
@@ -191,7 +195,7 @@ static void *UBO_buffer_contents(void *buffer)
 static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
 {
     void *oldBuffer = ubo->internalBuffers[f];
-    void *newBuffer = objc_msgSend(
+    void *newBuffer = objc_msgSend_INT_PTR(
         ubo->device,
         sel_registerName("newBufferWithLength:options:"),
         ubo->internalBufferSize,
@@ -237,7 +241,6 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
 
 static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
 {
-    int lastFrame = ubo->currentFrame;
     ubo->internalOffset = 0;
     ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
     ubo->alreadyWritten = 0;
@@ -476,7 +479,6 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(
     void *d = effect->malloc_data;
     int current_shader = 0;
     int current_preshader = 0;
-    void *library;
     int src_len = 0;
 
     MOJOSHADER_mtlEffect *retval = (MOJOSHADER_mtlEffect *) m(sizeof (MOJOSHADER_mtlEffect), d);
@@ -561,11 +563,10 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(
 
     // Compile the source into a library
     void *compileError = NULL;
-    void *selNewLibrary = sel_registerName("newLibraryWithSource:options:error:");
     void *shader_source_ns = cstr_to_nsstr(shader_source);
-    library = objc_msgSend(
+    void *library = objc_msgSend_PTR_PTR_PTR(
         mtlDevice,
-        selNewLibrary,
+        sel_registerName("newLibraryWithSource:options:error:"),
         shader_source_ns,
         NULL,
         &compileError
@@ -598,7 +599,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(
             retval->shaders[current_shader].parseData = object->shader.shader;
 
             void *fnname = cstr_to_nsstr(object->shader.shader->mainfn);
-            retval->shaders[current_shader].handle = objc_msgSend(
+            retval->shaders[current_shader].handle = objc_msgSend_PTR(
                 library,
                 sel_registerName("newFunctionWithName:"),
                 fnname
@@ -641,17 +642,11 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
         /* Delete the shader, but do NOT delete the parse data!
          * The parse data belongs to the parent effect.
          */
-        objc_msgSend(
-            mtlEffect->shaders[i].handle,
-            selRelease
-        );
+        objc_msgSend(mtlEffect->shaders[i].handle, selRelease);
     }
 
     /* Release the library */
-    objc_msgSend(
-        mtlEffect->library,
-        selRelease
-    );
+    objc_msgSend(mtlEffect->library, selRelease);
 
     f(mtlEffect->shader_indices, d);
     f(mtlEffect->preshader_indices, d);
@@ -944,7 +939,7 @@ void MOJOSHADER_mtlEndFrame()
     }
 }
 
-#endif // MOJOSHADER_EFFECT_SUPPORT
-#endif // SUPPORT_PROFILE_METAL
+#endif /* MOJOSHADER_EFFECT_SUPPORT */
+#endif /* SUPPORT_PROFILE_METAL && PLATFORM_APPLE */
 
 // end of mojoshader_metal.c ...
