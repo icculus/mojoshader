@@ -97,8 +97,12 @@ const char *MOJOSHADER_mtlGetError(void)
 
 static void *cstr_to_nsstr(const char *str)
 {
-    void *nsstr = objc_msgSend((void *) objc_getClass("NSString"), sel_registerName("alloc"));
-    return objc_msgSend_STR(nsstr, sel_registerName("initWithUTF8String:"), str);
+    void *nsstr = objc_msgSend(
+        (void*) objc_getClass("NSString"), sel_registerName("alloc")
+    );
+    return objc_msgSend_STR(
+        nsstr, sel_registerName("initWithUTF8String:"), str
+    );
 }
 
 static const char *nsstr_to_cstr(void *str)
@@ -325,7 +329,8 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
 
 LLNODE *ubos = NULL; /* global linked list of all active UBOs */
 
-static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader, void *mtlDevice)
+static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
+                                               void *mtlDevice)
 {
     if (shader->parseData->uniform_count == 0)
         return NULL;
@@ -450,7 +455,8 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 
 /* Public API */
 
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert, MOJOSHADER_usage usage, int index)
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index)
 {
     if (vert == NULL)
         return -1;
@@ -468,11 +474,10 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert, MOJOSHADER
     return -1;
 } // MOJOSHADER_mtlGetVertexAttribLocation
 
-MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(
-    MOJOSHADER_effect *effect,
-    void *mtlDevice,
-    int numBackingBuffers
-) {
+MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
+                                                  void *mtlDevice,
+                                                  int numBackingBuffers)
+{
     int i;
     MOJOSHADER_malloc m = effect->malloc;
     MOJOSHADER_free f = effect->free;
@@ -655,9 +660,9 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
 
 
 void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
-                              unsigned int *numPasses,
-                              int saveShaderState,
-                              MOJOSHADER_effectStateChanges *stateChanges)
+                               unsigned int *numPasses,
+                               int saveShaderState,
+                               MOJOSHADER_effectStateChanges *stateChanges)
 {
     *numPasses = mtlEffect->effect->current_technique->pass_count;
     mtlEffect->effect->restore_shader_state = saveShaderState;
