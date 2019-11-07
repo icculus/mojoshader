@@ -34,7 +34,6 @@ typedef struct MOJOSHADER_mtlUniformBuffer MOJOSHADER_mtlUniformBuffer;
 typedef struct MOJOSHADER_mtlShader
 {
     const MOJOSHADER_parseData *parseData;
-    void *handle; // MTLFunction*
     MOJOSHADER_mtlUniformBuffer *ubo;
     int numInternalBuffers;
 } MOJOSHADER_mtlShader;
@@ -88,26 +87,49 @@ typedef struct MOJOSHADER_mtlUniformBuffer
     int alreadyWritten;
 } MOJOSHADER_mtlUniformBuffer;
 
+/* Objective-C selector references */
+
+static void *classNSString = NULL;
+static void *selAlloc = NULL;
+static void *selInitWithUTF8String = NULL;
+static void *selUTF8String = NULL;
+static void *selLength = NULL;
+static void *selContents = NULL;
+static void *selNewBufferWithLength = NULL;
+static void *selRelease = NULL;
+static void *selNewLibraryWithSource = NULL;
+static void *selLocalizedDescription = NULL;
+static void *selNewFunctionWithName = NULL;
+
 /* Helper functions */
 
-const char *MOJOSHADER_mtlGetError(void)
+static void initSelectors(void)
 {
-    return error_buffer;
+    classNSString = (void*) objc_getClass("NSString");
+    selAlloc = sel_registerName("alloc");
+    selInitWithUTF8String = sel_registerName("initWithUTF8String:");
+    selUTF8String = sel_registerName("UTF8String");
+    selLength = sel_registerName("length");
+    selContents = sel_registerName("contents");
+    selNewBufferWithLength = sel_registerName("newBufferWithLength:options:");
+    selRelease = sel_registerName("release");
+    selNewLibraryWithSource = sel_registerName("newLibraryWithSource:options:error:");
+    selLocalizedDescription = sel_registerName("localizedDescription");
+    selNewFunctionWithName = sel_registerName("newFunctionWithName:");
 }
 
 static void *cstr_to_nsstr(const char *str)
 {
-    void *nsstr = objc_msgSend(
-        (void*) objc_getClass("NSString"), sel_registerName("alloc")
-    );
     return objc_msgSend_STR(
-        nsstr, sel_registerName("initWithUTF8String:"), str
+        objc_msgSend(classNSString, selAlloc),
+        selInitWithUTF8String,
+        str
     );
 }
 
 static const char *nsstr_to_cstr(void *str)
 {
-    return (char *) objc_msgSend(str, sel_registerName("UTF8String"));
+    return (char *) objc_msgSend(str, selUTF8String);
 }
 
 /* Linked list */
@@ -188,12 +210,12 @@ static inline int next_highest_alignment(int n)
 
 static int UBO_buffer_length(void *buffer)
 {
-    return (int) objc_msgSend(buffer, sel_registerName("length"));
+    return (int) objc_msgSend(buffer, selLength);
 }
 
 static void *UBO_buffer_contents(void *buffer)
 {
-    return (void *) objc_msgSend(buffer, sel_registerName("contents"));
+    return (void *) objc_msgSend(buffer, selContents);
 }
 
 static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
@@ -201,7 +223,7 @@ static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
     void *oldBuffer = ubo->internalBuffers[f];
     void *newBuffer = objc_msgSend_INT_PTR(
         ubo->device,
-        sel_registerName("newBufferWithLength:options:"),
+        selNewBufferWithLength,
         ubo->internalBufferSize,
         NULL
     );
@@ -215,7 +237,7 @@ static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
         );
 
         // Free the old buffer
-        objc_msgSend(oldBuffer, sel_registerName("release"));
+        objc_msgSend(oldBuffer, selRelease);
     }
     return newBuffer;
 }
@@ -366,7 +388,7 @@ static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
     LL_remove_node(&ubos, shader->ubo);
     for (int i = 0; i < shader->ubo->numInternalBuffers; i++)
     {
-        objc_msgSend(shader->ubo->internalBuffers[i], sel_registerName("release"));
+        objc_msgSend(shader->ubo->internalBuffers[i], selRelease);
         shader->ubo->internalBuffers[i] = NULL;
     }
     free(shader->ubo->internalBuffers);
@@ -486,6 +508,10 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     int current_preshader = 0;
     int src_len = 0;
 
+    // Make sure the Objective-C selectors have been initialized...
+    if (selAlloc == NULL)
+        initSelectors();
+
     MOJOSHADER_mtlEffect *retval = (MOJOSHADER_mtlEffect *) m(sizeof (MOJOSHADER_mtlEffect), d);
     if (retval == NULL)
     {
@@ -571,19 +597,19 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     void *shader_source_ns = cstr_to_nsstr(shader_source);
     void *library = objc_msgSend_PTR_PTR_PTR(
         mtlDevice,
-        sel_registerName("newLibraryWithSource:options:error:"),
+        selNewLibraryWithSource,
         shader_source_ns,
         NULL,
         &compileError
     );
     retval->library = library;
     free(shader_source);
-    objc_msgSend(shader_source_ns, sel_registerName("release"));
+    objc_msgSend(shader_source_ns, selRelease);
 
     if (library == NULL)
     {
         // Set the error
-        void *error_nsstr = objc_msgSend(compileError, sel_registerName("localizedDescription"));
+        void *error_nsstr = objc_msgSend(compileError, selLocalizedDescription);
         set_error(nsstr_to_cstr(error_nsstr));
 
         goto compile_shader_fail;
@@ -602,15 +628,6 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
                 continue;
             } // if
             retval->shaders[current_shader].parseData = object->shader.shader;
-
-            void *fnname = cstr_to_nsstr(object->shader.shader->mainfn);
-            retval->shaders[current_shader].handle = objc_msgSend_PTR(
-                library,
-                sel_registerName("newFunctionWithName:"),
-                fnname
-            );
-            objc_msgSend(fnname, sel_registerName("release"));
-
             retval->shaders[current_shader].numInternalBuffers = numBackingBuffers;
             retval->shaders[current_shader].ubo = create_ubo(
                 &retval->shaders[current_shader],
@@ -636,18 +653,12 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
 {
     MOJOSHADER_free f = mtlEffect->effect->free;
     void *d = mtlEffect->effect->malloc_data;
-    void *selRelease = sel_registerName("release");
 
     int i;
     for (i = 0; i < mtlEffect->num_shaders; i++)
     {
         /* Release the uniform buffers */
         dealloc_ubo(&mtlEffect->shaders[i]);
-
-        /* Delete the shader, but do NOT delete the parse data!
-         * The parse data belongs to the parent effect.
-         */
-        objc_msgSend(mtlEffect->shaders[i].handle, selRelease);
     }
 
     /* Release the library */
@@ -927,11 +938,21 @@ void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
     mtlEffect->effect->state_changes = NULL;
 } // MOJOSHADER_mtlEffectEnd
 
-void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
+void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlEffect *effect,
+                                      MOJOSHADER_mtlShader *shader)
 {
-    if (shader == NULL)
+    if (effect == NULL || shader == NULL)
         return NULL;
-    return shader->handle;
+
+    void *fnname = cstr_to_nsstr(shader->parseData->mainfn);
+    void *ret = objc_msgSend_PTR(
+        effect->library,
+        selNewFunctionWithName,
+        fnname
+    );
+    objc_msgSend(fnname, selRelease);
+
+    return ret;
 }
 
 void MOJOSHADER_mtlEndFrame()
@@ -942,6 +963,11 @@ void MOJOSHADER_mtlEndFrame()
         UBO_end_frame((MOJOSHADER_mtlUniformBuffer *) node->data);
         node = node->next;
     }
+}
+
+const char *MOJOSHADER_mtlGetError(void)
+{
+    return error_buffer;
 }
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */

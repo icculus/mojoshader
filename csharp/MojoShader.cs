@@ -1221,6 +1221,7 @@ public static class MojoShader
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(
+		IntPtr mtlEffect,
 		IntPtr mtlShader
 	);
 
