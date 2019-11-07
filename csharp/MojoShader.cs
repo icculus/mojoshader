@@ -1220,10 +1220,7 @@ public static class MojoShader
 	);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(
-		IntPtr mtlEffect,
-		IntPtr mtlShader
-	);
+	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(IntPtr mtlShader);
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEndFrame();

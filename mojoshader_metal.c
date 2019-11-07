@@ -35,6 +35,7 @@ typedef struct MOJOSHADER_mtlShader
 {
     const MOJOSHADER_parseData *parseData;
     MOJOSHADER_mtlUniformBuffer *ubo;
+    void *library; // MTLLibrary*
     int numInternalBuffers;
 } MOJOSHADER_mtlShader;
 
@@ -633,6 +634,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
                 &retval->shaders[current_shader],
                 mtlDevice
             );
+            retval->shaders[current_shader].library = library;
             retval->shader_indices[current_shader] = i;
 
             current_shader++;
@@ -938,15 +940,14 @@ void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
     mtlEffect->effect->state_changes = NULL;
 } // MOJOSHADER_mtlEffectEnd
 
-void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlEffect *effect,
-                                      MOJOSHADER_mtlShader *shader)
+void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
 {
-    if (effect == NULL || shader == NULL)
+    if (shader == NULL)
         return NULL;
 
     void *fnname = cstr_to_nsstr(shader->parseData->mainfn);
     void *ret = objc_msgSend_PTR(
-        effect->library,
+        shader->library,
         selNewFunctionWithName,
         fnname
     );
