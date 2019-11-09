@@ -355,13 +355,24 @@ LLNODE *ubos = NULL; /* global linked list of all active UBOs */
 static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
                                                void *mtlDevice)
 {
-    if (shader->parseData->uniform_count == 0)
+    int uniformCount = shader->parseData->uniform_count;
+    if (uniformCount == 0)
         return NULL;
 
+    // Calculate how big we need to make the buffer
+    int buflen = 0;
+    for (int i = 0; i < uniformCount; i += 1)
+    {
+        int arrayCount = shader->parseData->uniforms[i].array_count;
+        buflen += arrayCount ? arrayCount : 1;
+    }
+    buflen *= 16; // all uniform types are 16 bytes
+
+    // Make the buffer
     MOJOSHADER_mtlUniformBuffer *ubo = malloc(sizeof(MOJOSHADER_mtlUniformBuffer));
     ubo->device = mtlDevice;
     ubo->alreadyWritten = 0;
-    ubo->bufferSize = next_highest_alignment(shader->parseData->uniform_count * 16);
+    ubo->bufferSize = next_highest_alignment(buflen);
     ubo->currentFrame = 0;
     ubo->numInternalBuffers = shader->numInternalBuffers;
     ubo->internalBufferSize = ubo->bufferSize * 16; /* Pre-allocate some extra room. */
@@ -379,7 +390,7 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     node->data = (void *) ubo;
 
     return ubo;
-}
+} // create_ubo
 
 static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
 {
@@ -394,7 +405,7 @@ static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
     }
     free(shader->ubo->internalBuffers);
     free(shader->ubo);
-}
+} // dealloc_ubo
 
 static void *get_uniform_buffer(MOJOSHADER_mtlShader *shader)
 {
@@ -402,7 +413,7 @@ static void *get_uniform_buffer(MOJOSHADER_mtlShader *shader)
         return NULL;
 
     return shader->ubo->internalBuffers[shader->ubo->currentFrame];
-}
+} // get_uniform_buffer
 
 static int get_uniform_offset(MOJOSHADER_mtlShader *shader)
 {
@@ -410,15 +421,12 @@ static int get_uniform_offset(MOJOSHADER_mtlShader *shader)
         return 0;
 
     return shader->ubo->internalOffset;
-}
+} // get_uniform_offset
 
 static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 {
     if (shader == NULL || shader->ubo == NULL)
         return;
-
-    int uniformCount = shader->parseData->uniform_count;
-    int offset = 0;
 
     float *regF; int *regI; uint8 *regB;
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
@@ -438,33 +446,38 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
     void *buf = shader->ubo->internalBuffers[shader->ubo->currentFrame];
     void *contents = UBO_buffer_contents(buf) + shader->ubo->internalOffset;
 
-    for (int i = 0; i < uniformCount; i++)
+    int offset = 0;
+    for (int i = 0; i < shader->parseData->uniform_count; i++)
     {
+        int idx = shader->parseData->uniforms[i].index;
+        int arrayCount = shader->parseData->uniforms[i].array_count;
+        int size = arrayCount ? arrayCount : 1;
+
         switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
                 memcpy(
-                    contents + offset,
-                    &regF[4 * shader->parseData->uniforms[i].index],
-                    16
+                    contents + (offset * 16),
+                    &regF[4 * idx],
+                    size * 16
                 );
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
                 // !!! FIXME: Need a test case
                 memcpy(
-                    contents + offset,
-                    &regI[4 * shader->parseData->uniforms[i].index],
-                    16
+                    contents + (offset * 16),
+                    &regI[4 * idx],
+                    size * 16
                 );
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
                 // !!! FIXME: Need a test case
                 memcpy(
-                    contents + offset,
-                    &regB[4 * shader->parseData->uniforms[i].index],
-                    16
+                    contents + (offset * 16),
+                    &regB[4 * idx],
+                    size * 16
                 );
                 break;
 
@@ -472,7 +485,7 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
                 assert(0); // This should never happen.
                 break;
         }
-        offset += 16;
+        offset += size;
     }
 } // update_uniform_buffer
 
