@@ -101,6 +101,7 @@ static void *selRelease = NULL;
 static void *selNewLibraryWithSource = NULL;
 static void *selLocalizedDescription = NULL;
 static void *selNewFunctionWithName = NULL;
+static void *selRetain = NULL;
 
 /* Helper functions */
 
@@ -117,6 +118,7 @@ static void initSelectors(void)
     selNewLibraryWithSource = sel_registerName("newLibraryWithSource:options:error:");
     selLocalizedDescription = sel_registerName("localizedDescription");
     selNewFunctionWithName = sel_registerName("newFunctionWithName:");
+    selRetain = sel_registerName("retain");
 }
 
 static void *cstr_to_nsstr(const char *str)
@@ -965,6 +967,7 @@ void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
         fnname
     );
     objc_msgSend(fnname, selRelease);
+    objc_msgSend(ret, selRetain);
 
     return ret;
 }
