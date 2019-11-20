@@ -918,6 +918,8 @@ void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 %s [[user(texcoord%d)]];", var, index);
                     break;
+                case MOJOSHADER_USAGE_NORMAL:
+                    output_line(ctx, "float4 %s [[user(normal)]];", var);
                 default:
                     // !!! FIXME: we need to deal with some more built-in varyings here.
                     break;
@@ -1023,6 +1025,9 @@ void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
                 else if (usage == MOJOSHADER_USAGE_FOG)
                     output_line(ctx, "float4 %s [[user(fog)]];", var);
+
+                else if (usage == MOJOSHADER_USAGE_NORMAL)
+                    output_line(ctx, "float4 %s [[user(normal)]];", var);
             } // else
 
             pop_output(ctx);
