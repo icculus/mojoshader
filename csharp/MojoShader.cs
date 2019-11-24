@@ -1127,13 +1127,21 @@ public static class MojoShader
 
 	/* Metal effect interface... */
 
-	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
-	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern int MOJOSHADER_mtlGetVertexAttribLocation(
-		IntPtr mtlShader,
-		MOJOSHADER_usage usage,
-		int index
-	);
+	/* vertexShader refers to a MOJOSHADER_mtlShader*
+	 * fragmentShader refers to a MOJOSHADER_mtlShader*
+	 * vertexUniformBuffer refers to a MTLBuffer*
+	 * fragmentUniformBuffer refers to a MTLBuffer*
+	 */
+	[StructLayout(LayoutKind.Sequential, Pack = 1)]
+	public struct MOJOSHADER_mtlShaderState
+	{
+		public IntPtr vertexShader;
+		public IntPtr fragmentShader;
+		public IntPtr vertexUniformBuffer;
+		public IntPtr fragmentUniformBuffer;
+		public int vertexUniformOffset;
+		public int fragmentUniformOffset;
+	}
 
 	/* IntPtr refers to a MOJOSHADER_mtlEffect*
 	 * effect to a MOJOSHADER_effect*
@@ -1145,13 +1153,6 @@ public static class MojoShader
 		IntPtr mtlDevice,
 		int numBackingBuffers
 	);
-
-	[DllImport(nativeLibName, EntryPoint = "MOJOSHADER_mtlGetError", CallingConvention = CallingConvention.Cdecl)]
-	private static extern IntPtr INTERNAL_mtlGetError();
-	public static string MOJOSHADER_mtlGetError()
-	{
-		return UTF8_ToManaged(INTERNAL_mtlGetError());
-	}
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
@@ -1166,65 +1167,31 @@ public static class MojoShader
 		IntPtr stateChanges
 	);
 
-	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MOJOSHADER_mtlShader*
-	 * newFrag refers to a MOJOSHADER_mtlShader*
-	 * newUniformBuffer refers to a MTLBuffer*
-	 */
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectBeginPass(
 		IntPtr mtlEffect,
 		uint pass,
-		out IntPtr newVert,
-		out IntPtr newFrag,
-		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer,
-		out int newVertUniformOffset,
-		out int newFragUniformOffset
+		ref MOJOSHADER_mtlShaderState shaderState
 	);
 
-	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MOJOSHADER_mtlShader*
-	 * newFrag refers to a MOJOSHADER_mtlShader*
-	 * newUniformBuffer refers to a MTLBuffer*
-	 */
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectCommitChanges(
 		IntPtr mtlEffect,
-		out IntPtr newVert,
-		out IntPtr newFrag,
-		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer,
-		out int newVertUniformOffset,
-		out int newFragUniformOffset
+		ref MOJOSHADER_mtlShaderState shaderState
 	);
 
 	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectEndPass(IntPtr mtlEffect);
 
-	/* mtlEffect refers to a MOJOSHADER_mtlEffect*
-	 * newVert refers to a MOJOSHADER_mtlShader*
-	 * newFrag refers to a MOJOSHADER_mtlShader*
-	 * newUniformBuffer refers to a MTLBuffer*
-	 */
+	/* mtlEffect refers to a MOJOSHADER_mtlEffect* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_mtlEffectEnd(
 		IntPtr mtlEffect,
-		out IntPtr newVert,
-		out IntPtr newFrag,
-		out IntPtr newVertUniformBuffer,
-		out IntPtr newFragUniformBuffer,
-		out int newVertUniformOffset,
-		out int newFragUniformOffset
+		ref MOJOSHADER_mtlShaderState shaderState
 	);
-
-	/* mtlShader refers to a MOJOSHADER_mtlShader* */
-	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(IntPtr mtlShader);
-
-	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
-	public static extern void MOJOSHADER_mtlEndFrame();
 
 	#endregion
 
@@ -1554,6 +1521,32 @@ public static class MojoShader
 	/* ctx refers to a MOJOSHADER_glContext* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern void MOJOSHADER_glDestroyContext(IntPtr ctx);
+
+	#endregion
+
+	#region Metal Interface
+
+	/* mtlShader refers to a MOJOSHADER_mtlShader* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(IntPtr mtlShader);
+
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern void MOJOSHADER_mtlEndFrame();
+
+	/* mtlShader refers to a MOJOSHADER_mtlShader* */
+	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
+	public static extern int MOJOSHADER_mtlGetVertexAttribLocation(
+		IntPtr mtlShader,
+		MOJOSHADER_usage usage,
+		int index
+	);
+
+	[DllImport(nativeLibName, EntryPoint = "MOJOSHADER_mtlGetError", CallingConvention = CallingConvention.Cdecl)]
+	private static extern IntPtr INTERNAL_mtlGetError();
+	public static string MOJOSHADER_mtlGetError()
+	{
+		return UTF8_ToManaged(INTERNAL_mtlGetError());
+	}
 
 	#endregion
 }
