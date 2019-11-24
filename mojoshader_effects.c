@@ -1344,8 +1344,7 @@ MOJOSHADER_parseData *copyparsedata(const MOJOSHADER_parseData *src,
     retval->minor_ver = src->minor_ver;
 
     /* Copy main function string */
-    retval->mainfn = m(strlen(src->mainfn), d);
-    strcpy((char *)retval->mainfn, src->mainfn);
+    COPY_STRING(mainfn);
 
     /* Copy uniforms */
     siz = sizeof (MOJOSHADER_uniform) * src->uniform_count;
