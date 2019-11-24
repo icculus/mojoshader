@@ -903,7 +903,7 @@ DECLSPEC void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
  * (fragUniformOffset) is a pointer to the byte offset into fragUniformBuffer.
  */
 DECLSPEC void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_glEffect *glEffect,
-                                            unsigned int pass
+                                            unsigned int pass,
                                             MOJOSHADER_mtlShader **vert,
                                             MOJOSHADER_mtlShader **frag,
                                             void **vertUniformBuffer,
