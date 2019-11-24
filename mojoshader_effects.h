@@ -939,7 +939,7 @@ DECLSPEC void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
  * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
  *  MOJOSHADER_mtlCompileEffect().
  */
-DECLSPEC void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_glEffect *mtlEffect);
+DECLSPEC void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_mtlEffect *mtlEffect);
 
 /* Complete rendering the effect technique, and restore the render state.
  *
