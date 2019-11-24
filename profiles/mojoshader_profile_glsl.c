@@ -951,7 +951,32 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     } // else if
                     break;
                 case MOJOSHADER_USAGE_FOG:
-                    usage_str = "gl_FogFragCoord";
+#if SUPPORT_PROFILE_GLSLES
+                    if (support_glsles(ctx))
+                        break; // GLSL ES does not have gl_FogFragCoord
+#endif
+#if SUPPORT_PROFILE_GLSLES
+                    const int skipFogFragCoord = support_glsles(ctx) || (index > 0);
+#else
+                    const int skipFogFragCoord = (index > 0);
+#endif
+                    if (!skipFogFragCoord)
+                    {
+                        usage_str = "gl_FogFragCoord";
+                    } // if
+                    else
+                    {
+                        push_output(ctx, &ctx->globals);
+#if SUPPORT_PROFILE_GLSLES
+                        if (support_glsles(ctx))
+                            output_line(ctx, "varying highp float io_%i_%i;", usage, index);
+                        else
+#endif
+                        output_line(ctx, "varying float io_%i_%i;", usage, index);
+                        output_line(ctx, "#define %s io_%i_%i", var, usage, index);
+                        pop_output(ctx);
+                        return;
+                    }
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
 #if SUPPORT_PROFILE_GLSLES
