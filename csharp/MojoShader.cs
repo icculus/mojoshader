@@ -1219,6 +1219,7 @@ public static class MojoShader
 		out int newFragUniformOffset
 	);
 
+	/* mtlShader refers to a MOJOSHADER_mtlShader* */
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	public static extern IntPtr MOJOSHADER_mtlGetFunctionHandle(IntPtr mtlShader);
 
@@ -1555,5 +1556,4 @@ public static class MojoShader
 	public static extern void MOJOSHADER_glDestroyContext(IntPtr ctx);
 
 	#endregion
-
 }
