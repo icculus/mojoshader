@@ -7,24 +7,15 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <assert.h>
-
 #if (defined(__APPLE__) && defined(__MACH__))
-
 #define PLATFORM_APPLE 1
 #include "TargetConditionals.h"
-
 #define OBJC_OLD_DISPATCH_PROTOTYPES 1
 #include <objc/message.h>
 #define objc_msgSend_STR ((void* (*)(void*, void*, const char*))objc_msgSend)
 #define objc_msgSend_PTR ((void* (*)(void*, void*, void*))objc_msgSend)
 #define objc_msgSend_INT_PTR ((void* (*)(void*, void*, int, void*))objc_msgSend)
 #define objc_msgSend_PTR_PTR_PTR ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)
-
 #endif /* (defined(__APPLE__) && defined(__MACH__)) */
 
 #define __MOJOSHADER_INTERNAL__ 1
@@ -78,7 +69,7 @@ typedef struct MOJOSHADER_mtlEffect
 
 typedef struct MOJOSHADER_mtlUniformBuffer
 {
-    void *device; // MTLDevice
+    void *device; // MTLDevice*
     int bufferSize;
     int numInternalBuffers;
     void **internalBuffers; // MTLBuffer*
@@ -138,22 +129,24 @@ static const char *nsstr_to_cstr(void *str)
 /* Linked list */
 
 typedef struct LLNODE {
-    void *data;
+    MOJOSHADER_mtlUniformBuffer *data;
     struct LLNODE *next;
 } LLNODE;
 
-static LLNODE *LL_append_node(LLNODE **baseNode)
+static LLNODE *LL_append_node(LLNODE **baseNode,
+                              MOJOSHADER_malloc m,
+                              void *d)
 {
     LLNODE *prev = NULL;
     LLNODE *node = *baseNode;
 
-    /* Append a new node to the end of the linked list. */
+    /* Append a node to the linked list. */
     while (node != NULL)
     {
         prev = node;
         node = node->next;
     }
-    node = malloc(sizeof(LLNODE));
+    node = m(sizeof(LLNODE), d);
     node->next = NULL;
 
     /* Connect the old to the new. */
@@ -167,7 +160,10 @@ static LLNODE *LL_append_node(LLNODE **baseNode)
     return node;
 }
 
-static void LL_remove_node(LLNODE **baseNode, void *data)
+static void LL_remove_node(LLNODE **baseNode,
+                           MOJOSHADER_mtlUniformBuffer *data,
+                           MOJOSHADER_free f,
+                           void *d)
 {
     LLNODE *prev = NULL;
     LLNODE *node = *baseNode;
@@ -195,7 +191,8 @@ static void LL_remove_node(LLNODE **baseNode, void *data)
     if (prev == NULL && node->next != NULL)
         *baseNode = node->next;
 
-    free(node);
+    /* Free the node! */
+    f(node, d);
 }
 
 /* Uniform buffer utilities */
@@ -261,7 +258,6 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
         if (ubo->internalOffset >= ubo->internalBufferSize)
         {
             // Double capacity when we're out of room
-            printf("UBO: We need more space! Doubling internal buffer size!\n");
             ubo->internalBufferSize *= 2;
         }
         ubo->internalBuffers[ubo->currentFrame] = UBO_create_backing_buffer(ubo, ubo->currentFrame);
@@ -355,7 +351,9 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
 LLNODE *ubos = NULL; /* global linked list of all active UBOs */
 
 static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
-                                               void *mtlDevice)
+                                               void *mtlDevice,
+                                               MOJOSHADER_malloc m,
+                                               void *d)
 {
     int uniformCount = shader->parseData->uniform_count;
     if (uniformCount == 0)
@@ -370,17 +368,16 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     }
     buflen *= 16; // all uniform types are 16 bytes
 
-    // Make the buffer
-    MOJOSHADER_mtlUniformBuffer *ubo = malloc(sizeof(MOJOSHADER_mtlUniformBuffer));
+    // Make the UBO
+    MOJOSHADER_mtlUniformBuffer *ubo = (MOJOSHADER_mtlUniformBuffer *) m(sizeof(MOJOSHADER_mtlUniformBuffer), d);
     ubo->device = mtlDevice;
     ubo->alreadyWritten = 0;
     ubo->bufferSize = next_highest_alignment(buflen);
     ubo->currentFrame = 0;
     ubo->numInternalBuffers = shader->numInternalBuffers;
-    ubo->internalBufferSize = ubo->bufferSize * 16; /* Pre-allocate some extra room. */
-    ubo->internalBuffers = malloc(ubo->numInternalBuffers * sizeof(void*));
+    ubo->internalBufferSize = ubo->bufferSize * 16; // pre-allocate some extra room!
+    ubo->internalBuffers = m(ubo->numInternalBuffers * sizeof(void*), d);
     ubo->internalOffset = 0;
-
     for (int i = 0; i < ubo->numInternalBuffers; i++)
     {
         ubo->internalBuffers[i] = NULL;
@@ -388,25 +385,27 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     }
 
     /* Add the UBO to the global list so it can be updated. */
-    LLNODE *node = LL_append_node(&ubos);
-    node->data = (void *) ubo;
+    LLNODE *node = LL_append_node(&ubos, m, d);
+    node->data = ubo;
 
     return ubo;
 } // create_ubo
 
-static void dealloc_ubo(MOJOSHADER_mtlShader *shader)
+static void dealloc_ubo(MOJOSHADER_mtlShader *shader,
+                        MOJOSHADER_free f,
+                        void* d)
 {
     if (shader->ubo == NULL)
         return;
 
-    LL_remove_node(&ubos, shader->ubo);
+    LL_remove_node(&ubos, shader->ubo, f, d);
     for (int i = 0; i < shader->ubo->numInternalBuffers; i++)
     {
         objc_msgSend(shader->ubo->internalBuffers[i], selRelease);
         shader->ubo->internalBuffers[i] = NULL;
     }
-    free(shader->ubo->internalBuffers);
-    free(shader->ubo);
+    f(shader->ubo->internalBuffers, d);
+    f(shader->ubo, d);
 } // dealloc_ubo
 
 static void *get_uniform_buffer(MOJOSHADER_mtlShader *shader)
@@ -554,7 +553,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     } // for
 
     // Alloc shader source buffer
-    char *shader_source = malloc(src_len + 1);
+    char *shader_source = (char *) m(src_len + 1, d);
     memset(shader_source, '\0', src_len + 1);
     int src_pos = 0;
 
@@ -619,7 +618,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
         &compileError
     );
     retval->library = library;
-    free(shader_source);
+    f(shader_source, d);
     objc_msgSend(shader_source_ns, selRelease);
 
     if (library == NULL)
@@ -643,13 +642,13 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
                 retval->preshader_indices[current_preshader++] = i;
                 continue;
             } // if
-            retval->shaders[current_shader].parseData = object->shader.shader;
-            retval->shaders[current_shader].numInternalBuffers = numBackingBuffers;
-            retval->shaders[current_shader].ubo = create_ubo(
-                &retval->shaders[current_shader],
-                mtlDevice
-            );
-            retval->shaders[current_shader].library = library;
+
+            MOJOSHADER_mtlShader *curshader = &retval->shaders[current_shader];
+            curshader->parseData = object->shader.shader;
+            curshader->numInternalBuffers = numBackingBuffers;
+            curshader->ubo = create_ubo(curshader, mtlDevice, m, d);
+            curshader->library = library;
+
             retval->shader_indices[current_shader] = i;
 
             current_shader++;
@@ -675,7 +674,7 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
     for (i = 0; i < mtlEffect->num_shaders; i++)
     {
         /* Release the uniform buffers */
-        dealloc_ubo(&mtlEffect->shaders[i]);
+        dealloc_ubo(&mtlEffect->shaders[i], f, d);
     }
 
     /* Release the library */
