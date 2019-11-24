@@ -1343,6 +1343,9 @@ MOJOSHADER_parseData *copyparsedata(const MOJOSHADER_parseData *src,
     retval->major_ver = src->major_ver;
     retval->minor_ver = src->minor_ver;
 
+    /* Copy main function string */
+    COPY_STRING(mainfn);
+
     /* Copy uniforms */
     siz = sizeof (MOJOSHADER_uniform) * src->uniform_count;
     retval->uniform_count = src->uniform_count;
