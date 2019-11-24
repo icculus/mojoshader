@@ -176,8 +176,8 @@ static void LL_remove_node(LLNODE **baseNode,
     }
     if (node == NULL)
     {
-        set_error("No such node found!");
-        return;
+        /* This should never happen. */
+        assert(0);
     }
 
     /* Clear data pointer. The data must be freed separately. */
@@ -704,21 +704,21 @@ void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
 
 // Predeclare
 void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       MOJOSHADER_mtlShader **newVert,
-                                       MOJOSHADER_mtlShader **newFrag,
-                                       void **newVertUniformBuffer,
-                                       void **newFragUniformBuffer,
-                                       int *newVertUniformOffset,
-                                       int *newFragUniformOffset);
+                                       MOJOSHADER_mtlShader **vert,
+                                       MOJOSHADER_mtlShader **frag,
+                                       void **vertUniformBuffer,
+                                       void **fragUniformBuffer,
+                                       int *vertUniformOffset,
+                                       int *fragUniformOffset);
 
 void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
                                    unsigned int pass,
-                                   MOJOSHADER_mtlShader **newVert,
-                                   MOJOSHADER_mtlShader **newFrag,
-                                   void **newVertUniformBuffer,
-                                   void **newFragUniformBuffer,
-                                   int *newVertUniformOffset,
-                                   int *newFragUniformOffset)
+                                   MOJOSHADER_mtlShader **vert,
+                                   MOJOSHADER_mtlShader **frag,
+                                   void **vertUniformBuffer,
+                                   void **fragUniformBuffer,
+                                   int *vertUniformOffset,
+                                   int *fragUniformOffset)
 {
     int i, j;
     MOJOSHADER_effectPass *curPass;
@@ -775,16 +775,16 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
     {
         if (mtlEffect->current_vert != NULL)
         {
-            *newVert = mtlEffect->current_vert;
-            *newVertUniformBuffer = get_uniform_buffer(mtlEffect->current_vert);
-            *newVertUniformOffset = get_uniform_offset(mtlEffect->current_vert);
+            *vert = mtlEffect->current_vert;
+            *vertUniformBuffer = get_uniform_buffer(*vert);
+            *vertUniformOffset = get_uniform_offset(*vert);
         }
 
         if (mtlEffect->current_frag != NULL)
         {
-            *newFrag = mtlEffect->current_frag;
-            *newFragUniformBuffer = get_uniform_buffer(mtlEffect->current_frag);
-            *newFragUniformOffset = get_uniform_offset(mtlEffect->current_frag);
+            *frag = mtlEffect->current_frag;
+            *fragUniformBuffer = get_uniform_buffer(*frag);
+            *fragUniformOffset = get_uniform_offset(*frag);
         }
 
         if (mtlEffect->current_vert_raw != NULL)
@@ -801,23 +801,23 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
 
     MOJOSHADER_mtlEffectCommitChanges(
         mtlEffect,
-        newVert,
-        newFrag,
-        newVertUniformBuffer,
-        newFragUniformBuffer,
-        newVertUniformOffset,
-        newFragUniformOffset
+        vert,
+        frag,
+        vertUniformBuffer,
+        fragUniformBuffer,
+        vertUniformOffset,
+        fragUniformOffset
     );
 
 } // MOJOSHADER_mtlEffectBeginPass
 
 void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       MOJOSHADER_mtlShader **newVert,
-                                       MOJOSHADER_mtlShader **newFrag,
-                                       void **newVertUniformBuffer,
-                                       void **newFragUniformBuffer,
-                                       int *newVertUniformOffset,
-                                       int *newFragUniformOffset)
+                                       MOJOSHADER_mtlShader **vert,
+                                       MOJOSHADER_mtlShader **frag,
+                                       void **vertUniformBuffer,
+                                       void **fragUniformBuffer,
+                                       int *vertUniformOffset,
+                                       int *fragUniformOffset)
 {
     MOJOSHADER_effectShader *rawVert = mtlEffect->current_vert_raw;
     MOJOSHADER_effectShader *rawFrag = mtlEffect->current_frag_raw;
@@ -866,10 +866,10 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
     if (selector_ran)
     {
         if (mtlEffect->current_vert != NULL)
-            *newVert = mtlEffect->current_vert;
+            *vert = mtlEffect->current_vert;
 
         if (mtlEffect->current_frag != NULL)
-            *newFrag = mtlEffect->current_frag;
+            *frag = mtlEffect->current_frag;
 
         if (mtlEffect->current_vert_raw != NULL)
         {
@@ -915,13 +915,13 @@ void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
     COPY_PARAMETER_DATA(rawFrag, ps)
     #undef COPY_PARAMETER_DATA
 
-    update_uniform_buffer(*newVert);
-    update_uniform_buffer(*newFrag);
+    update_uniform_buffer(*vert);
+    update_uniform_buffer(*frag);
 
-    *newVertUniformBuffer = get_uniform_buffer(*newVert);
-    *newFragUniformBuffer = get_uniform_buffer(*newFrag);
-    *newVertUniformOffset = get_uniform_offset(*newVert);
-    *newFragUniformOffset = get_uniform_offset(*newFrag);
+    *vertUniformBuffer = get_uniform_buffer(*vert);
+    *fragUniformBuffer = get_uniform_buffer(*frag);
+    *vertUniformOffset = get_uniform_offset(*vert);
+    *fragUniformOffset = get_uniform_offset(*frag);
 } // MOJOSHADER_mtlEffectCommitChanges
 
 
@@ -933,22 +933,22 @@ void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_mtlEffect *mtlEffect)
 
 
 void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
-                             MOJOSHADER_mtlShader **newVert,
-                             MOJOSHADER_mtlShader **newFrag,
-                             void **newVertUniformBuffer,
-                             void **newFragUniformBuffer,
-                             int *newVertUniformOffset,
-                             int *newFragUniformOffset)
+                             MOJOSHADER_mtlShader **vert,
+                             MOJOSHADER_mtlShader **frag,
+                             void **vertUniformBuffer,
+                             void **fragUniformBuffer,
+                             int *vertUniformOffset,
+                             int *fragUniformOffset)
 {
     if (mtlEffect->effect->restore_shader_state)
     {
         mtlEffect->effect->restore_shader_state = 0;
-        *newVert = mtlEffect->prev_vert;
-        *newFrag = mtlEffect->prev_frag;
-        *newVertUniformBuffer = get_uniform_buffer(mtlEffect->prev_vert);
-        *newFragUniformBuffer = get_uniform_buffer(mtlEffect->prev_frag);
-        *newVertUniformOffset = get_uniform_offset(mtlEffect->prev_vert);
-        *newFragUniformOffset = get_uniform_offset(mtlEffect->prev_frag);
+        *vert = mtlEffect->prev_vert;
+        *frag = mtlEffect->prev_frag;
+        *vertUniformBuffer = get_uniform_buffer(mtlEffect->prev_vert);
+        *fragUniformBuffer = get_uniform_buffer(mtlEffect->prev_frag);
+        *vertUniformOffset = get_uniform_offset(mtlEffect->prev_vert);
+        *fragUniformOffset = get_uniform_offset(mtlEffect->prev_frag);
     } // if
 
     mtlEffect->effect->state_changes = NULL;
