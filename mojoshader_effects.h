@@ -800,7 +800,167 @@ DECLSPEC void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *glEffect);
  */
 DECLSPEC void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect);
 
-// !!! FIXME: Add Metal interface
+
+/* Metal effect interface...
+ *
+ * Unlike the OpenGL effect interface, the Metal effect interface places
+ * the burden on you to keep track of the shader state. This is so that
+ * you can create new MTLRenderPipelineStates and bind uniform buffers
+ * whenever is best for your renderer.
+ *
+ * As a result, your program must store the following six values:
+ *
+ * [MOJOSHADER_mtlShader* vert] The current vertex shader.
+ * [MOJOSHADER_mtlShader* frag] The current fragment shader.
+ * [MTLBuffer* vertUniformBuffer] The uniform buffer associated with the
+ *  current vertex shader.
+ * [MTLBuffer* fragUniformBuffer] The uniform buffer associated with the
+ *  current fragment shader.
+ * [int vertUniformOffset] The current byte offset into vertUniformBuffer.
+ * [int fragUniformOffset] The current byte offset into fragUniformBuffer.
+ *
+ * Many MOJOSHADER_mtl* functions expect you to pass pointers to each of
+ * these variables. MojoShader will internally update these values, keeping
+ * them up-to-date with any effect changes. However, certain functions also
+ * read the values of these variables, so do not pass a NULL constant or a
+ * temporary variable to these functions. That will lead to incorrect results.
+ */
+
+typedef struct MOJOSHADER_mtlEffect MOJOSHADER_mtlEffect;
+typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
+
+/* Fully compile/link the shaders found within the effect.
+ *
+ * The MOJOSHADER_mtlEffect* is solely for use within the Metal-specific calls.
+ *  In all other cases you will be using the MOJOSHADER_effect* instead.
+ *
+ * In a typical use case, you will be calling this immediately after obtaining
+ *  the MOJOSHADER_effect*.
+ *
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
+ * (mtlDevice) is a MTLDevice* obtained from a Metal device creation call,
+ *  such as MTLCreateSystemDefaultDevice().
+ * (numBackingBuffers) is the number of backing uniform buffers that you
+ *  want to create for each shader. If you are using double-buffering,
+ *  this should be 2; for triple buffering, this should be 3, etc.
+ *
+ * This function returns a MOJOSHADER_mtlEffect*, containing Metal-specific
+ *  data for an accompanying MOJOSHADER_effect*.
+ */
+DECLSPEC MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
+                                                           void *mtlDevice,
+                                                           int numBackingBuffers);
+
+/* Delete the shaders that were allocated for an effect.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_mtlCompileEffect().
+ */
+DECLSPEC void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect);
+
+/* Prepare the effect for rendering with the currently applied technique.
+ *
+ * This function maps to ID3DXEffect::Begin.
+ *
+ * In addition to the expected Begin parameters, we also include a parameter
+ *  to pass in a MOJOSHADER_effectRenderState. Rather than change the render
+ *  state within MojoShader itself we will simply provide what the effect wants
+ *  and allow you to use this information with your own renderer.
+ *  MOJOSHADER_glEffectBeginPass will update with the render state desired by
+ *  the current effect pass.
+ *
+ * Note that we only provide the ability to preserve the shader state, but NOT
+ * the ability to preserve the render/sampler states. You are expected to
+ * track your own Metal state and restore these states as needed for your
+ * application.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_mtlCompileEffect().
+ * (numPasses) will be filled with the number of passes that this technique
+ *  will need to fully render.
+ * (saveShaderState) is a boolean value informing the effect whether or not to
+ *  restore the shader bindings after calling MOJOSHADER_mtlEffectEnd.
+ * (renderState) will be filled by the effect to inform you of the render state
+ *  changes introduced by the technique and its passes.
+ */
+DECLSPEC void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
+                                        unsigned int *numPasses,
+                                        int saveShaderState,
+                                        MOJOSHADER_effectStateChanges *stateChanges);
+
+/* Begin an effect pass from the currently applied technique.
+ *
+ * This function maps to ID3DXEffect::BeginPass.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_mtlCompileEffect().
+ * (pass) is the index of the effect pass as found in the current technique.
+ * (vert) is a pointer to the current vertex MOJOSHADER_mtlShader*.
+ * (frag) is a pointer to the current fragment MOJOSHADER_mtlShader*.
+ * (vertUniformBuffer) is a pointer to the MTLBuffer* for the vertex shader.
+ * (fragUniformBuffer) is a pointer to the MTLBuffer* for the fragment shader.
+ * (vertUniformOffset) is a pointer to the byte offset into vertUniformBuffer.
+ * (fragUniformOffset) is a pointer to the byte offset into fragUniformBuffer.
+ */
+DECLSPEC void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_glEffect *glEffect,
+                                            unsigned int pass
+                                            MOJOSHADER_mtlShader **vert,
+                                            MOJOSHADER_mtlShader **frag,
+                                            void **vertUniformBuffer,
+                                            void **fragUniformBuffer,
+                                            int *vertUniformOffset,
+                                            int *fragUniformOffset);
+
+/* Push render state changes that occurred within an actively rendering pass.
+ *
+ * This function maps to ID3DXEffect::CommitChanges.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_mtlCompileEffect().
+ * (vert) is a pointer to the current vertex MOJOSHADER_mtlShader*.
+ * (frag) is a pointer to the current fragment MOJOSHADER_mtlShader*.
+ * (vertUniformBuffer) is a pointer to the MTLBuffer* for the vertex shader.
+ * (fragUniformBuffer) is a pointer to the MTLBuffer* for the fragment shader.
+ * (vertUniformOffset) is a pointer to the byte offset into vertUniformBuffer.
+ * (fragUniformOffset) is a pointer to the byte offset into fragUniformBuffer.
+ */
+DECLSPEC void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
+                                                MOJOSHADER_mtlShader **vert,
+                                                MOJOSHADER_mtlShader **frag,
+                                                void **vertUniformBuffer,
+                                                void **fragUniformBuffer,
+                                                int *vertUniformOffset,
+                                                int *fragUniformOffset);
+
+/* End an effect pass from the currently applied technique.
+ *
+ * This function maps to ID3DXEffect::EndPass.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_mtlCompileEffect().
+ */
+DECLSPEC void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_glEffect *mtlEffect);
+
+/* Complete rendering the effect technique, and restore the render state.
+ *
+ * This function maps to ID3DXEffect::End.
+ *
+ * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
+ *  MOJOSHADER_glCompileEffect().
+ * (vert) is a pointer to the current vertex MOJOSHADER_mtlShader*.
+ * (frag) is a pointer to the current fragment MOJOSHADER_mtlShader*.
+ * (vertUniformBuffer) is a pointer to the MTLBuffer* for the vertex shader.
+ * (fragUniformBuffer) is a pointer to the MTLBuffer* for the fragment shader.
+ * (vertUniformOffset) is a pointer to the byte offset into vertUniformBuffer.
+ * (fragUniformOffset) is a pointer to the byte offset into fragUniformBuffer.
+ */
+DECLSPEC void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
+                                      MOJOSHADER_mtlShader **vert,
+                                      MOJOSHADER_mtlShader **frag,
+                                      void **vertUniformBuffer,
+                                      void **fragUniformBuffer,
+                                      int *vertUniformOffset,
+                                      int *fragUniformOffset);
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 
