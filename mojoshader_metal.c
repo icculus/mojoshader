@@ -492,25 +492,6 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 
 /* Public API */
 
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
-                                          MOJOSHADER_usage usage, int index)
-{
-    if (vert == NULL)
-        return -1;
-
-    for (int i = 0; i < vert->parseData->attribute_count; i++)
-    {
-        if (vert->parseData->attributes[i].usage == usage
-            && vert->parseData->attributes[i].index == index)
-        {
-            return i;
-        }
-    }
-
-    // failure, couldn't find requested attribute
-    return -1;
-} // MOJOSHADER_mtlGetVertexAttribLocation
-
 MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
                                                   void *mtlDevice,
                                                   int numBackingBuffers)
@@ -980,6 +961,25 @@ void MOJOSHADER_mtlEndFrame()
         node = node->next;
     }
 }
+
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index)
+{
+    if (vert == NULL)
+        return -1;
+
+    for (int i = 0; i < vert->parseData->attribute_count; i++)
+    {
+        if (vert->parseData->attributes[i].usage == usage
+            && vert->parseData->attributes[i].index == index)
+        {
+            return i;
+        }
+    }
+
+    // failure, couldn't find requested attribute
+    return -1;
+} // MOJOSHADER_mtlGetVertexAttribLocation
 
 const char *MOJOSHADER_mtlGetError(void)
 {

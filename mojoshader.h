@@ -3263,6 +3263,18 @@ DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
 DECLSPEC void MOJOSHADER_mtlEndFrame();
 
 /*
+ * Return the location of a vertex attribute for the given shader.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be used to create
+ *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
+ */
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index);
+
+/*
  * Get any error state we might have picked up, such as failed shader
  *  compilation.
  *
