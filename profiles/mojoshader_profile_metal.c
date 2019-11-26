@@ -1122,7 +1122,8 @@ void emit_METAL_RCP(Context *ctx)
 {
     char src0[64]; make_METAL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_METAL_destarg_assign(ctx, code, sizeof (code), "1.0 / %s", src0);
+    ctx->metal_need_header_math = 1;
+    make_METAL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_METAL_RCP
 
@@ -1131,7 +1132,7 @@ void emit_METAL_RSQ(Context *ctx)
     char src0[64]; make_METAL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
     ctx->metal_need_header_math = 1;
-    make_METAL_destarg_assign(ctx, code, sizeof (code), "rsqrt(%s)", src0);
+    make_METAL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : rsqrt(abs(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_METAL_RSQ
 
