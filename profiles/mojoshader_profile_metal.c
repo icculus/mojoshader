@@ -907,7 +907,7 @@ void emit_METAL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 %s [[position]];", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
-                    output_line(ctx, "float4 %s [[point_size]];", var);
+                    output_line(ctx, "float %s [[point_size]];", var);
                     break;
                 case MOJOSHADER_USAGE_COLOR:
                     output_line(ctx, "float4 %s [[user(color%d)]];", var, index);
