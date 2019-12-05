@@ -160,6 +160,7 @@ typedef struct Context
     int glsl_generated_lit_helper;
     int glsl_generated_texlod_setup;
     int glsl_generated_texm3x3spec_helper;
+    int glsl_need_max_float;
     int arb1_wrote_position;
     // !!! FIXME: move these into SUPPORT_PROFILE sections.
 
