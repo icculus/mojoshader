@@ -957,12 +957,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     if (support_glsles(ctx))
                         break; // GLSL ES does not have gl_FogFragCoord
 #endif
-#if SUPPORT_PROFILE_GLSLES
-                    const int skipFogFragCoord = support_glsles(ctx) || (index > 0);
-#else
-                    const int skipFogFragCoord = (index > 0);
-#endif
-                    if (!skipFogFragCoord)
+                    if (index == 0)
                     {
                         usage_str = "gl_FogFragCoord";
                     } // if
