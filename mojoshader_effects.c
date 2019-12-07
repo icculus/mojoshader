@@ -835,6 +835,87 @@ static void readlargeobjects(const uint32 numlargeobjects,
     } // for
 } // readobjects
 
+static void texcoord_to_pointcoord(MOJOSHADER_effect* effect)
+{
+    int i;
+    int glsl, msl;
+    int uses_pointsize;
+    char* texcoord0, *replacement;
+
+    // This function uses profile-dependent behavior
+    glsl = strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL) == 0 ||
+        strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL120) == 0;
+    msl = strcmp(effect->profile, MOJOSHADER_PROFILE_METAL) == 0;
+
+    if (glsl)
+    {
+        texcoord0 = "gl_TexCoord[0]";
+        replacement = "gl_PointCoord ";
+    }
+    else if (msl)
+    {
+        texcoord0 = "[[user(texcoord0)]]";
+        replacement = "[[  point_coord  ]]";
+    }
+    else
+    {
+        // !!! FIXME: ARB? SPIR-V?
+        return;
+    }
+
+    /* !!! FIXME:
+     * This assumes that if an effect contains _any_ vertex shader
+     * with the POINTSIZE attribute, then _all_ TEXCOORD0 inputs in
+     * the effect's fragment shaders are meant to be point coords!
+     * -caleb
+     */
+
+    // Do any vertex shaders in this effect use pointsize?
+    uses_pointsize = 0;
+    for (i = 0; i < effect->object_count; i++)
+    {
+        if (effect->objects[i].type == MOJOSHADER_SYMTYPE_VERTEXSHADER &&
+            effect->objects[i].shader.shader->uses_pointsize)
+        {
+            // !!! FIXME: Why is this check needed? -caleb
+            if (strcmp(effect->objects[i].shader.shader->mainfn, "") != 0)
+            {
+                uses_pointsize = 1;
+                break;
+            }
+        } // if
+    } // for
+
+    if (uses_pointsize)
+    {
+        // Search-and-replace in all fragment shaders
+        for (i = 0; i < effect->object_count; i++)
+        {
+            if (effect->objects[i].type == MOJOSHADER_SYMTYPE_PIXELSHADER)
+            {
+                const char* c = strstr(effect->objects[i].shader.shader->output,
+                    texcoord0);
+                if (c != NULL)
+                {
+                    memcpy((void*)c, replacement, strlen(replacement));
+
+                    if (msl)
+                    {
+                        /* [[point_coord]] is a float2, not a float4.
+                         * Go backwards so we can splice in the '2'.
+                         */
+                        int spaces = 0;
+                        while (spaces < 2)
+                            if (*(c--) == ' ')
+                                spaces++;
+                        memcpy((void*)c, "2", sizeof(char));
+                    }
+                }
+            } // if
+        } // for
+    } // if
+}
+
 MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
                                           const unsigned char *buf,
                                           const unsigned int _len,
@@ -954,6 +1035,9 @@ MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
     if (retval->profile == NULL)
         goto parseEffect_outOfMemory;
     strcpy((char *) retval->profile, profile);
+
+    /* Replace texcoord0 with pointcoord if needed */
+    texcoord_to_pointcoord(retval);
 
     return retval;
 

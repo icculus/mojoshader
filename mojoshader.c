@@ -3469,6 +3469,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     retval->malloc = (ctx->malloc == MOJOSHADER_internal_malloc) ? NULL : ctx->malloc;
     retval->free = (ctx->free == MOJOSHADER_internal_free) ? NULL : ctx->free;
     retval->malloc_data = ctx->malloc_data;
+    retval->uses_pointsize = ctx->uses_pointsize;
 
     return retval;
 } // build_parsedata

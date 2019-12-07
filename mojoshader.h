@@ -650,6 +650,11 @@ typedef struct MOJOSHADER_parseData
     MOJOSHADER_preshader *preshader;
 
     /*
+     * A flag to indicate if the shader uses a POINTSIZE attribute.
+     */
+    int uses_pointsize;
+
+    /*
      * This is the malloc implementation you passed to MOJOSHADER_parse().
      */
     MOJOSHADER_malloc malloc;
