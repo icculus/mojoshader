@@ -650,7 +650,7 @@ typedef struct MOJOSHADER_parseData
     MOJOSHADER_preshader *preshader;
 
     /*
-     * A flag to indicate if the shader uses a POINTSIZE attribute.
+     * A flag that indicates if the shader has a POINTSIZE attribute.
      */
     int uses_pointsize;
 
