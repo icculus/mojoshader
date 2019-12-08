@@ -838,23 +838,21 @@ static void readlargeobjects(const uint32 numlargeobjects,
 static void texcoord_to_pointcoord(MOJOSHADER_effect* effect)
 {
     int i;
-    int glsl, msl;
     int uses_pointsize;
     char* texcoord0, *replacement;
 
-    // This function uses profile-dependent behavior
-    glsl = strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL) == 0 ||
-        strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL120) == 0;
-    msl = strcmp(effect->profile, MOJOSHADER_PROFILE_METAL) == 0;
+    int glsl = strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL) == 0 ||
+            strcmp(effect->profile, MOJOSHADER_PROFILE_GLSL120) == 0;
+    int msl = strcmp(effect->profile, MOJOSHADER_PROFILE_METAL) == 0;
 
     if (glsl)
     {
-        texcoord0 = "gl_TexCoord[0]";
+        texcoord0   = "gl_TexCoord[0]";
         replacement = "gl_PointCoord ";
     }
     else if (msl)
     {
-        texcoord0 = "[[user(texcoord0)]]";
+        texcoord0   = "[[user(texcoord0)]]";
         replacement = "[[  point_coord  ]]";
     }
     else
@@ -902,19 +900,19 @@ static void texcoord_to_pointcoord(MOJOSHADER_effect* effect)
                     if (msl)
                     {
                         /* [[point_coord]] is a float2, not a float4.
-                         * Go backwards so we can splice in the '2'.
+                         * Go backwards and splice in the '2'.
                          */
                         int spaces = 0;
                         while (spaces < 2)
                             if (*(c--) == ' ')
                                 spaces++;
                         memcpy((void*)c, "2", sizeof(char));
-                    }
-                }
+                    } // if
+                } // if
             } // if
         } // for
     } // if
-}
+} // texcoord_to_pointcoord
 
 MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
                                           const unsigned char *buf,
