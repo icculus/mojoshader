@@ -641,6 +641,8 @@ void emit_GLSL_finalize(Context *ctx)
     if (shader_is_vertex(ctx))
         output_line(ctx, "uniform float vpFlip;");
 #endif
+    if (ctx->glsl_need_max_float)
+        output_line(ctx, "const float FLT_MAX = 1e38;");
     pop_output(ctx);
 } // emit_GLSL_finalize
 
@@ -955,12 +957,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     if (support_glsles(ctx))
                         break; // GLSL ES does not have gl_FogFragCoord
 #endif
-#if SUPPORT_PROFILE_GLSLES
-                    const int skipFogFragCoord = support_glsles(ctx) || (index > 0);
-#else
-                    const int skipFogFragCoord = (index > 0);
-#endif
-                    if (!skipFogFragCoord)
+                    if (index == 0)
                     {
                         usage_str = "gl_FogFragCoord";
                     } // if
@@ -1199,7 +1196,8 @@ void emit_GLSL_RCP(Context *ctx)
 {
     char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_GLSL_destarg_assign(ctx, code, sizeof (code), "1.0 / %s", src0);
+    ctx->glsl_need_max_float = 1;
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RCP
 
@@ -1207,7 +1205,8 @@ void emit_GLSL_RSQ(Context *ctx)
 {
     char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_GLSL_destarg_assign(ctx, code, sizeof (code), "inversesqrt(%s)", src0);
+    ctx->glsl_need_max_float = 1;
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : inversesqrt(abs(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
