@@ -577,7 +577,6 @@ static GLuint impl_GLSL_LinkProgram(MOJOSHADER_glShader *vshader,
 
 static void impl_GLSL_FinalInitProgram(MOJOSHADER_glProgram *program)
 {
-    
     program->vs_float4_loc = glsl_uniform_loc(program, "vs_uniforms_vec4");
     program->vs_int4_loc = glsl_uniform_loc(program, "vs_uniforms_ivec4");
     program->vs_bool_loc = glsl_uniform_loc(program, "vs_uniforms_bool");
@@ -708,7 +707,7 @@ static int impl_ARB1_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
                                 shaderlen, pd->output);
 
     if (ctx->glGetError() == GL_INVALID_OPERATION)
-    { 
+    {
         GLint pos = 0;
         ctx->glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &pos);
         const GLubyte *errstr = ctx->glGetString(GL_PROGRAM_ERROR_STRING_ARB);
