@@ -521,7 +521,7 @@ static void determine_constants_arrays(Context *ctx)
                 var->emit_position = -1;
                 var->next = ctx->variables;
                 ctx->variables = var;
-            } // else
+            } // if
 
             start = i;   // set this as new start of sequence.
         } // if
@@ -1267,7 +1267,7 @@ static void state_DCL(Context *ctx)
     if (ctx->instruction_count != 0)
         fail(ctx, "DCL token must come before any instructions");
 
-    else if (shader_is_vertex(ctx))
+    else if (shader_is_vertex(ctx) || shader_is_pixel(ctx))
     {
         if (regtype == REG_TYPE_SAMPLER)
             add_sampler(ctx, regnum, (TextureType) ctx->dwords[0], 0);
@@ -1283,18 +1283,6 @@ static void state_DCL(Context *ctx)
             add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
         } // else
     } // if
-
-    else if (shader_is_pixel(ctx))
-    {
-        if (regtype == REG_TYPE_SAMPLER)
-            add_sampler(ctx, regnum, (TextureType) ctx->dwords[0], 0);
-        else
-        {
-            const MOJOSHADER_usage usage = (MOJOSHADER_usage) ctx->dwords[0];
-            const int index = ctx->dwords[1];
-            add_attribute_register(ctx, regtype, regnum, usage, index, wmask, mods);
-        } // else
-    } // else if
 
     else
     {
@@ -3557,8 +3545,7 @@ static void process_definitions(Context *ctx)
     } // while
 
     // okay, now deal with uniform/constant arrays...
-    VariableList *var;
-    for (var = ctx->variables; var != NULL; var = var->next)
+    for (VariableList *var = ctx->variables; var != NULL; var = var->next)
     {
         if (var->used)
         {
@@ -3580,6 +3567,7 @@ static void process_definitions(Context *ctx)
     for (item = ctx->uniforms.next; item != NULL; item = item->next)
     {
         int arraysize = -1;
+        VariableList *var = NULL;
 
         // check if this is a register contained in an array...
         if (item->regtype == REG_TYPE_CONST)
@@ -3694,12 +3682,12 @@ const MOJOSHADER_parseData *MOJOSHADER_parse(const char *profile,
 
     verify_swizzles(ctx);
 
+    if (!ctx->mainfn)
+        ctx->mainfn = StrDup(ctx, "main");
+
     // Version token always comes first.
     ctx->current_position = 0;
     rc = parse_version_token(ctx, profile);
-
-    if (!ctx->mainfn)
-        ctx->mainfn = StrDup(ctx, "main");
 
     // drop out now if this definitely isn't bytecode. Saves lots of
     //  meaningless errors flooding through.
