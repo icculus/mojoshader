@@ -548,7 +548,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     memset(shader_source, '\0', src_len + 1);
     int src_pos = 0;
 
-    // Copy all the combined source text into the buffer
+    // Copy all the source text into the buffer
     for (i = 0; i < effect->object_count; i++)
     {
         MOJOSHADER_effectObject *object = &effect->objects[i];
@@ -563,6 +563,26 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
             } // if
         } // if
     } // for
+
+    // Handle texcoord0 -> point_coord conversion
+    if (strstr(shader_source, "[[point_size]]"))
+    {
+        // !!! FIXME: This assumes all texcoord0 attributes in the effect are
+        // !!! FIXME:  actually point coords! It ain't necessarily so! -caleb
+        const char *repl = "[[  point_coord  ]]";
+        char *ptr;
+        while ((ptr = strstr(shader_source, "[[user(texcoord0)]]")))
+        {
+            memcpy(ptr, repl, strlen(repl));
+
+            // float4 -> float2
+            int spaces = 0;
+            while (spaces < 2)
+                if (*(ptr--) == ' ')
+                    spaces++;
+            memcpy(ptr, "2", sizeof(char));
+        } // while
+    } // if
 
     // Alloc shader information
     retval->shaders = (MOJOSHADER_mtlShader *) m(retval->num_shaders * sizeof (MOJOSHADER_mtlShader), d);
