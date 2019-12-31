@@ -725,6 +725,11 @@ typedef struct MOJOSHADER_parseData
 #define MOJOSHADER_PROFILE_SPIRV "spirv"
 
 /*
+ * Profile string for ARB_gl_spirv-friendly SPIR-V binary output
+ */
+#define MOJOSHADER_PROFILE_GLSPIRV "glspirv"
+
+/*
  * Determine the highest supported Shader Model for a profile.
  */
 DECLSPEC int MOJOSHADER_maxShaderModel(const char *profile);

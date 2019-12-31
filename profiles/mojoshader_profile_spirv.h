@@ -147,7 +147,9 @@ typedef struct SpirvResult
 
 typedef struct SpirvContext
 {
+#if SUPPORT_PROFILE_GLSPIRV
     uint32 id_vs_main_end;
+#endif // SUPPORT_PROFILE_GLSPIRV
     // ext. glsl instructions have been imported
     uint32 idext;
     uint32 idmax;

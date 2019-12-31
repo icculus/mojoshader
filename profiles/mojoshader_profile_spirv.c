@@ -1270,8 +1270,9 @@ static void spv_assign_destarg(Context *ctx, SpirvResult value)
 
 static void spv_emit_vs_main_end(Context* ctx)
 {
+#if SUPPORT_PROFILE_GLSPIRV
 #if defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
-    if (!shader_is_vertex(ctx))
+    if (!ctx->profile_supports_glspirv || !shader_is_vertex(ctx))
         return;
 
     uint32 tid_void = spv_get_type(ctx, STI_VOID);
@@ -1317,7 +1318,7 @@ static void spv_emit_vs_main_end(Context* ctx)
 
     spv_output_name(ctx, id_pvpflip, "vpFlip");
     ctx->spirv.patch_table.vpflip.offset = spv_output_location(ctx, id_pvpflip, ~0u);
-#endif
+#endif // MOJOSHADER_FLIP_RENDERTARGET
 
 #ifdef MOJOSHADER_DEPTH_CLIPPING
     // gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
@@ -1334,7 +1335,7 @@ static void spv_emit_vs_main_end(Context* ctx)
     spv_emit(ctx, 5, SpvOpFSub, tid_float, id_new_z, id_2z, id_old_w);
     spv_emit(ctx, 6, SpvOpCompositeInsert, output.tid, id_new_output, id_new_z, output.id, 2);
     output.id = id_new_output;
-#endif
+#endif // MOJOSHADER_DEPTH_CLIPPING
 
     spv_emit(ctx, 3, SpvOpStore, reg->spirv.iddecl, output.id);
     spv_emit(ctx, 1, SpvOpReturn);
@@ -1342,7 +1343,8 @@ static void spv_emit_vs_main_end(Context* ctx)
     pop_output(ctx);
 
     spv_output_name(ctx, id_func, "vs_epilogue");
-#endif
+#endif // defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
+#endif // SUPPORT_PROFILE_GLSPIRV
 } // spv_emit_vs_main_end
 
 static void spv_emit_func_lit(Context *ctx)
@@ -1458,8 +1460,11 @@ static void spv_emit_func_end(Context *ctx)
 {
     push_output(ctx, &ctx->mainline);
 
+#if SUPPORT_PROFILE_GLSPIRV
 #if defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
-    if (shader_is_vertex(ctx) && ctx->spirv.id_vs_main_end == 0)
+    if (ctx->profile_supports_glspirv
+     && shader_is_vertex(ctx)
+     && ctx->spirv.id_vs_main_end == 0)
     {
         ctx->spirv.id_vs_main_end = spv_bumpid(ctx);
         uint32 tid_void = spv_get_type(ctx, STI_VOID);
@@ -1469,7 +1474,8 @@ static void spv_emit_func_end(Context *ctx)
         spv_emit(ctx, 4, SpvOpFunctionCall, tid_void, id_res, ctx->spirv.id_vs_main_end);
         pop_output(ctx);
     } // if
-#endif
+#endif // defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
+#endif // SUPPORT_PROFILE_GLSPIRV
 
     spv_emit(ctx, 1, SpvOpReturn);
     spv_emit(ctx, 1, SpvOpFunctionEnd);
@@ -1564,8 +1570,10 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
             {
                 case MISCTYPE_TYPE_POSITION: // vPos
                 {
-                    // In SM3.0 vPos only has x and y defined, but we should be fine to leave the z and w attributes in
-                    // that SpvBuiltInFragCoord gives
+                    // In SM3.0 vPos only has x and y defined, but we should be
+                    // fine to leave the z and w attributes in that
+                    // SpvBuiltInFragCoord gives.
+                    // FIXME: Is the flip needed for Vulkan?
 
                     uint32 tid_float = spv_get_type(ctx, STI_FLOAT);
                     uint32 tid_vec2 = spv_get_type(ctx, STI_VEC2);
@@ -1792,8 +1800,15 @@ void emit_SPIRV_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
-    if (strcmp(profilestr, MOJOSHADER_PROFILE_SPIRV) != 0)
-        failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
+#if SUPPORT_PROFILE_GLSPIRV
+    if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSPIRV) == 0)
+        ctx->profile_supports_glspirv = 1;
+    else
+#endif // SUPPORT_PROFILE_GLSPIRV
+    {
+        if (strcmp(profilestr, MOJOSHADER_PROFILE_SPIRV) != 0)
+            failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
+    } // else
 
     memset(&(ctx->spirv), '\0', sizeof(ctx->spirv));
 

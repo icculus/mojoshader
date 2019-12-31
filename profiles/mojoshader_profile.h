@@ -210,6 +210,9 @@ typedef struct Context
     int branch_labels_patch_stack[32];
     SpirvContext spirv;
 #endif
+#if SUPPORT_PROFILE_GLSPIRV
+    int profile_supports_glspirv;
+#endif
 } Context;
 
 // Use these macros so we can remove all bits of these profiles from the build.

@@ -68,6 +68,10 @@
 #define SUPPORT_PROFILE_SPIRV 1
 #endif
 
+#ifndef SUPPORT_PROFILE_GLSPIRV
+#define SUPPORT_PROFILE_GLSPIRV 1
+#endif
+
 #if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
 #error nv profiles require arb1 profile. Fix your build.
 #endif
@@ -78,6 +82,10 @@
 
 #if SUPPORT_PROFILE_GLSLES && !SUPPORT_PROFILE_GLSL
 #error glsles profile requires glsl profile. Fix your build.
+#endif
+
+#if SUPPORT_PROFILE_GLSPIRV && !SUPPORT_PROFILE_SPIRV
+#error glspirv profile requires spirv profile. Fix your build.
 #endif
 
 // Microsoft's preprocessor has some quirks. In some ways, it doesn't work

@@ -36,7 +36,7 @@
 #include "GL/gl.h"
 #include "GL/glext.h"
 
-#if SUPPORT_PROFILE_SPIRV
+#if SUPPORT_PROFILE_GLSPIRV
 #include "spirv/spirv.h"
 #endif
 
@@ -402,7 +402,7 @@ static inline void toggle_gl_state(GLenum state, int val)
 
 // profile-specific implementations...
 
-#if SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_SPIRV
+#if SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_GLSPIRV
 static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
 {
     // these enums match between core 2.0 and the ARB extensions.
@@ -436,7 +436,7 @@ static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
     return (int) val;
 } // impl_GLSL_MaxUniforms
 
-#if SUPPORT_PROFILE_SPIRV
+#if SUPPORT_PROFILE_GLSPIRV
 static const SpirvPatchTable* spv_getPatchTable(MOJOSHADER_glShader *shader)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
@@ -657,7 +657,7 @@ static void impl_SPIRV_FinalInitProgram(MOJOSHADER_glProgram *program)
         if (program->ps_vpos_flip_loc != -1) program->ps_vpos_flip_loc += ps_base_location;
     } // if
 } // impl_SPIRV_FinalInitProgram
-#endif // SUPPORT_PROFILE_SPIRV
+#endif // SUPPORT_PROFILE_GLSPIRV
 
 #if SUPPORT_PROFILE_GLSL
 static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
@@ -909,7 +909,7 @@ static void impl_GLSL_PushSampler(GLint loc, GLuint sampler)
     ctx->glUniform1i(loc, sampler);
 } // impl_GLSL_PushSampler
 
-#endif // SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_SPIRV
+#endif // SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_GLSPIRV
 
 
 #if SUPPORT_PROFILE_ARB1
@@ -1553,11 +1553,11 @@ static int valid_profile(const char *profile)
     } // else if
     #endif
 
-    #if SUPPORT_PROFILE_SPIRV
-    else if (strcmp(profile, MOJOSHADER_PROFILE_SPIRV) == 0)
+    #if SUPPORT_PROFILE_GLSPIRV
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSPIRV) == 0)
     {
-        MUST_HAVE(MOJOSHADER_PROFILE_SPIRV, GL_ARB_ES2_compatibility);
-        MUST_HAVE(MOJOSHADER_PROFILE_SPIRV, GL_ARB_gl_spirv);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSPIRV, GL_ARB_ES2_compatibility);
+        MUST_HAVE(MOJOSHADER_PROFILE_GLSPIRV, GL_ARB_gl_spirv);
     } // else if
     #endif
 
@@ -1595,8 +1595,8 @@ static int valid_profile(const char *profile)
 
 
 static const char *profile_priorities[] = {
-#if SUPPORT_PROFILE_SPIRV
-    MOJOSHADER_PROFILE_SPIRV,
+#if SUPPORT_PROFILE_GLSPIRV
+    MOJOSHADER_PROFILE_GLSPIRV,
 #endif
 #if SUPPORT_PROFILE_GLSL120
     MOJOSHADER_PROFILE_GLSL120,
@@ -1726,9 +1726,9 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
     // !!! FIXME: generalize this part.
     if (profile == NULL) {}
 
-    // We don't check SUPPORT_PROFILE_SPIRV here, since valid_profile() does.
-#if SUPPORT_PROFILE_SPIRV
-    else if (strcmp(profile, MOJOSHADER_PROFILE_SPIRV) == 0)
+    // We don't check SUPPORT_PROFILE_GLSPIRV here, since valid_profile() does.
+#if SUPPORT_PROFILE_GLSPIRV
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSPIRV) == 0)
     {
         ctx->profileMaxUniforms = impl_GLSL_MaxUniforms;
         ctx->profileCompileShader = impl_SPIRV_CompileShader;

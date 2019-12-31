@@ -319,6 +319,7 @@ static const Profile profiles[] =
 // This is for profiles that extend other profiles...
 static const struct { const char *from; const char *to; } profileMap[] =
 {
+    { MOJOSHADER_PROFILE_GLSPIRV, MOJOSHADER_PROFILE_SPIRV },
     { MOJOSHADER_PROFILE_GLSLES, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_GLSL120, MOJOSHADER_PROFILE_GLSL },
     { MOJOSHADER_PROFILE_NV2, MOJOSHADER_PROFILE_ARB1 },
@@ -3459,7 +3460,8 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->mainfn = ctx->mainfn;
 
 #if SUPPORT_PROFILE_SPIRV
-        if (strcmp(retval->profile, "spirv") == 0)
+        if (strcmp(retval->profile, MOJOSHADER_PROFILE_SPIRV) == 0
+         || strcmp(retval->profile, MOJOSHADER_PROFILE_GLSPIRV) == 0)
         {
             size_t i, max;
             int binary_size = retval->output_len - sizeof(SpirvPatchTable);
@@ -3478,7 +3480,7 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
                     binary[entry.offset] = entry.location;
             } // for
         } // if
-#endif
+#endif // SUPPORT_PROFILE_SPIRV
 
         // we don't own these now, retval does.
         ctx->ctab.symbols = NULL;
@@ -3864,6 +3866,7 @@ int MOJOSHADER_maxShaderModel(const char *profile)
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_NV4, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_METAL, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_SPIRV, 3);
+    PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_GLSPIRV, 3);
     #undef PROFILE_SHADER_MODEL
     return -1;  // unknown profile?
 } // MOJOSHADER_maxShaderModel
