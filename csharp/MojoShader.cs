@@ -453,6 +453,8 @@ public static class MojoShader
 	public const string MOJOSHADER_PROFILE_NV3 =		"nv3";
 	public const string MOJOSHADER_PROFILE_NV4 =		"nv4";
 	public const string MOJOSHADER_PROFILE_METAL =		"metal";
+	public const string MOJOSHADER_PROFILE_SPIRV =		"spirv";
+	public const string MOJOSHADER_PROFILE_GLSPIRV =	"glspirv";
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	private static extern int MOJOSHADER_maxShaderModel(
