@@ -263,6 +263,15 @@ PREDECLARE_PROFILE(METAL)
 PREDECLARE_PROFILE(ARB1)
 #endif
 
+#if !SUPPORT_PROFILE_SPIRV
+#define PROFILE_EMITTER_SPIRV(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_SPIRV(op) emit_SPIRV_##op,
+PREDECLARE_PROFILE(SPIRV)
+#endif
+
 #if !AT_LEAST_ONE_PROFILE
 #error No profiles are supported. Fix your build.
 #endif
@@ -300,6 +309,9 @@ static const Profile profiles[] =
 #if SUPPORT_PROFILE_METAL
     DEFINE_PROFILE(METAL)
 #endif
+#if SUPPORT_PROFILE_SPIRV
+    DEFINE_PROFILE(SPIRV)
+#endif
 };
 
 #undef DEFINE_PROFILE
@@ -321,6 +333,7 @@ static const struct { const char *from; const char *to; } profileMap[] =
      PROFILE_EMITTER_GLSL(op) \
      PROFILE_EMITTER_ARB1(op) \
      PROFILE_EMITTER_METAL(op) \
+     PROFILE_EMITTER_SPIRV(op) \
 }
 
 static int parse_destination_token(Context *ctx, DestArgInfo *info)
@@ -3445,6 +3458,28 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
         retval->preshader = ctx->preshader;
         retval->mainfn = ctx->mainfn;
 
+#if SUPPORT_PROFILE_SPIRV
+        if (strcmp(retval->profile, "spirv") == 0)
+        {
+            size_t i, max;
+            int binary_size = retval->output_len - sizeof(SpirvPatchTable);
+            uint32 *binary = (uint32 *) retval->output;
+            SpirvPatchTable *table = (SpirvPatchTable *) &retval->output[binary_size];
+
+            if (table->vpflip.offset)      binary[table->vpflip.offset]      = table->vpflip.location;
+            if (table->array_vec4.offset)  binary[table->array_vec4.offset]  = table->array_vec4.location;
+            if (table->array_ivec4.offset) binary[table->array_ivec4.offset] = table->array_ivec4.location;
+            if (table->array_bool.offset)  binary[table->array_bool.offset]  = table->array_bool.location;
+
+            for (i = 0, max = STATICARRAYLEN(table->samplers); i < max; i++)
+            {
+                SpirvPatchEntry entry = table->samplers[i];
+                if (entry.offset)
+                    binary[entry.offset] = entry.location;
+            } // for
+        } // if
+#endif
+
         // we don't own these now, retval does.
         ctx->ctab.symbols = NULL;
         ctx->preshader = NULL;
@@ -3828,6 +3863,7 @@ int MOJOSHADER_maxShaderModel(const char *profile)
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_NV3, 2);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_NV4, 3);
     PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_METAL, 3);
+    PROFILE_SHADER_MODEL(MOJOSHADER_PROFILE_SPIRV, 3);
     #undef PROFILE_SHADER_MODEL
     return -1;  // unknown profile?
 } // MOJOSHADER_maxShaderModel

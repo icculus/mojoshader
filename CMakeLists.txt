@@ -10,6 +10,7 @@ OPTION(PROFILE_GLSL "Build MojoShader with support for the GLSL profile" ON)
 OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
 OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
 OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" ON)
+OPTION(PROFILE_SPIRV "Build MojoShader with support for the SPIR-V profile" ON)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
 OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" OFF)
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
@@ -124,6 +125,9 @@ ENDIF(NOT PROFILE_ARB1_NV)
 IF(NOT PROFILE_METAL)
     ADD_DEFINITIONS(-DSUPPORT_PROFILE_METAL=0)
 ENDIF(NOT PROFILE_METAL)
+IF(NOT PROFILE_SPIRV)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_SPIRV=0)
+ENDIF(NOT PROFILE_SPIRV)
 
 IF(EFFECT_SUPPORT)
     IF(UNIX)
@@ -159,6 +163,7 @@ ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
     profiles/mojoshader_profile_d3d.c
     profiles/mojoshader_profile_glsl.c
     profiles/mojoshader_profile_metal.c
+    profiles/mojoshader_profile_spirv.c
     profiles/mojoshader_profile_common.c
 )
 IF(EFFECT_SUPPORT)
@@ -219,8 +224,18 @@ IF(COMPILER_SUPPORT)
     ENDIF(SDL2)
 ENDIF(COMPILER_SUPPORT)
 
+FIND_PATH(SPIRV_TOOLS_INCLUDE_DIR "spirv-tools/libspirv.h" PATH_SUFFIXES "include")
+FIND_LIBRARY(SPIRV_TOOLS_LIBRARY NAMES SPIRV-Tools-shared)
+IF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
+    INCLUDE_DIRECTORIES(${SPIRV_TOOLS_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DMOJOSHADER_HAS_SPIRV_TOOLS)
+ENDIF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
+
 ADD_EXECUTABLE(testparse utils/testparse.c)
 TARGET_LINK_LIBRARIES(testparse mojoshader ${LIBM} ${CARBON_FRAMEWORK})
+IF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
+    TARGET_LINK_LIBRARIES(testparse ${SPIRV_TOOLS_LIBRARY})
+ENDIF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
 TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM} ${CARBON_FRAMEWORK})
 IF(COMPILER_SUPPORT)

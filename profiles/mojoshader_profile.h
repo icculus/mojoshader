@@ -12,6 +12,10 @@
 
 #include "../mojoshader_internal.h"
 
+#if SUPPORT_PROFILE_SPIRV
+#include "mojoshader_profile_spirv.h"
+#endif
+
 typedef struct ConstantsList
 {
     MOJOSHADER_constant constant;
@@ -38,6 +42,12 @@ typedef struct RegisterList
     int writemask;
     int misc;
     int written;
+#if SUPPORT_PROFILE_SPIRV
+    struct {
+        uint32 iddecl;
+        int is_ssa; // FIXME(krolli): Is there an existing way to tell constants and uniforms apart?
+    } spirv;
+#endif
     const VariableList *array;
     struct RegisterList *next;
 } RegisterList;
@@ -194,6 +204,11 @@ typedef struct Context
     int metal_need_header_geometric;
     int metal_need_header_graphics;
     int metal_need_header_texture;
+#endif
+
+#if SUPPORT_PROFILE_SPIRV
+    int branch_labels_patch_stack[32];
+    SpirvContext spirv;
 #endif
 } Context;
 

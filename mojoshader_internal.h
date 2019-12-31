@@ -64,6 +64,10 @@
 #define SUPPORT_PROFILE_METAL 1
 #endif
 
+#ifndef SUPPORT_PROFILE_SPIRV
+#define SUPPORT_PROFILE_SPIRV 1
+#endif
+
 #if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
 #error nv profiles require arb1 profile. Fix your build.
 #endif
@@ -265,6 +269,8 @@ char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len);
 void buffer_destroy(Buffer *buffer);
 ssize_t buffer_find(Buffer *buffer, const size_t start,
                     const void *data, const size_t len);
+void buffer_patch(Buffer *buffer, const size_t start,
+                  const void *data, const size_t len);
 
 
 
@@ -595,6 +601,42 @@ const char *preprocessor_sourcepos(Preprocessor *pp, unsigned int *pos);
 void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
                                   const unsigned int tokenlen,
                                   const Token tokenval);
+
+
+#if SUPPORT_PROFILE_SPIRV
+// Patching SPIR-V binaries before linking is needed to ensure locations do not
+// overlap between shader stages. Unfortunately, OpDecorate takes Literal, so we
+// can't use Result <id> from OpSpecConstant and leave this up to specialization
+// mechanism.
+// Patch table must be propagated from parsing to program linking, but since
+// MOJOSHADER_parseData is public and I'd like to avoid changing ABI and exposing
+// this, it is appended to MOJOSHADER_parseData::output using postflight buffer.
+typedef struct SpirvPatchEntry
+{
+    uint32 offset;
+    int32 location;
+} SpirvPatchEntry;
+
+typedef struct SpirvPatchTable
+{
+    SpirvPatchEntry vpflip;
+    SpirvPatchEntry array_vec4;
+    SpirvPatchEntry array_ivec4;
+    SpirvPatchEntry array_bool;
+    SpirvPatchEntry samplers[16];
+    int32 location_count;
+    union
+    {
+        // VS only; non-0 when there is PSIZE output
+        uint32 vs_has_psize;
+
+        // PS only; offset to TEXCOORD0 location part of OpDecorate.
+        // Used to find OpDecorate and patch it to BuiltIn PointCoord when
+        // VS outputs PSIZE.
+        uint32 ps_texcoord0_offset;
+    };
+} SpirvPatchTable;
+#endif
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
 

@@ -36,6 +36,10 @@
 #include "GL/gl.h"
 #include "GL/glext.h"
 
+#if SUPPORT_PROFILE_SPIRV
+#include "spirv/spirv.h"
+#endif
+
 #ifndef GL_HALF_FLOAT_NV
 #define GL_HALF_FLOAT_NV 0x140B
 #endif
@@ -51,6 +55,19 @@
 // this happens to be the same value for ARB1 and GLSL.
 #ifndef GL_PROGRAM_POINT_SIZE
 #define GL_PROGRAM_POINT_SIZE 0x8642
+#endif
+
+// FIXME: ARB_gl_spirv in glext.h? -flibit
+#ifndef GL_ARB_gl_spirv
+#define GL_ARB_gl_spirv 1
+#define GL_SHADER_BINARY_FORMAT_SPIR_V_ARB 0x9551
+typedef void (APIENTRYP PFNGLSPECIALIZESHADERARBPROC) (
+    GLuint shader,
+    const GLchar* pEntryPoint,
+    GLuint numSpecializationConstants,
+    const GLuint* pConstantIndex,
+    const GLuint* pConstantValue
+);
 #endif
 
 struct MOJOSHADER_glShader
@@ -206,6 +223,8 @@ struct MOJOSHADER_glContext
     int have_GL_ARB_half_float_vertex;
     int have_GL_OES_vertex_half_float;
     int have_GL_ARB_instanced_arrays;
+    int have_GL_ARB_ES2_compatibility;
+    int have_GL_ARB_gl_spirv;
 
     // Entry points...
     PFNGLGETSTRINGPROC glGetString;
@@ -267,6 +286,8 @@ struct MOJOSHADER_glContext
     PFNGLBINDPROGRAMARBPROC glBindProgramARB;
     PFNGLPROGRAMSTRINGARBPROC glProgramStringARB;
     PFNGLVERTEXATTRIBDIVISORARBPROC glVertexAttribDivisorARB;
+    PFNGLSHADERBINARYPROC glShaderBinary;
+    PFNGLSPECIALIZESHADERARBPROC glSpecializeShaderARB;
 
     // interface for profile-specific things.
     int (*profileMaxUniforms)(MOJOSHADER_shaderType shader_type);
@@ -381,7 +402,7 @@ static inline void toggle_gl_state(GLenum state, int val)
 
 // profile-specific implementations...
 
-#if SUPPORT_PROFILE_GLSL
+#if SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_SPIRV
 static inline GLenum glsl_shader_type(const MOJOSHADER_shaderType t)
 {
     // these enums match between core 2.0 and the ARB extensions.
@@ -415,7 +436,230 @@ static int impl_GLSL_MaxUniforms(MOJOSHADER_shaderType shader_type)
     return (int) val;
 } // impl_GLSL_MaxUniforms
 
+#if SUPPORT_PROFILE_SPIRV
+static const SpirvPatchTable* spv_getPatchTable(MOJOSHADER_glShader *shader)
+{
+    const MOJOSHADER_parseData *pd = shader->parseData;
+    size_t table_offset = pd->output_len - sizeof(SpirvPatchTable);
+    return (const SpirvPatchTable *) (pd->output + table_offset);
+} // spv_getPatchTable
 
+static int spv_CompileShader(const MOJOSHADER_parseData *pd, int32 base_location, GLuint *s, int32 patch_pcoord)
+{
+    GLint ok = 0;
+
+    GLsizei data_len = pd->output_len - sizeof(SpirvPatchTable);
+    const GLvoid* data = pd->output;
+    uint32 *patched_data = NULL;
+    if (base_location || patch_pcoord)
+    {
+        size_t i, max;
+
+        patched_data = (uint32 *) Malloc(data_len);
+        memcpy(patched_data, data, data_len);
+        const SpirvPatchTable *table = (const SpirvPatchTable *) &pd->output[data_len];
+        if (table->vpflip.offset)      patched_data[table->vpflip.offset]      += base_location;
+        if (table->array_vec4.offset)  patched_data[table->array_vec4.offset]  += base_location;
+        if (table->array_ivec4.offset) patched_data[table->array_ivec4.offset] += base_location;
+        if (table->array_bool.offset)  patched_data[table->array_bool.offset]  += base_location;
+
+        for (i = 0, max = STATICARRAYLEN(table->samplers); i < max; i++)
+        {
+            SpirvPatchEntry entry = table->samplers[i];
+            if (entry.offset)
+                patched_data[entry.offset] += base_location;
+        } // for
+
+        if (patch_pcoord && table->ps_texcoord0_offset)
+        {
+            // Subtract 3 to get from Location value offset to start of op.
+            uint32 op_base = table->ps_texcoord0_offset - 3;
+            assert(patched_data[op_base+0] == (SpvOpDecorate | (4 << 16)));
+            assert(patched_data[op_base+2] == SpvDecorationLocation);
+            patched_data[op_base+2] = SpvDecorationBuiltIn;
+            patched_data[op_base+3] = SpvBuiltInPointCoord;
+        } // if
+
+        data = patched_data;
+    } // if
+
+    const GLuint shader = ctx->glCreateShader(glsl_shader_type(pd->shader_type));
+    ctx->glShaderBinary(1, &shader, GL_SHADER_BINARY_FORMAT_SPIR_V_ARB, data, data_len);
+    ctx->glSpecializeShaderARB(shader, pd->mainfn, 0, NULL, NULL); // FIXME: Spec Constants? -flibit
+    ctx->glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+
+    if (patched_data)
+        Free(patched_data);
+
+    if (!ok)
+    {
+        GLsizei len = 0;
+        ctx->glGetShaderInfoLog(shader, sizeof(error_buffer), &len,
+                             (GLchar *) error_buffer);
+        ctx->glDeleteShader(shader);
+        *s = 0;
+        return 0;
+    } // if
+
+    *s = shader;
+
+    return 1;
+} // spv_CompileShader
+
+static int impl_SPIRV_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
+{
+    // Compilation postponed until linking, but generate dummy shader id so hash table lookups work.
+    *s = ctx->glCreateShader(glsl_shader_type(pd->shader_type));
+    return 1;
+} // impl_SPIRV_CompileShader
+
+static GLuint impl_SPIRV_LinkProgram(MOJOSHADER_glShader *vshader,
+                                     MOJOSHADER_glShader *pshader)
+{
+    GLint ok = 0;
+
+    // Shader compilation postponed until linking due to uniform locations being global in program.
+    // To avoid overlap between VS and PS, we need to know about other shader stages to assign final
+    // uniform locations before compilation.
+    GLuint vs_handle = 0;
+    int32 base_location = 0;
+    int32 patch_pcoord = 0;
+    if (vshader)
+    {
+        if (!spv_CompileShader(vshader->parseData, base_location, &vs_handle, patch_pcoord))
+            return 0;
+
+        const SpirvPatchTable* patch_table = spv_getPatchTable(vshader);
+        base_location += patch_table->location_count;
+        patch_pcoord = patch_table->vs_has_psize;
+    } // if
+
+    GLuint ps_handle = 0;
+    if (pshader)
+    {
+        if (!spv_CompileShader(pshader->parseData, base_location, &ps_handle, patch_pcoord))
+            return 0;
+    } // if
+
+    if (ctx->have_opengl_2)
+    {
+        const GLuint program = ctx->glCreateProgram();
+        if (vs_handle)
+        {
+            ctx->glAttachShader(program, vs_handle);
+            ctx->glDeleteShader(vs_handle);
+        } // if
+        if (ps_handle)
+        {
+            ctx->glAttachShader(program, ps_handle);
+            ctx->glDeleteShader(ps_handle);
+        } // if
+        ctx->glLinkProgram(program);
+        ctx->glGetProgramiv(program, GL_LINK_STATUS, &ok);
+        if (!ok)
+        {
+            GLsizei len = 0;
+            ctx->glGetProgramInfoLog(program, sizeof (error_buffer),
+                                     &len, (GLchar *) error_buffer);
+            ctx->glDeleteProgram(program);
+            return 0;
+        } // if
+
+        return program;
+    } // if
+    else
+    {
+        const GLhandleARB program = ctx->glCreateProgramObjectARB();
+        assert(sizeof(program) == sizeof(GLuint));  // not always true on OS X!
+        if (vs_handle)
+        {
+            ctx->glAttachObjectARB(program, (GLhandleARB) vs_handle);
+            ctx->glDeleteObjectARB((GLhandleARB) vs_handle);
+        } // if
+        if (ps_handle)
+        {
+            ctx->glAttachObjectARB(program, (GLhandleARB) ps_handle);
+            ctx->glDeleteObjectARB((GLhandleARB) ps_handle);
+        } // if
+        ctx->glLinkProgramARB(program);
+        ctx->glGetObjectParameterivARB(program, GL_OBJECT_LINK_STATUS_ARB, &ok);
+        if (!ok)
+        {
+            GLsizei len = 0;
+            ctx->glGetInfoLogARB(program, sizeof (error_buffer),
+                                 &len, (GLcharARB *) error_buffer);
+            ctx->glDeleteObjectARB(program);
+            return 0;
+        } // if
+
+        return (GLuint) program;
+    } // else
+} // impl_SPIRV_LinkProgram
+
+static void impl_SPIRV_DeleteShader(const GLuint shader)
+{
+    ctx->glDeleteShader(shader);
+} // impl_SPIRV_DeleteShader
+
+static void impl_SPIRV_DeleteProgram(const GLuint program)
+{
+    if (ctx->have_opengl_2)
+        ctx->glDeleteProgram(program);
+    else
+        ctx->glDeleteObjectARB((GLhandleARB) program);
+} // impl_SPIRV_DeleteProgram
+
+static GLint impl_SPIRV_GetAttribLocation(MOJOSHADER_glProgram *program, int idx)
+{
+    return idx;
+} // impl_SPIRV_GetAttribLocation
+
+static GLint impl_SPIRV_GetUniformLocation(MOJOSHADER_glProgram *program, MOJOSHADER_glShader *shader, int idx)
+{
+    return 0;  // no-op, we push this as one big-ass array now.
+} // impl_SPIRV_GetUniformLocation
+
+static GLint impl_SPIRV_GetSamplerLocation(MOJOSHADER_glProgram *program, MOJOSHADER_glShader *shader, int idx)
+{
+    const SpirvPatchTable *table = spv_getPatchTable(shader);
+    GLint location = table->samplers[idx].location;
+    if (location == -1)
+        return location;
+
+    assert(location >= 0);
+    if (shader->parseData->shader_type == MOJOSHADER_TYPE_PIXEL)
+        location += spv_getPatchTable(program->vertex)->location_count;
+
+    return location;
+} // impl_SPIRV_GetSamplerLocation
+
+static void impl_SPIRV_FinalInitProgram(MOJOSHADER_glProgram *program)
+{
+    const SpirvPatchTable *vs_table = spv_getPatchTable(program->vertex);
+    const SpirvPatchTable *ps_table = spv_getPatchTable(program->fragment);
+    program->vs_float4_loc = vs_table->array_vec4.location;
+    program->vs_int4_loc   = vs_table->array_ivec4.location;
+    program->vs_bool_loc   = vs_table->array_bool.location;
+    program->ps_float4_loc = ps_table->array_vec4.location;
+    program->ps_int4_loc   = ps_table->array_ivec4.location;
+    program->ps_bool_loc   = ps_table->array_bool.location;
+    program->ps_vpos_flip_loc = ps_table->vpflip.location;
+#ifdef MOJOSHADER_FLIP_RENDERTARGET
+    program->vs_flip_loc   = vs_table->vpflip.location;
+#endif
+
+    int32 ps_base_location = vs_table->location_count;
+    if (ps_base_location)
+    {
+        if (program->ps_float4_loc != -1) program->ps_float4_loc += ps_base_location;
+        if (program->ps_int4_loc   != -1) program->ps_int4_loc   += ps_base_location;
+        if (program->ps_bool_loc   != -1) program->ps_bool_loc   += ps_base_location;
+        if (program->ps_vpos_flip_loc != -1) program->ps_vpos_flip_loc += ps_base_location;
+    } // if
+} // impl_SPIRV_FinalInitProgram
+#endif // SUPPORT_PROFILE_SPIRV
+
+#if SUPPORT_PROFILE_GLSL
 static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 {
     GLint ok = 0;
@@ -463,6 +707,7 @@ static int impl_GLSL_CompileShader(const MOJOSHADER_parseData *pd, GLuint *s)
 
     return 1;
 } // impl_GLSL_CompileShader
+#endif // SUPPORT_PROFILE_GLSL
 
 
 static void impl_GLSL_DeleteShader(const GLuint shader)
@@ -664,7 +909,7 @@ static void impl_GLSL_PushSampler(GLint loc, GLuint sampler)
     ctx->glUniform1i(loc, sampler);
 } // impl_GLSL_PushSampler
 
-#endif  // SUPPORT_PROFILE_GLSL
+#endif // SUPPORT_PROFILE_GLSL || SUPPORT_PROFILE_SPIRV
 
 
 #if SUPPORT_PROFILE_ARB1
@@ -1026,6 +1271,8 @@ static void lookup_entry_points(MOJOSHADER_glGetProcAddress lookup, void *d)
     DO_LOOKUP(GL_ARB_vertex_program, PFNGLPROGRAMSTRINGARBPROC, glProgramStringARB);
     DO_LOOKUP(GL_NV_gpu_program4, PFNGLPROGRAMLOCALPARAMETERI4IVNVPROC, glProgramLocalParameterI4ivNV);
     DO_LOOKUP(GL_ARB_instanced_arrays, PFNGLVERTEXATTRIBDIVISORARBPROC, glVertexAttribDivisorARB);
+    DO_LOOKUP(GL_ARB_ES2_compatibility, PFNGLSHADERBINARYPROC, glShaderBinary);
+    DO_LOOKUP(GL_ARB_gl_spirv, PFNGLSPECIALIZESHADERARBPROC, glSpecializeShaderARB);
 
     #undef DO_LOOKUP
 } // lookup_entry_points
@@ -1144,6 +1391,8 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     ctx->have_GL_ARB_half_float_vertex = 1;
     ctx->have_GL_OES_vertex_half_float = 1;
     ctx->have_GL_ARB_instanced_arrays = 1;
+    ctx->have_GL_ARB_ES2_compatibility = 1;
+    ctx->have_GL_ARB_gl_spirv = 1;
 
     lookup_entry_points(lookup, d);
 
@@ -1242,6 +1491,8 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
     VERIFY_EXT(GL_ARB_half_float_vertex, 3, 0);
     VERIFY_EXT(GL_OES_vertex_half_float, -1, -1);
     VERIFY_EXT(GL_ARB_instanced_arrays, 3, 3);
+    VERIFY_EXT(GL_ARB_ES2_compatibility, 4, 1);
+    VERIFY_EXT(GL_ARB_gl_spirv, -1, -1);
 
     #undef VERIFY_EXT
 
@@ -1302,6 +1553,14 @@ static int valid_profile(const char *profile)
     } // else if
     #endif
 
+    #if SUPPORT_PROFILE_SPIRV
+    else if (strcmp(profile, MOJOSHADER_PROFILE_SPIRV) == 0)
+    {
+        MUST_HAVE(MOJOSHADER_PROFILE_SPIRV, GL_ARB_ES2_compatibility);
+        MUST_HAVE(MOJOSHADER_PROFILE_SPIRV, GL_ARB_gl_spirv);
+    } // else if
+    #endif
+
     #if SUPPORT_PROFILE_GLSLES
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0)
     {
@@ -1336,6 +1595,9 @@ static int valid_profile(const char *profile)
 
 
 static const char *profile_priorities[] = {
+#if SUPPORT_PROFILE_SPIRV
+    MOJOSHADER_PROFILE_SPIRV,
+#endif
 #if SUPPORT_PROFILE_GLSL120
     MOJOSHADER_PROFILE_GLSL120,
 #endif
@@ -1463,6 +1725,29 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 
     // !!! FIXME: generalize this part.
     if (profile == NULL) {}
+
+    // We don't check SUPPORT_PROFILE_SPIRV here, since valid_profile() does.
+#if SUPPORT_PROFILE_SPIRV
+    else if (strcmp(profile, MOJOSHADER_PROFILE_SPIRV) == 0)
+    {
+        ctx->profileMaxUniforms = impl_GLSL_MaxUniforms;
+        ctx->profileCompileShader = impl_SPIRV_CompileShader;
+        ctx->profileDeleteShader = impl_SPIRV_DeleteShader;
+        ctx->profileDeleteProgram = impl_SPIRV_DeleteProgram;
+        ctx->profileGetAttribLocation = impl_SPIRV_GetAttribLocation;
+        ctx->profileGetUniformLocation = impl_SPIRV_GetUniformLocation;
+        ctx->profileGetSamplerLocation = impl_SPIRV_GetSamplerLocation;
+        ctx->profileLinkProgram = impl_SPIRV_LinkProgram;
+        ctx->profileFinalInitProgram = impl_SPIRV_FinalInitProgram;
+        ctx->profileUseProgram = impl_GLSL_UseProgram;
+        ctx->profilePushConstantArray = impl_GLSL_PushConstantArray;
+        ctx->profilePushUniforms = impl_GLSL_PushUniforms;
+        ctx->profilePushSampler = impl_GLSL_PushSampler;
+        ctx->profileMustPushConstantArrays = impl_GLSL_MustPushConstantArrays;
+        ctx->profileMustPushSamplers = impl_GLSL_MustPushSamplers;
+        ctx->profileToggleProgramPointSize = impl_REAL_ToggleProgramPointSize;
+    } // if
+#endif
 
     // We don't check SUPPORT_PROFILE_GLSL120/ES here, since valid_profile() does.
 #if SUPPORT_PROFILE_GLSL
