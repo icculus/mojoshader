@@ -249,6 +249,10 @@ RegisterList *reglist_insert(Context *ctx, RegisterList *prev,
         item->writemask = 0;
         item->misc = 0;
         item->written = 0;
+#if SUPPORT_PROFILE_SPIRV
+        item->spirv.iddecl = 0;
+        item->spirv.is_ssa = 0;
+#endif
         item->array = NULL;
         item->next = prev->next;
         prev->next = item;

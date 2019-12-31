@@ -9,7 +9,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "mojoshader.h"
+#include <string.h>
+#include <assert.h>
+#include "../mojoshader.h"
+#define __MOJOSHADER_INTERNAL__ 1
+#include "../mojoshader_internal.h"
+#ifdef MOJOSHADER_HAS_SPIRV_TOOLS
+#include "spirv-tools/libspirv.h"
+#endif
 
 #ifdef _MSC_VER
 #define snprintf _snprintf
@@ -257,6 +264,7 @@ static void print_attrs(const char *category, const int count,
         for (i = 0; i < count; i++)
         {
             static const char *usagenames[] = {
+                "<unknown>",
                 "position", "blendweight", "blendindices", "normal",
                 "psize", "texcoord", "tangent", "binormal", "tessfactor",
                 "positiont", "color", "fog", "depth", "sample"
@@ -266,7 +274,7 @@ static void print_attrs(const char *category, const int count,
             if (a->index != 0)
                 snprintf(numstr, sizeof (numstr), "%d", a->index);
             INDENT();
-            printf("    * %s%s", usagenames[(int) a->usage], numstr);
+            printf("    * %s%s", usagenames[1 + (int) a->usage], numstr);
             if (a->name != NULL)
                 printf(" (\"%s\")", a->name);
             printf("\n");
@@ -287,8 +295,8 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
             const MOJOSHADER_error *err = &pd->errors[i];
             INDENT();
             printf("%s:%d: ERROR: %s\n",
-                    err->filename ? err->filename : fname,
-                    err->error_position, err->error);
+                   err->filename ? err->filename : fname,
+                   err->error_position, err->error);
         } // for
     } // if
     else
@@ -311,7 +319,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
             {
                 static const char *typenames[] = { "float", "int", "bool" };
                 const MOJOSHADER_constant *c = &pd->constants[i];
-                INDENT(); 
+                INDENT();
                 printf("    * %d: %s (", c->index, typenames[(int) c->type]);
                 if (c->type == MOJOSHADER_UNIFORM_FLOAT)
                 {
@@ -358,7 +366,7 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
 
                 INDENT();
                 printf("    * %d: %s%s%s%s", u->index, constant, arrayof,
-                        arrayrange, typenames[(int) u->type]);
+                       arrayrange, typenames[(int) u->type]);
                 if (u->name != NULL)
                     printf(" (\"%s\")", u->name);
                 printf("\n");
@@ -393,15 +401,64 @@ static void print_shader(const char *fname, const MOJOSHADER_parseData *pd,
 
         if (pd->output != NULL)
         {
+            const char *output;
+            int output_len;
             int i;
+
+            if (strcmp(pd->profile, "spirv") == 0)
+            {
+#if SUPPORT_PROFILE_SPIRV && defined(MOJOSHADER_HAS_SPIRV_TOOLS)
+                int binary_len = pd->output_len - sizeof(SpirvPatchTable);
+
+                uint32_t *words = (uint32_t *) pd->output;
+                size_t word_count = binary_len / 4;
+
+                spv_text text;
+                spv_diagnostic diagnostic;
+                spv_context ctx = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
+                int options = /*SPV_BINARY_TO_TEXT_OPTION_COLOR |*/ SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
+                spv_result_t disResult = spvBinaryToText(ctx, words, word_count, options, &text, &diagnostic);
+                if (disResult == SPV_SUCCESS)
+                {
+                    output = text->str;
+                    output_len = text->length;
+                } // if
+                else
+                {
+                    fprintf(stderr, "\nERROR DIAGNOSTIC: %s\n\n", diagnostic->error);
+                } // else
+
+                spv_result_t validateResult = spvValidateBinary(ctx, words, word_count, &diagnostic);
+                if (validateResult != SPV_SUCCESS)
+                {
+                    fprintf(stderr, "\nVALIDATION FAILURE: %s\n\n", diagnostic->error);
+                } // if
+
+                if (disResult != SPV_SUCCESS || validateResult != SPV_SUCCESS)
+                {
+                    exit(EXIT_FAILURE);
+                } // if
+
+                // FIXME: we're currently just leaking this disassembly...
+#else
+                output = pd->output;
+                output_len = pd->output_len;
+#endif
+            } // if
+            else
+            {
+                output = pd->output;
+                output_len = pd->output_len;
+            } // else
+
             INDENT();
             printf("OUTPUT:\n");
             indent++;
             INDENT();
-            for (i = 0; i < pd->output_len; i++)
+            for (i = 0; i < output_len; i++)
             {
-                putchar((int) pd->output[i]);
-                if (pd->output[i] == '\n')
+                putchar((int) output[i]);
+                if (output[i] == '\n')
                     INDENT();
             } // for
             printf("\n");
@@ -674,6 +731,7 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
 static int do_parse(const char *fname, const unsigned char *buf,
                     const int len, const char *prof)
 {
+    int i;
     int retval = 0;
 
     // magic for an effects file (!!! FIXME: I _think_).
@@ -686,7 +744,26 @@ static int do_parse(const char *fname, const unsigned char *buf,
         const MOJOSHADER_effect *effect;
         effect = MOJOSHADER_parseEffect(prof, buf, len, NULL, 0,
                                         NULL, 0, Malloc, Free, 0);
-        retval = (effect->error_count == 0);
+        int error_count = effect->error_count;
+        for (i = 0; i < effect->object_count; i++)
+        {
+            MOJOSHADER_effectObject *object = &effect->objects[i];
+            switch (object->type)
+            {
+                case MOJOSHADER_SYMTYPE_VERTEXSHADER:
+                case MOJOSHADER_SYMTYPE_PIXELSHADER:
+                    if (!object->shader.is_preshader)
+                    {
+                        const MOJOSHADER_parseData *shader = object->shader.shader;
+                        if (shader)
+                            error_count += shader->error_count;
+                    } // if
+                    break;
+                default:
+                    break;
+            }
+        }
+        retval = (error_count == 0);
         printf("EFFECT: %s\n", fname);
         print_effect(fname, effect, 1);
         MOJOSHADER_freeEffect(effect);

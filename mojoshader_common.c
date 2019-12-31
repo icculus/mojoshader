@@ -1036,6 +1036,49 @@ ssize_t buffer_find(Buffer *buffer, const size_t start,
     return -1;  // no match found.
 } // buffer_find
 
+void buffer_patch(Buffer *buffer, const size_t start,
+                  const void *_data, const size_t len)
+{
+    if (len == 0)
+        return;  // Nothing to do.
+
+    if ((start + len) > buffer->total_bytes)
+        return;  // definitely can't patch.
+
+    // Find the start point somewhere in the center of a buffer.
+    BufferBlock *item = buffer->head;
+    size_t pos = 0;
+    if (start > 0)
+    {
+        while (1)
+        {
+            assert(item != NULL);
+            if ((pos + item->bytes) > start)  // start is in this block.
+                break;
+
+            pos += item->bytes;
+            item = item->next;
+        } // while
+    } // if
+
+    const uint8 *data = (const uint8 *) _data;
+    size_t write_pos = start - pos;
+    size_t write_remain = len;
+    size_t written = 0;
+    while (write_remain)
+    {
+        size_t write_end = write_pos + write_remain;
+        if (write_end > item->bytes)
+            write_end = item->bytes;
+
+        size_t to_write = write_end - write_pos;
+        memcpy(item->data + write_pos, data + written, to_write);
+        write_remain -= to_write;
+        written      += to_write;
+        write_pos     = 0;
+        item          = item->next;
+    } // while
+} // buffer_patch
 
 // Based on SDL_string.c's SDL_PrintFloat function
 size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
