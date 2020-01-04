@@ -205,82 +205,6 @@ static void LL_remove_node(LLNODE **baseNode,
     f(node, d);
 }
 
-/* Uniform buffer utilities */
-
-static inline int next_highest_alignment(int n)
-{
-    #if TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_SIMULATOR
-    int align = 16;
-    #else
-    int align = 256;
-    #endif
-
-    return align * ((n + align - 1) / align);
-}
-
-static int UBO_buffer_length(void *buffer)
-{
-    return (int) objc_msgSend(buffer, selLength);
-}
-
-static void *UBO_buffer_contents(void *buffer)
-{
-    return (void *) objc_msgSend(buffer, selContents);
-}
-
-static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
-{
-    void *oldBuffer = ubo->internalBuffers[f];
-    void *newBuffer = objc_msgSend_INT_PTR(
-        ubo->device,
-        selNewBufferWithLength,
-        ubo->internalBufferSize,
-        NULL
-    );
-    if (oldBuffer != NULL)
-    {
-        // Copy over data from old buffer
-        memcpy(
-            UBO_buffer_contents(newBuffer),
-            UBO_buffer_contents(oldBuffer),
-            UBO_buffer_length(oldBuffer)
-        );
-
-        // Free the old buffer
-        objc_msgSend(oldBuffer, selRelease);
-    }
-    return newBuffer;
-}
-
-static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
-{
-    if (!ubo->alreadyWritten)
-    {
-        ubo->alreadyWritten = 1;
-        return;
-    }
-
-    ubo->internalOffset += ubo->bufferSize;
-
-    int buflen = UBO_buffer_length(ubo->internalBuffers[ubo->currentFrame]);
-    if (ubo->internalOffset >= buflen)
-    {
-        if (ubo->internalOffset >= ubo->internalBufferSize)
-        {
-            // Double capacity when we're out of room
-            ubo->internalBufferSize *= 2;
-        }
-        ubo->internalBuffers[ubo->currentFrame] = UBO_create_backing_buffer(ubo, ubo->currentFrame);
-    }
-}
-
-static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
-{
-    ubo->internalOffset = 0;
-    ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
-    ubo->alreadyWritten = 0;
-}
-
 /* Internal register utilities */
 
 // Max entries for each register file type...
@@ -357,6 +281,82 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
         } // else if
     } // for
 } // copy_parameter_data
+
+/* Uniform buffer utilities */
+
+static inline int next_highest_alignment(int n)
+{
+    #if TARGET_OS_IOS || TARGET_OS_TV || TARGET_OS_SIMULATOR
+    int align = 16;
+    #else
+    int align = 256;
+    #endif
+
+    return align * ((n + align - 1) / align);
+}
+
+static int UBO_buffer_length(void *buffer)
+{
+    return (int) objc_msgSend(buffer, selLength);
+}
+
+static void *UBO_buffer_contents(void *buffer)
+{
+    return (void *) objc_msgSend(buffer, selContents);
+}
+
+static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
+{
+    void *oldBuffer = ubo->internalBuffers[f];
+    void *newBuffer = objc_msgSend_INT_PTR(
+        ubo->device,
+        selNewBufferWithLength,
+        ubo->internalBufferSize,
+        NULL
+    );
+    if (oldBuffer != NULL)
+    {
+        // Copy over data from old buffer
+        memcpy(
+            UBO_buffer_contents(newBuffer),
+            UBO_buffer_contents(oldBuffer),
+            UBO_buffer_length(oldBuffer)
+        );
+
+        // Free the old buffer
+        objc_msgSend(oldBuffer, selRelease);
+    }
+    return newBuffer;
+}
+
+static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
+{
+    if (!ubo->alreadyWritten)
+    {
+        ubo->alreadyWritten = 1;
+        return;
+    }
+
+    ubo->internalOffset += ubo->bufferSize;
+
+    int buflen = UBO_buffer_length(ubo->internalBuffers[ubo->currentFrame]);
+    if (ubo->internalOffset >= buflen)
+    {
+        // Double capacity when we're out of room
+        if (ubo->internalOffset >= ubo->internalBufferSize)
+            ubo->internalBufferSize *= 2;
+
+        ubo->internalBuffers[ubo->currentFrame] =
+            UBO_create_backing_buffer(ubo, ubo->currentFrame);
+    }
+}
+
+static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
+{
+    ubo->internalOffset = 0;
+    ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
+    ubo->alreadyWritten = 0;
+}
 
 LLNODE *ubos = NULL; /* global linked list of all active UBOs */
 
