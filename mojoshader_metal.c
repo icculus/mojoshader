@@ -197,9 +197,9 @@ static void LL_remove_node(LLNODE **baseNode,
     if (prev != NULL)
         prev->next = node->next;
 
-    /* Special case where the first node is removed. */
-    if (prev == NULL && node->next != NULL)
-        *baseNode = node->next;
+    /* Special cases where the first node is removed. */
+    if (prev == NULL)
+        *baseNode = (node->next != NULL) ? node->next : NULL;
 
     /* Free the node! */
     f(node, d);
