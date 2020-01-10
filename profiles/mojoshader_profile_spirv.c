@@ -1531,7 +1531,15 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
     switch (regtype)
     {
         case REG_TYPE_COLOROUT:
-            // nothing to do for color, OpenGL should hook it up automatically??
+            // Per KHR_glsl_shader:
+            // The fragment-stage built-in gl_FragColor, which implies a broadcast to all
+            // outputs, is not present in SPIR-V. Shaders where writing to gl_FragColor
+            // is allowed can still write to it, but it only means to write to an output:
+            // - of the same type as gl_FragColor
+            // - decorated with location 0
+            // - not decorated as a built-in variable.
+            // There is no implicit broadcast.
+            spv_output_location(ctx, id, 0 + index);
             break;
         case REG_TYPE_INPUT: // v# (MOJOSHADER_USAGE_COLOR aka `oC#` in vertex shader)
             switch (usage)
