@@ -2208,7 +2208,7 @@ void emit_SPIRV_attribute(Context *ctx, RegisterType regtype, int regnum,
         switch (regtype)
         {
             case REG_TYPE_COLOROUT:
-                spv_link_ps_attributes(ctx, r->spirv.iddecl, regtype, usage, index);
+                spv_link_ps_attributes(ctx, r->spirv.iddecl, regtype, usage, regnum);
                 push_output(ctx, &ctx->mainline_intro);
                 tid = spv_get_type(ctx, STI_PTR_VEC4_O);
                 spv_emit(ctx, 4, SpvOpVariable, tid, r->spirv.iddecl, SpvStorageClassOutput);
