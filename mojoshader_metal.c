@@ -376,9 +376,11 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     for (int i = 0; i < uniformCount; i += 1)
     {
         int arrayCount = shader->parseData->uniforms[i].array_count;
-        buflen += arrayCount ? arrayCount : 1;
+        int uniformSize = 16;
+        if (shader->parseData->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
+            uniformSize = 1;
+        buflen += (arrayCount ? arrayCount : 1) * uniformSize;
     } // for
-    buflen *= 16; // all uniform types are 16 bytes
 
     // Make the UBO
     MOJOSHADER_mtlUniformBuffer *ubo = (MOJOSHADER_mtlUniformBuffer *) m(sizeof(MOJOSHADER_mtlUniformBuffer), d);
@@ -489,9 +491,9 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
             case MOJOSHADER_UNIFORM_BOOL:
                 // !!! FIXME: Need a test case
                 memcpy(
-                    contents + (offset * 16),
-                    &regB[4 * idx],
-                    size * 16
+                    contents + offset,
+                    &regB[idx],
+                    size
                 );
                 break;
 
