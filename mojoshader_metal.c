@@ -120,7 +120,7 @@ static void initSelectors(void)
     selLocalizedDescription = sel_registerName("localizedDescription");
     selNewFunctionWithName = sel_registerName("newFunctionWithName:");
     selRetain = sel_registerName("retain");
-}
+} // initSelectors
 
 static void *cstr_to_nsstr(const char *str)
 {
@@ -129,12 +129,12 @@ static void *cstr_to_nsstr(const char *str)
         selInitWithUTF8String,
         str
     );
-}
+} // cstr_to_nsstr
 
 static const char *nsstr_to_cstr(void *str)
 {
     return (char *) objc_msgSend(str, selUTF8String);
-}
+} // nssstr_to_cstr
 
 /* Linked list */
 
@@ -155,7 +155,7 @@ static LLNODE *LL_append_node(LLNODE **baseNode,
     {
         prev = node;
         node = node->next;
-    }
+    } // while
     node = m(sizeof(LLNODE), d);
     node->next = NULL;
 
@@ -168,7 +168,7 @@ static LLNODE *LL_append_node(LLNODE **baseNode,
         *baseNode = node;
 
     return node;
-}
+} // LL_append_node
 
 static void LL_remove_node(LLNODE **baseNode,
                            MOJOSHADER_mtlUniformBuffer *data,
@@ -183,12 +183,13 @@ static void LL_remove_node(LLNODE **baseNode,
     {
         prev = node;
         node = node->next;
-    }
+    } // while
+
     if (node == NULL)
     {
         /* This should never happen. */
         assert(0);
-    }
+    } // if
 
     /* Clear data pointer. The data must be freed separately. */
     node->data = NULL;
@@ -203,7 +204,7 @@ static void LL_remove_node(LLNODE **baseNode,
 
     /* Free the node! */
     f(node, d);
-}
+} // LL_remove_node
 
 /* Internal register utilities */
 
@@ -293,17 +294,17 @@ static inline int next_highest_alignment(int n)
     #endif
 
     return align * ((n + align - 1) / align);
-}
+} // next_highest_alignment
 
 static int UBO_buffer_length(void *buffer)
 {
     return (int) objc_msgSend(buffer, selLength);
-}
+} // UBO_buffer_length
 
 static void *UBO_buffer_contents(void *buffer)
 {
     return (void *) objc_msgSend(buffer, selContents);
-}
+} // UBO_buffer_contents
 
 static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
 {
@@ -325,9 +326,10 @@ static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
 
         // Free the old buffer
         objc_msgSend(oldBuffer, selRelease);
-    }
+    } //if
+
     return newBuffer;
-}
+} // UBO_create_backing_buffer
 
 static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
 {
@@ -335,7 +337,7 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
     {
         ubo->alreadyWritten = 1;
         return;
-    }
+    } // if
 
     ubo->internalOffset += ubo->bufferSize;
 
@@ -348,15 +350,15 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
 
         ubo->internalBuffers[ubo->currentFrame] =
             UBO_create_backing_buffer(ubo, ubo->currentFrame);
-    }
-}
+    } //if
+} // UBO_predraw
 
 static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
 {
     ubo->internalOffset = 0;
     ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
     ubo->alreadyWritten = 0;
-}
+} // UBO_end_frame
 
 LLNODE *ubos = NULL; /* global linked list of all active UBOs */
 
@@ -375,7 +377,7 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     {
         int arrayCount = shader->parseData->uniforms[i].array_count;
         buflen += arrayCount ? arrayCount : 1;
-    }
+    } // for
     buflen *= 16; // all uniform types are 16 bytes
 
     // Make the UBO
@@ -392,7 +394,7 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
     {
         ubo->internalBuffers[i] = NULL;
         ubo->internalBuffers[i] = UBO_create_backing_buffer(ubo, i);
-    }
+    } // for
 
     /* Add the UBO to the global list so it can be updated. */
     LLNODE *node = LL_append_node(&ubos, m, d);
@@ -413,7 +415,8 @@ static void dealloc_ubo(MOJOSHADER_mtlShader *shader,
     {
         objc_msgSend(shader->ubo->internalBuffers[i], selRelease);
         shader->ubo->internalBuffers[i] = NULL;
-    }
+    } // for
+
     f(shader->ubo->internalBuffers, d);
     f(shader->ubo, d);
 } // dealloc_ubo
@@ -445,13 +448,13 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
         regF = vs_reg_file_f;
         regI = vs_reg_file_i;
         regB = vs_reg_file_b;
-    }
+    } // if
     else
     {
         regF = ps_reg_file_f;
         regI = ps_reg_file_i;
         regB = ps_reg_file_b;
-    }
+    } // else
 
     UBO_predraw(shader->ubo);
     void *buf = shader->ubo->internalBuffers[shader->ubo->currentFrame];
@@ -495,9 +498,10 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
             default:
                 assert(0); // This should never happen.
                 break;
-        }
+        } // switch
+
         offset += size;
-    }
+    } // for
 } // update_uniform_buffer
 
 /* Public API */
@@ -539,7 +543,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
             {
                 retval->num_shaders++;
                 src_len += object->shader.shader->output_len;
-            }
+            } // else
         } // if
     } // for
 
@@ -686,7 +690,7 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
     {
         /* Release the uniform buffers */
         dealloc_ubo(&mtlEffect->shaders[i], f, d);
-    }
+    } // for
 
     /* Release the library */
     objc_msgSend(mtlEffect->library, selRelease);
@@ -710,7 +714,7 @@ void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
     {
         mtlEffect->prev_vert = mtlEffect->current_vert;
         mtlEffect->prev_frag = mtlEffect->current_frag;
-    }
+    } // if
 } // MOJOSHADER_mtlEffectBegin
 
 // Predeclare
@@ -781,7 +785,7 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
             shState->vertexShader = vert;
             shState->vertexUniformBuffer = get_uniform_buffer(vert);
             shState->vertexUniformOffset = get_uniform_offset(vert);
-        }
+        } // if
 
         if (mtlEffect->current_frag != NULL)
         {
@@ -789,7 +793,7 @@ void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
             shState->fragmentShader = frag;
             shState->fragmentUniformBuffer = get_uniform_buffer(frag);
             shState->fragmentUniformOffset = get_uniform_offset(frag);
-        }
+        } // if
 
         if (mtlEffect->current_vert_raw != NULL)
         {
@@ -954,7 +958,7 @@ void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
     objc_msgSend(ret, selRetain);
 
     return ret;
-}
+} // MOJOSHADER_mtlGetFunctionHandle
 
 void MOJOSHADER_mtlEndFrame()
 {
@@ -963,8 +967,8 @@ void MOJOSHADER_mtlEndFrame()
     {
         UBO_end_frame((MOJOSHADER_mtlUniformBuffer *) node->data);
         node = node->next;
-    }
-}
+    } // while
+} // MOJOSHADER_mtlEndFrame
 
 int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
                                           MOJOSHADER_usage usage, int index)
@@ -978,8 +982,8 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
             && vert->parseData->attributes[i].index == index)
         {
             return i;
-        }
-    }
+        } // if
+    } // for
 
     // failure, couldn't find requested attribute
     return -1;
@@ -988,7 +992,7 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
 const char *MOJOSHADER_mtlGetError(void)
 {
     return error_buffer;
-}
+} // MOJOSHADER_mtlGetError
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 #endif /* SUPPORT_PROFILE_METAL && PLATFORM_APPLE */
