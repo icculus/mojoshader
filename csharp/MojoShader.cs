@@ -1,7 +1,7 @@
 #region License
 /* MojoShader# - C# Wrapper for MojoShader
  *
- * Copyright (c) 2014-2017 Ethan Lee.
+ * Copyright (c) 2014-2020 Ethan Lee.
  *
  * This software is provided 'as-is', without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from
@@ -453,6 +453,8 @@ public static class MojoShader
 	public const string MOJOSHADER_PROFILE_NV3 =		"nv3";
 	public const string MOJOSHADER_PROFILE_NV4 =		"nv4";
 	public const string MOJOSHADER_PROFILE_METAL =		"metal";
+	public const string MOJOSHADER_PROFILE_SPIRV =		"spirv";
+	public const string MOJOSHADER_PROFILE_GLSPIRV =	"glspirv";
 
 	[DllImport(nativeLibName, CallingConvention = CallingConvention.Cdecl)]
 	private static extern int MOJOSHADER_maxShaderModel(
