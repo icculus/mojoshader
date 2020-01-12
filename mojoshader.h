@@ -3252,6 +3252,56 @@ DECLSPEC void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader);
  */
 DECLSPEC void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 
+
+/* Metal interface... */
+
+typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
+
+/*
+ * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
+ *
+ * This function calls [retain] on the MTLFunction* before returning!
+ *  Please call [release] on the result when you no longer need it.
+ */
+DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
+
+/*
+ * Swaps uniform buffers and resets offsets to prepare for the next frame.
+ *
+ * Always call this after submitting the final command buffer for a frame!
+ */
+DECLSPEC void MOJOSHADER_mtlEndFrame();
+
+/*
+ * Return the location of a vertex attribute for the given shader.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be used to create
+ *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
+ */
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index);
+
+/*
+ * Get any error state we might have picked up, such as failed shader
+ *  compilation.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ */
+DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+
 #ifdef __cplusplus
 }
 #endif
