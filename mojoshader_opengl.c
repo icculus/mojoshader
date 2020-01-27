@@ -118,8 +118,14 @@ struct MOJOSHADER_glProgram
 
     int uses_pointsize;
 
-    // 10 is apparently the resource limit according to SM3 -flibit
-    GLint vertex_attrib_loc[MOJOSHADER_USAGE_TOTAL][10];
+    // According to MSDN...
+    //
+    // n is an optional integer between 0 and the number of resources supported.
+    //  For example, POSITION0, TEXCOOR1, etc.
+    //
+    // The input registers consist of 16 four-component floating-point vectors,
+    //   designated as v0 through v15.
+    GLint vertex_attrib_loc[MOJOSHADER_USAGE_TOTAL][16];
 
     // GLSL uses these...location of uniform arrays.
     GLint vs_float4_loc;
