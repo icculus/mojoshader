@@ -39,6 +39,17 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
     MOJOSHADER_preshaderInstruction *inst = preshader->instructions;
     int instit;
 
+#if 0 // FIXME: Do we need to do this or is the compiler smart enough?
+    // Clear preshader output registers first!
+    for (instit = 0; instit < preshader->instruction_count; instit++, inst++)
+    {
+        const MOJOSHADER_preshaderOperand *operand = &inst->operands[inst->operand_count - 1];
+        if (operand->type == MOJOSHADER_PRESHADEROPERAND_OUTPUT)
+            memset(&outregs[operand->index], '\0', sizeof(float) * 4);
+    } // for
+    inst = preshader->instructions;
+#endif
+
     for (instit = 0; instit < preshader->instruction_count; instit++, inst++)
     {
         const MOJOSHADER_preshaderOperand *operand = inst->operands;
