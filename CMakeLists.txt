@@ -1,7 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 PROJECT(MojoShader)
 
-OPTION(BUILD_SHARED "Build MojoShader as a shared library" OFF)
+OPTION(BUILD_SHARED_LIBS "Build MojoShader as a shared library" OFF)
 OPTION(PROFILE_D3D "Build MojoShader with support for the D3D profile" ON)
 OPTION(PROFILE_BYTECODE "Build MojoShader with support for the BYTECODE profile" ON)
 OPTION(PROFILE_GLSL120 "Build MojoShader with support for the GLSL120 profile" ON)
@@ -154,13 +154,7 @@ IF(XNA4_VERTEXTEXTURE)
     ADD_DEFINITIONS(-DMOJOSHADER_XNA4_VERTEX_TEXTURES)
 ENDIF(XNA4_VERTEXTEXTURE)
 
-IF(BUILD_SHARED)
-    SET(LIBRARY_FORMAT SHARED)
-ELSE(BUILD_SHARED)
-    SET(LIBRARY_FORMAT STATIC)
-ENDIF(BUILD_SHARED)
-
-ADD_LIBRARY(mojoshader ${LIBRARY_FORMAT}
+ADD_LIBRARY(mojoshader
     mojoshader.c
     mojoshader_common.c
     mojoshader_opengl.c
@@ -186,9 +180,9 @@ IF(COMPILER_SUPPORT)
         mojoshader_assembler.c
     )
 ENDIF(COMPILER_SUPPORT)
-IF(BUILD_SHARED)
+IF(BUILD_SHARED_LIBS)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
-ENDIF(BUILD_SHARED)
+ENDIF(BUILD_SHARED_LIBS)
 
 SET_SOURCE_FILES_PROPERTIES(
     mojoshader_compiler.c
