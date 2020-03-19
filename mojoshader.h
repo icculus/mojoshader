@@ -686,6 +686,11 @@ typedef struct MOJOSHADER_parseData
 #define MOJOSHADER_PROFILE_BYTECODE "bytecode"
 
 /*
+ * Profile string for HLSL Shader Model 5 output.
+ */
+#define MOJOSHADER_PROFILE_HLSL "hlsl"
+
+/*
  * Profile string for GLSL: OpenGL high-level shader language output.
  */
 #define MOJOSHADER_PROFILE_GLSL "glsl"
