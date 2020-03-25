@@ -429,7 +429,7 @@ static uint32 spv_output_scalar(Context *ctx, ComponentList *cl,
         idtype = spv_get_type(ctx, STI_UINT);
     else
     {
-        failf(ctx, "%s: invalid attribute type %d", __func__, type);
+        failf(ctx, "spv_output_scalar: invalid attribute type %d", type);
         return 0;
     } // else
     idret = spv_bumpid(ctx);
