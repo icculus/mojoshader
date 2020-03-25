@@ -122,7 +122,7 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg);
 #define vsnprintf _vsnprintf  // !!! FIXME: not a safe replacement!
 #define isnan _isnan // !!! FIXME: not a safe replacement!
 #if _MSC_VER < 1900 // pre MSVC 2015
-#define isinf(x) (!_isfinite(x)) // FIXME: not a safe replacement!
+#define isinf(x) (!_finite(x)) // FIXME: not a safe replacement!
 #endif
 #define strcasecmp stricmp
 #define strncasecmp strnicmp
