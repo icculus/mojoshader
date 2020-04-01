@@ -1492,6 +1492,102 @@ static const MOJOSHADER_parseData *build_failed_assembly(Context *ctx)
 } // build_failed_assembly
 
 
+static int blockscmp(BufferBlock *item, const uint8 *data, size_t len)
+{
+    if (len == 0)
+        return 1;  // "match"
+
+    while (item != NULL)
+    {
+        const size_t itemremain = item->bytes;
+        const size_t avail = len < itemremain ? len : itemremain;
+        if (memcmp(item->data, data, avail) != 0)
+            return 0;  // not a match.
+
+        if (len == avail)
+            return 1;   // complete match!
+
+        len -= avail;
+        data += avail;
+        item = item->next;
+    } // while
+
+    return 0;  // not a complete match.
+} // blockscmp
+
+
+ssize_t buffer_find(Buffer *buffer, const size_t start,
+                    const void *_data, const size_t len)
+{
+    if (len == 0)
+        return 0;  // I guess that's right.
+
+    if (start >= buffer->total_bytes)
+        return -1;  // definitely can't match.
+
+    if (len > (buffer->total_bytes - start))
+        return -1;  // definitely can't match.
+
+    // Find the start point somewhere in the center of a buffer.
+    BufferBlock *item = buffer->head;
+    const uint8 *ptr = item->data;
+    size_t pos = 0;
+    if (start > 0)
+    {
+        while (1)
+        {
+            assert(item != NULL);
+            if ((pos + item->bytes) > start)  // start is in this block.
+            {
+                ptr = item->data + (start - pos);
+                break;
+            } // if
+
+            pos += item->bytes;
+            item = item->next;
+        } // while
+    } // if
+
+    // okay, we're at the origin of the search.
+    assert(item != NULL);
+    assert(ptr != NULL);
+
+    const uint8 *data = (const uint8 *) _data;
+    const uint8 first = *data;
+    while (item != NULL)
+    {
+        const size_t itemremain = item->bytes - ((size_t)(ptr-item->data));
+        ptr = (uint8 *) memchr(ptr, first, itemremain);
+        while (ptr != NULL)
+        {
+            const size_t retval = pos + ((size_t) (ptr - item->data));
+            if (len == 1)
+                return retval;  // we're done, here it is!
+
+            const size_t itemremain = item->bytes - ((size_t)(ptr-item->data));
+            const size_t avail = len < itemremain ? len : itemremain;
+            if ((avail == 0) || (memcmp(ptr, data, avail) == 0))
+            {
+                // okay, we've got a (sub)string match! Move to the next block.
+                // check all blocks until we get a complete match or a failure.
+                if (blockscmp(item->next, data+avail, len-avail))
+                    return (ssize_t) retval;
+            } // if
+
+            // try again, further in this block.
+            ptr = (uint8 *) memchr(ptr + 1, first, itemremain - 1);
+        } // while
+
+        pos += item->bytes;
+        item = item->next;
+        if (item != NULL)
+            ptr = item->data;
+    } // while
+
+    return -1;  // no match found.
+} // buffer_find
+
+
 static uint32 add_ctab_bytes(Context *ctx, const uint8 *bytes, const size_t len)
 {
     if (isfail(ctx))

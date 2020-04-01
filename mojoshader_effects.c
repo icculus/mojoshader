@@ -12,7 +12,9 @@
 
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
+#ifndef MOJOSHADER_USE_SDL_STDLIB
 #include <math.h>
+#endif /* MOJOSHADER_USE_SDL_STDLIB */
 
 void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                              float *outregs)

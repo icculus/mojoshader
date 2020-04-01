@@ -43,6 +43,15 @@ extern "C" {
 #endif
 #endif
 
+/* -Wpedantic nameless union/struct silencing */
+#ifndef MOJOSHADERNAMELESS
+#ifdef __GNUC__
+#define MOJOSHADERNAMELESS __extension__
+#else
+#define MOJOSHADERNAMELESS
+#endif /* __GNUC__ */
+#endif /* MOJOSHADERNAMELESS */
+
 /*
  * For determining the version of MojoShader you are using:
  *    const int compiled_against = MOJOSHADER_VERSION;
@@ -87,7 +96,7 @@ typedef enum
     MOJOSHADER_TYPE_PIXEL    = (1 << 0),
     MOJOSHADER_TYPE_VERTEX   = (1 << 1),
     MOJOSHADER_TYPE_GEOMETRY = (1 << 2),  /* (not supported yet.) */
-    MOJOSHADER_TYPE_ANY = 0xFFFFFFFF   /* used for bitmasks */
+    MOJOSHADER_TYPE_ANY = 0x7FFFFFFF   /* used for bitmasks */
 } MOJOSHADER_shaderType;
 
 /*
@@ -104,7 +113,7 @@ typedef enum
     MOJOSHADER_ATTRIBUTE_UINT,
     MOJOSHADER_ATTRIBUTE_FLOAT,
     MOJOSHADER_ATTRIBUTE_DOUBLE,
-    MOJOSHADER_ATTRIBUTE_HALF_FLOAT,  /* MAYBE available in your OpenGL! */
+    MOJOSHADER_ATTRIBUTE_HALF_FLOAT  /* MAYBE available in your OpenGL! */
 } MOJOSHADER_attributeType;
 
 /*
@@ -115,7 +124,7 @@ typedef enum
     MOJOSHADER_UNIFORM_UNKNOWN = -1, /* housekeeping value; never returned. */
     MOJOSHADER_UNIFORM_FLOAT,
     MOJOSHADER_UNIFORM_INT,
-    MOJOSHADER_UNIFORM_BOOL,
+    MOJOSHADER_UNIFORM_BOOL
 } MOJOSHADER_uniformType;
 
 /*
@@ -180,7 +189,7 @@ typedef enum
     MOJOSHADER_SAMPLER_UNKNOWN = -1, /* housekeeping value; never returned. */
     MOJOSHADER_SAMPLER_2D,
     MOJOSHADER_SAMPLER_CUBE,
-    MOJOSHADER_SAMPLER_VOLUME,
+    MOJOSHADER_SAMPLER_VOLUME
 } MOJOSHADER_samplerType;
 
 /*
@@ -432,7 +441,7 @@ typedef enum MOJOSHADER_preshaderOpcode
     MOJOSHADER_PRESHADEROP_ATAN2_SCALAR,
     MOJOSHADER_PRESHADEROP_DIV_SCALAR,
     MOJOSHADER_PRESHADEROP_DOT_SCALAR,
-    MOJOSHADER_PRESHADEROP_NOISE_SCALAR,
+    MOJOSHADER_PRESHADEROP_NOISE_SCALAR
 } MOJOSHADER_preshaderOpcode;
 
 typedef enum MOJOSHADER_preshaderOperandType
@@ -440,7 +449,7 @@ typedef enum MOJOSHADER_preshaderOperandType
     MOJOSHADER_PRESHADEROPERAND_INPUT,
     MOJOSHADER_PRESHADEROPERAND_OUTPUT,
     MOJOSHADER_PRESHADEROPERAND_LITERAL,
-    MOJOSHADER_PRESHADEROPERAND_TEMP,
+    MOJOSHADER_PRESHADEROPERAND_TEMP
 } MOJOSHADER_preshaderOperandType;
 
 typedef struct MOJOSHADER_preshaderOperand
@@ -869,10 +878,6 @@ DECLSPEC const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned ch
 DECLSPEC void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader);
 
 
-/* Effects interface... */
-#include "mojoshader_effects.h"
-
-
 /* Preprocessor interface... */
 
 /*
@@ -1211,13 +1216,13 @@ typedef enum MOJOSHADER_astDataTypeType
     MOJOSHADER_AST_DATATYPE_MATRIX,
     MOJOSHADER_AST_DATATYPE_BUFFER,
     MOJOSHADER_AST_DATATYPE_FUNCTION,
-    MOJOSHADER_AST_DATATYPE_USER,
+    MOJOSHADER_AST_DATATYPE_USER
 } MOJOSHADER_astDataTypeType;
 #define MOJOSHADER_AST_DATATYPE_CONST (1 << 31)
 
 typedef union MOJOSHADER_astDataType MOJOSHADER_astDataType;
 
-// This is just part of DataTypeStruct, never appears outside of it.
+/* This is just part of DataTypeStruct, never appears outside of it. */
 typedef struct MOJOSHADER_astDataTypeStructMember
 {
     const MOJOSHADER_astDataType *datatype;
@@ -1423,7 +1428,7 @@ typedef enum MOJOSHADER_astIfAttributes
     MOJOSHADER_AST_IFATTR_IFALL,
     MOJOSHADER_AST_IFATTR_IFANY,
     MOJOSHADER_AST_IFATTR_PREDICATE,
-    MOJOSHADER_AST_IFATTR_PREDICATEBLOCK,
+    MOJOSHADER_AST_IFATTR_PREDICATEBLOCK
 } MOJOSHADER_astIfAttributes;
 
 typedef enum MOJOSHADER_astSwitchAttributes
@@ -2205,7 +2210,7 @@ typedef struct MOJOSHADER_irMove  /* load/store. */
     MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_MOVE */
     MOJOSHADER_irExpression *dst; /* must result in a temp or mem! */
     MOJOSHADER_irExpression *src;
-    int writemask;  // for write-masking vector channels.
+    int writemask;  /* for write-masking vector channels. */
 } MOJOSHADER_irMove;
 
 typedef struct MOJOSHADER_irExprStmt  /* evaluate expression, throw it away. */
@@ -2218,7 +2223,7 @@ typedef struct MOJOSHADER_irJump  /* unconditional jump */
 {
     MOJOSHADER_irNodeInfo ir;  /* Always MOJOSHADER_IR_JUMP */
     int label;
-    // !!! FIXME: possible label list, for further optimization passes.
+    /* !!! FIXME: possible label list, for further optimization passes. */
 } MOJOSHADER_irJump;
 
 typedef struct MOJOSHADER_irCJump  /* conditional jump */
@@ -3301,6 +3306,11 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
  *  invalid as soon as you call into MojoShader again.
  */
 DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+
+
+/* Effects interface... */
+#include "mojoshader_effects.h"
+
 
 #ifdef __cplusplus
 }
