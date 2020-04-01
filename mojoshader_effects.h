@@ -153,7 +153,7 @@ typedef enum MOJOSHADER_shadeMode
 {
     MOJOSHADER_SHADE_FLAT    = 1,
     MOJOSHADER_SHADE_GOURAUD = 2,
-    MOJOSHADER_SHADE_PHONG   = 3,
+    MOJOSHADER_SHADE_PHONG   = 3
 } MOJOSHADER_shadeMode;
 
 typedef enum MOJOSHADER_blendMode
@@ -230,7 +230,7 @@ typedef enum MOJOSHADER_vertexBlendFlags
     MOJOSHADER_VBF_2WEIGHTS = 2,
     MOJOSHADER_VBF_3WEIGHTS = 3,
     MOJOSHADER_VBF_TWEENING = 255,
-    MOJOSHADER_VBF_0WEIGHTS = 256,
+    MOJOSHADER_VBF_0WEIGHTS = 256
 } MOJOSHADER_vertexBlendFlags;
 
 typedef enum MOJOSHADER_patchedEdgeStyle
@@ -318,7 +318,7 @@ typedef struct MOJOSHADER_effectValue
     const char *semantic;
     MOJOSHADER_symbolTypeInfo type;
     unsigned int value_count;
-    union
+    MOJOSHADERNAMELESS union
     {
          /* Raw value types */
         void                           *values;
@@ -407,7 +407,7 @@ typedef struct MOJOSHADER_effectShader
     unsigned int *params;
     unsigned int sampler_count;
     MOJOSHADER_samplerStateRegister *samplers;
-    union
+    MOJOSHADERNAMELESS union
     {
         const MOJOSHADER_parseData *shader;
         const MOJOSHADER_preshader *preshader;
@@ -435,7 +435,7 @@ typedef struct MOJOSHADER_effectTexture
 typedef union MOJOSHADER_effectObject
 {
     MOJOSHADER_symbolType type;
-    union
+    MOJOSHADERNAMELESS union
     {
         MOJOSHADER_effectShader shader;
         MOJOSHADER_effectSamplerMap mapping;
@@ -804,7 +804,6 @@ DECLSPEC void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect);
 /* Metal effect interface... */
 
 typedef struct MOJOSHADER_mtlEffect MOJOSHADER_mtlEffect;
-typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
 typedef struct MOJOSHADER_mtlShaderState MOJOSHADER_mtlShaderState;
 
 /* Fully compile/link the shaders found within the effect.
