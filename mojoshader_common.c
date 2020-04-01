@@ -1,6 +1,8 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
+#ifndef MOJOSHADER_USE_SDL_STDLIB
 #include <math.h>
+#endif /* MOJOSHADER_USE_SDL_STDLIB */
 
 // Convenience functions for allocators...
 #if !MOJOSHADER_FORCE_ALLOCATOR

@@ -7,12 +7,6 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <assert.h>
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h>  // GL headers need this for WINGDIAPI definition.

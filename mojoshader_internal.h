@@ -8,11 +8,71 @@
 // Shader bytecode format is described at MSDN:
 //  http://msdn.microsoft.com/en-us/library/ff569705.aspx
 
+#ifdef MOJOSHADER_USE_SDL_STDLIB
+#include <SDL_assert.h>
+#include <SDL_stdinc.h>
+
+/* stdint.h */
+typedef Uint8 uint8;
+typedef Uint16 uint16;
+typedef Uint32 uint32;
+typedef Sint32 int32;
+typedef Sint64 int64;
+typedef Uint64 uint64;
+
+/* assert.h */
+#define assert SDL_assert
+
+/* stdlib.h */
+#define malloc SDL_malloc
+#define free SDL_free
+
+/* stdio.h */
+#define sscanf SDL_sscanf
+#define snprintf SDL_snprintf
+#define vsnprintf SDL_vsnprintf
+
+/* math.h */
+#define acos SDL_acos
+#define asin SDL_asin
+#define atan SDL_atan
+#define atan2 SDL_atan2
+#define cos SDL_acos
+#define exp SDL_exp
+#define floor SDL_floor
+#define log SDL_log
+#define sin SDL_sin
+#define sqrt SDL_sqrt
+
+/* string.h */
+#define strchr SDL_strchr
+#define strcmp SDL_strcmp
+/* TODO: Move MojoShader away from strcpy! This len is awful! */
+#define strcpy(dst, src) SDL_strlcpy(dst, src, SDL_strlen(src) + 1)
+#define strlen SDL_strlen
+#define strncmp SDL_strncmp
+#define strstr SDL_strstr
+
+/* string.h but with undefs for Apple systems */
+#ifdef memcmp
+#undef memcmp
+#endif
+#define memcmp SDL_memcmp
+#ifdef memcpy
+#undef memcpy
+#endif
+#define memcpy SDL_memcpy
+#ifdef memset
+#define memset
+#endif
+#define memset SDL_memset
+#else /* MOJOSHADER_USE_SDL_STDLIB */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
+#endif /* MOJOSHADER_USE_SDL_STDLIB */
 
 #include "mojoshader.h"
 
@@ -114,6 +174,7 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 // Locale-independent float printing replacement for snprintf
 size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg);
 
+#ifndef MOJOSHADER_USE_SDL_STDLIB
 #ifdef _MSC_VER
 #include <float.h>
 #include <malloc.h>
@@ -155,6 +216,7 @@ typedef uint64_t uint64;
 #ifdef sun
 #include <alloca.h>
 #endif
+#endif /* MOJOSHADER_USE_SDL_STDLIB */
 
 #ifdef __GNUC__
 #define ISPRINTF(x,y) __attribute__((format (printf, x, y)))
