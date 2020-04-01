@@ -264,7 +264,22 @@ void errorlist_destroy(ErrorList *list);
 
 // Dynamic buffers...
 
-typedef struct Buffer Buffer;
+typedef struct BufferBlock
+{
+    uint8 *data;
+    size_t bytes;
+    struct BufferBlock *next;
+} BufferBlock;
+typedef struct Buffer
+{
+    size_t total_bytes;
+    BufferBlock *head;
+    BufferBlock *tail;
+    size_t block_size;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
+} Buffer;
 Buffer *buffer_create(size_t blksz,MOJOSHADER_malloc m,MOJOSHADER_free f,void *d);
 char *buffer_reserve(Buffer *buffer, const size_t len);
 int buffer_append(Buffer *buffer, const void *_data, size_t len);
@@ -275,8 +290,6 @@ void buffer_empty(Buffer *buffer);
 char *buffer_flatten(Buffer *buffer);
 char *buffer_merge(Buffer **buffers, const size_t n, size_t *_len);
 void buffer_destroy(Buffer *buffer);
-ssize_t buffer_find(Buffer *buffer, const size_t start,
-                    const void *data, const size_t len);
 void buffer_patch(Buffer *buffer, const size_t start,
                   const void *data, const size_t len);
 
