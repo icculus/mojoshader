@@ -29,7 +29,13 @@ typedef Uint64 uint64;
 
 /* stdio.h */
 #define sscanf SDL_sscanf
+#ifdef snprintf
+#undef snprintf
+#endif
 #define snprintf SDL_snprintf
+#ifdef vsnprintf
+#undef vsnprintf
+#endif
 #define vsnprintf SDL_vsnprintf
 
 /* math.h */
@@ -47,8 +53,6 @@ typedef Uint64 uint64;
 /* string.h */
 #define strchr SDL_strchr
 #define strcmp SDL_strcmp
-/* TODO: Move MojoShader away from strcpy! This len is awful! */
-#define strcpy(dst, src) SDL_strlcpy(dst, src, SDL_strlen(src) + 1)
 #define strlen SDL_strlen
 #define strncmp SDL_strncmp
 #define strstr SDL_strstr
@@ -63,9 +67,14 @@ typedef Uint64 uint64;
 #endif
 #define memcpy SDL_memcpy
 #ifdef memset
-#define memset
+#undef memset
 #endif
 #define memset SDL_memset
+#ifdef strcpy
+#undef strcpy
+#endif
+/* TODO: Move MojoShader away from strcpy! This len is awful! */
+#define strcpy(dst, src) SDL_strlcpy(dst, src, SDL_strlen(src) + 1)
 #else /* MOJOSHADER_USE_SDL_STDLIB */
 #include <stdio.h>
 #include <string.h>
