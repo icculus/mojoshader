@@ -11,6 +11,9 @@
 #ifdef MOJOSHADER_USE_SDL_STDLIB
 #include <SDL_assert.h>
 #include <SDL_stdinc.h>
+#ifdef _MSC_VER
+#include <malloc.h> /* Needed for alloca :( */
+#endif
 
 /* stdint.h */
 typedef Uint8 uint8;
@@ -70,6 +73,11 @@ typedef Uint64 uint64;
 #undef memset
 #endif
 #define memset SDL_memset
+#ifdef strcat
+#undef strcat
+#endif
+/* TODO: Move MojoShader away from strcat! This len is awful! */
+#define strcat(dst, src) SDL_strlcat(dst, src, SDL_strlen(src) + 1)
 #ifdef strcpy
 #undef strcpy
 #endif
@@ -183,17 +191,20 @@ typedef unsigned int uint;  // this is a printf() helper. don't use for code.
 // Locale-independent float printing replacement for snprintf
 size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg);
 
-#ifndef MOJOSHADER_USE_SDL_STDLIB
 #ifdef _MSC_VER
 #include <float.h>
-#include <malloc.h>
-#define va_copy(a, b) a = b
-#define snprintf _snprintf  // !!! FIXME: not a safe replacement!
-#define vsnprintf _vsnprintf  // !!! FIXME: not a safe replacement!
 #define isnan _isnan // !!! FIXME: not a safe replacement!
 #if _MSC_VER < 1900 // pre MSVC 2015
 #define isinf(x) (!_finite(x)) // FIXME: not a safe replacement!
 #endif
+#define va_copy(a, b) a = b
+#endif
+
+#ifndef MOJOSHADER_USE_SDL_STDLIB
+#ifdef _MSC_VER
+#include <malloc.h>
+#define snprintf _snprintf  // !!! FIXME: not a safe replacement!
+#define vsnprintf _vsnprintf  // !!! FIXME: not a safe replacement!
 #define strcasecmp stricmp
 #define strncasecmp strnicmp
 typedef unsigned __int8 uint8;
