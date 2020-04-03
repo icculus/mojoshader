@@ -804,7 +804,15 @@ DECLSPEC void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect);
 /* Metal effect interface... */
 
 typedef struct MOJOSHADER_mtlEffect MOJOSHADER_mtlEffect;
-typedef struct MOJOSHADER_mtlShaderState MOJOSHADER_mtlShaderState;
+typedef struct MOJOSHADER_mtlShaderState
+{
+    MOJOSHADER_mtlShader *vertexShader;
+    MOJOSHADER_mtlShader *fragmentShader;
+    void *vertexUniformBuffer; // MTLBuffer*
+    void *fragmentUniformBuffer; // MTLBuffer*
+    int vertexUniformOffset;
+    int fragmentUniformOffset;
+} MOJOSHADER_mtlShaderState;
 
 /* Fully compile/link the shaders found within the effect.
  *
