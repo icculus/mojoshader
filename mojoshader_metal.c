@@ -79,16 +79,6 @@ typedef struct MOJOSHADER_mtlUniformBuffer
     int alreadyWritten;
 } MOJOSHADER_mtlUniformBuffer;
 
-typedef struct MOJOSHADER_mtlShaderState
-{
-    MOJOSHADER_mtlShader *vertexShader;
-    MOJOSHADER_mtlShader *fragmentShader;
-    void *vertexUniformBuffer; // MTLBuffer*
-    void *fragmentUniformBuffer; // MTLBuffer*
-    int vertexUniformOffset;
-    int fragmentUniformOffset;
-} MOJOSHADER_mtlShaderState;
-
 /* Objective-C selector references */
 
 static void *classNSString = NULL;
