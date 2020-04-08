@@ -1629,20 +1629,14 @@ void emit_HLSL_TEXLD(Context *ctx)
         if (ttype == TEXTURE_TYPE_2D)
         {
             make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                     "texture2D(%s, %s.xy)",
-                                     sampler, dst);
+                                     "%s_texture.Sample(%s, %s.xy)",
+                                     sampler, sampler, dst);
         }
-        else if (ttype == TEXTURE_TYPE_CUBE)
+        else if (ttype == TEXTURE_TYPE_CUBE || ttype == TEXTURE_TYPE_VOLUME)
         {
             make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                     "textureCube(%s, %s.xyz)",
-                                     sampler, dst);
-        }
-        else if (ttype == TEXTURE_TYPE_VOLUME)
-        {
-            make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                     "texture3D(%s, %s.xyz)",
-                                     sampler, dst);
+                                     "%s_texture.Sample(%s, %s.xyz)",
+                                     sampler, sampler, dst);
         }
         else
         {
@@ -1680,39 +1674,25 @@ void emit_HLSL_TEXLD(Context *ctx)
         {
             biassep = ", ";
             make_HLSL_srcarg_string_w(ctx, 0, bias, sizeof (bias));
+            funcname = "SampleBias";
         } // if
+        else
+        {
+            funcname = "Sample";
+        } // else
 
         switch ((const TextureType) sreg->index)
         {
             case TEXTURE_TYPE_2D:
-                if (ctx->instruction_controls == CONTROL_TEXLDP)
-                {
-                    funcname = "texture2DProj";
-                    make_HLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
-                } // if
-                else  // texld/texldb
-                {
-                    funcname = "texture2D";
                     make_HLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
-                } // else
                 break;
             case TEXTURE_TYPE_CUBE:
                 if (ctx->instruction_controls == CONTROL_TEXLDP)
                     fail(ctx, "TEXLDP on a cubemap");  // !!! FIXME: is this legal?
-                funcname = "textureCube";
                 make_HLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
                 break;
             case TEXTURE_TYPE_VOLUME:
-                if (ctx->instruction_controls == CONTROL_TEXLDP)
-                {
-                    funcname = "texture3DProj";
-                    make_HLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
-                } // if
-                else  // texld/texldb
-                {
-                    funcname = "texture3D";
                     make_HLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
-                } // else
                 break;
             default:
                 fail(ctx, "unknown texture type");
@@ -1726,7 +1706,7 @@ void emit_HLSL_TEXLD(Context *ctx)
 
         char code[128];
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "%s(%s, %s%s%s)%s", funcname,
+                                 "%s_texture.%s(%s, %s%s%s)%s", src1, funcname,
                                  src1, src0, biassep, bias, swiz_str);
 
         output_line(ctx, "%s", code);
