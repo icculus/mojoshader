@@ -871,8 +871,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float %s : PSIZE;", var);
                     break;
                 case MOJOSHADER_USAGE_COLOR:
-                    // !!! FIXME: Is this right? -caleb
-                    output_line(ctx, "float4 %s : SV_Target%d;", var, index);
+                    output_line(ctx, "float4 %s : COLOR%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_FOG:
                     output_line(ctx, "float4 %s : FOG;", var);
@@ -930,9 +929,9 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             ctx->indent++;
 
             if (regtype == REG_TYPE_COLOROUT)
-                output_line(ctx, "float4 %s : SV_Target%d;", var, regnum);
+                output_line(ctx, "float4 m_%s : SV_Target%d;", var, regnum);
             else if (regtype == REG_TYPE_DEPTHOUT)
-                output_line(ctx, "float %s : SV_Depth;", var);
+                output_line(ctx, "float m_%s : SV_Depth;", var);
 
             pop_output(ctx);
 
@@ -940,7 +939,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             ctx->indent++;
             // !!! FIXME: this doesn't work.
             //output_line(ctx, "float%s &%s = output.%s;", (regtype == REG_TYPE_DEPTHOUT) ? "" : "4", var, var);
-            output_line(ctx, "#define %s output.%s", var, var);
+            output_line(ctx, "#define %s output.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
             ctx->indent++;
@@ -966,9 +965,9 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 const MiscTypeType mt = (MiscTypeType) regnum;
                 if (mt == MISCTYPE_TYPE_FACE)
-                    output_line(ctx, "bool %s : SV_IsFrontFace;", var);
+                    output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
                 else if (mt == MISCTYPE_TYPE_POSITION)
-                    output_line(ctx, "float4 %s : SV_Position;", var);
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
                 else
                     fail(ctx, "BUG: unhandled misc register");
             } // else if
@@ -981,18 +980,18 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     //  Refer to emit_METAL_global()'s REG_TYPE_ADDRESS code.
                     if (!shader_version_atleast(ctx, 1, 4))
                         skipreference = 1;
-                    output_line(ctx, "float4 %s : TEXCOORD%d;", var, index);
+                    output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                 } // if
 
                 else if (usage == MOJOSHADER_USAGE_COLOR)
-                    output_line(ctx, "float4 %s : SV_Target%d;", var, index);
+                    output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
 
                 else if (usage == MOJOSHADER_USAGE_FOG)
                     // !!! FIXME: Is this right? -caleb
-                    output_line(ctx, "float4 %s : FOG;", var);
+                    output_line(ctx, "float4 m_%s : FOG;", var);
 
                 else if (usage == MOJOSHADER_USAGE_NORMAL)
-                    output_line(ctx, "float4 %s : NORMAL;", var);
+                    output_line(ctx, "float4 m_%s : NORMAL;", var);
             } // else
 
             pop_output(ctx);
@@ -1012,7 +1011,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 push_output(ctx, &ctx->mainline_top);
                 ctx->indent++;
-                output_line(ctx, "#define %s input.%s", var, var);
+                output_line(ctx, "#define %s input.m_%s", var, var);
                 pop_output(ctx);
                 push_output(ctx, &ctx->mainline);
                 ctx->indent++;
