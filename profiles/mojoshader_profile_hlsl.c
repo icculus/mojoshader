@@ -541,9 +541,7 @@ void emit_HLSL_finalize(Context *ctx)
     if (ctx->outputs)
     {
         ctx->indent++;
-        output_line(ctx, "%s%s output;",
-                    shader_is_vertex(ctx) ? ctx->mainfn : "float4",
-                    shader_is_vertex(ctx) ? "_Output" : "");
+        output_line(ctx, "%s%s output;", ctx->mainfn, "_Output");
 
         push_output(ctx, &ctx->mainline);
         ctx->indent++;
@@ -742,34 +740,21 @@ void emit_HLSL_uniform(Context *ctx, RegisterType regtype, int regnum,
 
 void emit_HLSL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 {
-    const char *ttypename = "";
-    const char *stypename = "";
+    char var[64];
+    const char *texsuffix = NULL;
     switch (ttype)
     {
-        case TEXTURE_TYPE_2D:
-            ttypename = "Texture2D";
-            stypename = "sampler2D";
-            break;
-        case TEXTURE_TYPE_CUBE:
-            ttypename = "TextureCube";
-            stypename = "samplerCUBE";
-            break;
-        case TEXTURE_TYPE_VOLUME:
-            ttypename = "Texture3D";
-            stypename = "sampler3D";
-            break;
-        default: fail(ctx, "BUG: used a sampler we don't know how to define.");
+        case TEXTURE_TYPE_2D: texsuffix = "2D"; break;
+        case TEXTURE_TYPE_CUBE: texsuffix = "Cube"; break;
+        case TEXTURE_TYPE_VOLUME: texsuffix = "3D"; break;
+        default: assert(!"unexpected texture type"); return;
     } // switch
 
-    char tvar[64];
-    get_HLSL_varname_in_buf(ctx, REG_TYPE_TEXTURE, stage, tvar, sizeof(tvar));
-
-    char svar[64];
-    get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, stage, svar, sizeof(svar));
+    get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, stage, var, sizeof(var));
 
     push_output(ctx, &ctx->globals);
-    output_line(ctx, "%s %s;", ttypename, tvar);
-    output_line(ctx, "%s %s;", stypename, svar);
+    output_line(ctx, "Texture%s %s_texture : register(t%d);", texsuffix, var, stage);
+    output_line(ctx, "SamplerState %s : register(%s);", var, var);
     pop_output(ctx);
 
     if (tb)  // This sampler used a ps_1_1 TEXBEM opcode?
