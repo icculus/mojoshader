@@ -836,14 +836,37 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             } // if
 
             ctx->indent++;
-            output_line(ctx, "float4 %s [[attribute(%d)]];", var, regnum); // !!! FIXME: Obviously wrong. -caleb
+            switch (usage)
+            {
+                case MOJOSHADER_USAGE_POSITION:
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    output_line(ctx, "float m_%s : PSIZE;", var);
+                    break;
+                case MOJOSHADER_USAGE_COLOR:
+                    output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_FOG:
+                    output_line(ctx, "float m_%s : FOG;", var);
+                    break;
+                case MOJOSHADER_USAGE_TEXCOORD:
+                    output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_NORMAL:
+                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
+                    break;
+                default:
+                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    break;
+            }
             pop_output(ctx);
 
             push_output(ctx, &ctx->mainline_top);
             ctx->indent++;
             // !!! FIXME: might trigger unused var warnings in Clang.
             //output_line(ctx, "constant float4 &%s = input.%s;", var, var);
-            output_line(ctx, "#define %s input.%s", var, var);
+            output_line(ctx, "#define %s input.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
             ctx->indent++;
@@ -865,22 +888,22 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 %s : SV_Position;", var);
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
-                    output_line(ctx, "float %s : PSIZE;", var);
+                    output_line(ctx, "float m_%s : PSIZE;", var);
                     break;
                 case MOJOSHADER_USAGE_COLOR:
-                    output_line(ctx, "float4 %s : COLOR%d;", var, index);
+                    output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_FOG:
-                    output_line(ctx, "float %s : FOG;", var);
+                    output_line(ctx, "float m_%s : FOG;", var);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
-                    output_line(ctx, "float4 %s : TEXCOORD%d;", var, index);
+                    output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_NORMAL:
-                    output_line(ctx, "float4 %s : NORMAL%d;", var, index);
+                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
                     break;
                 default:
                     // !!! FIXME: we need to deal with some more built-in varyings here.
@@ -893,7 +916,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             ctx->indent++;
             // !!! FIXME: this doesn't work.
             //output_line(ctx, "float4 &%s = output.%s;", var, var);
-            output_line(ctx, "#define %s output.%s", var, var);
+            output_line(ctx, "#define %s output.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
             ctx->indent++;
