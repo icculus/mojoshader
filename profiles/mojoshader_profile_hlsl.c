@@ -1189,7 +1189,7 @@ void emit_HLSL_SLT(Context *ctx)
     else
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "vec%d(lessThan(%s, %s))",
+                                 "float%d(%s < %s)",
                                  vecsize, src0, src1);
     } // else
     output_line(ctx, "%s", code);
@@ -1243,10 +1243,10 @@ void emit_HLSL_LIT_helper(Context *ctx)
     // ctx->GLSL_generated_lit_helper = 1;
 
     push_output(ctx, &ctx->helpers);
-    output_line(ctx, "vec4 LIT(const vec4 src)");
+    output_line(ctx, "float4 LIT(const float4 src)");
     output_line(ctx, "{"); ctx->indent++;
     output_line(ctx,   "float power = clamp(src.w, -%s, %s);",maxp,maxp);
-    output_line(ctx,   "vec4 retval = vec4(1.0, 0.0, 0.0, 1.0);");
+    output_line(ctx,   "float4 retval = float4(1.0, 0.0, 0.0, 1.0);");
     output_line(ctx,   "if (src.x > 0.0) {"); ctx->indent++;
     output_line(ctx,     "retval.y = src.x;");
     output_line(ctx,     "if (src.y > 0.0) {"); ctx->indent++;
@@ -1278,7 +1278,7 @@ void emit_HLSL_DST(Context *ctx)
 
     char code[128];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                             "vec4(1.0, %s * %s, %s, %s)",
+                             "float4(1.0, %s * %s, %s, %s)",
                              src0_y, src1_y, src0_z, src1_w);
     output_line(ctx, "%s", code);
 } // emit_HLSL_DST
@@ -1311,7 +1311,7 @@ void emit_HLSL_M4X4(Context *ctx)
     char row3[64]; make_HLSL_srcarg_string_full(ctx, 4, row3, sizeof (row3));
     char code[256];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                    "vec4(dot(%s, %s), dot(%s, %s), dot(%s, %s), dot(%s, %s))",
+                    "float4(dot(%s, %s), dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                     src0, row0, src0, row1, src0, row2, src0, row3);
     output_line(ctx, "%s", code);
 } // emit_HLSL_M4X4
@@ -1324,7 +1324,7 @@ void emit_HLSL_M4X3(Context *ctx)
     char row2[64]; make_HLSL_srcarg_string_full(ctx, 3, row2, sizeof (row2));
     char code[256];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
+                                "float3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
 } // emit_HLSL_M4X3
@@ -1339,7 +1339,7 @@ void emit_HLSL_M3X4(Context *ctx)
 
     char code[256];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                "vec4(dot(%s, %s), dot(%s, %s), "
+                                "float4(dot(%s, %s), dot(%s, %s), "
                                      "dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1,
                                 src0, row2, src0, row3);
@@ -1354,7 +1354,7 @@ void emit_HLSL_M3X3(Context *ctx)
     char row2[64]; make_HLSL_srcarg_string_vec3(ctx, 3, row2, sizeof (row2));
     char code[256];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                "vec3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
+                                "float3(dot(%s, %s), dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1, src0, row2);
     output_line(ctx, "%s", code);
 } // emit_HLSL_M3X3
@@ -1367,7 +1367,7 @@ void emit_HLSL_M3X2(Context *ctx)
 
     char code[256];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                "vec2(dot(%s, %s), dot(%s, %s))",
+                                "float2(dot(%s, %s), dot(%s, %s))",
                                 src0, row0, src0, row1);
     output_line(ctx, "%s", code);
 } // emit_HLSL_M3X2
@@ -1515,7 +1515,7 @@ void emit_HLSL_SINCOS(Context *ctx)
     else if (writemask_xy(mask))
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "vec2(cos(%s), sin(%s))", src0, src0);
+                                 "float2(cos(%s), sin(%s))", src0, src0);
     } // else if
 
     output_line(ctx, "%s", code);
@@ -1609,9 +1609,11 @@ void emit_HLSL_MOVA(Context *ctx)
 void emit_HLSL_DEFB(Context *ctx)
 {
     char varname[64]; get_HLSL_destarg_varname(ctx, varname, sizeof (varname));
-    push_output(ctx, &ctx->globals);
+    push_output(ctx, &ctx->mainline_top);
+    ctx->indent++;
     output_line(ctx, "const bool %s = %s;",
                 varname, ctx->dwords[0] ? "true" : "false");
+    ctx->indent--;
     pop_output(ctx);
 } // emit_HLSL_DEFB
 
@@ -1619,9 +1621,11 @@ void emit_HLSL_DEFI(Context *ctx)
 {
     char varname[64]; get_HLSL_destarg_varname(ctx, varname, sizeof (varname));
     const int32 *x = (const int32 *) ctx->dwords;
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "const ivec4 %s = ivec4(%d, %d, %d, %d);",
+    push_output(ctx, &ctx->mainline_top);
+    ctx->indent++;
+    output_line(ctx, "const int4 %s = int4(%d, %d, %d, %d);",
                 varname, (int) x[0], (int) x[1], (int) x[2], (int) x[3]);
+    ctx->indent--;
     pop_output(ctx);
 } // emit_HLSL_DEFI
 
@@ -1630,7 +1634,7 @@ EMIT_HLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXCRD)
 void emit_HLSL_TEXKILL(Context *ctx)
 {
     char dst[64]; get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
-    output_line(ctx, "if (any(lessThan(%s.xyz, vec3(0.0)))) discard;", dst);
+    output_line(ctx, "if (any(%s.xyz < 0.0)) discard;", dst);
 } // emit_HLSL_TEXKILL
 
 void emit_HLSL_TEXLD(Context *ctx)
@@ -1749,9 +1753,9 @@ void emit_HLSL_TEXBEM(Context *ctx)
     // !!! FIXME: this code counts on the register not having swizzles, etc.
     get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
-
+    // !!! FIXME: Sample! -caleb
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture2D(%s, vec2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        "texture2D(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
         " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))",
         sampler,
         dst, sampler, src, sampler, src,
@@ -1772,9 +1776,9 @@ void emit_HLSL_TEXBEML(Context *ctx)
 
     get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
-
+    // !!! FIXME: Sample! -caleb
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "(texture2D(%s, vec2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        "(texture2D(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
         " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))) *"
         " ((%s.z * %s_texbeml.x) + %s_texbem.y)",
         sampler,
@@ -1819,7 +1823,7 @@ void emit_HLSL_TEXM3X2TEX(Context *ctx)
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture2D(%s, vec2(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz)))",
+        "texture2D(%s, float2(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz)))",
         sampler, src0, src1, src2, dst);
 
     output_line(ctx, "%s", code);
@@ -1868,7 +1872,7 @@ void emit_HLSL_TEXM3X3TEX(Context *ctx)
 
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
         "texture%s(%s,"
-            " vec3(dot(%s.xyz, %s.xyz),"
+            " float3(dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz)))",
         ttypestr, sampler, src0, src1, src2, src3, dst, src4);
@@ -1884,7 +1888,7 @@ void emit_HLSL_TEXM3X3SPEC_helper(Context *ctx)
     // ctx->GLSL_generated_texm3x3spec_helper = 1;
 
     push_output(ctx, &ctx->helpers);
-    output_line(ctx, "vec3 TEXM3X3SPEC_reflection(const vec3 normal, const vec3 eyeray)");
+    output_line(ctx, "float3 TEXM3X3SPEC_reflection(const float3 normal, const float3 eyeray)");
     output_line(ctx, "{"); ctx->indent++;
     output_line(ctx,   "return (2.0 * ((normal * eyeray) / (normal * normal)) * normal) - eyeray;"); ctx->indent--;
     output_line(ctx, "}");
@@ -1936,7 +1940,7 @@ void emit_HLSL_TEXM3X3SPEC(Context *ctx)
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
         "texture%s(%s, "
             "TEXM3X3SPEC_reflection("
-                "vec3("
+                "float3("
                     "dot(%s.xyz, %s.xyz), "
                     "dot(%s.xyz, %s.xyz), "
                     "dot(%s.xyz, %s.xyz)"
@@ -1990,12 +1994,12 @@ void emit_HLSL_TEXM3X3VSPEC(Context *ctx)
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
         "texture%s(%s, "
             "TEXM3X3SPEC_reflection("
-                "vec3("
+                "float3("
                     "dot(%s.xyz, %s.xyz), "
                     "dot(%s.xyz, %s.xyz), "
                     "dot(%s.xyz, %s.xyz)"
                 "), "
-                "vec3(%s.w, %s.w, %s.w)"
+                "float3(%s.w, %s.w, %s.w)"
             ")"
         ")",
         ttypestr, sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
@@ -2084,9 +2088,11 @@ void emit_HLSL_DEF(Context *ctx)
     char val2[32]; floatstr(ctx, val2, sizeof (val2), val[2], 1);
     char val3[32]; floatstr(ctx, val3, sizeof (val3), val[3], 1);
 
-    push_output(ctx, &ctx->globals);
-    output_line(ctx, "const vec4 %s = vec4(%s, %s, %s, %s);",
+    push_output(ctx, &ctx->mainline_top);
+    ctx->indent++;
+    output_line(ctx, "const float4 %s = float4(%s, %s, %s, %s);",
                 varname, val0, val1, val2, val3);
+    ctx->indent--;
     pop_output(ctx);
 } // emit_HLSL_DEF
 
@@ -2122,7 +2128,7 @@ void emit_HLSL_TEXM3X3(Context *ctx)
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "vec4(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), 1.0)",
+        "float4(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz), 1.0)",
         src0, src1, src2, src3, dst, src4);
 
     output_line(ctx, "%s", code);
