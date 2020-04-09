@@ -500,7 +500,7 @@ void output_HLSL_uniform_array(Context *ctx, const RegisterType regtype,
         switch (regtype)
         {
             case REG_TYPE_CONST: typ = "float4"; break;
-            case REG_TYPE_CONSTINT: typ ="int4"; break;
+            case REG_TYPE_CONSTINT: typ = "int4"; break;
             case REG_TYPE_CONSTBOOL: typ = "bool"; break;
             default:
             {
@@ -865,7 +865,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 %s : SV_Position;", var);
+                    output_line(ctx, "float4 %s : POSITION;", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float %s : PSIZE;", var);
@@ -874,13 +874,12 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 %s : COLOR%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_FOG:
-                    output_line(ctx, "float4 %s : FOG;", var);
+                    output_line(ctx, "float %s : FOG;", var);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 %s : TEXCOORD%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_NORMAL:
-                    // !!! FIXME: Is this right? -caleb
                     output_line(ctx, "float4 %s : NORMAL%d;", var, index);
                     break;
                 default:
@@ -967,7 +966,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (mt == MISCTYPE_TYPE_FACE)
                     output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
                 else if (mt == MISCTYPE_TYPE_POSITION)
-                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    output_line(ctx, "float4 m_%s : POSITION;", var);
                 else
                     fail(ctx, "BUG: unhandled misc register");
             } // else if
@@ -987,8 +986,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
 
                 else if (usage == MOJOSHADER_USAGE_FOG)
-                    // !!! FIXME: Is this right? -caleb
-                    output_line(ctx, "float4 m_%s : FOG;", var);
+                    output_line(ctx, "float m_%s : FOG;", var);
 
                 else if (usage == MOJOSHADER_USAGE_NORMAL)
                     output_line(ctx, "float4 m_%s : NORMAL;", var);
