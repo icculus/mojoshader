@@ -532,6 +532,21 @@ void emit_HLSL_finalize(Context *ctx)
         pop_output(ctx);
     }
 
+    if (ctx->need_max_float)
+    {
+        push_output(ctx, &ctx->mainline_top);
+        ctx->indent++;
+        output_line(ctx, "#define FLT_MAX 1e38");
+        ctx->indent--;
+        pop_output(ctx);
+
+        push_output(ctx, &ctx->mainline);
+        ctx->indent++;
+        output_line(ctx, "#undef FLT_MAX");
+        ctx->indent--;
+        pop_output(ctx);
+    }
+
     // Fill in the shader's mainline function signature.
     push_output(ctx, &ctx->mainline_intro);
     output_line(ctx, "%s%s %s(%s%s%s)",
@@ -633,7 +648,7 @@ void emit_HLSL_array(Context *ctx, VariableList *var)
     const int hlslbase = ctx->uniform_float4_count;
     push_output(ctx, &ctx->mainline_top);
     ctx->indent++;
-    output_line(ctx, "const int ARRAYBASE_%d %d", base, hlslbase); // !!! FIXME: This is almost certainly wrong! -caleb
+    output_line(ctx, "const int ARRAYBASE_%d = %d;", base, hlslbase);
     pop_output(ctx);
     var->emit_position = hlslbase;
 } // emit_HLSL_array
@@ -843,26 +858,39 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             ctx->indent++;
             switch (usage)
             {
-                case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                case MOJOSHADER_USAGE_BINORMAL:
+                    output_line(ctx, "float4 m_%s : BINORMAL%d;", var, index);
                     break;
-                case MOJOSHADER_USAGE_POINTSIZE:
-                    output_line(ctx, "float m_%s : PSIZE;", var);
+                case MOJOSHADER_USAGE_BLENDINDICES:
+                    output_line(ctx, "int4 m_%s : BLENDINDICES%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_BLENDWEIGHT:
+                    output_line(ctx, "float4 m_%s : BLENDWEIGHT%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_COLOR:
                     output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
                     break;
-                case MOJOSHADER_USAGE_FOG:
-                    output_line(ctx, "float m_%s : FOG;", var);
+                case MOJOSHADER_USAGE_NORMAL:
+                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_POSITION:
+                    // !!! FIXME: multiple positions? -caleb
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    break;
+                case MOJOSHADER_USAGE_POSITIONT:
+                    output_line(ctx, "float4 m_%s : POSITIONT", var);
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    output_line(ctx, "float m_%s : PSIZE;", var);
+                    break;
+                case MOJOSHADER_USAGE_TANGENT:
+                    output_line(ctx, "float4 m_%s : TANGENT%d", var, index);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
-                case MOJOSHADER_USAGE_NORMAL:
-                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
-                    break;
                 default:
-                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    fail(ctx, "Unknown vertex input semantic type!");
                     break;
             }
             pop_output(ctx);
@@ -892,26 +920,26 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             switch (usage)
             {
-                case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 m_%s : SV_Position;", var);
-                    break;
-                case MOJOSHADER_USAGE_POINTSIZE:
-                    output_line(ctx, "float m_%s : PSIZE;", var);
-                    break;
                 case MOJOSHADER_USAGE_COLOR:
                     output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_FOG:
                     output_line(ctx, "float m_%s : FOG;", var);
                     break;
+                case MOJOSHADER_USAGE_POSITION:
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    break;
+                case MOJOSHADER_USAGE_POINTSIZE:
+                    output_line(ctx, "float m_%s : PSIZE;", var);
+                    break;
+                case MOJOSHADER_USAGE_TESSFACTOR:
+                    output_line(ctx, "float m_%s : TESSFACTOR%d", var, index);
+                    break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
-                case MOJOSHADER_USAGE_NORMAL:
-                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
-                    break;
                 default:
-                    // !!! FIXME: we need to deal with some more built-in varyings here.
+                    fail(ctx, "Unknown vertex output semantic type!");
                     break;
             } // switch
 
@@ -1112,7 +1140,7 @@ void emit_HLSL_RCP(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    // ctx->GLSL_need_max_float = 1;
+    ctx->need_max_float = 1;
     make_HLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RCP
@@ -1121,8 +1149,8 @@ void emit_HLSL_RSQ(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    // ctx->GLSL_need_max_float = 1;
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : inversesqrt(abs(%s))", src0, src0);
+    ctx->need_max_float = 1;
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : rsqrt(abs(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RSQ
 
@@ -1599,8 +1627,8 @@ void emit_HLSL_MOVA(Context *ctx)
     else
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                            "int%d(floor(abs(%s) + float%d(0.5)) * sign(%s))",
-                            vecsize, src0, vecsize, src0);
+                            "int%d(floor(abs(%s) + 0.5) * sign(%s))",
+                            vecsize, src0, src0);
     } // else
 
     output_line(ctx, "%s", code);
