@@ -779,17 +779,19 @@ void emit_HLSL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
 
     if (tb)  // This sampler used a ps_1_1 TEXBEM opcode?
     {
-        // !!! FIXME: What to do here? -caleb
-        // char name[64];
-        // const int index = ctx->uniform_float4_count;
-        // ctx->uniform_float4_count += 2;
-        // get_HLSL_uniform_array_varname(ctx, REG_TYPE_CONST, name, sizeof (name));
-        // output_line(ctx, "#define %s_texbem %s[%d]", var, name, index);
-        // output_line(ctx, "#define %s_texbeml %s[%d]", var, name, index+1);
+        push_output(ctx, &ctx->mainline_top);
+        ctx->indent++;
+        char name[64];
+        const int index = ctx->uniform_float4_count;
+        ctx->uniform_float4_count += 2;
+        get_HLSL_uniform_array_varname(ctx, REG_TYPE_CONST, name, sizeof(name));
+        output_line(ctx, "const float4 &%s_texbem = %s[%d];", var, name, index);
+        output_line(ctx, "const float4 &%s_texbeml = %s[%d];", var, name, index + 1);
+        pop_output(ctx);
     } // if
 } // emit_HLSL_sampler
 
-// !!! FIXME: This is as far as I've got so far. -caleb
+
 void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                          MOJOSHADER_usage usage, int index, int wmask,
                          int flags)
@@ -965,7 +967,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
     else if (shader_is_pixel(ctx))
     {
-        // samplers DCLs get handled in emit_METAL_sampler().
+        // samplers DCLs get handled in emit_HLSL_sampler().
 
         if (flags & MOD_CENTROID)  // !!! FIXME
         {
@@ -1032,7 +1034,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (usage == MOJOSHADER_USAGE_TEXCOORD)
                 {
                     // ps_1_1 does a different hack for this attribute.
-                    //  Refer to emit_METAL_global()'s REG_TYPE_ADDRESS code.
+                    //  Refer to emit_HLSL_global()'s REG_TYPE_ADDRESS code.
                     if (!shader_version_atleast(ctx, 1, 4))
                         skipreference = 1;
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
@@ -1211,7 +1213,7 @@ void emit_HLSL_SLT(Context *ctx)
     char src1[64]; make_HLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
     char code[128];
 
-    // float(bool) or vec(bvec) results in 0.0 or 1.0, like SLT wants.
+    // float(bool) results in 0.0 or 1.0, like SLT wants.
     if (vecsize == 1)
         make_HLSL_destarg_assign(ctx, code, sizeof (code), "float(%s < %s)", src0, src1);
     else
@@ -1772,20 +1774,20 @@ void emit_HLSL_TEXLD(Context *ctx)
 
 void emit_HLSL_TEXBEM(Context *ctx)
 {
+    // !!! FIXME: this code counts on the register not having swizzles, etc.
     DestArgInfo *info = &ctx->dest_arg;
     char dst[64]; get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
     char src[64]; get_HLSL_srcarg_varname(ctx, 0, src, sizeof (src));
     char sampler[64];
     char code[512];
 
-    // !!! FIXME: this code counts on the register not having swizzles, etc.
     get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
-    // !!! FIXME: Sample! -caleb
+
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture2D(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        "%s_texture.Sample(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
         " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))",
-        sampler,
+        sampler, sampler,
         dst, sampler, src, sampler, src,
         dst, sampler, src, sampler, src);
 
@@ -1804,12 +1806,12 @@ void emit_HLSL_TEXBEML(Context *ctx)
 
     get_HLSL_varname_in_buf(ctx, REG_TYPE_SAMPLER, info->regnum,
                             sampler, sizeof (sampler));
-    // !!! FIXME: Sample! -caleb
+
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "(texture2D(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
+        "(%s_texture.Sample(%s, float2(%s.x + (%s_texbem.x * %s.x) + (%s_texbem.z * %s.y),"
         " %s.y + (%s_texbem.y * %s.x) + (%s_texbem.w * %s.y)))) *"
         " ((%s.z * %s_texbeml.x) + %s_texbem.y)",
-        sampler,
+        sampler, sampler,
         dst, sampler, src, sampler, src,
         dst, sampler, src, sampler, src,
         src, sampler, sampler);
@@ -1851,8 +1853,8 @@ void emit_HLSL_TEXM3X2TEX(Context *ctx)
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture2D(%s, float2(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz)))",
-        sampler, src0, src1, src2, dst);
+        "%s_texture.Sample(%s, float2(dot(%s.xyz, %s.xyz), dot(%s.xyz, %s.xyz)))",
+        sampler, sampler, src0, src1, src2, dst);
 
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXM3X2TEX
@@ -1893,27 +1895,22 @@ void emit_HLSL_TEXM3X3TEX(Context *ctx)
                             src4, sizeof (src4));
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
-    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
-                                      info->regnum);
-    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
-    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
-
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture%s(%s,"
+        "%s_texture.Sample(%s,"
             " float3(dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz),"
             " dot(%s.xyz, %s.xyz)))",
-        ttypestr, sampler, src0, src1, src2, src3, dst, src4);
+        sampler, sampler, src0, src1, src2, src3, dst, src4);
 
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXM3X3TEX
 
 void emit_HLSL_TEXM3X3SPEC_helper(Context *ctx)
 {
-    // if (ctx->GLSL_generated_texm3x3spec_helper)
-    //     return;
+    if (ctx->glsl_generated_texm3x3spec_helper)
+        return;
 
-    // ctx->GLSL_generated_texm3x3spec_helper = 1;
+    ctx->glsl_generated_texm3x3spec_helper = 1;
 
     push_output(ctx, &ctx->helpers);
     output_line(ctx, "float3 TEXM3X3SPEC_reflection(const float3 normal, const float3 eyeray)");
@@ -1960,13 +1957,8 @@ void emit_HLSL_TEXM3X3SPEC(Context *ctx)
                             src5, sizeof (src5));
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
-    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
-                                      info->regnum);
-    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
-    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
-
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture%s(%s, "
+        "%s_texture.Sample(%s, "
             "TEXM3X3SPEC_reflection("
                 "float3("
                     "dot(%s.xyz, %s.xyz), "
@@ -1976,7 +1968,7 @@ void emit_HLSL_TEXM3X3SPEC(Context *ctx)
                 "%s.xyz,"
             ")"
         ")",
-        ttypestr, sampler, src0, src1, src2, src3, dst, src4, src5);
+        sampler, sampler, src0, src1, src2, src3, dst, src4, src5);
 
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXM3X3SPEC
@@ -2014,13 +2006,8 @@ void emit_HLSL_TEXM3X3VSPEC(Context *ctx)
                             src4, sizeof (src4));
     get_HLSL_destarg_varname(ctx, dst, sizeof (dst));
 
-    RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
-                                      info->regnum);
-    const TextureType ttype = (TextureType) (sreg ? sreg->index : 0);
-    const char *ttypestr = (ttype == TEXTURE_TYPE_CUBE) ? "Cube" : "3D";
-
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-        "texture%s(%s, "
+        "%s_texture.Sample(%s, "
             "TEXM3X3SPEC_reflection("
                 "float3("
                     "dot(%s.xyz, %s.xyz), "
@@ -2030,7 +2017,7 @@ void emit_HLSL_TEXM3X3VSPEC(Context *ctx)
                 "float3(%s.w, %s.w, %s.w)"
             ")"
         ")",
-        ttypestr, sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
+        sampler, sampler, src0, src1, src2, src3, dst, src4, src0, src2, dst);
 
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXM3X3VSPEC
@@ -2080,8 +2067,6 @@ void emit_HLSL_comparison_operations(Context *ctx, const char *cmp)
         } // for
 
         // okay, (mask) should be the writemask of swizzles we like.
-
-        //return make_HLSL_srcarg_string(ctx, idx, (1 << 0));
 
         char src0[64];
         char src1[64];
@@ -2201,7 +2186,6 @@ void emit_HLSL_TEXLDD(Context *ctx)
     const SourceArgInfo *samp_arg = &ctx->source_args[1];
     RegisterList *sreg = reglist_find(&ctx->samplers, REG_TYPE_SAMPLER,
                                           samp_arg->regnum);
-    const char *funcname = NULL;
     char src0[64] = { '\0' };
     char src1[64]; get_HLSL_srcarg_varname(ctx, 1, src1, sizeof (src1)); // !!! FIXME: SRC_MOD?
     char src2[64] = { '\0' };
@@ -2216,19 +2200,12 @@ void emit_HLSL_TEXLDD(Context *ctx)
     switch ((const TextureType) sreg->index)
     {
         case TEXTURE_TYPE_2D:
-            funcname = "texture2D";
             make_HLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
             make_HLSL_srcarg_string_vec2(ctx, 2, src2, sizeof (src2));
             make_HLSL_srcarg_string_vec2(ctx, 3, src3, sizeof (src3));
             break;
         case TEXTURE_TYPE_CUBE:
-            funcname = "textureCube";
-            make_HLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
-            make_HLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
-            make_HLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
-            break;
         case TEXTURE_TYPE_VOLUME:
-            funcname = "texture3D";
             make_HLSL_srcarg_string_vec3(ctx, 0, src0, sizeof (src0));
             make_HLSL_srcarg_string_vec3(ctx, 2, src2, sizeof (src2));
             make_HLSL_srcarg_string_vec3(ctx, 3, src3, sizeof (src3));
@@ -2245,10 +2222,9 @@ void emit_HLSL_TEXLDD(Context *ctx)
 
     char code[128];
     make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                             "%sGrad(%s, %s, %s, %s)%s", funcname,
-                             src1, src0, src2, src3, swiz_str);
+                             "%s_texture.SampleGrad(%s, %s, %s, %s)%s",
+                             src1, src1, src0, src2, src3, swiz_str);
 
-    //prepend_HLSL_texlod_extensions(ctx);
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXLDD
 
@@ -2286,19 +2262,14 @@ void emit_HLSL_TEXLDL(Context *ctx)
         return;
     } // if
 
-    // HLSL tex2dlod accepts (sampler, uv.xyz, uv.w) where uv.w is the LOD
-    // HLSL seems to want the dimensionality to match the sampler (.xy vs .xyz)
-    //  so we vary the swizzle accordingly
     switch ((const TextureType) sreg->index)
     {
         case TEXTURE_TYPE_2D:
-            pattern = "texture2DLod(%s, %s.xy, %s.w)%s";
+            pattern = "%s_texture.SampleLevel(%s, %s.xy, %s.w)%s";
             break;
         case TEXTURE_TYPE_CUBE:
-            pattern = "textureCubeLod(%s, %s.xyz, %s.w)%s";
-            break;
         case TEXTURE_TYPE_VOLUME:
-            pattern = "texture3DLod(%s, %s.xyz, %s.w)%s";
+            pattern = "%s_texture.SampleLevel(%s, %s.xyz, %s.w)%s";
             break;
         default:
             fail(ctx, "unknown texture type");
@@ -2312,9 +2283,8 @@ void emit_HLSL_TEXLDL(Context *ctx)
 
     char code[128];
     make_HLSL_destarg_assign(ctx, code, sizeof(code),
-        pattern, src1, src0, src0, swiz_str);
+        pattern, src1, src1, src0, src0, swiz_str);
 
-    //prepend_HLSL_texlod_extensions(ctx);
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXLDL
 
