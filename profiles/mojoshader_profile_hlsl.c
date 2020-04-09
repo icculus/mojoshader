@@ -1134,7 +1134,7 @@ void emit_HLSL_dotprod(Context *ctx, const char *src0, const char *src1,
     const char *castright = "";
     if (vecsize != 1)
     {
-        snprintf(castleft, sizeof (castleft), "vec%d(", vecsize);
+        snprintf(castleft, sizeof (castleft), "float%d(", vecsize);
         castright = ")";
     } // if
 
@@ -1202,7 +1202,7 @@ void emit_HLSL_SGE(Context *ctx)
     char src1[64]; make_HLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
     char code[128];
 
-    // float(bool) or vec(bvec) results in 0.0 or 1.0, like SGE wants.
+    // float(bool) results in 0.0 or 1.0, like SGE wants.
     if (vecsize == 1)
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
@@ -1211,7 +1211,7 @@ void emit_HLSL_SGE(Context *ctx)
     else
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "vec%d(greaterThanEqual(%s, %s))",
+                                 "float%d(%s >= %s)",
                                  vecsize, src0, src1);
     } // else
     output_line(ctx, "%s", code);
@@ -1599,7 +1599,7 @@ void emit_HLSL_MOVA(Context *ctx)
     else
     {
         make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                            "ivec%d(floor(abs(%s) + vec%d(0.5)) * sign(%s))",
+                            "int%d(floor(abs(%s) + float%d(0.5)) * sign(%s))",
                             vecsize, src0, vecsize, src0);
     } // else
 
