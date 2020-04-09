@@ -514,18 +514,23 @@ void output_HLSL_uniform_array(Context *ctx, const RegisterType regtype,
 
 void emit_HLSL_finalize(Context *ctx)
 {
-    // If we had a relative addressing of REG_TYPE_INPUT, we need to build
-    //  an array for it at the start of main(). HLSL doesn't let you specify
-    //  arrays of attributes.
-    //float4 blah_array[BIGGEST_ARRAY];
     if (ctx->have_relative_input_registers) // !!! FIXME
         fail(ctx, "Relative addressing of input registers not supported.");
 
-    push_output(ctx, &ctx->preflight);
-    output_HLSL_uniform_array(ctx, REG_TYPE_CONST, ctx->uniform_float4_count);
-    output_HLSL_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count);
-    output_HLSL_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count);
-    pop_output(ctx);
+    if (ctx->uniform_count > 0)
+    {
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "cbuffer %s_Uniforms : register(b0)", ctx->mainfn);
+        output_line(ctx, "{");
+        ctx->indent++;
+        output_HLSL_uniform_array(ctx, REG_TYPE_CONST, ctx->uniform_float4_count);
+        output_HLSL_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count);
+        output_HLSL_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count);
+        ctx->indent--;
+        output_line(ctx, "};");
+        output_blank_line(ctx);
+        pop_output(ctx);
+    }
 
     // Fill in the shader's mainline function signature.
     push_output(ctx, &ctx->mainline_intro);
