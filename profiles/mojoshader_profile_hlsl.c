@@ -865,7 +865,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             switch (usage)
             {
                 case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 %s : POSITION;", var);
+                    output_line(ctx, "float4 %s : SV_Position;", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float %s : PSIZE;", var);
@@ -966,7 +966,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (mt == MISCTYPE_TYPE_FACE)
                     output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
                 else if (mt == MISCTYPE_TYPE_POSITION)
-                    output_line(ctx, "float4 m_%s : POSITION;", var);
+                    output_line(ctx, "float4 m_%s : SV_Position;", var);
                 else
                     fail(ctx, "BUG: unhandled misc register");
             } // else if
