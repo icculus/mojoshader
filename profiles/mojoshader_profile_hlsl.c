@@ -532,21 +532,6 @@ void emit_HLSL_finalize(Context *ctx)
         pop_output(ctx);
     }
 
-    if (ctx->need_max_float)
-    {
-        push_output(ctx, &ctx->mainline_top);
-        ctx->indent++;
-        output_line(ctx, "#define FLT_MAX 1e38");
-        ctx->indent--;
-        pop_output(ctx);
-
-        push_output(ctx, &ctx->mainline);
-        ctx->indent++;
-        output_line(ctx, "#undef FLT_MAX");
-        ctx->indent--;
-        pop_output(ctx);
-    }
-
     // Fill in the shader's mainline function signature.
     push_output(ctx, &ctx->mainline_intro);
     output_line(ctx, "%s%s %s(%s%s%s)",
@@ -1142,8 +1127,7 @@ void emit_HLSL_RCP(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    ctx->need_max_float = 1;
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "rcp(%s)", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RCP
 
@@ -1151,8 +1135,7 @@ void emit_HLSL_RSQ(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    ctx->need_max_float = 1;
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : rsqrt(abs(%s))", src0, src0);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "rsqrt(abs(%s))", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RSQ
 
