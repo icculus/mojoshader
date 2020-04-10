@@ -539,7 +539,8 @@ void emit_HLSL_finalize(Context *ctx)
     if (ctx->outputs)
     {
         ctx->indent++;
-        output_line(ctx, "%s%s output;", ctx->mainfn, "_Output");
+        output_line(ctx, "%s%s output = (%s%s) 0;",
+                    ctx->mainfn, "_Output", ctx->mainfn, "_Output");
 
         push_output(ctx, &ctx->mainline);
         ctx->indent++;
