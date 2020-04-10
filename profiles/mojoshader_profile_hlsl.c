@@ -509,7 +509,8 @@ void emit_HLSL_finalize(Context *ctx)
     if (ctx->have_relative_input_registers) // !!! FIXME
         fail(ctx, "Relative addressing of input registers not supported.");
 
-    if (ctx->uniform_count > 0)
+    // Check uniform_float4_count too since TEXBEM affects it
+    if (ctx->uniform_count > 0 || ctx->uniform_float4_count > 0)
     {
         push_output(ctx, &ctx->preflight);
         output_line(ctx, "cbuffer %s_Uniforms : register(b0)", ctx->mainfn);
@@ -591,7 +592,7 @@ void emit_HLSL_global(Context *ctx, RegisterType regtype, int regnum)
                 //  they work like temps, initialize with tex coords, and the
                 //  ps_1_1 TEX opcode expects to overwrite it.
                 if (!shader_version_atleast(ctx, 1, 4))
-                    output_line(ctx, "float4 %s = input.%s;",varname,varname);
+                    output_line(ctx, "float4 %s = input.m_%s;",varname,varname);
             } // else if
             break;
         case REG_TYPE_PREDICATE:
@@ -762,8 +763,8 @@ void emit_HLSL_sampler(Context *ctx,int stage,TextureType ttype,int tb)
         const int index = ctx->uniform_float4_count;
         ctx->uniform_float4_count += 2;
         get_HLSL_uniform_array_varname(ctx, REG_TYPE_CONST, name, sizeof(name));
-        output_line(ctx, "const float4 &%s_texbem = %s[%d];", var, name, index);
-        output_line(ctx, "const float4 &%s_texbeml = %s[%d];", var, name, index + 1);
+        output_line(ctx, "const float4 %s_texbem = %s[%d];", var, name, index);
+        output_line(ctx, "const float4 %s_texbeml = %s[%d];", var, name, index + 1);
         pop_output(ctx);
     } // if
 } // emit_HLSL_sampler
@@ -857,13 +858,13 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : SV_Position;", var);
                     break;
                 case MOJOSHADER_USAGE_POSITIONT:
-                    output_line(ctx, "float4 m_%s : POSITIONT", var);
+                    output_line(ctx, "float4 m_%s : POSITIONT;", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float m_%s : PSIZE;", var);
                     break;
                 case MOJOSHADER_USAGE_TANGENT:
-                    output_line(ctx, "float4 m_%s : TANGENT%d", var, index);
+                    output_line(ctx, "float4 m_%s : TANGENT%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
@@ -905,6 +906,9 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 case MOJOSHADER_USAGE_FOG:
                     output_line(ctx, "float m_%s : FOG;", var);
                     break;
+                case MOJOSHADER_USAGE_NORMAL:
+                    output_line(ctx, "float4 m_%s : NORMAL;", var);
+                    break;
                 case MOJOSHADER_USAGE_POSITION:
                     output_line(ctx, "float4 m_%s : SV_Position;", var);
                     break;
@@ -912,13 +916,15 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float m_%s : PSIZE;", var);
                     break;
                 case MOJOSHADER_USAGE_TESSFACTOR:
-                    output_line(ctx, "float m_%s : TESSFACTOR%d", var, index);
+                    output_line(ctx, "float m_%s : TESSFACTOR%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
                 default:
-                    fail(ctx, "Unknown vertex output semantic type!");
+                    char a[256];
+                    snprintf(a, sizeof(a), "Invalid vertex output semantic %d", usage);
+                    fail(ctx, a);
                     break;
             } // switch
 
@@ -1134,18 +1140,9 @@ void emit_HLSL_RSQ(Context *ctx)
 void emit_HLSL_dotprod(Context *ctx, const char *src0, const char *src1,
                        const char *extra)
 {
-    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
-    char castleft[16] = { '\0' };
-    const char *castright = "";
-    if (vecsize != 1)
-    {
-        snprintf(castleft, sizeof (castleft), "float%d(", vecsize);
-        castright = ")";
-    } // if
-
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "%sdot(%s, %s)%s%s",
-                             castleft, src0, src1, extra, castright);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "dot(%s, %s)%s",
+                             src0, src1, extra);
     output_line(ctx, "%s", code);
 } // emit_HLSL_dotprod
 
@@ -1192,11 +1189,8 @@ void emit_HLSL_SLT(Context *ctx)
     if (vecsize == 1)
         make_HLSL_destarg_assign(ctx, code, sizeof (code), "float(%s < %s)", src0, src1);
     else
-    {
-        make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "float%d(%s < %s)",
-                                 vecsize, src0, src1);
-    } // else
+        make_HLSL_destarg_assign(ctx, code, sizeof (code), "%s < %s", src0, src1);
+
     output_line(ctx, "%s", code);
 } // emit_HLSL_SLT
 
@@ -1209,16 +1203,10 @@ void emit_HLSL_SGE(Context *ctx)
 
     // float(bool) results in 0.0 or 1.0, like SGE wants.
     if (vecsize == 1)
-    {
-        make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "float(%s >= %s)", src0, src1);
-    } // if
+        make_HLSL_destarg_assign(ctx, code, sizeof (code), "float(%s >= %s)", src0, src1);
     else
-    {
-        make_HLSL_destarg_assign(ctx, code, sizeof (code),
-                                 "float%d(%s >= %s)",
-                                 vecsize, src0, src1);
-    } // else
+        make_HLSL_destarg_assign(ctx, code, sizeof (code), "%s >= %s", src0, src1);
+
     output_line(ctx, "%s", code);
 } // emit_HLSL_SGE
 
