@@ -1319,7 +1319,7 @@ void emit_HLSL_LRP(Context *ctx)
     char src1[64]; make_HLSL_srcarg_string_masked(ctx, 1, src1, sizeof (src1));
     char src2[64]; make_HLSL_srcarg_string_masked(ctx, 2, src2, sizeof (src2));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "mix(%s, %s, %s)",
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "lerp(%s, %s, %s)",
                              src2, src1, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_LRP
@@ -1328,7 +1328,7 @@ void emit_HLSL_FRC(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "fract(%s)", src0);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "frac(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_FRC
 
