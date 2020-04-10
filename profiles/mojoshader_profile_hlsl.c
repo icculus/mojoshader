@@ -130,21 +130,13 @@ const char *make_HLSL_destarg_assign(Context *ctx, char *buf,
         return buf;  // no writemask? It's a no-op.
     } // if
 
-    char clampbuf[32] = { '\0' };
     const char *clampleft = "";
     const char *clampright = "";
     if (arg->result_mod & MOD_SATURATE)
     {
         const int vecsize = vecsize_from_writemask(arg->writemask);
-        clampleft = "clamp(";
-        if (vecsize == 1)
-            clampright = ", 0.0, 1.0)";
-        else
-        {
-            snprintf(clampbuf, sizeof (clampbuf),
-                     ", float%d(0.0), float%d(1.0))", vecsize, vecsize);
-            clampright = clampbuf;
-        } // else
+        clampleft = "saturate(";
+        clampright = ")";
     } // if
 
     // MSDN says MOD_PP is a hint and many implementations ignore it. So do we.
