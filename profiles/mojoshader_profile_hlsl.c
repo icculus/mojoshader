@@ -12,7 +12,7 @@
 
 #pragma GCC visibility push(hidden)
 
-// !!! FIXME: A lot of this is cut-and-paste from the HLSL version.
+// !!! FIXME: A lot of this is cut-and-paste from the GLSL/Metal versions.
 #if SUPPORT_PROFILE_HLSL
 
 #define EMIT_HLSL_OPCODE_UNIMPLEMENTED_FUNC(op) \
