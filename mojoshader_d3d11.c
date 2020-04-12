@@ -422,8 +422,11 @@ void MOJOSHADER_d3d11DeleteEffect(MOJOSHADER_d3d11Effect *d3dEffect)
     int i;
     for (i = 0; i < d3dEffect->num_shaders; i++)
     {
-        /* Release the uniform buffers */
-        /* TODO */
+        /* Release the uniform buffer */
+        ID3D11Buffer_Release((ID3D11Buffer*) d3dEffect->shaders[i].ubo);
+
+        /* Release the shader blob */
+        ID3D10Blob_Release((ID3DBlob*) d3dEffect->shaders[i].dataBlob);
     } // for
 
     f(d3dEffect->shader_indices, d);
