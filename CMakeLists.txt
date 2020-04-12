@@ -163,6 +163,7 @@ ADD_LIBRARY(mojoshader
     mojoshader_common.c
     mojoshader_opengl.c
     mojoshader_metal.c
+    mojoshader_d3d11.c
     profiles/mojoshader_profile_arb1.c
     profiles/mojoshader_profile_bytecode.c
     profiles/mojoshader_profile_d3d.c

@@ -28,14 +28,20 @@ static inline void out_of_memory(void)
 #if SUPPORT_PROFILE_HLSL
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
+#define D3D11_NO_HELPERS
+#define CINTERFACE
+#define COBJMACROS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <d3d11.h>
+#include <d3dcompiler.h>
 
 /* Structs */
 struct MOJOSHADER_d3d11Shader
 {
     const MOJOSHADER_parseData *parseData;
-    ID3D11Buffer *ubo;
-    int numInternalBuffers;
+    void* dataBlob; // ID3DBlob*
+    void* ubo; // ID3D11Buffer*
 };
 
 typedef struct MOJOSHADER_d3d11Effect
@@ -134,6 +140,17 @@ static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
 
 /* Uniform buffer utilities */
 
+static inline int next_highest_alignment(int n)
+{
+    const int align = 16;
+    return align * ((n + align - 1) / align);
+} // next_highest_alignment
+
+static inline void* get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
+{
+    return (shader == NULL || shader->ubo == NULL) ? NULL : shader->ubo;
+} // get_uniform_buffer
+
 static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 {
     if (shader == NULL || shader->ubo == NULL)
@@ -205,8 +222,7 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 /* Public API */
 
 MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
-                                                      void *mtlDevice,
-                                                      int numBackingBuffers)
+                                                      void* device)
 {
     int i;
     MOJOSHADER_malloc m = effect->malloc;
@@ -214,10 +230,10 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
     void *d = effect->malloc_data;
     int current_shader = 0;
     int current_preshader = 0;
-    int src_len = 0;
 
+    // Allocate the effect
     MOJOSHADER_d3d11Effect *retval;
-    retval = (MOJOSHADER_d3d11Effect *) (m(sizeof(MOJOSHADER_d3d11Effect), d));
+    retval = (MOJOSHADER_d3d11Effect*) (m(sizeof(MOJOSHADER_d3d11Effect), d));
     if (retval == NULL)
     {
         out_of_memory();
@@ -225,126 +241,124 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
     } // if
     memset(retval, '\0', sizeof (MOJOSHADER_d3d11Effect));
 
-    /* TODO */
-    // // Count the number of shaders before allocating
-    // for (i = 0; i < effect->object_count; i++)
-    // {
-    //     MOJOSHADER_effectObject *object = &effect->objects[i];
-    //     if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-    //      || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-    //     {
-    //         if (object->shader.is_preshader)
-    //             retval->num_preshaders++;
-    //         else
-    //         {
-    //             retval->num_shaders++;
-    //             src_len += object->shader.shader->output_len;
-    //         } // else
-    //     } // if
-    // } // for
+    // Count the number of shaders before allocating
+    for (i = 0; i < effect->object_count; i++)
+    {
+        MOJOSHADER_effectObject *object = &effect->objects[i];
+        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
+         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
+        {
+            if (object->shader.is_preshader)
+                retval->num_preshaders++;
+            else
+                retval->num_shaders++;
+        } // if
+    } // for
 
-    // // Alloc shader source buffer
-    // char *shader_source = (char *) m(src_len + 1, d);
-    // memset(shader_source, '\0', src_len + 1);
-    // int src_pos = 0;
+    // Allocate shader arrays
+    retval->shaders = (MOJOSHADER_d3d11Shader*) m(retval->num_shaders * sizeof(MOJOSHADER_d3d11Shader), d);
+    if (retval->shaders == NULL)
+    {
+        f(retval, d);
+        out_of_memory();
+        return NULL;
+    } // if
+    memset(retval->shaders, '\0', retval->num_shaders * sizeof(MOJOSHADER_d3d11Shader));
+    retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof(unsigned int), d);
+    if (retval->shader_indices == NULL)
+    {
+        f(retval->shaders, d);
+        f(retval, d);
+        out_of_memory();
+        return NULL;
+    } // if
+    memset(retval->shader_indices, '\0', retval->num_shaders * sizeof(unsigned int));
 
-    // // Copy all the source text into the buffer
-    // for (i = 0; i < effect->object_count; i++)
-    // {
-    //     MOJOSHADER_effectObject *object = &effect->objects[i];
-    //     if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-    //      || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-    //     {
-    //         if (!object->shader.is_preshader)
-    //         {
-    //             int output_len = object->shader.shader->output_len;
-    //             memcpy(&shader_source[src_pos], object->shader.shader->output, output_len);
-    //             src_pos += output_len;
-    //         } // if
-    //     } // if
-    // } // for
+    // Allocate preshader array
+    if (retval->num_preshaders > 0)
+    {
+        retval->preshader_indices = (unsigned int *) m(retval->num_preshaders * sizeof(unsigned int), d);
+        if (retval->preshader_indices == NULL)
+        {
+            f(retval->shaders, d);
+            f(retval->shader_indices, d);
+            f(retval, d);
+            out_of_memory();
+            return NULL;
+        } // if
+        memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof(unsigned int));
+    } // if
 
-    // // Alloc shader information
-    // retval->shaders = (MOJOSHADER_mtlShader *) m(retval->num_shaders * sizeof (MOJOSHADER_mtlShader), d);
-    // if (retval->shaders == NULL)
-    // {
-    //     f(retval, d);
-    //     out_of_memory();
-    //     return NULL;
-    // } // if
-    // memset(retval->shaders, '\0', retval->num_shaders * sizeof (MOJOSHADER_mtlShader));
-    // retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof (unsigned int), d);
-    // if (retval->shader_indices == NULL)
-    // {
-    //     f(retval->shaders, d);
-    //     f(retval, d);
-    //     out_of_memory();
-    //     return NULL;
-    // } // if
-    // memset(retval->shader_indices, '\0', retval->num_shaders * sizeof (unsigned int));
+    // Compile the shaders and track indices
+    for (i = 0; i < effect->object_count; i++)
+    {
+        MOJOSHADER_effectObject *object = &effect->objects[i];
+        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
+         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
+        {
+            if (object->shader.is_preshader)
+            {
+                retval->preshader_indices[current_preshader++] = i;
+                continue;
+            } // if
 
-    // // Alloc preshader information
-    // if (retval->num_preshaders > 0)
-    // {
-    //     retval->preshader_indices = (unsigned int *) m(retval->num_preshaders * sizeof (unsigned int), d);
-    //     if (retval->preshader_indices == NULL)
-    //     {
-    //         f(retval->shaders, d);
-    //         f(retval->shader_indices, d);
-    //         f(retval, d);
-    //         out_of_memory();
-    //         return NULL;
-    //     } // if
-    //     memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof (unsigned int));
-    // } // if
+            MOJOSHADER_d3d11Shader *curshader = &retval->shaders[current_shader];
+            curshader->parseData = object->shader.shader;
 
-    // // Compile the source into a library
-    // void *compileError = NULL;
-    // void *shader_source_ns = cstr_to_nsstr(shader_source);
-    // void *library = objc_msgSend_PTR_PTR_PTR(
-    //     mtlDevice,
-    //     selNewLibraryWithSource,
-    //     shader_source_ns,
-    //     NULL,
-    //     &compileError
-    // );
-    // retval->library = library;
-    // f(shader_source, d);
-    // objc_msgSend(shader_source_ns, selRelease);
+            ID3DBlob* errorBlob;
+            int result = D3DCompile(
+                curshader->parseData->output,
+                curshader->parseData->output_len,
+                curshader->parseData->mainfn,
+                NULL,
+                NULL,
+                curshader->parseData->mainfn,
+                (object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER) ? "vs_4_0" : "ps_4_0",
+                0,
+                0,
+                (ID3DBlob**) &curshader->dataBlob,
+                &errorBlob
+            );
+            if (result < 0)
+            {
+                set_error((const char*) ID3D10Blob_GetBufferPointer(errorBlob));
+                goto compile_shader_fail;
+            } // if
 
-    // if (library == NULL)
-    // {
-    //     // Set the error
-    //     void *error_nsstr = objc_msgSend(compileError, selLocalizedDescription);
-    //     set_error(nsstr_to_cstr(error_nsstr));
+            // Create the uniform buffer, if needed
+            if (curshader->parseData->uniform_count > 0)
+            {
+                // Calculate how big we need to make the buffer
+                int uniformCount = curshader->parseData->uniform_count;
+                int buflen = 0;
+                for (int i = 0; i < uniformCount; i += 1)
+                {
+                    int arrayCount = curshader->parseData->uniforms[i].array_count;
+                    int uniformSize = 16;
+                    if (curshader->parseData->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
+                        uniformSize = 1;
+                    buflen += (arrayCount ? arrayCount : 1) * uniformSize;
+                } // for
 
-    //     goto compile_shader_fail;
-    // } // if
+                D3D11_BUFFER_DESC bdesc;
+                bdesc.ByteWidth = next_highest_alignment(buflen);
+                bdesc.Usage = D3D11_USAGE_DYNAMIC;
+                bdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                bdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+                bdesc.MiscFlags = 0;
+                bdesc.StructureByteStride = 0;
+                ID3D11Device_CreateBuffer(
+                    (ID3D11Device*) device,
+                    &bdesc,
+                    NULL,
+                    (ID3D11Buffer**) &curshader->ubo
+                );
+            } // if
 
-    // // Run through the shaders again, tracking the object indices
-    // for (i = 0; i < effect->object_count; i++)
-    // {
-    //     MOJOSHADER_effectObject *object = &effect->objects[i];
-    //     if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-    //      || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-    //     {
-    //         if (object->shader.is_preshader)
-    //         {
-    //             retval->preshader_indices[current_preshader++] = i;
-    //             continue;
-    //         } // if
-
-    //         MOJOSHADER_mtlShader *curshader = &retval->shaders[current_shader];
-    //         curshader->parseData = object->shader.shader;
-    //         curshader->numInternalBuffers = numBackingBuffers;
-    //         curshader->ubo = create_ubo(curshader, mtlDevice, m, d);
-    //         curshader->library = library;
-
-    //         retval->shader_indices[current_shader] = i;
-
-    //         current_shader++;
-    //     } // if
-    // } // for
+            retval->shader_indices[current_shader] = i;
+            current_shader++;
+        } // if
+    } // for
 
     retval->effect = effect;
     return retval;
@@ -454,20 +468,13 @@ void MOJOSHADER_d3d11EffectBeginPass(MOJOSHADER_d3d11Effect *d3dEffect,
     {
         if (d3dEffect->current_vert != NULL)
         {
-            MOJOSHADER_d3d11Shader *vert = d3dEffect->current_vert;
-            shState->vertexShader = vert;
-            /* TODO */
-            // shState->vertexUniformBuffer = get_uniform_buffer(vert);
-            // shState->vertexUniformOffset = get_uniform_offset(vert);
+            shState->vertexShader = d3dEffect->current_vert;
+            shState->vertexUniformBuffer = get_uniform_buffer(d3dEffect->current_vert);
         } // if
-
         if (d3dEffect->current_frag != NULL)
         {
-            MOJOSHADER_d3d11Shader *frag = d3dEffect->current_frag;
-            shState->fragmentShader = frag;
-            /* TODO */
-            // shState->fragmentUniformBuffer = get_uniform_buffer(frag);
-            // shState->fragmentUniformOffset = get_uniform_offset(frag);
+            shState->fragmentShader = d3dEffect->current_frag;
+            shState->fragmentUniformBuffer = get_uniform_buffer(d3dEffect->current_frag);
         } // if
 
         if (d3dEffect->current_vert_raw != NULL)
@@ -584,23 +591,18 @@ void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
     COPY_PARAMETER_DATA(rawFrag, ps)
     #undef COPY_PARAMETER_DATA
 
-    /* TODO */
-    // update_uniform_buffer(shState->vertexShader);
-    // shState->vertexUniformBuffer = get_uniform_buffer(shState->vertexShader);
-    // shState->vertexUniformOffset = get_uniform_offset(shState->vertexShader);
+    update_uniform_buffer(shState->vertexShader);
+    shState->vertexUniformBuffer = get_uniform_buffer(shState->vertexShader);
 
-    // update_uniform_buffer(shState->fragmentShader);
-    // shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
-    // shState->fragmentUniformOffset = get_uniform_offset(shState->fragmentShader);
+    update_uniform_buffer(shState->fragmentShader);
+    shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
 } // MOJOSHADER_d3dEffectCommitChanges
-
 
 void MOJOSHADER_d3d11EffectEndPass(MOJOSHADER_d3d11Effect *d3dEffect)
 {
     assert(d3dEffect->effect->current_pass != -1);
     d3dEffect->effect->current_pass = -1;
 } // MOJOSHADER_d3d11EffectEndPass
-
 
 void MOJOSHADER_d3d11EffectEnd(MOJOSHADER_d3d11Effect *d3dEffect,
                                MOJOSHADER_d3d11ShaderState *shState)
@@ -610,23 +612,16 @@ void MOJOSHADER_d3d11EffectEnd(MOJOSHADER_d3d11Effect *d3dEffect,
         d3dEffect->effect->restore_shader_state = 0;
         shState->vertexShader = d3dEffect->prev_vert;
         shState->fragmentShader = d3dEffect->prev_frag;
-        /* TODO */
-        // shState->vertexUniformBuffer = get_uniform_buffer(d3dEffect->prev_vert);
-        // shState->fragmentUniformBuffer = get_uniform_buffer(d3dEffect->prev_frag);
-        // shState->vertexUniformOffset = get_uniform_offset(d3dEffect->prev_vert);
-        // shState->fragmentUniformOffset = get_uniform_offset(d3dEffect->prev_frag);
+        shState->vertexUniformBuffer = get_uniform_buffer(d3dEffect->prev_vert);
+        shState->fragmentUniformBuffer = get_uniform_buffer(d3dEffect->prev_frag);
     } // if
 
     d3dEffect->effect->state_changes = NULL;
 } // MOJOSHADER_d3dEffectEnd
 
-void *MOJOSHADER_d3d11GetFunctionHandle(MOJOSHADER_d3d11Shader *shader)
+void* MOJOSHADER_d3d11GetShaderBlob(MOJOSHADER_d3d11Shader *shader)
 {
-    if (shader == NULL)
-        return NULL;
-
-    /* TODO */
-    return NULL;
+    return (shader == NULL) ? NULL : shader->dataBlob;
 } // MOJOSHADER_d3d11GetFunctionHandle
 
 int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
@@ -637,7 +632,7 @@ int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
 
     for (int i = 0; i < vert->parseData->attribute_count; i++)
     {
-        if (vert->parseData->attributes[i].usage == usage
+        if (   vert->parseData->attributes[i].usage == usage
             && vert->parseData->attributes[i].index == index)
         {
             return i;
