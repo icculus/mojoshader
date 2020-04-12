@@ -52,15 +52,6 @@ const char *get_HLSL_varname_in_buf(Context *ctx, RegisterType rt,
     return buf;
 } // get_HLSL_varname_in_buf
 
-
-const char *get_HLSL_varname(Context *ctx, RegisterType rt, int regnum)
-{
-    char buf[64];
-    get_HLSL_varname_in_buf(ctx, rt, regnum, buf, sizeof (buf));
-    return StrDup(ctx, buf);
-} // get_HLSL_varname
-
-
 static inline const char *get_HLSL_const_array_varname_in_buf(Context *ctx,
                                                 const int base, const int size,
                                                 char *buf, const size_t buflen)
@@ -68,13 +59,6 @@ static inline const char *get_HLSL_const_array_varname_in_buf(Context *ctx,
     snprintf(buf, buflen, "const_array_%d_%d", base, size);
     return buf;
 } // get_HLSL_const_array_varname_in_buf
-
-const char *get_HLSL_const_array_varname(Context *ctx, int base, int size)
-{
-    char buf[64];
-    get_HLSL_const_array_varname_in_buf(ctx, base, size, buf, sizeof (buf));
-    return StrDup(ctx, buf);
-} // get_HLSL_const_array_varname
 
 
 static inline const char *get_HLSL_input_array_varname(Context *ctx,
@@ -134,7 +118,6 @@ const char *make_HLSL_destarg_assign(Context *ctx, char *buf,
     const char *clampright = "";
     if (arg->result_mod & MOD_SATURATE)
     {
-        const int vecsize = vecsize_from_writemask(arg->writemask);
         clampleft = "saturate(";
         clampright = ")";
     } // if
@@ -617,7 +600,7 @@ void emit_HLSL_global(Context *ctx, RegisterType regtype, int regnum)
 void emit_HLSL_array(Context *ctx, VariableList *var)
 {
     // All uniforms (except constant arrays, which are literally constant
-    //  data embedded in Metal shaders) are now packed into a single array,
+    //  data embedded in HLSL shaders) are now packed into a single array,
     //  so we can batch the uniform transfers. So this doesn't actually
     //  define an array here; the one, big array is emitted during
     //  finalization instead.
@@ -637,8 +620,6 @@ void emit_HLSL_const_array(Context *ctx, const ConstantsList *clist,
 {
     char varname[64];
     get_HLSL_const_array_varname_in_buf(ctx,base,size,varname,sizeof(varname));
-
-    // !!! FIXME: No idea here. -caleb
 
     const char *cstr = NULL;
     push_output(ctx, &ctx->mainline_top);
@@ -878,8 +859,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             push_output(ctx, &ctx->mainline_top);
             ctx->indent++;
-            // !!! FIXME: might trigger unused var warnings in Clang.
-            //output_line(ctx, "constant float4 &%s = input.%s;", var, var);
             output_line(ctx, "#define %s input.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
@@ -933,8 +912,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             push_output(ctx, &ctx->mainline_top);
             ctx->indent++;
-            // !!! FIXME: this doesn't work.
-            //output_line(ctx, "float4 &%s = output.%s;", var, var);
             output_line(ctx, "#define %s output.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
@@ -978,8 +955,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             push_output(ctx, &ctx->mainline_top);
             ctx->indent++;
-            // !!! FIXME: this doesn't work.
-            //output_line(ctx, "float%s &%s = output.%s;", (regtype == REG_TYPE_DEPTHOUT) ? "" : "4", var, var);
             output_line(ctx, "#define %s output.m_%s", var, var);
             pop_output(ctx);
             push_output(ctx, &ctx->mainline);
@@ -1035,17 +1010,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             } // else
 
             pop_output(ctx);
-
-            // !!! FIXME: can cause unused var warnings in Clang...
-            #if 0
-            push_output(ctx, &ctx->mainline_top);
-            ctx->indent++;
-            if ((regtype == REG_TYPE_MISCTYPE)&&(regnum == MISCTYPE_TYPE_FACE))
-                output_line(ctx, "constant bool &%s = input.%s;", var, var);
-            else if (!skipreference)
-                output_line(ctx, "constant float4 &%s = input.%s;", var, var);
-            pop_output(ctx);
-            #endif
 
             if (!skipreference)
             {
@@ -1227,44 +1191,21 @@ void emit_HLSL_LOG(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_HLSL_LOG
 
-void emit_HLSL_LIT_helper(Context *ctx)
-{
-    const char *maxp = "127.9961"; // value from the dx9 reference.
-
-    // if (ctx->GLSL_generated_lit_helper)
-    //     return;
-
-    // ctx->GLSL_generated_lit_helper = 1;
-
-    push_output(ctx, &ctx->helpers);
-    output_line(ctx, "float4 LIT(const float4 src)");
-    output_line(ctx, "{"); ctx->indent++;
-    output_line(ctx,   "float power = clamp(src.w, -%s, %s);",maxp,maxp);
-    output_line(ctx,   "float4 retval = float4(1.0, 0.0, 0.0, 1.0);");
-    output_line(ctx,   "if (src.x > 0.0) {"); ctx->indent++;
-    output_line(ctx,     "retval.y = src.x;");
-    output_line(ctx,     "if (src.y > 0.0) {"); ctx->indent++;
-    output_line(ctx,       "retval.z = pow(src.y, power);"); ctx->indent--;
-    output_line(ctx,     "}"); ctx->indent--;
-    output_line(ctx,   "}");
-    output_line(ctx,   "return retval;"); ctx->indent--;
-    output_line(ctx, "}");
-    output_blank_line(ctx);
-    pop_output(ctx);
-} // emit_HLSL_LIT_helper
-
 void emit_HLSL_LIT(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_full(ctx, 0, src0, sizeof (src0));
     char code[128];
-    emit_HLSL_LIT_helper(ctx);
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "LIT(%s)", src0);
+    const char *maxp = "127.9961"; // value from the dx9 reference.
+    make_HLSL_destarg_assign(ctx, code, sizeof (code),
+                             "lit(%s.x, %s.y, clamp(%s.w, -%s, %s))",
+                             src0, src0, src0, maxp, maxp);
     output_line(ctx, "%s", code);
 } // emit_HLSL_LIT
 
 void emit_HLSL_DST(Context *ctx)
 {
-    // !!! FIXME: needs to take ctx->dst_arg.writemask into account.
+    // !!! FIXME: needs to take ctx->dst_arg.writemask into account
+    // !!! FIXME: can we use dst() intrinsic instead? -caleb
     char src0_y[64]; make_HLSL_srcarg_string_y(ctx, 0, src0_y, sizeof (src0_y));
     char src1_y[64]; make_HLSL_srcarg_string_y(ctx, 1, src1_y, sizeof (src1_y));
     char src0_z[64]; make_HLSL_srcarg_string_z(ctx, 0, src0_z, sizeof (src0_z));
