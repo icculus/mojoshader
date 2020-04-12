@@ -34,7 +34,6 @@ static inline void out_of_memory(void)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
-#include <d3dcompiler.h>
 
 /* Structs */
 struct MOJOSHADER_d3d11Shader
@@ -219,6 +218,24 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     // } // for
 } // update_uniform_buffer
 
+/* D3D11 Function Pointers */
+
+typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
+    LPCVOID pSrcData,
+    SIZE_T SrcDataSize,
+    LPCSTR pSourceName,
+    const D3D_SHADER_MACRO *pDefines,
+    ID3DInclude *pInclude,
+    LPCSTR pEntrypoint,
+    LPCSTR pTarget,
+    UINT Flags1,
+    UINT Flags2,
+    ID3DBlob **ppCode,
+    ID3DBlob **ppErrorMsgs
+);
+PFN_D3DCOMPILE D3DCompileFunc = NULL;
+static int d3dFuncInit = 0;
+
 /* Public API */
 
 MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
@@ -230,6 +247,18 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
     void *d = effect->malloc_data;
     int current_shader = 0;
     int current_preshader = 0;
+
+    // Grab the D3DCompile function pointer!
+    if (!d3dFuncInit)
+    {
+        // Load D3DCompile()
+        HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler.dll");
+        assert(d3dCompilerModule != NULL);
+        D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(d3dCompilerModule, "D3DCompile");
+
+        // We don't need to load this again
+        d3dFuncInit = 1;
+    }
 
     // Allocate the effect
     MOJOSHADER_d3d11Effect *retval;
@@ -306,7 +335,7 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
             curshader->parseData = object->shader.shader;
 
             ID3DBlob* errorBlob;
-            int result = D3DCompile(
+            int result = D3DCompileFunc(
                 curshader->parseData->output,
                 curshader->parseData->output_len,
                 curshader->parseData->mainfn,
@@ -386,7 +415,6 @@ void MOJOSHADER_d3d11DeleteEffect(MOJOSHADER_d3d11Effect *d3dEffect)
     f(d3dEffect->preshader_indices, d);
     f(d3dEffect, d);
 } // MOJOSHADER_d3d11DeleteEffect
-
 
 void MOJOSHADER_d3d11EffectBegin(MOJOSHADER_d3d11Effect *d3dEffect,
                                  unsigned int *numPasses,
