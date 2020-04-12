@@ -52,6 +52,13 @@ const char *get_HLSL_varname_in_buf(Context *ctx, RegisterType rt,
     return buf;
 } // get_HLSL_varname_in_buf
 
+const char *get_HLSL_varname(Context *ctx, RegisterType rt, int regnum)
+{
+    char buf[64];
+    get_HLSL_varname_in_buf(ctx, rt, regnum, buf, sizeof(buf));
+    return StrDup(ctx, buf);
+} // get_HLSL_varname
+
 static inline const char *get_HLSL_const_array_varname_in_buf(Context *ctx,
                                                 const int base, const int size,
                                                 char *buf, const size_t buflen)
@@ -60,6 +67,12 @@ static inline const char *get_HLSL_const_array_varname_in_buf(Context *ctx,
     return buf;
 } // get_HLSL_const_array_varname_in_buf
 
+const char *get_HLSL_const_array_varname(Context *ctx, int base, int size)
+{
+    char buf[64];
+    get_HLSL_const_array_varname_in_buf(ctx, base, size, buf, sizeof(buf));
+    return StrDup(ctx, buf);
+} // get_HLSL_const_array_varname
 
 static inline const char *get_HLSL_input_array_varname(Context *ctx,
                                                 char *buf, const size_t buflen)
@@ -67,7 +80,6 @@ static inline const char *get_HLSL_input_array_varname(Context *ctx,
     snprintf(buf, buflen, "%s", "vertex_input_array");
     return buf;
 } // get_HLSL_input_array_varname
-
 
 const char *get_HLSL_uniform_array_varname(Context *ctx,
                                            const RegisterType regtype,
