@@ -856,6 +856,20 @@ DECLSPEC void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect);
 DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
 
 
+
+/* D3D11 effect interface... */
+
+typedef struct MOJOSHADER_d3d11Shader MOJOSHADER_d3d11Shader;
+typedef struct MOJOSHADER_d3d11ShaderState
+{
+    MOJOSHADER_d3d11Shader *vertexShader;
+    MOJOSHADER_d3d11Shader *fragmentShader;
+    void* vertexUniformBuffer; // ID3D11Buffer*
+    void* fragmentUniformBuffer; // ID3D11Buffer*
+    int vertexUniformOffset;
+    int fragmentUniformOffset;
+} MOJOSHADER_d3d11ShaderState;
+
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 
 #endif /* MOJOSHADER_EFFECTS_H */
