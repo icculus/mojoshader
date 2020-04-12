@@ -150,7 +150,8 @@ static inline void* get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     return (shader == NULL || shader->ubo == NULL) ? NULL : shader->ubo;
 } // get_uniform_buffer
 
-static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
+static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader,
+                                  void* deviceContext)
 {
     if (shader == NULL || shader->ubo == NULL)
         return;
@@ -169,53 +170,68 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
         regB = ps_reg_file_b;
     } // else
 
-    /* TODO */
-    // UBO_predraw(shader->ubo);
-    // void *buf = shader->ubo->internalBuffers[shader->ubo->currentFrame];
-    // void *contents = UBO_buffer_contents(buf) + shader->ubo->internalOffset;
+    // Map the buffer
+    D3D11_MAPPED_SUBRESOURCE res;
+    ID3D11DeviceContext_Map(
+        (ID3D11DeviceContext*) deviceContext,
+        (ID3D11Resource*) shader->ubo,
+        0,
+        D3D11_MAP_WRITE,
+        0,
+        &res
+    );
 
-    // int offset = 0;
-    // for (int i = 0; i < shader->parseData->uniform_count; i++)
-    // {
-    //     int idx = shader->parseData->uniforms[i].index;
-    //     int arrayCount = shader->parseData->uniforms[i].array_count;
-    //     int size = arrayCount ? arrayCount : 1;
+    // Update the buffer contents
+    unsigned char *pData = (unsigned char*) res.pData;
+    size_t offset = 0;
+    for (int i = 0; i < shader->parseData->uniform_count; i++)
+    {
+        int idx = shader->parseData->uniforms[i].index;
+        int arrayCount = shader->parseData->uniforms[i].array_count;
+        size_t size = arrayCount ? arrayCount : 1;
 
-    //     switch (shader->parseData->uniforms[i].type)
-    //     {
-    //         case MOJOSHADER_UNIFORM_FLOAT:
-    //             memcpy(
-    //                 contents + (offset * 16),
-    //                 &regF[4 * idx],
-    //                 size * 16
-    //             );
-    //             break;
+        switch (shader->parseData->uniforms[i].type)
+        {
+            case MOJOSHADER_UNIFORM_FLOAT:
+                memcpy(
+                    pData + (offset * 16),
+                    &regF[4 * idx],
+                    size * 16
+                );
+                break;
 
-    //         case MOJOSHADER_UNIFORM_INT:
-    //             // !!! FIXME: Need a test case
-    //             memcpy(
-    //                 contents + (offset * 16),
-    //                 &regI[4 * idx],
-    //                 size * 16
-    //             );
-    //             break;
+            case MOJOSHADER_UNIFORM_INT:
+                // !!! FIXME: Need a test case
+                memcpy(
+                    pData + (offset * 16),
+                    &regI[4 * idx],
+                    size * 16
+                );
+                break;
 
-    //         case MOJOSHADER_UNIFORM_BOOL:
-    //             // !!! FIXME: Need a test case
-    //             memcpy(
-    //                 contents + offset,
-    //                 &regB[idx],
-    //                 size
-    //             );
-    //             break;
+            case MOJOSHADER_UNIFORM_BOOL:
+                // !!! FIXME: Need a test case
+                memcpy(
+                    pData + offset,
+                    &regB[idx],
+                    size
+                );
+                break;
 
-    //         default:
-    //             assert(0); // This should never happen.
-    //             break;
-    //     } // switch
+            default:
+                assert(0); // This should never happen.
+                break;
+        } // switch
 
-    //     offset += size;
-    // } // for
+        offset += size;
+    } // for
+
+    // Unmap the buffer
+    ID3D11DeviceContext_Unmap(
+        (ID3D11DeviceContext*) deviceContext,
+        (ID3D11Resource*) shader->ubo,
+        0
+    );
 } // update_uniform_buffer
 
 /* D3D11 Function Pointers */
@@ -358,9 +374,8 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
             if (curshader->parseData->uniform_count > 0)
             {
                 // Calculate how big we need to make the buffer
-                int uniformCount = curshader->parseData->uniform_count;
                 int buflen = 0;
-                for (int i = 0; i < uniformCount; i += 1)
+                for (int i = 0; i < curshader->parseData->uniform_count; i++)
                 {
                     int arrayCount = curshader->parseData->uniforms[i].array_count;
                     int uniformSize = 16;
@@ -434,10 +449,12 @@ void MOJOSHADER_d3d11EffectBegin(MOJOSHADER_d3d11Effect *d3dEffect,
 
 // Predeclare
 void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
+                                         void* d3dDeviceContext,
                                          MOJOSHADER_d3d11ShaderState *shState);
 
 void MOJOSHADER_d3d11EffectBeginPass(MOJOSHADER_d3d11Effect *d3dEffect,
                                      unsigned int pass,
+                                     void *d3dDeviceContext,
                                      MOJOSHADER_d3d11ShaderState *shState)
 {
     int i, j;
@@ -517,10 +534,11 @@ void MOJOSHADER_d3d11EffectBeginPass(MOJOSHADER_d3d11Effect *d3dEffect,
         } // if
     } // if
 
-    MOJOSHADER_d3d11EffectCommitChanges(d3dEffect, shState);
+    MOJOSHADER_d3d11EffectCommitChanges(d3dEffect, d3dDeviceContext, shState);
 } // MOJOSHADER_d3d11EffectBeginPass
 
 void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
+                                         void* d3dDeviceContext,
                                          MOJOSHADER_d3d11ShaderState *shState)
 {
     MOJOSHADER_effectShader *rawVert = d3dEffect->current_vert_raw;
@@ -619,10 +637,10 @@ void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
     COPY_PARAMETER_DATA(rawFrag, ps)
     #undef COPY_PARAMETER_DATA
 
-    update_uniform_buffer(shState->vertexShader);
+    update_uniform_buffer(shState->vertexShader, d3dDeviceContext);
     shState->vertexUniformBuffer = get_uniform_buffer(shState->vertexShader);
 
-    update_uniform_buffer(shState->fragmentShader);
+    update_uniform_buffer(shState->fragmentShader, d3dDeviceContext);
     shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
 } // MOJOSHADER_d3dEffectCommitChanges
 
