@@ -859,16 +859,16 @@ DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
 
 /* D3D11 effect interface... */
 
-typedef struct MOJOSHADER_d3d11Shader MOJOSHADER_d3d11Shader;
-typedef struct MOJOSHADER_d3d11ShaderState
+typedef struct MOJOSHADER_D3D11Shader MOJOSHADER_D3D11Shader;
+typedef struct MOJOSHADER_D3D11ShaderState
 {
-    MOJOSHADER_d3d11Shader *vertexShader;
-    MOJOSHADER_d3d11Shader *fragmentShader;
+    MOJOSHADER_D3D11Shader *vertexShader;
+    MOJOSHADER_D3D11Shader *fragmentShader;
     void* vertexUniformBuffer; // ID3D11Buffer*
     void* fragmentUniformBuffer; // ID3D11Buffer*
     int vertexUniformOffset;
     int fragmentUniformOffset;
-} MOJOSHADER_d3d11ShaderState;
+} MOJOSHADER_D3D11ShaderState;
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 

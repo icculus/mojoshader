@@ -36,28 +36,28 @@ static inline void out_of_memory(void)
 #include <d3d11.h>
 
 /* Structs */
-struct MOJOSHADER_d3d11Shader
+struct MOJOSHADER_D3D11Shader
 {
     const MOJOSHADER_parseData *parseData;
     void* dataBlob; // ID3DBlob*
     void* ubo; // ID3D11Buffer*
 };
 
-typedef struct MOJOSHADER_d3d11Effect
+typedef struct MOJOSHADER_D3D11Effect
 {
     MOJOSHADER_effect *effect;
     unsigned int num_shaders;
-    MOJOSHADER_d3d11Shader *shaders;
+    MOJOSHADER_D3D11Shader *shaders;
     unsigned int *shader_indices;
     unsigned int num_preshaders;
     unsigned int *preshader_indices;
-    MOJOSHADER_d3d11Shader *current_vert;
-    MOJOSHADER_d3d11Shader *current_frag;
+    MOJOSHADER_D3D11Shader *current_vert;
+    MOJOSHADER_D3D11Shader *current_frag;
     MOJOSHADER_effectShader *current_vert_raw;
     MOJOSHADER_effectShader *current_frag_raw;
-    MOJOSHADER_d3d11Shader *prev_vert;
-    MOJOSHADER_d3d11Shader *prev_frag;
-} MOJOSHADER_d3d11Effect;
+    MOJOSHADER_D3D11Shader *prev_vert;
+    MOJOSHADER_D3D11Shader *prev_frag;
+} MOJOSHADER_D3D11Effect;
 
 /* Internal register utilities */
 
@@ -145,12 +145,12 @@ static inline int next_highest_alignment(int n)
     return align * ((n + align - 1) / align);
 } // next_highest_alignment
 
-static inline void* get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
+static inline void* get_uniform_buffer(MOJOSHADER_D3D11Shader *shader)
 {
     return (shader == NULL || shader->ubo == NULL) ? NULL : shader->ubo;
 } // get_uniform_buffer
 
-static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader,
+static void update_uniform_buffer(MOJOSHADER_D3D11Shader *shader,
                                   void* deviceContext)
 {
     if (shader == NULL || shader->ubo == NULL)
@@ -254,7 +254,7 @@ static int d3dFuncInit = 0;
 
 /* Public API */
 
-MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
+MOJOSHADER_D3D11Effect *MOJOSHADER_D3D11CompileEffect(MOJOSHADER_effect *effect,
                                                       void* device)
 {
     int i;
@@ -277,14 +277,14 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
     }
 
     // Allocate the effect
-    MOJOSHADER_d3d11Effect *retval;
-    retval = (MOJOSHADER_d3d11Effect*) (m(sizeof(MOJOSHADER_d3d11Effect), d));
+    MOJOSHADER_D3D11Effect *retval;
+    retval = (MOJOSHADER_D3D11Effect*) (m(sizeof(MOJOSHADER_D3D11Effect), d));
     if (retval == NULL)
     {
         out_of_memory();
         return NULL;
     } // if
-    memset(retval, '\0', sizeof (MOJOSHADER_d3d11Effect));
+    memset(retval, '\0', sizeof (MOJOSHADER_D3D11Effect));
 
     // Count the number of shaders before allocating
     for (i = 0; i < effect->object_count; i++)
@@ -301,14 +301,14 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
     } // for
 
     // Allocate shader arrays
-    retval->shaders = (MOJOSHADER_d3d11Shader*) m(retval->num_shaders * sizeof(MOJOSHADER_d3d11Shader), d);
+    retval->shaders = (MOJOSHADER_D3D11Shader*) m(retval->num_shaders * sizeof(MOJOSHADER_D3D11Shader), d);
     if (retval->shaders == NULL)
     {
         f(retval, d);
         out_of_memory();
         return NULL;
     } // if
-    memset(retval->shaders, '\0', retval->num_shaders * sizeof(MOJOSHADER_d3d11Shader));
+    memset(retval->shaders, '\0', retval->num_shaders * sizeof(MOJOSHADER_D3D11Shader));
     retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof(unsigned int), d);
     if (retval->shader_indices == NULL)
     {
@@ -347,7 +347,7 @@ MOJOSHADER_d3d11Effect *MOJOSHADER_d3d11CompileEffect(MOJOSHADER_effect *effect,
                 continue;
             } // if
 
-            MOJOSHADER_d3d11Shader *curshader = &retval->shaders[current_shader];
+            MOJOSHADER_D3D11Shader *curshader = &retval->shaders[current_shader];
             curshader->parseData = object->shader.shader;
 
             ID3DBlob* errorBlob;
@@ -412,9 +412,9 @@ compile_shader_fail:
     f(retval->shaders, d);
     f(retval, d);
     return NULL;
-} // MOJOSHADER_d3d11CompileEffect
+} // MOJOSHADER_D3D11CompileEffect
 
-void MOJOSHADER_d3d11DeleteEffect(MOJOSHADER_d3d11Effect *d3dEffect)
+void MOJOSHADER_D3D11DeleteEffect(MOJOSHADER_D3D11Effect *d3dEffect)
 {
     MOJOSHADER_free f = d3dEffect->effect->free;
     void *d = d3dEffect->effect->malloc_data;
@@ -432,9 +432,9 @@ void MOJOSHADER_d3d11DeleteEffect(MOJOSHADER_d3d11Effect *d3dEffect)
     f(d3dEffect->shader_indices, d);
     f(d3dEffect->preshader_indices, d);
     f(d3dEffect, d);
-} // MOJOSHADER_d3d11DeleteEffect
+} // MOJOSHADER_D3D11DeleteEffect
 
-void MOJOSHADER_d3d11EffectBegin(MOJOSHADER_d3d11Effect *d3dEffect,
+void MOJOSHADER_D3D11EffectBegin(MOJOSHADER_D3D11Effect *d3dEffect,
                                  unsigned int *numPasses,
                                  int saveShaderState,
                                  MOJOSHADER_effectStateChanges *stateChanges)
@@ -448,17 +448,17 @@ void MOJOSHADER_d3d11EffectBegin(MOJOSHADER_d3d11Effect *d3dEffect,
         d3dEffect->prev_vert = d3dEffect->current_vert;
         d3dEffect->prev_frag = d3dEffect->current_frag;
     } // if
-} // MOJOSHADER_d3d11EffectBegin
+} // MOJOSHADER_D3D11EffectBegin
 
 // Predeclare
-void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
+void MOJOSHADER_D3D11EffectCommitChanges(MOJOSHADER_D3D11Effect *d3dEffect,
                                          void* d3dDeviceContext,
-                                         MOJOSHADER_d3d11ShaderState *shState);
+                                         MOJOSHADER_D3D11ShaderState *shState);
 
-void MOJOSHADER_d3d11EffectBeginPass(MOJOSHADER_d3d11Effect *d3dEffect,
+void MOJOSHADER_D3D11EffectBeginPass(MOJOSHADER_D3D11Effect *d3dEffect,
                                      unsigned int pass,
                                      void *d3dDeviceContext,
-                                     MOJOSHADER_d3d11ShaderState *shState)
+                                     MOJOSHADER_D3D11ShaderState *shState)
 {
     int i, j;
     MOJOSHADER_effectPass *curPass;
@@ -537,12 +537,12 @@ void MOJOSHADER_d3d11EffectBeginPass(MOJOSHADER_d3d11Effect *d3dEffect,
         } // if
     } // if
 
-    MOJOSHADER_d3d11EffectCommitChanges(d3dEffect, d3dDeviceContext, shState);
-} // MOJOSHADER_d3d11EffectBeginPass
+    MOJOSHADER_D3D11EffectCommitChanges(d3dEffect, d3dDeviceContext, shState);
+} // MOJOSHADER_D3D11EffectBeginPass
 
-void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
+void MOJOSHADER_D3D11EffectCommitChanges(MOJOSHADER_D3D11Effect *d3dEffect,
                                          void* d3dDeviceContext,
-                                         MOJOSHADER_d3d11ShaderState *shState)
+                                         MOJOSHADER_D3D11ShaderState *shState)
 {
     MOJOSHADER_effectShader *rawVert = d3dEffect->current_vert_raw;
     MOJOSHADER_effectShader *rawFrag = d3dEffect->current_frag_raw;
@@ -647,14 +647,14 @@ void MOJOSHADER_d3d11EffectCommitChanges(MOJOSHADER_d3d11Effect *d3dEffect,
     shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
 } // MOJOSHADER_d3dEffectCommitChanges
 
-void MOJOSHADER_d3d11EffectEndPass(MOJOSHADER_d3d11Effect *d3dEffect)
+void MOJOSHADER_D3D11EffectEndPass(MOJOSHADER_D3D11Effect *d3dEffect)
 {
     assert(d3dEffect->effect->current_pass != -1);
     d3dEffect->effect->current_pass = -1;
-} // MOJOSHADER_d3d11EffectEndPass
+} // MOJOSHADER_D3D11EffectEndPass
 
-void MOJOSHADER_d3d11EffectEnd(MOJOSHADER_d3d11Effect *d3dEffect,
-                               MOJOSHADER_d3d11ShaderState *shState)
+void MOJOSHADER_D3D11EffectEnd(MOJOSHADER_D3D11Effect *d3dEffect,
+                               MOJOSHADER_D3D11ShaderState *shState)
 {
     if (d3dEffect->effect->restore_shader_state)
     {
@@ -668,12 +668,12 @@ void MOJOSHADER_d3d11EffectEnd(MOJOSHADER_d3d11Effect *d3dEffect,
     d3dEffect->effect->state_changes = NULL;
 } // MOJOSHADER_d3dEffectEnd
 
-void* MOJOSHADER_d3d11GetShaderBlob(MOJOSHADER_d3d11Shader *shader)
+void* MOJOSHADER_D3D11GetShaderBlob(MOJOSHADER_D3D11Shader *shader)
 {
     return (shader == NULL) ? NULL : shader->dataBlob;
-} // MOJOSHADER_d3d11GetFunctionHandle
+} // MOJOSHADER_D3D11GetFunctionHandle
 
-int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
+int MOJOSHADER_D3D11GetVertexAttribLocation(MOJOSHADER_D3D11Shader *vert,
                                             MOJOSHADER_usage usage, int index)
 {
     if (vert == NULL)
@@ -690,12 +690,12 @@ int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
 
     // failure, couldn't find requested attribute
     return -1;
-} // MOJOSHADER_d3d11GetVertexAttribLocation
+} // MOJOSHADER_D3D11GetVertexAttribLocation
 
-const char *MOJOSHADER_d3d11GetError(void)
+const char *MOJOSHADER_D3D11GetError(void)
 {
     return error_buffer;
-} // MOJOSHADER_d3d11GetError
+} // MOJOSHADER_D3D11GetError
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 #endif /* SUPPORT_PROFILE_HLSL */
