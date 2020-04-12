@@ -1699,7 +1699,6 @@ void emit_HLSL_TEXBEM(Context *ctx)
     output_line(ctx, "%s", code);
 } // emit_HLSL_TEXBEM
 
-
 void emit_HLSL_TEXBEML(Context *ctx)
 {
     // !!! FIXME: this code counts on the register not having swizzles, etc.
@@ -1726,7 +1725,6 @@ void emit_HLSL_TEXBEML(Context *ctx)
 
 EMIT_HLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2AR) // !!! FIXME
 EMIT_HLSL_OPCODE_UNIMPLEMENTED_FUNC(TEXREG2GB) // !!! FIXME
-
 
 void emit_HLSL_TEXM3X2PAD(Context *ctx)
 {
