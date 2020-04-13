@@ -663,7 +663,6 @@ void emit_HLSL_const_array(Context *ctx, const ConstantsList *clist,
 
     ctx->indent--;
     output_line(ctx, "};");
-    output_line(ctx, "(void) %s[0];", varname);  // stop compiler warnings.
     pop_output(ctx);
 } // emit_HLSL_const_array
 
@@ -2084,7 +2083,7 @@ void emit_HLSL_DSX(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "dFdx(%s)", src0);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "ddx(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_DSX
 
@@ -2092,7 +2091,7 @@ void emit_HLSL_DSY(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "dFdy(%s)", src0);
+    make_HLSL_destarg_assign(ctx, code, sizeof (code), "ddy(%s)", src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_DSY
 
