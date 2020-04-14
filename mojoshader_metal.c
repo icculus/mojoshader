@@ -10,12 +10,12 @@
 #if (defined(__APPLE__) && defined(__MACH__))
 #define PLATFORM_APPLE 1
 #include "TargetConditionals.h"
-#define OBJC_OLD_DISPATCH_PROTOTYPES 1
 #include <objc/message.h>
-#define objc_msgSend_STR ((void* (*)(void*, void*, const char*))objc_msgSend)
-#define objc_msgSend_PTR ((void* (*)(void*, void*, void*))objc_msgSend)
-#define objc_msgSend_INT_PTR ((void* (*)(void*, void*, int, void*))objc_msgSend)
-#define objc_msgSend_PTR_PTR_PTR ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)
+#define msg     ((void* (*)(void*, void*))objc_msgSend)
+#define msg_s   ((void* (*)(void*, void*, const char*))objc_msgSend)
+#define msg_p   ((void* (*)(void*, void*, void*))objc_msgSend)
+#define msg_ip  ((void* (*)(void*, void*, int, void*))objc_msgSend)
+#define msg_ppp ((void* (*)(void*, void*, void*, void*, void*))objc_msgSend)
 #endif /* (defined(__APPLE__) && defined(__MACH__)) */
 
 #define __MOJOSHADER_INTERNAL__ 1
@@ -114,8 +114,8 @@ static void initSelectors(void)
 
 static void *cstr_to_nsstr(const char *str)
 {
-    return objc_msgSend_STR(
-        objc_msgSend(classNSString, selAlloc),
+    return msg_s(
+        msg(classNSString, selAlloc),
         selInitWithUTF8String,
         str
     );
@@ -123,7 +123,7 @@ static void *cstr_to_nsstr(const char *str)
 
 static const char *nsstr_to_cstr(void *str)
 {
-    return (char *) objc_msgSend(str, selUTF8String);
+    return (char *) msg(str, selUTF8String);
 } // nssstr_to_cstr
 
 /* Linked list */
@@ -288,18 +288,18 @@ static inline int next_highest_alignment(int n)
 
 static int UBO_buffer_length(void *buffer)
 {
-    return (int) objc_msgSend(buffer, selLength);
+    return (int) msg(buffer, selLength);
 } // UBO_buffer_length
 
 static void *UBO_buffer_contents(void *buffer)
 {
-    return (void *) objc_msgSend(buffer, selContents);
+    return (void *) msg(buffer, selContents);
 } // UBO_buffer_contents
 
 static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
 {
     void *oldBuffer = ubo->internalBuffers[f];
-    void *newBuffer = objc_msgSend_INT_PTR(
+    void *newBuffer = msg_ip(
         ubo->device,
         selNewBufferWithLength,
         ubo->internalBufferSize,
@@ -315,7 +315,7 @@ static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
         );
 
         // Free the old buffer
-        objc_msgSend(oldBuffer, selRelease);
+        msg(oldBuffer, selRelease);
     } //if
 
     return newBuffer;
@@ -405,7 +405,7 @@ static void dealloc_ubo(MOJOSHADER_mtlShader *shader,
     LL_remove_node(&ubos, shader->ubo, f, d);
     for (int i = 0; i < shader->ubo->numInternalBuffers; i++)
     {
-        objc_msgSend(shader->ubo->internalBuffers[i], selRelease);
+        msg(shader->ubo->internalBuffers[i], selRelease);
         shader->ubo->internalBuffers[i] = NULL;
     } // for
 
@@ -617,7 +617,7 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     // Compile the source into a library
     void *compileError = NULL;
     void *shader_source_ns = cstr_to_nsstr(shader_source);
-    void *library = objc_msgSend_PTR_PTR_PTR(
+    void *library = msg_ppp(
         mtlDevice,
         selNewLibraryWithSource,
         shader_source_ns,
@@ -626,12 +626,12 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     );
     retval->library = library;
     f(shader_source, d);
-    objc_msgSend(shader_source_ns, selRelease);
+    msg(shader_source_ns, selRelease);
 
     if (library == NULL)
     {
         // Set the error
-        void *error_nsstr = objc_msgSend(compileError, selLocalizedDescription);
+        void *error_nsstr = msg(compileError, selLocalizedDescription);
         set_error(nsstr_to_cstr(error_nsstr));
 
         goto compile_shader_fail;
@@ -685,7 +685,7 @@ void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
     } // for
 
     /* Release the library */
-    objc_msgSend(mtlEffect->library, selRelease);
+    msg(mtlEffect->library, selRelease);
 
     f(mtlEffect->shader_indices, d);
     f(mtlEffect->preshader_indices, d);
@@ -941,13 +941,13 @@ void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
         return NULL;
 
     void *fnname = cstr_to_nsstr(shader->parseData->mainfn);
-    void *ret = objc_msgSend_PTR(
+    void *ret = msg_p(
         shader->library,
         selNewFunctionWithName,
         fnname
     );
-    objc_msgSend(fnname, selRelease);
-    objc_msgSend(ret, selRetain);
+    msg(fnname, selRelease);
+    msg(ret, selRetain);
 
     return ret;
 } // MOJOSHADER_mtlGetFunctionHandle
