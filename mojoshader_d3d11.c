@@ -7,6 +7,14 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#ifdef _WIN32
+#define D3D11_NO_HELPERS
+#define CINTERFACE
+#define COBJMACROS
+#include <windows.h>
+#include <d3d11.h>
+#endif
+
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
@@ -28,19 +36,12 @@ static inline void out_of_memory(void)
 #if SUPPORT_PROFILE_HLSL
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
-#define D3D11_NO_HELPERS
-#define CINTERFACE
-#define COBJMACROS
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <d3d11.h>
-
 /* Structs */
 struct MOJOSHADER_D3D11Shader
 {
     const MOJOSHADER_parseData *parseData;
-    void* dataBlob; // ID3DBlob*
-    void* ubo; // ID3D11Buffer*
+    ID3DBlob *dataBlob;
+    ID3D11Buffer *ubo;
 };
 
 typedef struct MOJOSHADER_D3D11Effect
