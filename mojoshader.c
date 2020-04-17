@@ -272,6 +272,15 @@ PREDECLARE_PROFILE(ARB1)
 PREDECLARE_PROFILE(SPIRV)
 #endif
 
+#if !SUPPORT_PROFILE_VULKAN
+#define PROFILE_EMITTER_VULKAN(op)
+#else
+#undef AT_LEAST_ONE_PROFILE
+#define AT_LEAST_ONE_PROFILE 1
+#define PROFILE_EMITTER_VULKAN(op) emit_VULKAN_##op,
+PREDECLARE_PROFILE(VULKAN)
+#endif
+
 #if !AT_LEAST_ONE_PROFILE
 #error No profiles are supported. Fix your build.
 #endif
@@ -3916,4 +3925,3 @@ void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader)
 } // MOJOSHADER_freePreshader
 
 // end of mojoshader.c ...
-
