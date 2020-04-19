@@ -31,7 +31,6 @@ static inline void out_of_memory(void)
     set_error("out of memory");
 } // out_of_memory
 
-#if SUPPORT_PROFILE_VULKAN
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
 /* Structs */
@@ -201,4 +200,3 @@ compile_shader_fail:
 } // MOJOSHADER_mtlCompileEffect
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
-#endif /* SUPPORT_PROFILE_VULKAN */

@@ -163,10 +163,6 @@ typedef Uint64 uint64;
 #define SUPPORT_PROFILE_GLSPIRV 1
 #endif
 
-#ifndef SUPPORT_PROFILE_VULKAN
-#define SUPPORT_PROFILE_VULKAN 1
-#endif
-
 #if SUPPORT_PROFILE_ARB1_NV && !SUPPORT_PROFILE_ARB1
 #error nv profiles require arb1 profile. Fix your build.
 #endif
