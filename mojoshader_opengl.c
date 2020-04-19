@@ -322,6 +322,9 @@ static void set_error(const char *str)
 #if PLATFORM_MACOSX
 static inline int macosx_version_atleast(int x, int y, int z)
 {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
+    return 1;
+#else
     static int checked = 0;
     static int combined = 0;
 
@@ -368,6 +371,7 @@ static inline int macosx_version_atleast(int x, int y, int z)
     } // if
 
     return (combined >= ((x << 16) | (y << 8) | z));
+#endif
 } // macosx_version_atleast
 #endif
 
