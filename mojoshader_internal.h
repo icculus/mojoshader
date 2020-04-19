@@ -11,7 +11,8 @@
 #ifdef MOJOSHADER_USE_SDL_STDLIB
 #include <SDL_assert.h>
 #include <SDL_stdinc.h>
-#ifdef _MSC_VER
+#include <math.h> /* Needed for isinf/isnan :( */
+#ifndef __APPLE__
 #include <malloc.h> /* Needed for alloca :( */
 #endif
 
@@ -54,13 +55,6 @@ typedef Uint64 uint64;
 #define sqrt SDL_sqrt
 
 /* string.h */
-#define strchr SDL_strchr
-#define strcmp SDL_strcmp
-#define strlen SDL_strlen
-#define strncmp SDL_strncmp
-#define strstr SDL_strstr
-
-/* string.h but with undefs for Apple systems */
 #ifdef memcmp
 #undef memcmp
 #endif
@@ -73,6 +67,26 @@ typedef Uint64 uint64;
 #undef memset
 #endif
 #define memset SDL_memset
+#ifdef strchr
+#undef strchr
+#endif
+#define strchr SDL_strchr
+#ifdef strcmp
+#undef strcmp
+#endif
+#define strcmp SDL_strcmp
+#ifdef strlen
+#undef strlen
+#endif
+#define strlen SDL_strlen
+#ifdef strncmp
+#undef strncmp
+#endif
+#define strncmp SDL_strncmp
+#ifdef strstr
+#undef strstr
+#endif
+#define strstr SDL_strstr
 #ifdef strcat
 #undef strcat
 #endif
