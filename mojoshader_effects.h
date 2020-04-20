@@ -626,15 +626,20 @@ typedef struct MOJOSHADER_effect
 
 /* Fully compile/link the shaders found within the effect.
  *
- * // FIXME: Document parameters.
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
+ *   (ctx) contains all the function pointers needed to create and bind shaders
+ *   for a specific backend (OpenGL, Metal, etc).
  *
  * This function returns a MOJOSHADER_effect*, containing effect data which
  *  includes shaders usable with the provided backend.
  *
  * This call is only as thread safe as the backend functions!
  */
-DECLSPEC MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
-                                                     const unsigned int _len,
+DECLSPEC MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *tokenbuf,
+                                                     const unsigned int bufsize,
                                                      const MOJOSHADER_swizzle *swiz,
                                                      const unsigned int swizcount,
                                                      const MOJOSHADER_samplerMap *smap,
