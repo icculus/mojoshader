@@ -37,7 +37,7 @@ extern "C" {
 
 #ifndef MOJOSHADERCALL
 #ifdef _WIN32
-#define MOJOSHADERCALL __stdcall
+#define MOJOSHADERCALL __cdecl
 #else
 #define MOJOSHADERCALL
 #endif
@@ -2779,6 +2779,22 @@ DECLSPEC void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
                                        MOJOSHADER_glShader *pshader);
 
 /*
+ * This queries for the shaders currently bound to the active context.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ * the effects API.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glGetBoundShaders(MOJOSHADER_glShader **vshader,
+                                           MOJOSHADER_glShader **pshader);
+
+/*
  * Set a floating-point uniform value (what Direct3D calls a "constant").
  *
  * There is a single array of 4-float "registers" shared by all vertex shaders.
@@ -3057,6 +3073,36 @@ DECLSPEC void MOJOSHADER_glSetPixelShaderUniformB(unsigned int idx, const int *d
  */
 DECLSPEC void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
                                                   unsigned int bcount);
+
+/*
+ * Fills register pointers with pointers that are directly used to push uniform
+ *  data to the GL shader context.
+ *
+ * This function is really just for the effects API, you should NOT be using
+ *  this unless you know every single line of MojoShader from memory.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                                  float **psf, int **psi, unsigned char **psb);
+
+/*
+ * Tells the context that you are done with the memory mapped by
+ *  MOJOSHADER_glMapUniformBufferMemory().
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glUnmapUniformBufferMemory();
 
 /*
  * Set up the vector for the TEXBEM opcode. Most apps can ignore this API.
