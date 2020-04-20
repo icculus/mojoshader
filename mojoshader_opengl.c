@@ -1896,6 +1896,13 @@ compile_shader_fail:
 } // MOJOSHADER_glCompileShader
 
 
+void MOJOSHADER_glShaderAddRef(MOJOSHADER_glShader *shader)
+{
+    if (shader != NULL)
+        shader->refcount++;
+} // MOJOSHADER_glShaderAddRef
+
+
 const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
                                                 MOJOSHADER_glShader *shader)
 {

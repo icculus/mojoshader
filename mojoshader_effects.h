@@ -487,6 +487,7 @@ typedef void* (MOJOSHADERCALL * MOJOSHADER_compileShaderFunc)(
     const MOJOSHADER_samplerMap *smap,
     const unsigned int smapcount
 );
+typedef void (MOJOSHADERCALL * MOJOSHADER_shaderAddRefFunc)(void* shader);
 typedef void (MOJOSHADERCALL * MOJOSHADER_deleteShaderFunc)(void* shader);
 typedef MOJOSHADER_parseData* (MOJOSHADERCALL * MOJOSHADER_getParseDataFunc)(
     void *shader
@@ -509,6 +510,7 @@ typedef struct MOJOSHADER_effectShaderContext
 {
     /* Shader Backend */
     MOJOSHADER_compileShaderFunc compileShader;
+    MOJOSHADER_shaderAddRefFunc shaderAddRef;
     MOJOSHADER_deleteShaderFunc deleteShader;
     MOJOSHADER_getParseDataFunc getParseData;
     MOJOSHADER_bindShadersFunc bindShaders;

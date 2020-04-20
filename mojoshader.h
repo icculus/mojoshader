@@ -2691,6 +2691,18 @@ DECLSPEC MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *to
                                                          const MOJOSHADER_samplerMap *smap,
                                                          const unsigned int smapcount);
 
+/*
+ * Increments a shader's internal refcount. To decrement the refcount, call
+ *  MOJOSHADER_glDeleteShader().
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glShaderAddRef(MOJOSHADER_glShader *shader);
 
 /*
  * Get the MOJOSHADER_parseData structure that was produced from the

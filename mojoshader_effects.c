@@ -1483,8 +1483,8 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
                 continue;
             } // if
 
-            // FIXME REWRITE: COPY SHADERS?! -flibit
-            clone->objects[i].shader.shader = NULL; /* effect->objects[i].shader.shader */
+            effect->ctx.shaderAddRef(effect->objects[i].shader.shader);
+            clone->objects[i].shader.shader = effect->objects[i].shader.shader;
             pd = clone->ctx.getParseData(clone->objects[i].shader.shader);
 
             siz = sizeof (MOJOSHADER_samplerStateRegister) * effect->objects[i].shader.sampler_count;
