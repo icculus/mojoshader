@@ -480,6 +480,7 @@ typedef struct MOJOSHADER_effectStateChanges
  */
 
 typedef void* (MOJOSHADERCALL * MOJOSHADER_compileShaderFunc)(
+    const char *mainfn,
     const unsigned char *tokenbuf,
     const unsigned int bufsize,
     const MOJOSHADER_swizzle *swiz,
@@ -822,6 +823,20 @@ DECLSPEC void MOJOSHADER_effectEndPass(MOJOSHADER_effect *effect);
  * This call is only as thread safe as the backend functions!
  */
 DECLSPEC void MOJOSHADER_effectEnd(MOJOSHADER_effect *effect);
+
+
+/* Profile-specific functions... */
+
+/*
+ * Compile a MTLLibrary that contains all shaders of the given effect.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ *
+ * Returns NULL on error, the generated MTLLibrary on success.
+ */
+DECLSPEC void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect);
+
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 

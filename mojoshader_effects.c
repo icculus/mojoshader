@@ -654,10 +654,12 @@ static void readsmallobjects(const uint32 numsmallobjects,
         else if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
               || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
+            char mainfn[32];
+            snprintf(mainfn, sizeof(mainfn), "ShaderFunction%u", (unsigned int) index);
             object->shader.technique = -1;
             object->shader.pass = -1;
             // !!! FIXME: check for errors.
-            object->shader.shader = effect->ctx.compileShader(*ptr, length,
+            object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                               swiz, swizcount,
                                                               smap, smapcount);
             pd = effect->ctx.getParseData(object->shader.shader);
@@ -778,8 +780,10 @@ static void readlargeobjects(const uint32 numlargeobjects,
             } // if
             else
             {
+                char mainfn[32];
+                snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) objectIndex);
                 // !!! FIXME: check for errors.
-                object->shader.shader = effect->ctx.compileShader(*ptr, length,
+                object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                                   swiz, swizcount,
                                                                   smap, smapcount);
                 pd = effect->ctx.getParseData(object->shader.shader);
@@ -1612,7 +1616,7 @@ void MOJOSHADER_effectBegin(MOJOSHADER_effect *effect,
     if (effect->restore_shader_state)
     {
         effect->ctx.getBoundShaders(&effect->prev_vertex_shader,
-                                    &effect->prev_vertex_shader);
+                                    &effect->prev_pixel_shader);
     } // if
 } // MOJOSHADER_effectBegin
 
