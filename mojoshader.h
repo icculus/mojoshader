@@ -3329,10 +3329,9 @@ typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
  * This function is only for convenience, specifically for compatibility with
  *  the effects API.
  *
- * Despite the name, this does NOT compile a shader! Instead, this appends the
- *  shader text to a temporary buffer. The actual compilation happens inside
- *  MOJOSHADER_mtlLibraryEnd(), which batch-compiles all buffered shaders into
- *  a single MTLLibrary.
+ * Despite the name, this does NOT compile a shader! The actual compilation
+ *  happens inside MOJOSHADER_mtlCompileLibrary, which batch-compiles an effect
+ *  into a single MTLLibrary.
  *
  *   (mainfn) is the name of the shader's main function.
  *   (tokenbuf) is a buffer of Direct3D shader bytecode.
