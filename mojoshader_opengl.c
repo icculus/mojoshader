@@ -1849,7 +1849,8 @@ int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type)
 } // MOJOSHADER_glMaxUniforms
 
 
-MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
+MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const char *mainfn,
+                                                const unsigned char *tokenbuf,
                                                 const unsigned int bufsize,
                                                 const MOJOSHADER_swizzle *swiz,
                                                 const unsigned int swizcount,

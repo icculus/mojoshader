@@ -26,8 +26,8 @@ typedef struct MOJOSHADER_mtlShader
 {
     const MOJOSHADER_parseData *parseData;
     MOJOSHADER_mtlUniformBuffer *ubo;
+    uint32 refcount;
     void *library; // MTLLibrary*
-    int numInternalBuffers;
 } MOJOSHADER_mtlShader;
 
 // Error state...
@@ -50,228 +50,73 @@ static inline void out_of_memory(void)
 
 /* Structs */
 
-typedef struct MOJOSHADER_mtlEffect
-{
-    MOJOSHADER_effect *effect;
-    unsigned int num_shaders;
-    MOJOSHADER_mtlShader *shaders;
-    unsigned int *shader_indices;
-    unsigned int num_preshaders;
-    unsigned int *preshader_indices;
-    MOJOSHADER_mtlShader *current_vert;
-    MOJOSHADER_mtlShader *current_frag;
-    MOJOSHADER_effectShader *current_vert_raw;
-    MOJOSHADER_effectShader *current_frag_raw;
-    MOJOSHADER_mtlShader *prev_vert;
-    MOJOSHADER_mtlShader *prev_frag;
-    void *library; // MTLLibrary*
-} MOJOSHADER_mtlEffect;
-
 typedef struct MOJOSHADER_mtlUniformBuffer
 {
-    void *device; // MTLDevice*
     int bufferSize;
-    int numInternalBuffers;
     void **internalBuffers; // MTLBuffer*
     int internalBufferSize;
     int internalOffset;
     int currentFrame;
-    int alreadyWritten;
+    int inUse;
 } MOJOSHADER_mtlUniformBuffer;
-
-/* Objective-C selector references */
-
-static void *classNSString = NULL;
-static void *selAlloc = NULL;
-static void *selInitWithUTF8String = NULL;
-static void *selUTF8String = NULL;
-static void *selLength = NULL;
-static void *selContents = NULL;
-static void *selNewBufferWithLength = NULL;
-static void *selRelease = NULL;
-static void *selNewLibraryWithSource = NULL;
-static void *selLocalizedDescription = NULL;
-static void *selNewFunctionWithName = NULL;
-static void *selRetain = NULL;
-
-/* Helper functions */
-
-static void initSelectors(void)
-{
-    classNSString = (void*) objc_getClass("NSString");
-    selAlloc = sel_registerName("alloc");
-    selInitWithUTF8String = sel_registerName("initWithUTF8String:");
-    selUTF8String = sel_registerName("UTF8String");
-    selLength = sel_registerName("length");
-    selContents = sel_registerName("contents");
-    selNewBufferWithLength = sel_registerName("newBufferWithLength:options:");
-    selRelease = sel_registerName("release");
-    selNewLibraryWithSource = sel_registerName("newLibraryWithSource:options:error:");
-    selLocalizedDescription = sel_registerName("localizedDescription");
-    selNewFunctionWithName = sel_registerName("newFunctionWithName:");
-    selRetain = sel_registerName("retain");
-} // initSelectors
-
-static void *cstr_to_nsstr(const char *str)
-{
-    return msg_s(
-        msg(classNSString, selAlloc),
-        selInitWithUTF8String,
-        str
-    );
-} // cstr_to_nsstr
-
-static const char *nsstr_to_cstr(void *str)
-{
-    return (char *) msg(str, selUTF8String);
-} // nssstr_to_cstr
-
-/* Linked list */
-
-typedef struct LLNODE {
-    MOJOSHADER_mtlUniformBuffer *data;
-    struct LLNODE *next;
-} LLNODE;
-
-static LLNODE *LL_append_node(LLNODE **baseNode,
-                              MOJOSHADER_malloc m,
-                              void *d)
-{
-    LLNODE *prev = NULL;
-    LLNODE *node = *baseNode;
-
-    /* Append a node to the linked list. */
-    while (node != NULL)
-    {
-        prev = node;
-        node = node->next;
-    } // while
-    node = m(sizeof(LLNODE), d);
-    node->next = NULL;
-
-    /* Connect the old to the new. */
-    if (prev != NULL)
-        prev->next = node;
-
-    /* Special case for the first node. */
-    if (*baseNode == NULL)
-        *baseNode = node;
-
-    return node;
-} // LL_append_node
-
-static void LL_remove_node(LLNODE **baseNode,
-                           MOJOSHADER_mtlUniformBuffer *data,
-                           MOJOSHADER_free f,
-                           void *d)
-{
-    LLNODE *prev = NULL;
-    LLNODE *node = *baseNode;
-
-    /* Search for node with matching data pointer. */
-    while (node != NULL && node->data != data)
-    {
-        prev = node;
-        node = node->next;
-    } // while
-
-    if (node == NULL)
-    {
-        /* This should never happen. */
-        assert(0);
-    } // if
-
-    /* Clear data pointer. The data must be freed separately. */
-    node->data = NULL;
-
-    /* Connect the old to the new. */
-    if (prev != NULL)
-        prev->next = node->next;
-
-    /* Special cases where the first node is removed. */
-    if (prev == NULL)
-        *baseNode = (node->next != NULL) ? node->next : NULL;
-
-    /* Free the node! */
-    f(node, d);
-} // LL_remove_node
-
-/* Internal register utilities */
 
 // Max entries for each register file type...
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
 
-// The constant register files...
-// !!! FIXME: Man, it kills me how much memory this takes...
-// !!! FIXME:  ... make this dynamically allocated on demand.
-float vs_reg_file_f[MAX_REG_FILE_F * 4];
-int vs_reg_file_i[MAX_REG_FILE_I * 4];
-uint8 vs_reg_file_b[MAX_REG_FILE_B];
-float ps_reg_file_f[MAX_REG_FILE_F * 4];
-int ps_reg_file_i[MAX_REG_FILE_I * 4];
-uint8 ps_reg_file_b[MAX_REG_FILE_B];
-
-static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
-                                       unsigned int *param_loc,
-                                       MOJOSHADER_symbol *symbols,
-                                       unsigned int symbol_count,
-                                       float *regf, int *regi, uint8 *regb)
+typedef struct MOJOSHADER_mtlContext
 {
-    int i, j, r, c;
+    // Allocators...
+    MOJOSHADER_malloc malloc_fn;
+    MOJOSHADER_free free_fn;
+    void *malloc_data;
 
-    i = 0;
-    for (i = 0; i < symbol_count; i++)
-    {
-        const MOJOSHADER_symbol *sym = &symbols[i];
-        const MOJOSHADER_effectValue *param = &params[param_loc[i]].value;
+    // The constant register files...
+    // !!! FIXME: Man, it kills me how much memory this takes...
+    // !!! FIXME:  ... make this dynamically allocated on demand.
+    float vs_reg_file_f[MAX_REG_FILE_F * 4];
+    int vs_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 vs_reg_file_b[MAX_REG_FILE_B];
+    float ps_reg_file_f[MAX_REG_FILE_F * 4];
+    int ps_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 ps_reg_file_b[MAX_REG_FILE_B];
 
-        // float/int registers are vec4, so they have 4 elements each
-        const uint32 start = sym->register_index << 2;
+    // Pointer to the active MTLDevice.
+    void* device;
 
-        if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
-            memcpy(regf + start, param->valuesF, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
-        {
-            // Structs are a whole different world...
-            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
-                memcpy(regf + start, param->valuesF, sym->register_count << 4);
-            else
-            {
-                // Sometimes int/bool parameters get thrown into float registers...
-                j = 0;
-                do
-                {
-                    c = 0;
-                    do
-                    {
-                        regf[start + (j << 2) + c] = (float) param->valuesI[(j << 2) + c];
-                    } while (++c < param->type.columns);
-                } while (++j < sym->register_count);
-            } // else
-        } // else if
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
-            memcpy(regi + start, param->valuesI, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
-        {
-            j = 0;
-            r = 0;
-            do
-            {
-                c = 0;
-                do
-                {
-                    // regb is not a vec4, enjoy that 'start' bitshift! -flibit
-                    regb[(start >> 2) + r + c] = param->valuesI[(j << 2) + c];
-                    c++;
-                } while (c < param->type.columns && ((r + c) < sym->register_count));
-                r += c;
-                j++;
-            } while (r < sym->register_count);
-        } // else if
-    } // for
-} // copy_parameter_data
+    // The maximum number of frames in flight.
+    int framesInFlight;
+
+    // Array of UBOs that are being used in the current frame.
+    MOJOSHADER_mtlUniformBuffer **buffersInUse;
+
+    // The current capacity of the uniform buffer array.
+    int bufferArrayCapacity;
+
+    // The actual number of UBOs used in the current frame.
+    int numBuffersInUse;
+
+    // The currently bound shaders.
+    MOJOSHADER_mtlShader *vertexShader;
+    MOJOSHADER_mtlShader *pixelShader;
+
+    // Objective-C Selectors
+    void* classNSString;
+    void* selAlloc;
+    void* selInitWithUTF8String;
+    void* selUTF8String;
+    void* selLength;
+    void* selContents;
+    void* selNewBufferWithLength;
+    void* selRelease;
+    void* selNewLibraryWithSource;
+    void* selLocalizedDescription;
+    void* selNewFunctionWithName;
+    void* selRetain;
+} MOJOSHADER_mtlContext;
+
+static MOJOSHADER_mtlContext *ctx = NULL;
 
 /* Uniform buffer utilities */
 
@@ -286,22 +131,13 @@ static inline int next_highest_alignment(int n)
     return align * ((n + align - 1) / align);
 } // next_highest_alignment
 
-static int UBO_buffer_length(void *buffer)
+static void* create_ubo_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo,
+                                                               int frame)
 {
-    return (int) msg(buffer, selLength);
-} // UBO_buffer_length
-
-static void *UBO_buffer_contents(void *buffer)
-{
-    return (void *) msg(buffer, selContents);
-} // UBO_buffer_contents
-
-static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
-{
-    void *oldBuffer = ubo->internalBuffers[f];
+    void *oldBuffer = ubo->internalBuffers[frame];
     void *newBuffer = msg_ip(
-        ubo->device,
-        selNewBufferWithLength,
+        ctx->device,
+        ctx->selNewBufferWithLength,
         ubo->internalBufferSize,
         NULL
     );
@@ -309,29 +145,48 @@ static void *UBO_create_backing_buffer(MOJOSHADER_mtlUniformBuffer *ubo, int f)
     {
         // Copy over data from old buffer
         memcpy(
-            UBO_buffer_contents(newBuffer),
-            UBO_buffer_contents(oldBuffer),
-            UBO_buffer_length(oldBuffer)
+            msg(newBuffer, ctx->selContents),
+            msg(oldBuffer, ctx->selContents),
+            (int) msg(oldBuffer, ctx->selLength)
         );
 
         // Free the old buffer
-        msg(oldBuffer, selRelease);
+        msg(oldBuffer, ctx->selRelease);
     } //if
 
     return newBuffer;
-} // UBO_create_backing_buffer
+} // create_ubo_backing_buffer
 
-static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
+static void predraw_ubo(MOJOSHADER_mtlUniformBuffer *ubo)
 {
-    if (!ubo->alreadyWritten)
+    if (!ubo->inUse)
     {
-        ubo->alreadyWritten = 1;
+        ubo->inUse = 1;
+        ctx->buffersInUse[ctx->numBuffersInUse++] = ubo;
+
+        // Double the array size if we run out of room
+        if (ctx->numBuffersInUse >= ctx->bufferArrayCapacity)
+        {
+            int oldlen = ctx->bufferArrayCapacity;
+            ctx->bufferArrayCapacity *= 2;
+            MOJOSHADER_mtlUniformBuffer **tmp;
+            tmp = (MOJOSHADER_mtlUniformBuffer**) ctx->malloc_fn(
+                ctx->bufferArrayCapacity * sizeof(MOJOSHADER_mtlUniformBuffer *),
+                ctx->malloc_data
+            );
+            memcpy(tmp, ctx->buffersInUse, oldlen * sizeof(MOJOSHADER_mtlUniformBuffer *));
+            ctx->free_fn(ctx->buffersInUse, ctx->malloc_data);
+            ctx->buffersInUse = tmp;
+        }
         return;
     } // if
 
     ubo->internalOffset += ubo->bufferSize;
 
-    int buflen = UBO_buffer_length(ubo->internalBuffers[ubo->currentFrame]);
+    int buflen = (int) msg(
+        ubo->internalBuffers[ubo->currentFrame],
+        ctx->selLength
+    );
     if (ubo->internalOffset >= buflen)
     {
         // Double capacity when we're out of room
@@ -339,23 +194,12 @@ static void UBO_predraw(MOJOSHADER_mtlUniformBuffer *ubo)
             ubo->internalBufferSize *= 2;
 
         ubo->internalBuffers[ubo->currentFrame] =
-            UBO_create_backing_buffer(ubo, ubo->currentFrame);
+            create_ubo_backing_buffer(ubo, ubo->currentFrame);
     } //if
-} // UBO_predraw
+} // predraw_ubo
 
-static void UBO_end_frame(MOJOSHADER_mtlUniformBuffer *ubo)
-{
-    ubo->internalOffset = 0;
-    ubo->currentFrame = (ubo->currentFrame + 1) % ubo->numInternalBuffers;
-    ubo->alreadyWritten = 0;
-} // UBO_end_frame
-
-LLNODE *ubos = NULL; /* global linked list of all active UBOs */
-
-static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
-                                               void *mtlDevice,
-                                               MOJOSHADER_malloc m,
-                                               void *d)
+static MOJOSHADER_mtlUniformBuffer* create_ubo(MOJOSHADER_mtlShader *shader,
+                                               MOJOSHADER_malloc m, void* d)
 {
     int uniformCount = shader->parseData->uniform_count;
     if (uniformCount == 0)
@@ -372,27 +216,24 @@ static MOJOSHADER_mtlUniformBuffer *create_ubo(MOJOSHADER_mtlShader *shader,
         buflen += (arrayCount ? arrayCount : 1) * uniformSize;
     } // for
 
-    // Make the UBO
-    MOJOSHADER_mtlUniformBuffer *ubo = (MOJOSHADER_mtlUniformBuffer *) m(sizeof(MOJOSHADER_mtlUniformBuffer), d);
-    ubo->device = mtlDevice;
-    ubo->alreadyWritten = 0;
-    ubo->bufferSize = next_highest_alignment(buflen);
-    ubo->currentFrame = 0;
-    ubo->numInternalBuffers = shader->numInternalBuffers;
-    ubo->internalBufferSize = ubo->bufferSize * 16; // pre-allocate some extra room!
-    ubo->internalBuffers = m(ubo->numInternalBuffers * sizeof(void*), d);
-    ubo->internalOffset = 0;
-    for (int i = 0; i < ubo->numInternalBuffers; i++)
+    // Allocate the UBO
+    MOJOSHADER_mtlUniformBuffer *retval;
+    retval = (MOJOSHADER_mtlUniformBuffer *) m(sizeof(MOJOSHADER_mtlUniformBuffer), d);
+    retval->bufferSize = next_highest_alignment(buflen);
+    retval->internalBufferSize = retval->bufferSize * 16; // pre-allocate some extra room!
+    retval->internalBuffers = m(ctx->framesInFlight * sizeof(void*), d);
+    retval->internalOffset = 0;
+    retval->inUse = 0;
+    retval->currentFrame = 0;
+
+    // Create the backing buffers
+    for (int i = 0; i < ctx->framesInFlight; i++)
     {
-        ubo->internalBuffers[i] = NULL;
-        ubo->internalBuffers[i] = UBO_create_backing_buffer(ubo, i);
+        retval->internalBuffers[i] = NULL; // basically a memset('\0')
+        retval->internalBuffers[i] = create_ubo_backing_buffer(retval, i);
     } // for
 
-    /* Add the UBO to the global list so it can be updated. */
-    LLNODE *node = LL_append_node(&ubos, m, d);
-    node->data = ubo;
-
-    return ubo;
+    return retval;
 } // create_ubo
 
 static void dealloc_ubo(MOJOSHADER_mtlShader *shader,
@@ -402,10 +243,9 @@ static void dealloc_ubo(MOJOSHADER_mtlShader *shader,
     if (shader->ubo == NULL)
         return;
 
-    LL_remove_node(&ubos, shader->ubo, f, d);
-    for (int i = 0; i < shader->ubo->numInternalBuffers; i++)
+    for (int i = 0; i < ctx->framesInFlight; i++)
     {
-        msg(shader->ubo->internalBuffers[i], selRelease);
+        msg(shader->ubo->internalBuffers[i], ctx->selRelease);
         shader->ubo->internalBuffers[i] = NULL;
     } // for
 
@@ -437,20 +277,20 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
     float *regF; int *regI; uint8 *regB;
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        regF = vs_reg_file_f;
-        regI = vs_reg_file_i;
-        regB = vs_reg_file_b;
+        regF = ctx->vs_reg_file_f;
+        regI = ctx->vs_reg_file_i;
+        regB = ctx->vs_reg_file_b;
     } // if
     else
     {
-        regF = ps_reg_file_f;
-        regI = ps_reg_file_i;
-        regB = ps_reg_file_b;
+        regF = ctx->ps_reg_file_f;
+        regI = ctx->ps_reg_file_i;
+        regB = ctx->ps_reg_file_b;
     } // else
 
-    UBO_predraw(shader->ubo);
+    predraw_ubo(shader->ubo);
     void *buf = shader->ubo->internalBuffers[shader->ubo->currentFrame];
-    void *contents = UBO_buffer_contents(buf) + shader->ubo->internalOffset;
+    void *contents = msg(buf, ctx->selContents) + shader->ubo->internalOffset;
 
     int offset = 0;
     for (int i = 0; i < shader->parseData->uniform_count; i++)
@@ -498,64 +338,113 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 
 /* Public API */
 
-MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
-                                                  void *mtlDevice,
-                                                  int numBackingBuffers)
+int MOJOSHADER_mtlCreateContext(void* mtlDevice, int framesInFlight,
+                                MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                void *malloc_d)
 {
-    int i;
-    MOJOSHADER_malloc m = effect->malloc;
-    MOJOSHADER_free f = effect->free;
-    void *d = effect->malloc_data;
-    int current_shader = 0;
-    int current_preshader = 0;
-    int src_len = 0;
+    assert(ctx == NULL);
 
-    // Make sure the Objective-C selectors have been initialized...
-    if (selAlloc == NULL)
-        initSelectors();
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
 
-    MOJOSHADER_mtlEffect *retval = (MOJOSHADER_mtlEffect *) m(sizeof (MOJOSHADER_mtlEffect), d);
-    if (retval == NULL)
+    ctx = (MOJOSHADER_mtlContext *) m(sizeof(MOJOSHADER_mtlContext), malloc_d);
+    if (ctx == NULL)
     {
         out_of_memory();
-        return NULL;
+        goto init_fail;
     } // if
-    memset(retval, '\0', sizeof (MOJOSHADER_mtlEffect));
+
+    memset(ctx, '\0', sizeof (MOJOSHADER_mtlContext));
+    ctx->malloc_fn = m;
+    ctx->free_fn = f;
+    ctx->malloc_data = malloc_d;
+
+    // Initialize the Metal state
+    ctx->device = mtlDevice;
+    ctx->framesInFlight = framesInFlight;
+
+    // Allocate the uniform buffer object array
+    ctx->bufferArrayCapacity = 32; // arbitrary!
+    ctx->buffersInUse = ctx->malloc_fn(
+        ctx->bufferArrayCapacity * sizeof(MOJOSHADER_mtlUniformBuffer *),
+        ctx->malloc_data
+    );
+
+    // Grab references to Objective-C selectors
+    ctx->classNSString = objc_getClass("NSString");
+    ctx->selAlloc = sel_registerName("alloc");
+    ctx->selInitWithUTF8String = sel_registerName("initWithUTF8String:");
+    ctx->selUTF8String = sel_registerName("UTF8String");
+    ctx->selLength = sel_registerName("length");
+    ctx->selContents = sel_registerName("contents");
+    ctx->selNewBufferWithLength = sel_registerName("newBufferWithLength:options:");
+    ctx->selRelease = sel_registerName("release");
+    ctx->selNewLibraryWithSource = sel_registerName("newLibraryWithSource:options:error:");
+    ctx->selLocalizedDescription = sel_registerName("localizedDescription");
+    ctx->selNewFunctionWithName = sel_registerName("newFunctionWithName:");
+    ctx->selRetain = sel_registerName("retain");
+
+    return 0;
+
+init_fail:
+    if (ctx != NULL)
+        f(ctx, malloc_d);
+    return -1;
+} // MOJOSHADER_mtlCreateContext
+
+void MOJOSHADER_mtlDestroyContext(void)
+{
+    ctx->free_fn(ctx->buffersInUse, ctx->malloc_data);
+    ctx->free_fn(ctx, ctx->malloc_data);
+} // MOJOSHADER_mtlDestroyContext
+
+void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect)
+{
+    MOJOSHADER_malloc m = ctx->malloc_fn;
+    MOJOSHADER_free f = ctx->free_fn;
+    void *d = ctx->malloc_data;
+
+    int i, src_len, src_pos, output_len;
+    char *shader_source, *ptr;
+    const char *repl;
+    MOJOSHADER_effectObject *object;
+    MOJOSHADER_mtlShader *shader;
+    void *retval, *compileError, *shader_source_ns;
 
     // Count the number of shaders before allocating
+    src_len = 0;
     for (i = 0; i < effect->object_count; i++)
     {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
-        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-        {
-            if (object->shader.is_preshader)
-                retval->num_preshaders++;
-            else
-            {
-                retval->num_shaders++;
-                src_len += object->shader.shader->output_len;
-            } // else
-        } // if
-    } // for
-
-    // Alloc shader source buffer
-    char *shader_source = (char *) m(src_len + 1, d);
-    memset(shader_source, '\0', src_len + 1);
-    int src_pos = 0;
-
-    // Copy all the source text into the buffer
-    for (i = 0; i < effect->object_count; i++)
-    {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
+        object = &effect->objects[i];
         if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
          || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
             if (!object->shader.is_preshader)
             {
-                int output_len = object->shader.shader->output_len;
-                memcpy(&shader_source[src_pos], object->shader.shader->output, output_len);
-                src_pos += output_len;
+                shader = (MOJOSHADER_mtlShader*) object->shader.shader;
+                src_len += shader->parseData->output_len;
+            } // if
+        } // if
+    } // for
+
+    // Allocate shader source buffer
+    shader_source = (char *) m(src_len + 1, d);
+    memset(shader_source, '\0', src_len + 1);
+    src_pos = 0;
+
+    // Copy all the source text into the buffer
+    for (i = 0; i < effect->object_count; i++)
+    {
+        object = &effect->objects[i];
+        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
+         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
+        {
+            if (!object->shader.is_preshader)
+            {
+                shader = (MOJOSHADER_mtlShader*) object->shader.shader;
+                memcpy(&shader_source[src_pos], shader->parseData->output,
+                                                shader->parseData->output_len);
+                src_pos += shader->parseData->output_len;
             } // if
         } // if
     } // for
@@ -565,13 +454,12 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
     {
         // !!! FIXME: This assumes all texcoord0 attributes in the effect are
         // !!! FIXME:  actually point coords! It ain't necessarily so! -caleb
-        const char *repl = "[[  point_coord  ]]";
-        char *ptr;
+        repl = "[[  point_coord  ]]";
         while ((ptr = strstr(shader_source, "[[user(texcoord0)]]")))
         {
             memcpy(ptr, repl, strlen(repl));
 
-            // float4 -> float2
+            // "float4" -> "float2"
             int spaces = 0;
             while (spaces < 2)
                 if (*(ptr--) == ' ')
@@ -580,386 +468,192 @@ MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
         } // while
     } // if
 
-    // Alloc shader information
-    retval->shaders = (MOJOSHADER_mtlShader *) m(retval->num_shaders * sizeof (MOJOSHADER_mtlShader), d);
-    if (retval->shaders == NULL)
-    {
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shaders, '\0', retval->num_shaders * sizeof (MOJOSHADER_mtlShader));
-    retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof (unsigned int), d);
-    if (retval->shader_indices == NULL)
-    {
-        f(retval->shaders, d);
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shader_indices, '\0', retval->num_shaders * sizeof (unsigned int));
-
-    // Alloc preshader information
-    if (retval->num_preshaders > 0)
-    {
-        retval->preshader_indices = (unsigned int *) m(retval->num_preshaders * sizeof (unsigned int), d);
-        if (retval->preshader_indices == NULL)
-        {
-            f(retval->shaders, d);
-            f(retval->shader_indices, d);
-            f(retval, d);
-            out_of_memory();
-            return NULL;
-        } // if
-        memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof (unsigned int));
-    } // if
-
     // Compile the source into a library
-    void *compileError = NULL;
-    void *shader_source_ns = cstr_to_nsstr(shader_source);
-    void *library = msg_ppp(
-        mtlDevice,
-        selNewLibraryWithSource,
-        shader_source_ns,
-        NULL,
-        &compileError
+    compileError = NULL;
+    shader_source_ns = msg_s(
+        msg(ctx->classNSString, ctx->selAlloc),
+        ctx->selInitWithUTF8String,
+        shader_source
     );
-    retval->library = library;
+    retval = msg_ppp(ctx->device, ctx->selNewLibraryWithSource,
+                        shader_source_ns, NULL, &compileError);
     f(shader_source, d);
-    msg(shader_source_ns, selRelease);
+    msg(shader_source_ns, ctx->selRelease);
 
-    if (library == NULL)
+    if (retval == NULL)
     {
-        // Set the error
-        void *error_nsstr = msg(compileError, selLocalizedDescription);
-        set_error(nsstr_to_cstr(error_nsstr));
-
-        goto compile_shader_fail;
+        compileError = msg(compileError, ctx->selLocalizedDescription);
+        set_error((char*) msg(compileError, ctx->selUTF8String));
+        return NULL;
     } // if
 
-    // Run through the shaders again, tracking the object indices
+    // Run through the shaders again, setting the library reference
     for (i = 0; i < effect->object_count; i++)
     {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
+        object = &effect->objects[i];
         if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
          || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
             if (object->shader.is_preshader)
-            {
-                retval->preshader_indices[current_preshader++] = i;
                 continue;
-            } // if
 
-            MOJOSHADER_mtlShader *curshader = &retval->shaders[current_shader];
-            curshader->parseData = object->shader.shader;
-            curshader->numInternalBuffers = numBackingBuffers;
-            curshader->ubo = create_ubo(curshader, mtlDevice, m, d);
-            curshader->library = library;
-
-            retval->shader_indices[current_shader] = i;
-
-            current_shader++;
+            ((MOJOSHADER_mtlShader*) object->shader.shader)->library = retval;
         } // if
     } // for
 
-    retval->effect = effect;
+    return retval;
+} // MOJOSHADER_mtlCompileLibrary
+
+void MOJOSHADER_mtlDeleteLibrary(void *library)
+{
+    msg(library, ctx->selRelease);
+} // MOJOSHADER_mtlDeleteLibrary
+
+MOJOSHADER_mtlShader *MOJOSHADER_mtlCompileShader(const char *mainfn,
+                                                  const unsigned char *tokenbuf,
+                                                  const unsigned int bufsize,
+                                                  const MOJOSHADER_swizzle *swiz,
+                                                  const unsigned int swizcount,
+                                                  const MOJOSHADER_samplerMap *smap,
+                                                  const unsigned int smapcount)
+{
+    MOJOSHADER_malloc m = ctx->malloc_fn;
+    MOJOSHADER_free f = ctx->free_fn;
+    void *d = ctx->malloc_data;
+
+    const MOJOSHADER_parseData *pd = MOJOSHADER_parse("metal", mainfn, tokenbuf,
+                                                     bufsize, swiz, swizcount,
+                                                     smap, smapcount, m, f, d);
+    if (pd->error_count > 0)
+    {
+        // !!! FIXME: put multiple errors in the buffer? Don't use
+        // !!! FIXME:  MOJOSHADER_mtlGetError() for this?
+        set_error(pd->errors[0].error);
+        goto compile_shader_fail;
+    } // if
+
+    MOJOSHADER_mtlShader *retval = (MOJOSHADER_mtlShader *) m(sizeof(MOJOSHADER_mtlShader), d);
+    if (retval == NULL)
+        goto compile_shader_fail;
+
+    retval->parseData = pd;
+    retval->refcount = 1;
+    retval->ubo = create_ubo(retval, m, d);
+    retval->library = NULL; // populated by MOJOSHADER_mtlCompileLibrary
+
     return retval;
 
 compile_shader_fail:
-    f(retval->shader_indices, d);
-    f(retval->shaders, d);
+    MOJOSHADER_freeParseData(retval->parseData);
     f(retval, d);
     return NULL;
-} // MOJOSHADER_mtlCompileEffect
+} // MOJOSHADER_mtlCompileShader
 
-void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect)
+void MOJOSHADER_mtlShaderAddRef(MOJOSHADER_mtlShader *shader)
 {
-    MOJOSHADER_free f = mtlEffect->effect->free;
-    void *d = mtlEffect->effect->malloc_data;
+    if (shader != NULL)
+        shader->refcount++;
+} // MOJOSHADER_mtlShaderAddRef
 
-    int i;
-    for (i = 0; i < mtlEffect->num_shaders; i++)
-    {
-        /* Release the uniform buffers */
-        dealloc_ubo(&mtlEffect->shaders[i], f, d);
-    } // for
-
-    /* Release the library */
-    msg(mtlEffect->library, selRelease);
-
-    f(mtlEffect->shader_indices, d);
-    f(mtlEffect->preshader_indices, d);
-    f(mtlEffect, d);
-} // MOJOSHADER_mtlDeleteEffect
-
-
-void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
-                               unsigned int *numPasses,
-                               int saveShaderState,
-                               MOJOSHADER_effectStateChanges *stateChanges)
+void MOJOSHADER_mtlDeleteShader(MOJOSHADER_mtlShader *shader)
 {
-    *numPasses = mtlEffect->effect->current_technique->pass_count;
-    mtlEffect->effect->restore_shader_state = saveShaderState;
-    mtlEffect->effect->state_changes = stateChanges;
-
-    if (mtlEffect->effect->restore_shader_state)
+    if (shader != NULL)
     {
-        mtlEffect->prev_vert = mtlEffect->current_vert;
-        mtlEffect->prev_frag = mtlEffect->current_frag;
+        if (shader->refcount > 1)
+            shader->refcount--;
+        else
+        {
+            dealloc_ubo(shader, ctx->free_fn, ctx->malloc_data);
+            ctx->free_fn(shader, ctx->malloc_data);
+        } // else
     } // if
-} // MOJOSHADER_mtlEffectBegin
+} // MOJOSHADER_mtlDeleteShader
 
-// Predeclare
-void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       MOJOSHADER_mtlShaderState *shState);
-
-void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
-                                   unsigned int pass,
-                                   MOJOSHADER_mtlShaderState *shState)
+const MOJOSHADER_parseData *MOJOSHADER_mtlGetShaderParseData(
+                                                MOJOSHADER_mtlShader *shader)
 {
-    int i, j;
-    MOJOSHADER_effectPass *curPass;
-    MOJOSHADER_effectState *state;
-    MOJOSHADER_effectShader *rawVert = mtlEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = mtlEffect->current_frag_raw;
-    int has_preshader = 0;
+    return (shader != NULL) ? shader->parseData : NULL;
+} // MOJOSHADER_mtlGetParseData
 
-    assert(shState != NULL);
-    assert(mtlEffect->effect->current_pass == -1);
-    mtlEffect->effect->current_pass = pass;
-    curPass = &mtlEffect->effect->current_technique->passes[pass];
+void MOJOSHADER_mtlBindShaders(MOJOSHADER_mtlShader *vshader,
+                               MOJOSHADER_mtlShader *pshader)
+{
+    // Use the last bound shaders in case of NULL
+    if (vshader != NULL)
+        ctx->vertexShader = vshader;
 
-    // !!! FIXME: I bet this could be stored at parse/compile time. -flibit
-    for (i = 0; i < curPass->state_count; i++)
-    {
-        state = &curPass->states[i];
-        #define ASSIGN_SHADER(stype, raw, mtls) \
-            (state->type == stype) \
-            { \
-                j = 0; \
-                do \
-                { \
-                    if (*state->value.valuesI == mtlEffect->shader_indices[j]) \
-                    { \
-                        raw = &mtlEffect->effect->objects[*state->value.valuesI].shader; \
-                        mtlEffect->mtls = &mtlEffect->shaders[j]; \
-                        break; \
-                    } \
-                    else if (mtlEffect->num_preshaders > 0 \
-                          && *state->value.valuesI == mtlEffect->preshader_indices[j]) \
-                    { \
-                        raw = &mtlEffect->effect->objects[*state->value.valuesI].shader; \
-                        has_preshader = 1; \
-                        break; \
-                    } \
-                } while (++j < mtlEffect->num_shaders); \
-            }
-        if ASSIGN_SHADER(MOJOSHADER_RS_VERTEXSHADER, rawVert, current_vert)
-        else if ASSIGN_SHADER(MOJOSHADER_RS_PIXELSHADER, rawFrag, current_frag)
-        #undef ASSIGN_SHADER
-    } // for
+    if (pshader != NULL)
+        ctx->pixelShader = pshader;
+} // MOJOSHADER_mtlBindShaders
 
-    mtlEffect->effect->state_changes->render_state_changes = curPass->states;
-    mtlEffect->effect->state_changes->render_state_change_count = curPass->state_count;
+void MOJOSHADER_mtlGetBoundShaders(MOJOSHADER_mtlShader **vshader,
+                                   MOJOSHADER_mtlShader **pshader)
+{
+    *vshader = ctx->vertexShader;
+    *pshader = ctx->pixelShader;
+} // MOJOSHADER_mtlGetBoundShaders
 
-    mtlEffect->current_vert_raw = rawVert;
-    mtlEffect->current_frag_raw = rawFrag;
+void MOJOSHADER_mtlMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                          float **psf, int **psi, unsigned char **psb)
+{
+    *vsf = ctx->vs_reg_file_f;
+    *vsi = ctx->vs_reg_file_i;
+    *vsb = ctx->vs_reg_file_b;
+    *psf = ctx->ps_reg_file_f;
+    *psi = ctx->ps_reg_file_i;
+    *psb = ctx->ps_reg_file_b;
+} // MOJOSHADER_mtlMapUniformBufferMemory
 
-    /* If this effect pass has an array of shaders, we get to wait until
-     * CommitChanges to actually bind the final shaders.
-     * -flibit
+void MOJOSHADER_mtlUnmapUniformBufferMemory()
+{
+    /* This has nothing to do with unmapping memory
+     * and everything to do with updating uniform
+     * buffers with the latest parameter contents.
      */
-    if (!has_preshader)
-    {
-        if (mtlEffect->current_vert != NULL)
-        {
-            MOJOSHADER_mtlShader *vert = mtlEffect->current_vert;
-            shState->vertexShader = vert;
-            shState->vertexUniformBuffer = get_uniform_buffer(vert);
-            shState->vertexUniformOffset = get_uniform_offset(vert);
-        } // if
+    update_uniform_buffer(ctx->vertexShader);
+    update_uniform_buffer(ctx->pixelShader);
+} // MOJOSHADER_mtlUnmapUniformBufferMemory
 
-        if (mtlEffect->current_frag != NULL)
-        {
-            MOJOSHADER_mtlShader *frag = mtlEffect->current_frag;
-            shState->fragmentShader = frag;
-            shState->fragmentUniformBuffer = get_uniform_buffer(frag);
-            shState->fragmentUniformOffset = get_uniform_offset(frag);
-        } // if
-
-        if (mtlEffect->current_vert_raw != NULL)
-        {
-            mtlEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            mtlEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (mtlEffect->current_frag_raw != NULL)
-        {
-            mtlEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            mtlEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    MOJOSHADER_mtlEffectCommitChanges(mtlEffect, shState);
-} // MOJOSHADER_mtlEffectBeginPass
-
-void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                       MOJOSHADER_mtlShaderState *shState)
+void MOJOSHADER_mtlGetUniformBuffers(void **vbuf, int *voff,
+                                     void **pbuf, int *poff)
 {
-    MOJOSHADER_effectShader *rawVert = mtlEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = mtlEffect->current_frag_raw;
-
-    /* Used for shader selection from preshaders */
-    int i, j;
-    MOJOSHADER_effectValue *param;
-    float selector;
-    int shader_object;
-    int selector_ran = 0;
-
-    /* For effect passes with arrays of shaders, we have to run a preshader
-     * that determines which shader to use, based on a parameter's value.
-     * -flibit
-     */
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    #define SELECT_SHADER_FROM_PRESHADER(raw, mtls) \
-        if (raw != NULL && raw->is_preshader) \
-        { \
-            i = 0; \
-            do \
-            { \
-                param = &mtlEffect->effect->params[raw->preshader_params[i]].value; \
-                for (j = 0; j < (param->value_count >> 2); j++) \
-                    memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index + j, \
-                           param->valuesI + (j << 2), \
-                           param->type.columns << 2); \
-            } while (++i < raw->preshader->symbol_count); \
-            MOJOSHADER_runPreshader(raw->preshader, &selector); \
-            shader_object = mtlEffect->effect->params[raw->params[0]].value.valuesI[(int) selector]; \
-            raw = &mtlEffect->effect->objects[shader_object].shader; \
-            i = 0; \
-            do \
-            { \
-                if (shader_object == mtlEffect->shader_indices[i]) \
-                { \
-                    mtls = &mtlEffect->shaders[i]; \
-                    break; \
-                } \
-            } while (++i < mtlEffect->num_shaders); \
-            selector_ran = 1; \
-        }
-    SELECT_SHADER_FROM_PRESHADER(rawVert, mtlEffect->current_vert)
-    SELECT_SHADER_FROM_PRESHADER(rawFrag, mtlEffect->current_frag)
-    #undef SELECT_SHADER_FROM_PRESHADER
-    if (selector_ran)
-    {
-        if (mtlEffect->current_vert != NULL)
-            shState->vertexShader = mtlEffect->current_vert;
-
-        if (mtlEffect->current_frag != NULL)
-            shState->fragmentShader = mtlEffect->current_frag;
-
-        if (mtlEffect->current_vert_raw != NULL)
-        {
-            mtlEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            mtlEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (mtlEffect->current_frag_raw != NULL)
-        {
-            mtlEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            mtlEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    /* This is where parameters are copied into the constant buffers.
-     * If you're looking for where things slow down immensely, look at
-     * the copy_parameter_data() and MOJOSHADER_runPreshader() functions.
-     * -flibit
-     */
-    // !!! FIXME: We're just copying everything every time. Blech. -flibit
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    // !!! FIXME: Will the preshader ever want int/bool registers? -flibit
-    #define COPY_PARAMETER_DATA(raw, stage) \
-        if (raw != NULL) \
-        { \
-            copy_parameter_data(mtlEffect->effect->params, raw->params, \
-                                raw->shader->symbols, \
-                                raw->shader->symbol_count, \
-                                stage##_reg_file_f, \
-                                stage##_reg_file_i, \
-                                stage##_reg_file_b); \
-            if (raw->shader->preshader) \
-            { \
-                copy_parameter_data(mtlEffect->effect->params, raw->preshader_params, \
-                                    raw->shader->preshader->symbols, \
-                                    raw->shader->preshader->symbol_count, \
-                                    raw->shader->preshader->registers, \
-                                    NULL, \
-                                    NULL); \
-                MOJOSHADER_runPreshader(raw->shader->preshader, stage##_reg_file_f); \
-            } \
-        }
-    COPY_PARAMETER_DATA(rawVert, vs)
-    COPY_PARAMETER_DATA(rawFrag, ps)
-    #undef COPY_PARAMETER_DATA
-
-    update_uniform_buffer(shState->vertexShader);
-    shState->vertexUniformBuffer = get_uniform_buffer(shState->vertexShader);
-    shState->vertexUniformOffset = get_uniform_offset(shState->vertexShader);
-
-    update_uniform_buffer(shState->fragmentShader);
-    shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
-    shState->fragmentUniformOffset = get_uniform_offset(shState->fragmentShader);
-} // MOJOSHADER_mtlEffectCommitChanges
-
-
-void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_mtlEffect *mtlEffect)
-{
-    assert(mtlEffect->effect->current_pass != -1);
-    mtlEffect->effect->current_pass = -1;
-} // MOJOSHADER_mtlEffectEndPass
-
-
-void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
-                             MOJOSHADER_mtlShaderState *shState)
-{
-    if (mtlEffect->effect->restore_shader_state)
-    {
-        mtlEffect->effect->restore_shader_state = 0;
-        shState->vertexShader = mtlEffect->prev_vert;
-        shState->fragmentShader = mtlEffect->prev_frag;
-        shState->vertexUniformBuffer = get_uniform_buffer(mtlEffect->prev_vert);
-        shState->fragmentUniformBuffer = get_uniform_buffer(mtlEffect->prev_frag);
-        shState->vertexUniformOffset = get_uniform_offset(mtlEffect->prev_vert);
-        shState->fragmentUniformOffset = get_uniform_offset(mtlEffect->prev_frag);
-    } // if
-
-    mtlEffect->effect->state_changes = NULL;
-} // MOJOSHADER_mtlEffectEnd
+    *vbuf = get_uniform_buffer(ctx->vertexShader);
+    *voff = get_uniform_offset(ctx->vertexShader);
+    *pbuf = get_uniform_buffer(ctx->pixelShader);
+    *poff = get_uniform_offset(ctx->pixelShader);
+} // MOJOSHADER_mtlGetUniformBuffers
 
 void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
 {
     if (shader == NULL)
         return NULL;
 
-    void *fnname = cstr_to_nsstr(shader->parseData->mainfn);
+    void *fnname = msg_s(
+        msg(ctx->classNSString, ctx->selAlloc),
+        ctx->selInitWithUTF8String,
+        shader->parseData->mainfn
+    );
     void *ret = msg_p(
         shader->library,
-        selNewFunctionWithName,
+        ctx->selNewFunctionWithName,
         fnname
     );
-    msg(fnname, selRelease);
-    msg(ret, selRetain);
+    msg(fnname, ctx->selRelease);
+    msg(ret, ctx->selRetain);
 
     return ret;
 } // MOJOSHADER_mtlGetFunctionHandle
 
 void MOJOSHADER_mtlEndFrame()
 {
-    LLNODE *node = ubos;
-    while (node != NULL)
+    for (int i = 0; i < ctx->numBuffersInUse; i += 1)
     {
-        UBO_end_frame((MOJOSHADER_mtlUniformBuffer *) node->data);
-        node = node->next;
-    } // while
+        MOJOSHADER_mtlUniformBuffer *buf = ctx->buffersInUse[i];
+        buf->internalOffset = 0;
+        buf->currentFrame = (buf->currentFrame + 1) % ctx->framesInFlight;
+        buf->inUse = 0;
+    } // for
+    ctx->numBuffersInUse = 0;
 } // MOJOSHADER_mtlEndFrame
 
 int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
@@ -970,8 +664,8 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
 
     for (int i = 0; i < vert->parseData->attribute_count; i++)
     {
-        if (vert->parseData->attributes[i].usage == usage
-            && vert->parseData->attributes[i].index == index)
+        if (vert->parseData->attributes[i].usage == usage &&
+            vert->parseData->attributes[i].index == index)
         {
             return i;
         } // if
