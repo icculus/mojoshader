@@ -533,6 +533,10 @@ typedef struct MOJOSHADER_effectShaderContext
 typedef struct MOJOSHADER_effect
 {
     /*
+     * Public members. These are the fields your application cares about!
+     */
+
+    /*
      * The number of elements pointed to by (errors).
      */
     int error_count;
@@ -570,16 +574,6 @@ typedef struct MOJOSHADER_effect
     MOJOSHADER_effectTechnique *techniques;
 
     /*
-     * The technique currently being rendered by this effect.
-     */
-    const MOJOSHADER_effectTechnique *current_technique;
-
-    /*
-     * The index of the current pass being rendered by this effect.
-     */
-    int current_pass;
-
-    /*
      * The number of elements pointed to by (objects).
      */
     int object_count;
@@ -590,6 +584,25 @@ typedef struct MOJOSHADER_effect
      * This can be NULL on error or if (object_count) is zero.
      */
     MOJOSHADER_effectObject *objects;
+
+    /*
+     * Semi-public members. These might be useful, but are better to access from
+     * a function, not directly.
+     */
+
+    /*
+     * The technique currently being rendered by this effect.
+     */
+    const MOJOSHADER_effectTechnique *current_technique;
+
+    /*
+     * The index of the current pass being rendered by this effect.
+     */
+    int current_pass;
+
+    /*
+     * Private Members. Do not touch anything below this line!
+     */
 
     /*
      * Value used to determine whether or not to restore the previous shader
