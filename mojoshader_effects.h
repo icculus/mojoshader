@@ -837,6 +837,11 @@ DECLSPEC void MOJOSHADER_effectEnd(MOJOSHADER_effect *effect);
  */
 DECLSPEC void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect);
 
+/*
+ * Free the MTLLibrary given by (library).
+ */
+DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
+
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 

@@ -3322,6 +3322,57 @@ DECLSPEC void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
 
 /*
+ * Prepare MojoShader to manage Metal shaders.
+ *
+ * This is really just for the effects framework. Don't call this unless
+ *  you know for sure that you need it.
+ *
+ * You must call this only once, AFTER you have created your MTLDevice.
+ *  This function will lookup the Objective-C selectors it needs, after which
+ *  it may call them at any time until you call MOJOSHADER_mtlDestroyContext().
+ *
+ * (device) refers to the active MTLDevice, cast from id<MTLDevice> to void*.
+ *
+ * (framesInFlight) is the maximum number of frames that can be processed
+ *  simultaneously. This determines how many uniform buffers will be
+ *  allocated for each shader.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
+ *
+ * The context created by this function will automatically become the current
+ *  context. No further action is needed by the caller.
+ *
+ * Returns 0 on success or -1 on failure.
+ */
+DECLSPEC int MOJOSHADER_mtlCreateContext(void *mtlDevice, int framesInFlight,
+                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                         void *malloc_d);
+
+/*
+ * Get any error state we might have picked up, such as failed shader
+ *  compilation.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ */
+DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+
+/*
  * Transform a buffer of Direct3D shader bytecode into a struct containing
  *  Metal shader metadata.
  *
@@ -3429,37 +3480,16 @@ DECLSPEC void MOJOSHADER_mtlMapUniformBufferMemory(float **vsf, int **vsi, unsig
 DECLSPEC void MOJOSHADER_mtlUnmapUniformBufferMemory();
 
 /*
- * Prepare MojoShader to manage Metal shaders.
+ * Return the location of a vertex attribute for the given shader.
  *
- * This is really just for the effects framework. Don't call this unless
- *  you know for sure that you need it.
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
  *
- * You must call this only once, AFTER you have created your MTLDevice.
- *  This function will lookup the Objective-C selectors it needs, after which
- *  it may call them at any time until you call MOJOSHADER_mtlDestroyContext().
- *
- * (device) refers to the active MTLDevice, cast from id<MTLDevice> to void*.
- *
- * (framesInFlight) is the maximum number of frames that can be processed
- *  simultaneously. This determines how many uniform buffers will be
- *  allocated for each shader.
- *
- * As MojoShader requires some memory to be allocated, you may provide a
- *  custom allocator to this function, which will be used to allocate/free
- *  memory. They function just like malloc() and free(). We do not use
- *  realloc(). If you don't care, pass NULL in for the allocator functions.
- *  If your allocator needs instance-specific data, you may supply it with the
- *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
- *  functions.
- *
- * The context created by this function will automatically become the current
- *  context. No further action is needed by the caller.
- *
- * Returns 0 on success or -1 on failure.
+ * The return value is the index of the attribute to be used to create
+ *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
  */
-DECLSPEC int MOJOSHADER_mtlCreateContext(void *mtlDevice, int framesInFlight,
-                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                         void *malloc_d);
+int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index);
 
 /*
  * Free the resources of a compiled shader. This will delete the MojoShader
@@ -3472,16 +3502,6 @@ DECLSPEC int MOJOSHADER_mtlCreateContext(void *mtlDevice, int framesInFlight,
  *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
  */
 DECLSPEC void MOJOSHADER_mtlDeleteShader(MOJOSHADER_mtlShader *shader);
-
-/*
- * Deinitialize MojoShader's Metal shader management.
- *
- * This will clean up resources previously allocated for the active context.
- *
- * This will NOT clean up shaders you created! Please destroy all shaders
- *  before calling this function.
- */
-DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
 
 /*
  * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
@@ -3499,39 +3519,14 @@ DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
 DECLSPEC void MOJOSHADER_mtlEndFrame(void);
 
 /*
- * Return the location of a vertex attribute for the given shader.
+ * Deinitialize MojoShader's Metal shader management.
  *
- * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
- *  be MOJOSHADER_USAGE_COLOR and 1.
+ * This will clean up resources previously allocated for the active context.
  *
- * The return value is the index of the attribute to be used to create
- *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
+ * This will NOT clean up shaders you created! Please destroy all shaders
+ *  before calling this function.
  */
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
-                                          MOJOSHADER_usage usage, int index);
-
-/*
- * Free the MTLLibrary given by (library).
- */
-DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
-
-/*
- * Get any error state we might have picked up, such as failed shader
- *  compilation.
- *
- * Returns a human-readable string. This string is for debugging purposes, and
- *  not guaranteed to be localized, coherent, or user-friendly in any way.
- *  It's for programmers!
- *
- * The latest error may remain between calls. New errors replace any existing
- *  error. Don't check this string for a sign that an error happened, check
- *  return codes instead and use this for explanation when debugging.
- *
- * Do not free the returned string: it's a pointer to a static internal
- *  buffer. Do not keep the pointer around, either, as it's likely to become
- *  invalid as soon as you call into MojoShader again.
- */
-DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
 
 
 /* Effects interface... */
