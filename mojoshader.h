@@ -2685,8 +2685,7 @@ DECLSPEC int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
  *
  * Compiled shaders from this function may not be shared between contexts.
  */
-DECLSPEC MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const char *mainfn,
-                                                         const unsigned char *tokenbuf,
+DECLSPEC MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *tokenbuf,
                                                          const unsigned int bufsize,
                                                          const MOJOSHADER_swizzle *swiz,
                                                          const unsigned int swizcount,
