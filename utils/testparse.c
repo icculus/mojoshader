@@ -750,7 +750,7 @@ static void MOJOSHADERCALL effect_delete_shader(void *shader)
 } // effect_delete_shader
 
 
-MOJOSHADER_parseData* MOJOSHADERCALL effect_get_parse_data(void *shader)
+static MOJOSHADER_parseData* MOJOSHADERCALL effect_get_parse_data(void *shader)
 {
     return (MOJOSHADER_parseData*) shader;
 } // effect_get_parse_data
