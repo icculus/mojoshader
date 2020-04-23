@@ -743,6 +743,7 @@ static void* MOJOSHADERCALL effect_compile_shader(
                                                     Malloc, Free, NULL);
 } // effect_compile_shader
 
+
 static void MOJOSHADERCALL effect_delete_shader(void *shader)
 {
     MOJOSHADER_freeParseData((MOJOSHADER_parseData*) shader);
