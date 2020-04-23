@@ -3488,7 +3488,7 @@ DECLSPEC void MOJOSHADER_mtlUnmapUniformBufferMemory();
  * The return value is the index of the attribute to be used to create
  *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
  */
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+DECLSPEC int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
                                           MOJOSHADER_usage usage, int index);
 
 /*
