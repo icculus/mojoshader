@@ -3534,6 +3534,38 @@ DECLSPEC void MOJOSHADER_mtlEndFrame(void);
 DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
 
 
+/* D3D11 interface... */
+
+typedef struct MOJOSHADER_d3d11Shader MOJOSHADER_d3d11Shader;
+
+/* FIXME: Document me! */
+int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
+                                  MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                  void *malloc_d);
+void MOJOSHADER_d3d11DestroyContext(void);
+MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
+                                                      const unsigned char *tokenbuf,
+                                                      const unsigned int bufsize,
+                                                      const MOJOSHADER_swizzle *swiz,
+                                                      const unsigned int swizcount,
+                                                      const MOJOSHADER_samplerMap *smap,
+                                                      const unsigned int smapcount);
+void MOJOSHADER_d3d11ShaderAddRef(MOJOSHADER_d3d11Shader *shader);
+void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader);
+const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
+                                                MOJOSHADER_d3d11Shader *shader);
+void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
+                                 MOJOSHADER_d3d11Shader *pshader);
+void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
+                                     MOJOSHADER_d3d11Shader **pshader);
+void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                            float **psf, int **psi, unsigned char **psb);
+void MOJOSHADER_d3d11UnmapUniformBufferMemory();
+int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
+                                            MOJOSHADER_usage usage, int index);
+const char *MOJOSHADER_d3d11GetError(void);
+
+
 /* Effects interface... */
 #include "mojoshader_effects.h"
 
