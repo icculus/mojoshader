@@ -613,7 +613,6 @@ static void readsmallobjects(const uint32 numsmallobjects,
     int i, j;
     MOJOSHADER_parseData *pd;
     MOJOSHADER_malloc m = effect->ctx.m;
-    MOJOSHADER_free f = effect->ctx.f;
     void *d = effect->ctx.malloc_data;
 
     if (numsmallobjects == 0) return;
@@ -1624,7 +1623,7 @@ void MOJOSHADER_effectBegin(MOJOSHADER_effect *effect,
 void MOJOSHADER_effectBeginPass(MOJOSHADER_effect *effect,
                                 unsigned int pass)
 {
-    int i, j;
+    int i;
     MOJOSHADER_effectPass *curPass;
     MOJOSHADER_effectState *state;
     MOJOSHADER_effectShader *rawVert = effect->current_vert_raw;
