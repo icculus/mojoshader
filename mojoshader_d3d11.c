@@ -18,6 +18,14 @@
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
 
+typedef struct MOJOSHADER_d3d11Shader
+{
+    const MOJOSHADER_parseData *parseData;
+    void *ubo; // ID3DBuffer*
+    uint32 refcount;
+    void* dataBlob; // ID3DBlob*
+} MOJOSHADER_d3d11Shader;
+
 // Error state...
 static char error_buffer[1024] = { '\0' };
 
@@ -36,107 +44,62 @@ static inline void out_of_memory(void)
 #if SUPPORT_PROFILE_HLSL
 #ifdef MOJOSHADER_EFFECT_SUPPORT
 
+#define D3D11_NO_HELPERS
+#define CINTERFACE
+#define COBJMACROS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <D3D11.h>
+
+typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
+    LPCVOID pSrcData,
+    SIZE_T SrcDataSize,
+    LPCSTR pSourceName,
+    const D3D_SHADER_MACRO *pDefines,
+    ID3DInclude *pInclude,
+    LPCSTR pEntrypoint,
+    LPCSTR pTarget,
+    UINT Flags1,
+    UINT Flags2,
+    ID3DBlob **ppCode,
+    ID3DBlob **ppErrorMsgs
+);
+
 /* Structs */
-struct MOJOSHADER_D3D11Shader
-{
-    const MOJOSHADER_parseData *parseData;
-    ID3DBlob *dataBlob;
-    ID3D11Buffer *ubo;
-};
-
-typedef struct MOJOSHADER_D3D11Effect
-{
-    MOJOSHADER_effect *effect;
-    unsigned int num_shaders;
-    MOJOSHADER_D3D11Shader *shaders;
-    unsigned int *shader_indices;
-    unsigned int num_preshaders;
-    unsigned int *preshader_indices;
-    MOJOSHADER_D3D11Shader *current_vert;
-    MOJOSHADER_D3D11Shader *current_frag;
-    MOJOSHADER_effectShader *current_vert_raw;
-    MOJOSHADER_effectShader *current_frag_raw;
-    MOJOSHADER_D3D11Shader *prev_vert;
-    MOJOSHADER_D3D11Shader *prev_frag;
-} MOJOSHADER_D3D11Effect;
-
-/* Internal register utilities */
 
 // Max entries for each register file type...
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
 
-// The constant register files...
-// !!! FIXME: Man, it kills me how much memory this takes...
-// !!! FIXME:  ... make this dynamically allocated on demand.
-float vs_reg_file_f[MAX_REG_FILE_F * 4];
-int vs_reg_file_i[MAX_REG_FILE_I * 4];
-uint8 vs_reg_file_b[MAX_REG_FILE_B];
-float ps_reg_file_f[MAX_REG_FILE_F * 4];
-int ps_reg_file_i[MAX_REG_FILE_I * 4];
-uint8 ps_reg_file_b[MAX_REG_FILE_B];
-
-// !!! FIXME: Move this out to mojoshader_internal.h? -caleb
-static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
-                                       unsigned int *param_loc,
-                                       MOJOSHADER_symbol *symbols,
-                                       unsigned int symbol_count,
-                                       float *regf, int *regi, uint8 *regb)
+typedef struct MOJOSHADER_d3d11Context
 {
-    int i, j, r, c;
+    // Allocators...
+    MOJOSHADER_malloc malloc_fn;
+    MOJOSHADER_free free_fn;
+    void *malloc_data;
 
-    i = 0;
-    for (i = 0; i < symbol_count; i++)
-    {
-        const MOJOSHADER_symbol *sym = &symbols[i];
-        const MOJOSHADER_effectValue *param = &params[param_loc[i]].value;
+    // The constant register files...
+    // !!! FIXME: Man, it kills me how much memory this takes...
+    // !!! FIXME:  ... make this dynamically allocated on demand.
+    float vs_reg_file_f[MAX_REG_FILE_F * 4];
+    int vs_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 vs_reg_file_b[MAX_REG_FILE_B];
+    float ps_reg_file_f[MAX_REG_FILE_F * 4];
+    int ps_reg_file_i[MAX_REG_FILE_I * 4];
+    uint8 ps_reg_file_b[MAX_REG_FILE_B];
 
-        // float/int registers are vec4, so they have 4 elements each
-        const uint32 start = sym->register_index << 2;
+    // Pointer to the active ID3D11Device.
+    ID3D11Device *device;
 
-        if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
-            memcpy(regf + start, param->valuesF, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
-        {
-            // Structs are a whole different world...
-            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
-                memcpy(regf + start, param->valuesF, sym->register_count << 4);
-            else
-            {
-                // Sometimes int/bool parameters get thrown into float registers...
-                j = 0;
-                do
-                {
-                    c = 0;
-                    do
-                    {
-                        regf[start + (j << 2) + c] = (float) param->valuesI[(j << 2) + c];
-                    } while (++c < param->type.columns);
-                } while (++j < sym->register_count);
-            } // else
-        } // else if
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
-            memcpy(regi + start, param->valuesI, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
-        {
-            j = 0;
-            r = 0;
-            do
-            {
-                c = 0;
-                do
-                {
-                    // regb is not a vec4, enjoy that 'start' bitshift! -flibit
-                    regb[(start >> 2) + r + c] = param->valuesI[(j << 2) + c];
-                    c++;
-                } while (c < param->type.columns && ((r + c) < sym->register_count));
-                r += c;
-                j++;
-            } while (r < sym->register_count);
-        } // else if
-    } // for
-} // copy_parameter_data
+    // Pointer to the ID3D11DeviceContext.
+    ID3D11DeviceContext *deviceContext;
+
+    // D3DCompile function pointer.
+    PFN_D3DCOMPILE D3DCompileFunc;
+} MOJOSHADER_d3d11Context;
+
+static MOJOSHADER_d3d11Context *ctx = NULL;
 
 /* Uniform buffer utilities */
 
@@ -146,13 +109,12 @@ static inline int next_highest_alignment(int n)
     return align * ((n + align - 1) / align);
 } // next_highest_alignment
 
-static inline void* get_uniform_buffer(MOJOSHADER_D3D11Shader *shader)
+static inline void* get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 {
     return (shader == NULL || shader->ubo == NULL) ? NULL : shader->ubo;
 } // get_uniform_buffer
 
-static void update_uniform_buffer(MOJOSHADER_D3D11Shader *shader,
-                                  void* deviceContext)
+static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 {
     if (shader == NULL || shader->ubo == NULL)
         return;
@@ -160,21 +122,21 @@ static void update_uniform_buffer(MOJOSHADER_D3D11Shader *shader,
     float *regF; int *regI; uint8 *regB;
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-        regF = vs_reg_file_f;
-        regI = vs_reg_file_i;
-        regB = vs_reg_file_b;
+        regF = ctx->vs_reg_file_f;
+        regI = ctx->vs_reg_file_i;
+        regB = ctx->vs_reg_file_b;
     } // if
     else
     {
-        regF = ps_reg_file_f;
-        regI = ps_reg_file_i;
-        regB = ps_reg_file_b;
+        regF = ctx->ps_reg_file_f;
+        regI = ctx->ps_reg_file_i;
+        regB = ctx->ps_reg_file_b;
     } // else
 
     // Map the buffer
     D3D11_MAPPED_SUBRESOURCE res;
     ID3D11DeviceContext_Map(
-        (ID3D11DeviceContext*) deviceContext,
+        (ID3D11DeviceContext*) ctx->deviceContext,
         (ID3D11Resource*) shader->ubo,
         0,
         D3D11_MAP_WRITE,
@@ -229,452 +191,252 @@ static void update_uniform_buffer(MOJOSHADER_D3D11Shader *shader,
 
     // Unmap the buffer
     ID3D11DeviceContext_Unmap(
-        (ID3D11DeviceContext*) deviceContext,
+        (ID3D11DeviceContext*) ctx->deviceContext,
         (ID3D11Resource*) shader->ubo,
         0
     );
 } // update_uniform_buffer
 
-/* D3D11 Function Pointers */
-
-typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
-    LPCVOID pSrcData,
-    SIZE_T SrcDataSize,
-    LPCSTR pSourceName,
-    const D3D_SHADER_MACRO *pDefines,
-    ID3DInclude *pInclude,
-    LPCSTR pEntrypoint,
-    LPCSTR pTarget,
-    UINT Flags1,
-    UINT Flags2,
-    ID3DBlob **ppCode,
-    ID3DBlob **ppErrorMsgs
-);
-PFN_D3DCOMPILE D3DCompileFunc = NULL;
-static int d3dFuncInit = 0;
-
 /* Public API */
 
-MOJOSHADER_D3D11Effect *MOJOSHADER_D3D11CompileEffect(MOJOSHADER_effect *effect,
-                                                      void* device)
+int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
+                                  MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                  void *malloc_d)
 {
-    int i;
-    MOJOSHADER_malloc m = effect->malloc;
-    MOJOSHADER_free f = effect->free;
-    void *d = effect->malloc_data;
-    int current_shader = 0;
-    int current_preshader = 0;
+    assert(ctx == NULL);
 
-    // Grab the D3DCompile function pointer!
-    if (!d3dFuncInit)
+    if (m == NULL) m = MOJOSHADER_internal_malloc;
+    if (f == NULL) f = MOJOSHADER_internal_free;
+
+    ctx = (MOJOSHADER_d3d11Context *) m(sizeof(MOJOSHADER_d3d11Context), malloc_d);
+    if (ctx == NULL)
     {
-        // Load D3DCompile()
-        HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler.dll");
-        assert(d3dCompilerModule != NULL);
-        D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(d3dCompilerModule, "D3DCompile");
+        out_of_memory();
+        goto init_fail;
+    } // if
 
-        // We don't need to load this again
-        d3dFuncInit = 1;
-    }
+    memset(ctx, '\0', sizeof (MOJOSHADER_d3d11Context));
+    ctx->malloc_fn = m;
+    ctx->free_fn = f;
+    ctx->malloc_data = malloc_d;
 
-    // Allocate the effect
-    MOJOSHADER_D3D11Effect *retval;
-    retval = (MOJOSHADER_D3D11Effect*) (m(sizeof(MOJOSHADER_D3D11Effect), d));
+    // Initialize the Metal state
+    ctx->device = device;
+    ctx->deviceContext = deviceContext;
+
+    // Grab the D3DCompile function pointer
+    HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler.dll");
+    assert(d3dCompilerModule != NULL);
+    ctx->D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(d3dCompilerModule, "D3DCompile");
+
+    return 0;
+
+init_fail:
+    if (ctx != NULL)
+        f(ctx, malloc_d);
+    return -1;
+} // MOJOSHADER_d3d11CreateContext
+
+void MOJOSHADER_d3d11DestroyContext(void)
+{
+    // !!! FIXME: What else?
+    ctx->free_fn(ctx, ctx->malloc_data);
+} // MOJOSHADER_d3d11DestroyContext
+
+MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
+                                                      const unsigned char *tokenbuf,
+                                                      const unsigned int bufsize,
+                                                      const MOJOSHADER_swizzle *swiz,
+                                                      const unsigned int swizcount,
+                                                      const MOJOSHADER_samplerMap *smap,
+                                                      const unsigned int smapcount)
+{
+    MOJOSHADER_malloc m = ctx->malloc_fn;
+    MOJOSHADER_free f = ctx->free_fn;
+    void *d = ctx->malloc_data;
+
+    const MOJOSHADER_parseData *pd = MOJOSHADER_parse("hlsl", mainfn, tokenbuf,
+                                                     bufsize, swiz, swizcount,
+                                                     smap, smapcount, m, f, d);
+    if (pd->error_count > 0)
+    {
+        // !!! FIXME: put multiple errors in the buffer? Don't use
+        // !!! FIXME:  MOJOSHADER_d3d11GetError() for this?
+        set_error(pd->errors[0].error);
+        goto compile_shader_fail;
+    } // if
+
+    MOJOSHADER_d3d11Shader *retval = (MOJOSHADER_d3d11Shader *) m(sizeof(MOJOSHADER_d3d11Shader), d);
     if (retval == NULL)
-    {
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval, '\0', sizeof (MOJOSHADER_D3D11Effect));
+        goto compile_shader_fail;
 
-    // Count the number of shaders before allocating
-    for (i = 0; i < effect->object_count; i++)
+    retval->parseData = pd;
+    retval->refcount = 1;
+    retval->dataBlob = NULL;
+    retval->ubo = NULL;
+
+    // Compile the shader
+    ID3DBlob* errorBlob;
+    HRESULT result = D3DCompileFunc(
+        pd->output,
+        pd->output_len,
+        pd->mainfn,
+        NULL,
+        NULL,
+        pd->mainfn,
+        (pd->shader_type == MOJOSHADER_TYPE_VERTEX) ? "vs_4_0" : "ps_4_0",
+        0,
+        0,
+        (ID3DBlob**) &retval->dataBlob,
+        &errorBlob
+    );
+    if (result < 0)
     {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
-        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
+        set_error((const char*) ID3D10Blob_GetBufferPointer(errorBlob));
+        goto compile_shader_fail;
+    } // if
+
+    // Create the uniform buffer, if needed
+    if (pd->uniform_count > 0)
+    {
+        // Calculate how big we need to make the buffer
+        int buflen = 0;
+        for (int i = 0; i < pd->uniform_count; i++)
         {
-            if (object->shader.is_preshader)
-                retval->num_preshaders++;
-            else
-                retval->num_shaders++;
-        } // if
-    } // for
+            int arrayCount = pd->uniforms[i].array_count;
+            int uniformSize = 16;
+            if (pd->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
+                uniformSize = 1;
+            buflen += (arrayCount ? arrayCount : 1) * uniformSize;
+        } // for
 
-    // Allocate shader arrays
-    retval->shaders = (MOJOSHADER_D3D11Shader*) m(retval->num_shaders * sizeof(MOJOSHADER_D3D11Shader), d);
-    if (retval->shaders == NULL)
-    {
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shaders, '\0', retval->num_shaders * sizeof(MOJOSHADER_D3D11Shader));
-    retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof(unsigned int), d);
-    if (retval->shader_indices == NULL)
-    {
-        f(retval->shaders, d);
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shader_indices, '\0', retval->num_shaders * sizeof(unsigned int));
-
-    // Allocate preshader array
-    if (retval->num_preshaders > 0)
-    {
-        retval->preshader_indices = (unsigned int *) m(retval->num_preshaders * sizeof(unsigned int), d);
-        if (retval->preshader_indices == NULL)
-        {
-            f(retval->shaders, d);
-            f(retval->shader_indices, d);
-            f(retval, d);
-            out_of_memory();
-            return NULL;
-        } // if
-        memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof(unsigned int));
+        D3D11_BUFFER_DESC bdesc;
+        bdesc.ByteWidth = next_highest_alignment(buflen);
+        bdesc.Usage = D3D11_USAGE_DYNAMIC;
+        bdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        bdesc.MiscFlags = 0;
+        bdesc.StructureByteStride = 0;
+        ID3D11Device_CreateBuffer(
+            (ID3D11Device*) ctx->device,
+            &bdesc,
+            NULL,
+            (ID3D11Buffer**) &retval->ubo
+        );
     } // if
 
-    // Compile the shaders and track indices
-    for (i = 0; i < effect->object_count; i++)
-    {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
-        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-        {
-            if (object->shader.is_preshader)
-            {
-                retval->preshader_indices[current_preshader++] = i;
-                continue;
-            } // if
-
-            MOJOSHADER_D3D11Shader *curshader = &retval->shaders[current_shader];
-            curshader->parseData = object->shader.shader;
-
-            ID3DBlob* errorBlob;
-            int result = D3DCompileFunc(
-                curshader->parseData->output,
-                curshader->parseData->output_len,
-                curshader->parseData->mainfn,
-                NULL,
-                NULL,
-                curshader->parseData->mainfn,
-                (object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER) ? "vs_4_0" : "ps_4_0",
-                0,
-                0,
-                (ID3DBlob**) &curshader->dataBlob,
-                &errorBlob
-            );
-            if (result < 0)
-            {
-                set_error((const char*) ID3D10Blob_GetBufferPointer(errorBlob));
-                goto compile_shader_fail;
-            } // if
-
-            // Create the uniform buffer, if needed
-            if (curshader->parseData->uniform_count > 0)
-            {
-                // Calculate how big we need to make the buffer
-                int buflen = 0;
-                for (int i = 0; i < curshader->parseData->uniform_count; i++)
-                {
-                    int arrayCount = curshader->parseData->uniforms[i].array_count;
-                    int uniformSize = 16;
-                    if (curshader->parseData->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
-                        uniformSize = 1;
-                    buflen += (arrayCount ? arrayCount : 1) * uniformSize;
-                } // for
-
-                D3D11_BUFFER_DESC bdesc;
-                bdesc.ByteWidth = next_highest_alignment(buflen);
-                bdesc.Usage = D3D11_USAGE_DYNAMIC;
-                bdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-                bdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-                bdesc.MiscFlags = 0;
-                bdesc.StructureByteStride = 0;
-                ID3D11Device_CreateBuffer(
-                    (ID3D11Device*) device,
-                    &bdesc,
-                    NULL,
-                    (ID3D11Buffer**) &curshader->ubo
-                );
-            } // if
-
-            retval->shader_indices[current_shader] = i;
-            current_shader++;
-        } // if
-    } // for
-
-    retval->effect = effect;
     return retval;
 
 compile_shader_fail:
-    f(retval->shader_indices, d);
-    f(retval->shaders, d);
+    MOJOSHADER_freeParseData(pd);
     f(retval, d);
     return NULL;
-} // MOJOSHADER_D3D11CompileEffect
+} // MOJOSHADER_d3d11CompileShader
 
-void MOJOSHADER_D3D11DeleteEffect(MOJOSHADER_D3D11Effect *d3dEffect)
+void MOJOSHADER_d3d11ShaderAddRef(MOJOSHADER_d3d11Shader *shader)
 {
-    MOJOSHADER_free f = d3dEffect->effect->free;
-    void *d = d3dEffect->effect->malloc_data;
+    if (shader != NULL)
+        shader->refcount++;
+} // MOJOSHADER_d3d11ShaderAddRef
 
-    int i;
-    for (i = 0; i < d3dEffect->num_shaders; i++)
-    {
-        /* Release the uniform buffer */
-        ID3D11Buffer_Release((ID3D11Buffer*) d3dEffect->shaders[i].ubo);
-
-        /* Release the shader blob */
-        ID3D10Blob_Release((ID3DBlob*) d3dEffect->shaders[i].dataBlob);
-    } // for
-
-    f(d3dEffect->shader_indices, d);
-    f(d3dEffect->preshader_indices, d);
-    f(d3dEffect, d);
-} // MOJOSHADER_D3D11DeleteEffect
-
-void MOJOSHADER_D3D11EffectBegin(MOJOSHADER_D3D11Effect *d3dEffect,
-                                 unsigned int *numPasses,
-                                 int saveShaderState,
-                                 MOJOSHADER_effectStateChanges *stateChanges)
+void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
 {
-    *numPasses = d3dEffect->effect->current_technique->pass_count;
-    d3dEffect->effect->restore_shader_state = saveShaderState;
-    d3dEffect->effect->state_changes = stateChanges;
-
-    if (d3dEffect->effect->restore_shader_state)
+    if (shader != NULL)
     {
-        d3dEffect->prev_vert = d3dEffect->current_vert;
-        d3dEffect->prev_frag = d3dEffect->current_frag;
+        if (shader->refcount > 1)
+            shader->refcount--;
+        else
+        {
+            dealloc_ubo(shader, ctx->free_fn, ctx->malloc_data);
+            ID3D10Blob_Release((ID3DBlob*) shader->dataBlob);
+            ctx->free_fn(shader, ctx->malloc_data);
+        } // else
     } // if
-} // MOJOSHADER_D3D11EffectBegin
+} // MOJOSHADER_d3d11DeleteShader
 
-// Predeclare
-void MOJOSHADER_D3D11EffectCommitChanges(MOJOSHADER_D3D11Effect *d3dEffect,
-                                         void* d3dDeviceContext,
-                                         MOJOSHADER_D3D11ShaderState *shState);
-
-void MOJOSHADER_D3D11EffectBeginPass(MOJOSHADER_D3D11Effect *d3dEffect,
-                                     unsigned int pass,
-                                     void *d3dDeviceContext,
-                                     MOJOSHADER_D3D11ShaderState *shState)
+const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
+                                                MOJOSHADER_d3d11Shader *shader)
 {
-    int i, j;
-    MOJOSHADER_effectPass *curPass;
-    MOJOSHADER_effectState *state;
-    MOJOSHADER_effectShader *rawVert = d3dEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = d3dEffect->current_frag_raw;
-    int has_preshader = 0;
+    return (shader != NULL) ? shader->parseData : NULL;
+} // MOJOSHADER_d3d11GetParseData
 
-    assert(shState != NULL);
-    assert(d3dEffect->effect->current_pass == -1);
-    d3dEffect->effect->current_pass = pass;
-    curPass = &d3dEffect->effect->current_technique->passes[pass];
-
-    // !!! FIXME: I bet this could be stored at parse/compile time. -flibit
-    for (i = 0; i < curPass->state_count; i++)
+void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
+                                 MOJOSHADER_d3d11Shader *pshader)
+{
+    // Use the last bound shaders in case of NULL
+    if (vshader != NULL)
     {
-        state = &curPass->states[i];
-        #define ASSIGN_SHADER(stype, raw, d3ds) \
-            (state->type == stype) \
-            { \
-                j = 0; \
-                do \
-                { \
-                    if (*state->value.valuesI == d3dEffect->shader_indices[j]) \
-                    { \
-                        raw = &d3dEffect->effect->objects[*state->value.valuesI].shader; \
-                        d3dEffect->d3ds = &d3dEffect->shaders[j]; \
-                        break; \
-                    } \
-                    else if (d3dEffect->num_preshaders > 0 \
-                          && *state->value.valuesI == d3dEffect->preshader_indices[j]) \
-                    { \
-                        raw = &d3dEffect->effect->objects[*state->value.valuesI].shader; \
-                        has_preshader = 1; \
-                        break; \
-                    } \
-                } while (++j < d3dEffect->num_shaders); \
-            }
-        if ASSIGN_SHADER(MOJOSHADER_RS_VERTEXSHADER, rawVert, current_vert)
-        else if ASSIGN_SHADER(MOJOSHADER_RS_PIXELSHADER, rawFrag, current_frag)
-        #undef ASSIGN_SHADER
-    } // for
+        ID3D11DeviceContext_VSSetShader(
+            ctx->deviceContext,
+            vshader->dataBlob,
+            NULL,
+            0
+        );
+        ID3D11DeviceContext_VSSetConstantBuffers(
+            ctx->deviceContext,
+            0,
+            1,
+            &vshader->ubo
+        );
+    } // if
+    if (pshader != NULL)
+    {
+        ID3D11DeviceContext_PSSetShader(
+            ctx->deviceContext,
+            pshader->dataBlob,
+            NULL,
+            0
+        );
+        ID3D11DeviceContext_PSSetConstantBuffers(
+            ctx->deviceContext,
+            0,
+            1,
+            &pshader->ubo
+        );
+    } // if
+} // MOJOSHADER_d3d11BindShaders
 
-    d3dEffect->effect->state_changes->render_state_changes = curPass->states;
-    d3dEffect->effect->state_changes->render_state_change_count = curPass->state_count;
+void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
+                                     MOJOSHADER_d3d11Shader **pshader)
+{
+    ID3D11DeviceContext_VSGetShader(
+        ctx->deviceContext,
+        vshader,
+        NULL,
+        0
+    );
+    ID3D11DeviceContext_PSGetShader(
+        ctx->deviceContext,
+        pshader,
+        NULL,
+        0
+    );
+} // MOJOSHADER_d3d11GetBoundShaders
 
-    d3dEffect->current_vert_raw = rawVert;
-    d3dEffect->current_frag_raw = rawFrag;
+void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                            float **psf, int **psi, unsigned char **psb)
+{
+    *vsf = ctx->vs_reg_file_f;
+    *vsi = ctx->vs_reg_file_i;
+    *vsb = ctx->vs_reg_file_b;
+    *psf = ctx->ps_reg_file_f;
+    *psi = ctx->ps_reg_file_i;
+    *psb = ctx->ps_reg_file_b;
+} // MOJOSHADER_d3d11MapUniformBufferMemory
 
-    /* If this effect pass has an array of shaders, we get to wait until
-     * CommitChanges to actually bind the final shaders.
-     * -flibit
+void MOJOSHADER_d3d11UnmapUniformBufferMemory()
+{
+    /* This has nothing to do with unmapping memory
+     * and everything to do with updating uniform
+     * buffers with the latest parameter contents.
      */
-    if (!has_preshader)
-    {
-        if (d3dEffect->current_vert != NULL)
-        {
-            shState->vertexShader = d3dEffect->current_vert;
-            shState->vertexUniformBuffer = get_uniform_buffer(d3dEffect->current_vert);
-        } // if
-        if (d3dEffect->current_frag != NULL)
-        {
-            shState->fragmentShader = d3dEffect->current_frag;
-            shState->fragmentUniformBuffer = get_uniform_buffer(d3dEffect->current_frag);
-        } // if
+    MOJOSHADER_d3d11Shader *vs, *ps;
+    MOJOSHADER_d3d11GetBoundShaders(&vs, &ps);
+    update_uniform_buffer(vs);
+    update_uniform_buffer(ps);
+} // MOJOSHADER_d3d11UnmapUniformBufferMemory
 
-        if (d3dEffect->current_vert_raw != NULL)
-        {
-            d3dEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            d3dEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (d3dEffect->current_frag_raw != NULL)
-        {
-            d3dEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            d3dEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    MOJOSHADER_D3D11EffectCommitChanges(d3dEffect, d3dDeviceContext, shState);
-} // MOJOSHADER_D3D11EffectBeginPass
-
-void MOJOSHADER_D3D11EffectCommitChanges(MOJOSHADER_D3D11Effect *d3dEffect,
-                                         void* d3dDeviceContext,
-                                         MOJOSHADER_D3D11ShaderState *shState)
-{
-    MOJOSHADER_effectShader *rawVert = d3dEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = d3dEffect->current_frag_raw;
-
-    /* Used for shader selection from preshaders */
-    int i, j;
-    MOJOSHADER_effectValue *param;
-    float selector;
-    int shader_object;
-    int selector_ran = 0;
-
-    /* For effect passes with arrays of shaders, we have to run a preshader
-     * that determines which shader to use, based on a parameter's value.
-     * -flibit
-     */
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    #define SELECT_SHADER_FROM_PRESHADER(raw, d3ds) \
-        if (raw != NULL && raw->is_preshader) \
-        { \
-            i = 0; \
-            do \
-            { \
-                param = &d3dEffect->effect->params[raw->preshader_params[i]].value; \
-                for (j = 0; j < (param->value_count >> 2); j++) \
-                    memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index + j, \
-                           param->valuesI + (j << 2), \
-                           param->type.columns << 2); \
-            } while (++i < raw->preshader->symbol_count); \
-            MOJOSHADER_runPreshader(raw->preshader, &selector); \
-            shader_object = d3dEffect->effect->params[raw->params[0]].value.valuesI[(int) selector]; \
-            raw = &d3dEffect->effect->objects[shader_object].shader; \
-            i = 0; \
-            do \
-            { \
-                if (shader_object == d3dEffect->shader_indices[i]) \
-                { \
-                    d3ds = &d3dEffect->shaders[i]; \
-                    break; \
-                } \
-            } while (++i < d3dEffect->num_shaders); \
-            selector_ran = 1; \
-        }
-    SELECT_SHADER_FROM_PRESHADER(rawVert, d3dEffect->current_vert)
-    SELECT_SHADER_FROM_PRESHADER(rawFrag, d3dEffect->current_frag)
-    #undef SELECT_SHADER_FROM_PRESHADER
-    if (selector_ran)
-    {
-        if (d3dEffect->current_vert != NULL)
-            shState->vertexShader = d3dEffect->current_vert;
-
-        if (d3dEffect->current_frag != NULL)
-            shState->fragmentShader = d3dEffect->current_frag;
-
-        if (d3dEffect->current_vert_raw != NULL)
-        {
-            d3dEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            d3dEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (d3dEffect->current_frag_raw != NULL)
-        {
-            d3dEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            d3dEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    /* This is where parameters are copied into the constant buffers.
-     * If you're looking for where things slow down immensely, look at
-     * the copy_parameter_data() and MOJOSHADER_runPreshader() functions.
-     * -flibit
-     */
-    // !!! FIXME: We're just copying everything every time. Blech. -flibit
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    // !!! FIXME: Will the preshader ever want int/bool registers? -flibit
-    #define COPY_PARAMETER_DATA(raw, stage) \
-        if (raw != NULL) \
-        { \
-            copy_parameter_data(d3dEffect->effect->params, raw->params, \
-                                raw->shader->symbols, \
-                                raw->shader->symbol_count, \
-                                stage##_reg_file_f, \
-                                stage##_reg_file_i, \
-                                stage##_reg_file_b); \
-            if (raw->shader->preshader) \
-            { \
-                copy_parameter_data(d3dEffect->effect->params, raw->preshader_params, \
-                                    raw->shader->preshader->symbols, \
-                                    raw->shader->preshader->symbol_count, \
-                                    raw->shader->preshader->registers, \
-                                    NULL, \
-                                    NULL); \
-                MOJOSHADER_runPreshader(raw->shader->preshader, stage##_reg_file_f); \
-            } \
-        }
-    COPY_PARAMETER_DATA(rawVert, vs)
-    COPY_PARAMETER_DATA(rawFrag, ps)
-    #undef COPY_PARAMETER_DATA
-
-    update_uniform_buffer(shState->vertexShader, d3dDeviceContext);
-    shState->vertexUniformBuffer = get_uniform_buffer(shState->vertexShader);
-
-    update_uniform_buffer(shState->fragmentShader, d3dDeviceContext);
-    shState->fragmentUniformBuffer = get_uniform_buffer(shState->fragmentShader);
-} // MOJOSHADER_d3dEffectCommitChanges
-
-void MOJOSHADER_D3D11EffectEndPass(MOJOSHADER_D3D11Effect *d3dEffect)
-{
-    assert(d3dEffect->effect->current_pass != -1);
-    d3dEffect->effect->current_pass = -1;
-} // MOJOSHADER_D3D11EffectEndPass
-
-void MOJOSHADER_D3D11EffectEnd(MOJOSHADER_D3D11Effect *d3dEffect,
-                               MOJOSHADER_D3D11ShaderState *shState)
-{
-    if (d3dEffect->effect->restore_shader_state)
-    {
-        d3dEffect->effect->restore_shader_state = 0;
-        shState->vertexShader = d3dEffect->prev_vert;
-        shState->fragmentShader = d3dEffect->prev_frag;
-        shState->vertexUniformBuffer = get_uniform_buffer(d3dEffect->prev_vert);
-        shState->fragmentUniformBuffer = get_uniform_buffer(d3dEffect->prev_frag);
-    } // if
-
-    d3dEffect->effect->state_changes = NULL;
-} // MOJOSHADER_d3dEffectEnd
-
-void* MOJOSHADER_D3D11GetShaderBlob(MOJOSHADER_D3D11Shader *shader)
-{
-    return (shader == NULL) ? NULL : shader->dataBlob;
-} // MOJOSHADER_D3D11GetFunctionHandle
-
-int MOJOSHADER_D3D11GetVertexAttribLocation(MOJOSHADER_D3D11Shader *vert,
+int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
                                             MOJOSHADER_usage usage, int index)
 {
     if (vert == NULL)
@@ -682,8 +444,8 @@ int MOJOSHADER_D3D11GetVertexAttribLocation(MOJOSHADER_D3D11Shader *vert,
 
     for (int i = 0; i < vert->parseData->attribute_count; i++)
     {
-        if (   vert->parseData->attributes[i].usage == usage
-            && vert->parseData->attributes[i].index == index)
+        if (vert->parseData->attributes[i].usage == usage &&
+            vert->parseData->attributes[i].index == index)
         {
             return i;
         } // if
@@ -691,14 +453,14 @@ int MOJOSHADER_D3D11GetVertexAttribLocation(MOJOSHADER_D3D11Shader *vert,
 
     // failure, couldn't find requested attribute
     return -1;
-} // MOJOSHADER_D3D11GetVertexAttribLocation
+} // MOJOSHADER_d3d11GetVertexAttribLocation
 
-const char *MOJOSHADER_D3D11GetError(void)
+const char *MOJOSHADER_d3d11GetError(void)
 {
     return error_buffer;
-} // MOJOSHADER_D3D11GetError
+} // MOJOSHADER_d3d11GetError
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 #endif /* SUPPORT_PROFILE_HLSL */
 
-// end of mojoshader_metal.c ...
+// end of mojoshader_d3d11.c ...
