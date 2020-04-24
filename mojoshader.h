@@ -37,7 +37,7 @@ extern "C" {
 
 #ifndef MOJOSHADERCALL
 #ifdef _WIN32
-#define MOJOSHADERCALL __stdcall
+#define MOJOSHADERCALL __cdecl
 #else
 #define MOJOSHADERCALL
 #endif
