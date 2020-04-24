@@ -621,7 +621,6 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
                          const unsigned int indent)
 {
     INDENT();
-    printf("PROFILE: %s\n", effect->profile);
     printf("\n");
     if (effect->error_count > 0)
     {
@@ -699,7 +698,9 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
                 {
                     printf("OBJECT #%d: SHADER, technique %u, pass %u\n", i,
                            object->shader.technique, object->shader.pass);
-                    print_shader(fname, object->shader.shader, indent + 1);
+                    print_shader(fname,
+                                 (MOJOSHADER_parseData*) object->shader.shader,
+                                 indent + 1);
                 } // else
             } // if
             else if (object->type == MOJOSHADER_SYMTYPE_STRING)
@@ -725,6 +726,38 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
 } // print_effect
 
 
+static const char *effect_profile = NULL;
+
+
+static void* MOJOSHADERCALL effect_compile_shader(
+    const char *mainfn,
+    const unsigned char *tokenbuf,
+    const unsigned int bufsize,
+    const MOJOSHADER_swizzle *swiz,
+    const unsigned int swizcount,
+    const MOJOSHADER_samplerMap *smap,
+    const unsigned int smapcount
+) {
+    return (MOJOSHADER_parseData*) MOJOSHADER_parse(effect_profile, mainfn,
+                                                    tokenbuf, bufsize,
+                                                    swiz, swizcount,
+                                                    smap, smapcount,
+                                                    Malloc, Free, NULL);
+} // effect_compile_shader
+
+
+static void MOJOSHADERCALL effect_delete_shader(void *shader)
+{
+    MOJOSHADER_freeParseData((MOJOSHADER_parseData*) shader);
+} // effect_delete_shader
+
+
+static MOJOSHADER_parseData* MOJOSHADERCALL effect_get_parse_data(void *shader)
+{
+    return (MOJOSHADER_parseData*) shader;
+} // effect_get_parse_data
+
+
 #endif // MOJOSHADER_EFFECT_SUPPORT
 
 
@@ -742,8 +775,20 @@ static int do_parse(const char *fname, const unsigned char *buf,
     {
 #ifdef MOJOSHADER_EFFECT_SUPPORT
         const MOJOSHADER_effect *effect;
-        effect = MOJOSHADER_parseEffect(prof, buf, len, NULL, 0,
-                                        NULL, 0, Malloc, Free, 0);
+        const MOJOSHADER_effectShaderContext ctx =
+        {
+            effect_compile_shader,
+            NULL, /* Meh! */
+            effect_delete_shader,
+            effect_get_parse_data,
+            /* Meh! */
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        };
+        effect_profile = prof;
+        effect = MOJOSHADER_compileEffect(buf, len, NULL, 0, NULL, 0, &ctx);
         int error_count = effect->error_count;
         for (i = 0; i < effect->object_count; i++)
         {
@@ -754,7 +799,8 @@ static int do_parse(const char *fname, const unsigned char *buf,
                 case MOJOSHADER_SYMTYPE_PIXELSHADER:
                     if (!object->shader.is_preshader)
                     {
-                        const MOJOSHADER_parseData *shader = object->shader.shader;
+                        const MOJOSHADER_parseData *shader =
+                            ctx.getParseData(object->shader.shader);
                         if (shader)
                             error_count += shader->error_count;
                     } // if
@@ -766,7 +812,7 @@ static int do_parse(const char *fname, const unsigned char *buf,
         retval = (error_count == 0);
         printf("EFFECT: %s\n", fname);
         print_effect(fname, effect, 1);
-        MOJOSHADER_freeEffect(effect);
+        MOJOSHADER_deleteEffect(effect);
 #else
         printf("Is an effect, but effect support is disabled!\n");
 #endif
