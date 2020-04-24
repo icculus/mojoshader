@@ -11,7 +11,6 @@
 #define D3D11_NO_HELPERS
 #define CINTERFACE
 #define COBJMACROS
-#include <windows.h>
 #include <d3d11.h>
 #endif
 
@@ -23,7 +22,8 @@ typedef struct MOJOSHADER_d3d11Shader
     const MOJOSHADER_parseData *parseData;
     void *ubo; // ID3DBuffer*
     uint32 refcount;
-    void* dataBlob; // ID3DBlob*
+    void *dataBlob; // ID3DBlob*
+    void *shader; // ID3D11VertexShader* or ID3D11PixelShader*
 } MOJOSHADER_d3d11Shader;
 
 // Error state...
@@ -43,13 +43,6 @@ static inline void out_of_memory(void)
 
 #if SUPPORT_PROFILE_HLSL
 #ifdef MOJOSHADER_EFFECT_SUPPORT
-
-#define D3D11_NO_HELPERS
-#define CINTERFACE
-#define COBJMACROS
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <D3D11.h>
 
 typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
     LPCVOID pSrcData,
@@ -95,6 +88,10 @@ typedef struct MOJOSHADER_d3d11Context
     // Pointer to the ID3D11DeviceContext.
     ID3D11DeviceContext *deviceContext;
 
+    // Currently bound vertex and pixel shaders.
+    MOJOSHADER_d3d11Shader *vertexShader;
+    MOJOSHADER_d3d11Shader *pixelShader;
+
     // D3DCompile function pointer.
     PFN_D3DCOMPILE D3DCompileFunc;
 } MOJOSHADER_d3d11Context;
@@ -109,7 +106,7 @@ static inline int next_highest_alignment(int n)
     return align * ((n + align - 1) / align);
 } // next_highest_alignment
 
-static inline void* get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
+static inline void *get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 {
     return (shader == NULL || shader->ubo == NULL) ? NULL : shader->ubo;
 } // get_uniform_buffer
@@ -220,9 +217,9 @@ int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
     ctx->free_fn = f;
     ctx->malloc_data = malloc_d;
 
-    // Initialize the Metal state
-    ctx->device = device;
-    ctx->deviceContext = deviceContext;
+    // Store references to the D3D device and immediate context
+    ctx->device = (ID3D11Device*) device;
+    ctx->deviceContext = (ID3D11DeviceContext*) deviceContext;
 
     // Grab the D3DCompile function pointer
     HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler.dll");
@@ -271,20 +268,24 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         goto compile_shader_fail;
 
     retval->parseData = pd;
+    retval->ubo = NULL;
     retval->refcount = 1;
     retval->dataBlob = NULL;
-    retval->ubo = NULL;
+    retval->shader = NULL;
+
+    // Vertex and pixel shaders are handled differently
+    int isvert = (pd->shader_type == MOJOSHADER_TYPE_VERTEX);
 
     // Compile the shader
-    ID3DBlob* errorBlob;
-    HRESULT result = D3DCompileFunc(
+    ID3DBlob *errorBlob;
+    HRESULT result = ctx->D3DCompileFunc(
         pd->output,
         pd->output_len,
         pd->mainfn,
         NULL,
         NULL,
         pd->mainfn,
-        (pd->shader_type == MOJOSHADER_TYPE_VERTEX) ? "vs_4_0" : "ps_4_0",
+        isvert ? "vs_4_0" : "ps_4_0",
         0,
         0,
         (ID3DBlob**) &retval->dataBlob,
@@ -295,6 +296,27 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         set_error((const char*) ID3D10Blob_GetBufferPointer(errorBlob));
         goto compile_shader_fail;
     } // if
+
+    if (isvert)
+    {
+        ID3D11Device_CreateVertexShader(
+            ctx->device,
+            ID3D10Blob_GetBufferPointer((ID3DBlob*) retval->dataBlob),
+            ID3D10Blob_GetBufferSize((ID3DBlob*) retval->dataBlob),
+            NULL,
+            (ID3D11VertexShader**) &retval->shader
+        );
+    } // if
+    else
+    {
+        ID3D11Device_CreatePixelShader(
+            ctx->device,
+            ID3D10Blob_GetBufferPointer((ID3DBlob*) retval->dataBlob),
+            ID3D10Blob_GetBufferSize((ID3DBlob*) retval->dataBlob),
+            NULL,
+            (ID3D11PixelShader**) &retval->shader
+        );
+    } // else
 
     // Create the uniform buffer, if needed
     if (pd->uniform_count > 0)
@@ -347,7 +369,7 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
             shader->refcount--;
         else
         {
-            dealloc_ubo(shader, ctx->free_fn, ctx->malloc_data);
+            ID3D11Buffer_Release((ID3D11Buffer*) shader->ubo);
             ID3D10Blob_Release((ID3DBlob*) shader->dataBlob);
             ctx->free_fn(shader, ctx->malloc_data);
         } // else
@@ -366,9 +388,10 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
     // Use the last bound shaders in case of NULL
     if (vshader != NULL)
     {
+        ctx->vertexShader = vshader;
         ID3D11DeviceContext_VSSetShader(
             ctx->deviceContext,
-            vshader->dataBlob,
+            (ID3D11VertexShader*) vshader->shader,
             NULL,
             0
         );
@@ -376,14 +399,15 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
             ctx->deviceContext,
             0,
             1,
-            &vshader->ubo
+            (ID3D11Buffer**) &vshader->ubo
         );
     } // if
     if (pshader != NULL)
     {
+        ctx->pixelShader = pshader;
         ID3D11DeviceContext_PSSetShader(
             ctx->deviceContext,
-            pshader->dataBlob,
+            (ID3D11PixelShader*) pshader->shader,
             NULL,
             0
         );
@@ -391,7 +415,7 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
             ctx->deviceContext,
             0,
             1,
-            &pshader->ubo
+            (ID3D11Buffer**) &pshader->ubo
         );
     } // if
 } // MOJOSHADER_d3d11BindShaders
@@ -399,18 +423,8 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
 void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
                                      MOJOSHADER_d3d11Shader **pshader)
 {
-    ID3D11DeviceContext_VSGetShader(
-        ctx->deviceContext,
-        vshader,
-        NULL,
-        0
-    );
-    ID3D11DeviceContext_PSGetShader(
-        ctx->deviceContext,
-        pshader,
-        NULL,
-        0
-    );
+    *vshader = ctx->vertexShader;
+    *pshader = ctx->pixelShader;
 } // MOJOSHADER_d3d11GetBoundShaders
 
 void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
