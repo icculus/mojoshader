@@ -2673,6 +2673,7 @@ DECLSPEC int MOJOSHADER_glMaxUniforms(MOJOSHADER_shaderType shader_type);
  * Compile a buffer of Direct3D shader bytecode into an OpenGL shader.
  *  You still need to link the shader before you may render with it.
  *
+ *   (mainfn) is the name of the shader's main function.
  *   (tokenbuf) is a buffer of Direct3D shader bytecode.
  *   (bufsize) is the size, in bytes, of the bytecode buffer.
  *   (swiz), (swizcount), (smap), and (smapcount) are passed to

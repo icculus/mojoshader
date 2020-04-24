@@ -1623,7 +1623,11 @@ void MOJOSHADER_effectBegin(MOJOSHADER_effect *effect,
 void MOJOSHADER_effectBeginPass(MOJOSHADER_effect *effect,
                                 unsigned int pass)
 {
+<<<<<<< HEAD
     int i;
+=======
+    int i, j;
+>>>>>>> f6f18d2... Merge in changes from effects2
     MOJOSHADER_effectPass *curPass;
     MOJOSHADER_effectState *state;
     MOJOSHADER_effectShader *rawVert = effect->current_vert_raw;
