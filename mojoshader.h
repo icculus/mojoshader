@@ -2691,6 +2691,18 @@ DECLSPEC MOJOSHADER_glShader *MOJOSHADER_glCompileShader(const unsigned char *to
                                                          const MOJOSHADER_samplerMap *smap,
                                                          const unsigned int smapcount);
 
+/*
+ * Increments a shader's internal refcount. To decrement the refcount, call
+ *  MOJOSHADER_glDeleteShader().
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glShaderAddRef(MOJOSHADER_glShader *shader);
 
 /*
  * Get the MOJOSHADER_parseData structure that was produced from the
@@ -2777,6 +2789,22 @@ DECLSPEC void MOJOSHADER_glBindProgram(MOJOSHADER_glProgram *program);
  */
 DECLSPEC void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *vshader,
                                        MOJOSHADER_glShader *pshader);
+
+/*
+ * This queries for the shaders currently bound to the active context.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ * the effects API.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glGetBoundShaders(MOJOSHADER_glShader **vshader,
+                                           MOJOSHADER_glShader **pshader);
 
 /*
  * Set a floating-point uniform value (what Direct3D calls a "constant").
@@ -3059,6 +3087,36 @@ DECLSPEC void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
                                                   unsigned int bcount);
 
 /*
+ * Fills register pointers with pointers that are directly used to push uniform
+ *  data to the GL shader context.
+ *
+ * This function is really just for the effects API, you should NOT be using
+ *  this unless you know every single line of MojoShader from memory.
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                                  float **psf, int **psi, unsigned char **psb);
+
+/*
+ * Tells the context that you are done with the memory mapped by
+ *  MOJOSHADER_glMapUniformBufferMemory().
+ *
+ * This call is NOT thread safe! As most OpenGL implementations are not thread
+ *  safe, you should probably only call this from the same thread that created
+ *  the GL context.
+ *
+ * This call requires a valid MOJOSHADER_glContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_glMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_glUnmapUniformBufferMemory();
+
+/*
  * Set up the vector for the TEXBEM opcode. Most apps can ignore this API.
  *
  * Shader Model 1.1 through 1.3 had an instruction for "fake bump mapping"
@@ -3263,31 +3321,37 @@ DECLSPEC void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
 
 /*
- * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
+ * Prepare MojoShader to manage Metal shaders.
  *
- * This function calls [retain] on the MTLFunction* before returning!
- *  Please call [release] on the result when you no longer need it.
+ * This is really just for the effects framework. Don't call this unless
+ *  you know for sure that you need it.
+ *
+ * You must call this only once, AFTER you have created your MTLDevice.
+ *  This function will lookup the Objective-C selectors it needs, after which
+ *  it may call them at any time until you call MOJOSHADER_mtlDestroyContext().
+ *
+ * (device) refers to the active MTLDevice, cast from id<MTLDevice> to void*.
+ *
+ * (framesInFlight) is the maximum number of frames that can be processed
+ *  simultaneously. This determines how many uniform buffers will be
+ *  allocated for each shader.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
+ *
+ * The context created by this function will automatically become the current
+ *  context. No further action is needed by the caller.
+ *
+ * Returns 0 on success or -1 on failure.
  */
-DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
-
-/*
- * Swaps uniform buffers and resets offsets to prepare for the next frame.
- *
- * Always call this after submitting the final command buffer for a frame!
- */
-DECLSPEC void MOJOSHADER_mtlEndFrame();
-
-/*
- * Return the location of a vertex attribute for the given shader.
- *
- * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
- *  be MOJOSHADER_USAGE_COLOR and 1.
- *
- * The return value is the index of the attribute to be used to create
- *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
- */
-int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
-                                          MOJOSHADER_usage usage, int index);
+DECLSPEC int MOJOSHADER_mtlCreateContext(void *mtlDevice, int framesInFlight,
+                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                         void *malloc_d);
 
 /*
  * Get any error state we might have picked up, such as failed shader
@@ -3306,6 +3370,162 @@ int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
  *  invalid as soon as you call into MojoShader again.
  */
 DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+
+/*
+ * Transform a buffer of Direct3D shader bytecode into a struct containing
+ *  Metal shader metadata.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ *  the effects API.
+ *
+ * Despite the name, this does NOT compile a shader! The actual compilation
+ *  happens inside MOJOSHADER_mtlCompileLibrary, which batch-compiles an effect
+ *  into a single MTLLibrary.
+ *
+ *   (mainfn) is the name of the shader's main function.
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
+ *
+ * Returns NULL on error, or a shader handle on success.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC MOJOSHADER_mtlShader *MOJOSHADER_mtlCompileShader(const char *mainfn,
+                                                           const unsigned char *tokenbuf,
+                                                           const unsigned int bufsize,
+                                                           const MOJOSHADER_swizzle *swiz,
+                                                           const unsigned int swizcount,
+                                                           const MOJOSHADER_samplerMap *smap,
+                                                           const unsigned int smapcount);
+
+/*
+ * Increments a shader's internal refcount. To decrement the refcount, call
+ *  MOJOSHADER_mtlDeleteShader().
+ */
+DECLSPEC void MOJOSHADER_mtlShaderAddRef(MOJOSHADER_mtlShader *shader);
+
+/*
+ * Get the MOJOSHADER_parseData structure that was produced from the
+ *  call to MOJOSHADER_mtlCompileShader().
+ *
+ * This data is read-only, and you should NOT attempt to free it. This
+ *  pointer remains valid until the shader is deleted.
+ */
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_mtlGetShaderParseData(
+                                                MOJOSHADER_mtlShader *shader);
+
+/*
+ * This "binds" individual shaders, which effectively means the context
+ *  will store these shaders for later retrieval. No actual binding or
+ *  pipeline creation is performed.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ *  the effects API.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlBindShaders(MOJOSHADER_mtlShader *vshader,
+                                        MOJOSHADER_mtlShader *pshader);
+
+/*
+ * This queries for the shaders currently bound to the active context.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ *  the effects API.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlGetBoundShaders(MOJOSHADER_mtlShader **vshader,
+                                            MOJOSHADER_mtlShader **pshader);
+
+/*
+ * This queries for the uniform buffer and byte offset for each of the
+ *  currently bound shaders.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ *  the effects API.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlGetUniformBuffers(void **vbuf, int *voff,
+                                              void **pbuf, int *poff);
+
+/*
+ * Fills register pointers with pointers that are directly used to push uniform
+ *  data to the Metal shader context.
+ *
+ * This function is really just for the effects API, you should NOT be using
+ *  this unless you know every single line of MojoShader from memory.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                                   float **psf, int **psi, unsigned char **psb);
+
+/*
+ * Tells the context that you are done with the memory mapped by
+ *  MOJOSHADER_mtlMapUniformBufferMemory().
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlUnmapUniformBufferMemory();
+
+/*
+ * Return the location of a vertex attribute for the given shader.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be used to create
+ *  a MTLVertexAttributeDescriptor, or -1 if the stream is not used.
+ */
+DECLSPEC int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
+                                          MOJOSHADER_usage usage, int index);
+
+/*
+ * Free the resources of a compiled shader. This will delete the MojoShader
+ *  shader struct and free memory.
+ *
+ * This does NOT release the actual shader! The shader data belongs to an
+ *  MTLLibrary that must be deleted with MOJOSHADER_mtlDeleteLibrary().
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ */
+DECLSPEC void MOJOSHADER_mtlDeleteShader(MOJOSHADER_mtlShader *shader);
+
+/*
+ * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
+ *
+ * This function calls [retain] on the MTLFunction* before returning!
+ *  Please call [release] on the result when you no longer need it.
+ */
+DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
+
+/*
+ * Swaps uniform buffers and resets offsets to prepare for the next frame.
+ *
+ * Always call this after submitting the final command buffer for a frame!
+ */
+DECLSPEC void MOJOSHADER_mtlEndFrame(void);
+
+/*
+ * Deinitialize MojoShader's Metal shader management.
+ *
+ * This will clean up resources previously allocated for the active context.
+ *
+ * This will NOT clean up shaders you created! Please destroy all shaders
+ *  before calling this function.
+ */
+DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
 
 
 /* Effects interface... */

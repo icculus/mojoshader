@@ -409,7 +409,7 @@ typedef struct MOJOSHADER_effectShader
     MOJOSHADER_samplerStateRegister *samplers;
     MOJOSHADERNAMELESS union
     {
-        const MOJOSHADER_parseData *shader;
+        void *shader; /* glShader, mtlShader, etc. */
         const MOJOSHADER_preshader *preshader;
     };
 } MOJOSHADER_effectShader;
@@ -476,11 +476,66 @@ typedef struct MOJOSHADER_effectStateChanges
 
 
 /*
+ * VTable system for building/running effect shaders...
+ */
+
+typedef void* (MOJOSHADERCALL * MOJOSHADER_compileShaderFunc)(
+    const char *mainfn,
+    const unsigned char *tokenbuf,
+    const unsigned int bufsize,
+    const MOJOSHADER_swizzle *swiz,
+    const unsigned int swizcount,
+    const MOJOSHADER_samplerMap *smap,
+    const unsigned int smapcount
+);
+typedef void (MOJOSHADERCALL * MOJOSHADER_shaderAddRefFunc)(void* shader);
+typedef void (MOJOSHADERCALL * MOJOSHADER_deleteShaderFunc)(void* shader);
+typedef MOJOSHADER_parseData* (MOJOSHADERCALL * MOJOSHADER_getParseDataFunc)(
+    void *shader
+);
+typedef void (MOJOSHADERCALL * MOJOSHADER_bindShadersFunc)(
+    void *vshader,
+    void *pshader
+);
+typedef void (MOJOSHADERCALL * MOJOSHADER_getBoundShadersFunc)(
+    void **vshader,
+    void **pshader
+);
+typedef void (MOJOSHADERCALL * MOJOSHADER_mapUniformBufferMemoryFunc)(
+    float **vsf, int **vsi, unsigned char **vsb,
+    float **psf, int **psi, unsigned char **psb
+);
+typedef void (MOJOSHADERCALL * MOJOSHADER_unmapUniformBufferMemoryFunc)();
+
+typedef struct MOJOSHADER_effectShaderContext
+{
+    /* Shader Backend */
+    MOJOSHADER_compileShaderFunc compileShader;
+    MOJOSHADER_shaderAddRefFunc shaderAddRef;
+    MOJOSHADER_deleteShaderFunc deleteShader;
+    MOJOSHADER_getParseDataFunc getParseData;
+    MOJOSHADER_bindShadersFunc bindShaders;
+    MOJOSHADER_getBoundShadersFunc getBoundShaders;
+    MOJOSHADER_mapUniformBufferMemoryFunc mapUniformBufferMemory;
+    MOJOSHADER_unmapUniformBufferMemoryFunc unmapUniformBufferMemory;
+
+    /* Allocator */
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *malloc_data;
+} MOJOSHADER_effectShaderContext;
+
+
+/*
  * Structure used to return data from parsing of an effect file...
  */
 /* !!! FIXME: most of these ints should be unsigned. */
 typedef struct MOJOSHADER_effect
 {
+    /*
+     * Public members. These are the fields your application cares about!
+     */
+
     /*
      * The number of elements pointed to by (errors).
      */
@@ -492,11 +547,6 @@ typedef struct MOJOSHADER_effect
      * This can be NULL if there were no errors or if (error_count) is zero.
      */
     MOJOSHADER_error *errors;
-
-    /*
-     * The name of the profile used to parse the shader. Will be NULL on error.
-     */
-    const char *profile;
 
     /*
      * The number of params pointed to by (params).
@@ -524,16 +574,6 @@ typedef struct MOJOSHADER_effect
     MOJOSHADER_effectTechnique *techniques;
 
     /*
-     * The technique currently being rendered by this effect.
-     */
-    const MOJOSHADER_effectTechnique *current_technique;
-
-    /*
-     * The index of the current pass being rendered by this effect.
-     */
-    int current_pass;
-
-    /*
      * The number of elements pointed to by (objects).
      */
     int object_count;
@@ -544,6 +584,25 @@ typedef struct MOJOSHADER_effect
      * This can be NULL on error or if (object_count) is zero.
      */
     MOJOSHADER_effectObject *objects;
+
+    /*
+     * Semi-public members. These might be useful, but are better to access from
+     * a function, not directly.
+     */
+
+    /*
+     * The technique currently being rendered by this effect.
+     */
+    const MOJOSHADER_effectTechnique *current_technique;
+
+    /*
+     * The index of the current pass being rendered by this effect.
+     */
+    int current_pass;
+
+    /*
+     * Private Members. Do not touch anything below this line!
+     */
 
     /*
      * Value used to determine whether or not to restore the previous shader
@@ -557,42 +616,67 @@ typedef struct MOJOSHADER_effect
     MOJOSHADER_effectStateChanges *state_changes;
 
     /*
-     * This is the malloc implementation you passed to MOJOSHADER_parseEffect().
+     * Values used to store the current shader state during execution.
      */
-    MOJOSHADER_malloc malloc;
+    MOJOSHADER_effectShader *current_vert_raw;
+    MOJOSHADER_effectShader *current_pixl_raw;
+    void *current_vert;
+    void *current_pixl;
 
     /*
-     * This is the free implementation you passed to MOJOSHADER_parseEffect().
+     * Values used to restore shader state after the effect has ended.
      */
-    MOJOSHADER_free free;
+    void *prev_vertex_shader;
+    void *prev_pixel_shader;
 
     /*
-     * This is the pointer you passed as opaque data for your allocator.
+     * This is the shader implementation you passed to MOJOSHADER_compileEffect().
      */
-    void *malloc_data;
+    MOJOSHADER_effectShaderContext ctx;
 } MOJOSHADER_effect;
 
 
-/* Effect parsing interface... */
+/* Effect compiling interface... */
 
-/* !!! FIXME: document me. */
-DECLSPEC MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
-                                                   const unsigned char *buf,
-                                                   const unsigned int _len,
-                                                   const MOJOSHADER_swizzle *swiz,
-                                                   const unsigned int swizcount,
-                                                   const MOJOSHADER_samplerMap *smap,
-                                                   const unsigned int smapcount,
-                                                   MOJOSHADER_malloc m,
-                                                   MOJOSHADER_free f,
-                                                   void *d);
+/* Fully compile/link the shaders found within the effect.
+ *
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
+ *   (ctx) contains all the function pointers needed to create and bind shaders
+ *   for a specific backend (OpenGL, Metal, etc).
+ *
+ * This function returns a MOJOSHADER_effect*, containing effect data which
+ *  includes shaders usable with the provided backend.
+ *
+ * This call is only as thread safe as the backend functions!
+ */
+DECLSPEC MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *tokenbuf,
+                                                     const unsigned int bufsize,
+                                                     const MOJOSHADER_swizzle *swiz,
+                                                     const unsigned int swizcount,
+                                                     const MOJOSHADER_samplerMap *smap,
+                                                     const unsigned int smapcount,
+                                                     const MOJOSHADER_effectShaderContext *ctx);
 
+/* Delete the shaders that were allocated for an effect.
+ *
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
+ *
+ * This call is only as thread safe as the backend functions!
+ */
+DECLSPEC void MOJOSHADER_deleteEffect(const MOJOSHADER_effect *effect);
 
-/* !!! FIXME: document me. */
-DECLSPEC void MOJOSHADER_freeEffect(const MOJOSHADER_effect *effect);
-
-
-/* !!! FIXME: document me. */
+/* Copies an effect, including current parameter/technique data.
+ *
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
+ *
+ * This function returns a MOJOSHADER_effect*, containing effect data which
+ *  includes shaders usable with the provided backend.
+ *
+ * This call is only as thread safe as the backend functions!
+ */
 DECLSPEC MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect);
 
 
@@ -620,7 +704,7 @@ DECLSPEC void MOJOSHADER_effectSetRawValueHandle(const MOJOSHADER_effectParam *p
  *
  * This function maps to ID3DXEffect::SetRawValue.
  *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  * (name) is the human-readable name of the parameter being modified.
  * (data) is the constant values to be applied to the parameter.
  * (offset) is the offset, in bytes, of the parameter data being modified.
@@ -641,7 +725,7 @@ DECLSPEC void MOJOSHADER_effectSetRawValueName(const MOJOSHADER_effect *effect,
  *
  * This function maps to ID3DXEffect::GetCurrentTechnique.
  *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  *
  * This function returns the technique currently used by the given effect.
  *
@@ -653,7 +737,7 @@ DECLSPEC const MOJOSHADER_effectTechnique *MOJOSHADER_effectGetCurrentTechnique(
  *
  * This function maps to ID3DXEffect::SetTechnique.
  *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  * (technique) is the technique to be used by the effect when rendered.
  *
  * This function is thread safe.
@@ -665,7 +749,7 @@ DECLSPEC void MOJOSHADER_effectSetTechnique(MOJOSHADER_effect *effect,
  *
  * This function maps to ID3DXEffect::FindNextValidTechnique.
  *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  * (technique) can either be a technique found in the given effect, or NULL to
  *  find the first technique in the given effect.
  *
@@ -678,39 +762,7 @@ DECLSPEC const MOJOSHADER_effectTechnique *MOJOSHADER_effectFindNextValidTechniq
                                                                                    const MOJOSHADER_effectTechnique *technique);
 
 
-/* OpenGL effect interface... */
-
-typedef struct MOJOSHADER_glEffect MOJOSHADER_glEffect;
-
-/* Fully compile/link the shaders found within the effect.
- *
- * The MOJOSHADER_glEffect* is solely for use within the OpenGL-specific calls.
- *  In all other cases you will be using the MOJOSHADER_effect* instead.
- *
- * In a typical use case, you will be calling this immediately after obtaining
- *  the MOJOSHADER_effect*.
- *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
- *
- * This function returns a MOJOSHADER_glEffect*, containing OpenGL-specific
- *  data for an accompanying MOJOSHADER_effect*.
- *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
- */
-DECLSPEC MOJOSHADER_glEffect *MOJOSHADER_glCompileEffect(MOJOSHADER_effect *effect);
-
-/* Delete the shaders that were allocated for an effect.
- *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
- *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
- */
-DECLSPEC void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *glEffect);
+/* Effect rendering interface... */
 
 /* Prepare the effect for rendering with the currently applied technique.
  *
@@ -720,7 +772,7 @@ DECLSPEC void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *glEffect);
  *  to pass in a MOJOSHADER_effectRenderState. Rather than change the render
  *  state within MojoShader itself we will simply provide what the effect wants
  *  and allow you to use this information with your own renderer.
- *  MOJOSHADER_glEffectBeginPass will update with the render state desired by
+ *  MOJOSHADER_effectBeginPass will update with the render state desired by
  *  the current effect pass.
  *
  * Note that we only provide the ability to preserve the shader state, but NOT
@@ -728,197 +780,81 @@ DECLSPEC void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *glEffect);
  * track your own GL state and restore these states as needed for your
  * application.
  *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  * (numPasses) will be filled with the number of passes that this technique
  *  will need to fully render.
  * (saveShaderState) is a boolean value informing the effect whether or not to
- *  restore the shader bindings after calling MOJOSHADER_glEffectEnd.
+ *  restore the shader bindings after calling MOJOSHADER_effectEnd.
  * (renderState) will be filled by the effect to inform you of the render state
  *  changes introduced by the technique and its passes.
  *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
+ * This call is only as thread safe as the backend functions!
  */
-DECLSPEC void MOJOSHADER_glEffectBegin(MOJOSHADER_glEffect *glEffect,
-                                       unsigned int *numPasses,
-                                       int saveShaderState,
-                                       MOJOSHADER_effectStateChanges *stateChanges);
+DECLSPEC void MOJOSHADER_effectBegin(MOJOSHADER_effect *effect,
+                                     unsigned int *numPasses,
+                                     int saveShaderState,
+                                     MOJOSHADER_effectStateChanges *stateChanges);
 
 /* Begin an effect pass from the currently applied technique.
  *
  * This function maps to ID3DXEffect::BeginPass.
  *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  * (pass) is the index of the effect pass as found in the current technique.
  *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
+ * This call is only as thread safe as the backend functions!
  */
-DECLSPEC void MOJOSHADER_glEffectBeginPass(MOJOSHADER_glEffect *glEffect,
-                                           unsigned int pass);
+DECLSPEC void MOJOSHADER_effectBeginPass(MOJOSHADER_effect *effect,
+                                         unsigned int pass);
 
 /* Push render state changes that occurred within an actively rendering pass.
  *
  * This function maps to ID3DXEffect::CommitChanges.
  *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
+ * This call is only as thread safe as the backend functions!
  */
-DECLSPEC void MOJOSHADER_glEffectCommitChanges(MOJOSHADER_glEffect *glEffect);
+DECLSPEC void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect);
 
 /* End an effect pass from the currently applied technique.
  *
  * This function maps to ID3DXEffect::EndPass.
  *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
+ * This call is only as thread safe as the backend functions!
  */
-DECLSPEC void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *glEffect);
+DECLSPEC void MOJOSHADER_effectEndPass(MOJOSHADER_effect *effect);
 
 /* Complete rendering the effect technique, and restore the render state.
  *
  * This function maps to ID3DXEffect::End.
  *
- * (glEffect) is a MOJOSHADER_glEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
+ * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_compileEffect().
  *
- * This call is NOT thread safe! As most OpenGL implementations are not thread
- * safe, you should probably only call this from the same thread that created
- * the GL context.
+ * This call is only as thread safe as the backend functions!
  */
-DECLSPEC void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect);
+DECLSPEC void MOJOSHADER_effectEnd(MOJOSHADER_effect *effect);
 
 
-/* Metal effect interface... */
+/* Profile-specific functions... */
 
-typedef struct MOJOSHADER_mtlEffect MOJOSHADER_mtlEffect;
-typedef struct MOJOSHADER_mtlShaderState
-{
-    MOJOSHADER_mtlShader *vertexShader;
-    MOJOSHADER_mtlShader *fragmentShader;
-    void *vertexUniformBuffer; // MTLBuffer*
-    void *fragmentUniformBuffer; // MTLBuffer*
-    int vertexUniformOffset;
-    int fragmentUniformOffset;
-} MOJOSHADER_mtlShaderState;
-
-/* Fully compile/link the shaders found within the effect.
+/*
+ * Compile a MTLLibrary that contains all shaders of the given effect.
  *
- * The MOJOSHADER_mtlEffect* is solely for use within the Metal-specific calls.
- *  In all other cases you will be using the MOJOSHADER_effect* instead.
+ * This call requires a valid MOJOSHADER_mtlContext to have been created,
+ *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
  *
- * In a typical use case, you will be calling this immediately after obtaining
- *  the MOJOSHADER_effect*.
- *
- * (effect) is a MOJOSHADER_effect* obtained from MOJOSHADER_parseEffect().
- * (mtlDevice) is a MTLDevice* obtained from a Metal device creation call,
- *  such as MTLCreateSystemDefaultDevice().
- * (numBackingBuffers) is the number of backing uniform buffers that you
- *  want to create for each shader. If you are using double-buffering,
- *  this should be 2; for triple buffering, this should be 3, etc.
- *
- * This function returns a MOJOSHADER_mtlEffect*, containing Metal-specific
- *  data for an accompanying MOJOSHADER_effect*.
+ * Returns NULL on error, the generated MTLLibrary on success.
  */
-DECLSPEC MOJOSHADER_mtlEffect *MOJOSHADER_mtlCompileEffect(MOJOSHADER_effect *effect,
-                                                           void *mtlDevice,
-                                                           int numBackingBuffers);
+DECLSPEC void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect);
 
-/* Delete the shaders that were allocated for an effect.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_mtlCompileEffect().
+/*
+ * Free the MTLLibrary given by (library).
  */
-DECLSPEC void MOJOSHADER_mtlDeleteEffect(MOJOSHADER_mtlEffect *mtlEffect);
+DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
 
-/* Prepare the effect for rendering with the currently applied technique.
- *
- * This function maps to ID3DXEffect::Begin.
- *
- * In addition to the expected Begin parameters, we also include a parameter
- *  to pass in a MOJOSHADER_effectRenderState. Rather than change the render
- *  state within MojoShader itself we will simply provide what the effect wants
- *  and allow you to use this information with your own renderer.
- *  MOJOSHADER_glEffectBeginPass will update with the render state desired by
- *  the current effect pass.
- *
- * Note that we only provide the ability to preserve the shader state, but NOT
- * the ability to preserve the render/sampler states. You are expected to
- * track your own Metal state and restore these states as needed for your
- * application.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_mtlCompileEffect().
- * (numPasses) will be filled with the number of passes that this technique
- *  will need to fully render.
- * (saveShaderState) is a boolean value informing the effect whether or not to
- *  restore the shader bindings after calling MOJOSHADER_mtlEffectEnd.
- * (renderState) will be filled by the effect to inform you of the render state
- *  changes introduced by the technique and its passes.
- */
-DECLSPEC void MOJOSHADER_mtlEffectBegin(MOJOSHADER_mtlEffect *mtlEffect,
-                                        unsigned int *numPasses,
-                                        int saveShaderState,
-                                        MOJOSHADER_effectStateChanges *stateChanges);
-
-/* Begin an effect pass from the currently applied technique.
- *
- * This function maps to ID3DXEffect::BeginPass.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_mtlCompileEffect().
- * (pass) is the index of the effect pass as found in the current technique.
- * (state) is a pointer to the current shader state object.
- *
- * The MOJOSHADER_mtlShaderState pointed to by (shState) must be created
- * before calling this function!
- */
-DECLSPEC void MOJOSHADER_mtlEffectBeginPass(MOJOSHADER_mtlEffect *mtlEffect,
-                                            unsigned int pass,
-                                            MOJOSHADER_mtlShaderState *shState);
-
-/* Push render state changes that occurred within an actively rendering pass.
- *
- * This function maps to ID3DXEffect::CommitChanges.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_mtlCompileEffect().
- * (state) is a pointer to the current shader state object.
- */
-DECLSPEC void MOJOSHADER_mtlEffectCommitChanges(MOJOSHADER_mtlEffect *mtlEffect,
-                                                MOJOSHADER_mtlShaderState *shState);
-
-/* End an effect pass from the currently applied technique.
- *
- * This function maps to ID3DXEffect::EndPass.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_mtlCompileEffect().
- */
-DECLSPEC void MOJOSHADER_mtlEffectEndPass(MOJOSHADER_mtlEffect *mtlEffect);
-
-/* Complete rendering the effect technique, and restore the render state.
- *
- * This function maps to ID3DXEffect::End.
- *
- * (mtlEffect) is a MOJOSHADER_mtlEffect* obtained from
- *  MOJOSHADER_glCompileEffect().
- * (state) is a pointer to the current shader state object.
- */
-DECLSPEC void MOJOSHADER_mtlEffectEnd(MOJOSHADER_mtlEffect *mtlEffect,
-                                      MOJOSHADER_mtlShaderState *shState);
 
 #endif /* MOJOSHADER_EFFECT_SUPPORT */
 

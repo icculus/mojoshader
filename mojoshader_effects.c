@@ -605,16 +605,17 @@ static void readsmallobjects(const uint32 numsmallobjects,
                              const uint8 **ptr,
                              uint32 *len,
                              MOJOSHADER_effect *effect,
-                             const char *profile,
                              const MOJOSHADER_swizzle *swiz,
                              const unsigned int swizcount,
                              const MOJOSHADER_samplerMap *smap,
-                             const unsigned int smapcount,
-                             MOJOSHADER_malloc m,
-                             MOJOSHADER_free f,
-                             void *d)
+                             const unsigned int smapcount)
 {
     int i, j;
+    MOJOSHADER_parseData *pd;
+    MOJOSHADER_malloc m = effect->ctx.m;
+    MOJOSHADER_free f = effect->ctx.f;
+    void *d = effect->ctx.malloc_data;
+
     if (numsmallobjects == 0) return;
 
     for (i = 1; i < numsmallobjects + 1; i++)
@@ -654,44 +655,46 @@ static void readsmallobjects(const uint32 numsmallobjects,
               || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
         {
             char mainfn[32];
-            snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) index);
+            snprintf(mainfn, sizeof(mainfn), "ShaderFunction%u", (unsigned int) index);
             object->shader.technique = -1;
             object->shader.pass = -1;
-            object->shader.shader = MOJOSHADER_parse(profile, mainfn, *ptr, length,
-                                                     swiz, swizcount, smap, smapcount,
-                                                     m, f, d);
             // !!! FIXME: check for errors.
-            for (j = 0; j < object->shader.shader->symbol_count; j++)
-                if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+            object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
+                                                              swiz, swizcount,
+                                                              smap, smapcount);
+            pd = effect->ctx.getParseData(object->shader.shader);
+
+            for (j = 0; j < pd->symbol_count; j++)
+                if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                     object->shader.sampler_count++;
-            object->shader.param_count = object->shader.shader->symbol_count;
+            object->shader.param_count = pd->symbol_count;
             object->shader.params = (uint32 *) m(object->shader.param_count * sizeof (uint32), d);
             object->shader.samplers = (MOJOSHADER_samplerStateRegister *) m(object->shader.sampler_count * sizeof (MOJOSHADER_samplerStateRegister), d);
             uint32 curSampler = 0;
-            for (j = 0; j < object->shader.shader->symbol_count; j++)
+            for (j = 0; j < pd->symbol_count; j++)
             {
                 int par = findparameter(effect->params,
                                         effect->param_count,
-                                        object->shader.shader->symbols[j].name);
+                                        pd->symbols[j].name);
                 object->shader.params[j] = par;
-                if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+                if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                 {
                     object->shader.samplers[curSampler].sampler_name = effect->params[par].value.name;
-                    object->shader.samplers[curSampler].sampler_register = object->shader.shader->symbols[j].register_index;
+                    object->shader.samplers[curSampler].sampler_register = pd->symbols[j].register_index;
                     object->shader.samplers[curSampler].sampler_state_count = effect->params[par].value.value_count;
                     object->shader.samplers[curSampler].sampler_states = effect->params[par].value.valuesSS;
                     curSampler++;
                 } // if
             } // for
-            if (object->shader.shader->preshader)
+            if (pd->preshader)
             {
-                object->shader.preshader_param_count = object->shader.shader->preshader->symbol_count;
+                object->shader.preshader_param_count = pd->preshader->symbol_count;
                 object->shader.preshader_params = (uint32 *) m(object->shader.preshader_param_count * sizeof (uint32), d);
-                for (j = 0; j < object->shader.shader->preshader->symbol_count; j++)
+                for (j = 0; j < pd->preshader->symbol_count; j++)
                 {
                     object->shader.preshader_params[j] = findparameter(effect->params,
                                                                        effect->param_count,
-                                                                       object->shader.shader->preshader->symbols[j].name);
+                                                                       pd->preshader->symbols[j].name);
                 } // for
             } // if
         } // else if
@@ -712,16 +715,17 @@ static void readlargeobjects(const uint32 numlargeobjects,
                              const uint8 **ptr,
                              uint32 *len,
                              MOJOSHADER_effect *effect,
-                             const char *profile,
                              const MOJOSHADER_swizzle *swiz,
                              const unsigned int swizcount,
                              const MOJOSHADER_samplerMap *smap,
-                             const unsigned int smapcount,
-                             MOJOSHADER_malloc m,
-                             MOJOSHADER_free f,
-                             void *d)
+                             const unsigned int smapcount)
 {
     int i, j;
+    MOJOSHADER_parseData *pd;
+    MOJOSHADER_malloc m = effect->ctx.m;
+    MOJOSHADER_free f = effect->ctx.f;
+    void *d = effect->ctx.malloc_data;
+
     if (numlargeobjects == 0) return;
 
     int numobjects = numsmallobjects + numlargeobjects + 1;
@@ -747,7 +751,6 @@ static void readlargeobjects(const uint32 numlargeobjects,
             object->shader.technique = technique;
             object->shader.pass = index;
 
-            const char *emitter = profile;
             if (type == 2)
             {
                 /* This is a standalone preshader!
@@ -779,41 +782,43 @@ static void readlargeobjects(const uint32 numlargeobjects,
             {
                 char mainfn[32];
                 snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) objectIndex);
-                object->shader.shader = MOJOSHADER_parse(emitter, mainfn, *ptr, length,
-                                                         swiz, swizcount, smap, smapcount,
-                                                         m, f, d);
                 // !!! FIXME: check for errors.
-                for (j = 0; j < object->shader.shader->symbol_count; j++)
-                    if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+                object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
+                                                                  swiz, swizcount,
+                                                                  smap, smapcount);
+                pd = effect->ctx.getParseData(object->shader.shader);
+
+                for (j = 0; j < pd->symbol_count; j++)
+                    if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                         object->shader.sampler_count++;
-                object->shader.param_count = object->shader.shader->symbol_count;
+                object->shader.param_count = pd->symbol_count;
                 object->shader.params = (uint32 *) m(object->shader.param_count * sizeof (uint32), d);
                 object->shader.samplers = (MOJOSHADER_samplerStateRegister *) m(object->shader.sampler_count * sizeof (MOJOSHADER_samplerStateRegister), d);
                 uint32 curSampler = 0;
-                for (j = 0; j < object->shader.shader->symbol_count; j++)
+                for (j = 0; j < pd->symbol_count; j++)
                 {
                     int par = findparameter(effect->params,
                                             effect->param_count,
-                                            object->shader.shader->symbols[j].name);
+                                            pd->symbols[j].name);
                     object->shader.params[j] = par;
-                    if (object->shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+                    if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                     {
                         object->shader.samplers[curSampler].sampler_name = effect->params[par].value.name;
-                        object->shader.samplers[curSampler].sampler_register = object->shader.shader->symbols[j].register_index;
+                        object->shader.samplers[curSampler].sampler_register = pd->symbols[j].register_index;
                         object->shader.samplers[curSampler].sampler_state_count = effect->params[par].value.value_count;
                         object->shader.samplers[curSampler].sampler_states = effect->params[par].value.valuesSS;
                         curSampler++;
                     } // if
                 } // for
-                if (object->shader.shader->preshader)
+                if (pd->preshader)
                 {
-                    object->shader.preshader_param_count = object->shader.shader->preshader->symbol_count;
+                    object->shader.preshader_param_count = pd->preshader->symbol_count;
                     object->shader.preshader_params = (uint32 *) m(object->shader.preshader_param_count * sizeof (uint32), d);
-                    for (j = 0; j < object->shader.shader->preshader->symbol_count; j++)
+                    for (j = 0; j < pd->preshader->symbol_count; j++)
                     {
                         object->shader.preshader_params[j] = findparameter(effect->params,
                                                                            effect->param_count,
-                                                                           object->shader.shader->preshader->symbols[j].name);
+                                                                           pd->preshader->symbols[j].name);
                     } // for
                 } // if
             }
@@ -848,38 +853,51 @@ static void readlargeobjects(const uint32 numlargeobjects,
     } // for
 } // readobjects
 
-MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
-                                          const unsigned char *buf,
-                                          const unsigned int _len,
-                                          const MOJOSHADER_swizzle *swiz,
-                                          const unsigned int swizcount,
-                                          const MOJOSHADER_samplerMap *smap,
-                                          const unsigned int smapcount,
-                                          MOJOSHADER_malloc m,
-                                          MOJOSHADER_free f,
-                                          void *d)
+MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
+                                            const unsigned int _len,
+                                            const MOJOSHADER_swizzle *swiz,
+                                            const unsigned int swizcount,
+                                            const MOJOSHADER_samplerMap *smap,
+                                            const unsigned int smapcount,
+                                            const MOJOSHADER_effectShaderContext *ctx)
 {
     const uint8 *ptr = (const uint8 *) buf;
     uint32 len = (uint32) _len;
+    MOJOSHADER_malloc m;
+    MOJOSHADER_free f;
+    void *d;
+
+    /* Need a backend! */
+    if (ctx == NULL)
+        return &MOJOSHADER_out_of_mem_effect;
 
     /* Supply both m and f, or neither */
-    if ( ((m == NULL) && (f != NULL)) || ((m != NULL) && (f == NULL)) )
+    if ( ((ctx->m == NULL) && (ctx->f != NULL))
+      || ((ctx->m != NULL) && (ctx->f == NULL)) )
         return &MOJOSHADER_out_of_mem_effect;
 
     /* Use default malloc/free if m/f were not passed */
-    if (m == NULL) m = MOJOSHADER_internal_malloc;
-    if (f == NULL) f = MOJOSHADER_internal_free;
+    if (ctx->m == NULL)
+        m = MOJOSHADER_internal_malloc;
+    else
+        m = ctx->m;
+    if (ctx->f == NULL)
+        f = MOJOSHADER_internal_free;
+    else
+        f = ctx->f;
+    d = ctx->malloc_data;
 
     /* malloc base effect structure */
-    MOJOSHADER_effect *retval = (MOJOSHADER_effect *) m(sizeof (MOJOSHADER_effect), d);
+    MOJOSHADER_effect *retval = (MOJOSHADER_effect *) m(sizeof (MOJOSHADER_effect),
+                                                        ctx->malloc_data);
     if (retval == NULL)
         return &MOJOSHADER_out_of_mem_effect;
     memset(retval, '\0', sizeof (*retval));
 
-    /* Store m/f/d in effect structure */
-    retval->malloc = m;
-    retval->free = f;
-    retval->malloc_data = d;
+    /* Store ctx in effect structure */
+    memcpy(&retval->ctx, ctx, sizeof(MOJOSHADER_effectShaderContext));
+    retval->ctx.m = m;
+    retval->ctx.f = f;
 
     if (len < 8)
         goto parseEffect_unexpectedEOF;
@@ -951,22 +969,12 @@ MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
     const int numlargeobjects = readui32(&ptr, &len);
 
     /* Parse "small" object table */
-    readsmallobjects(numsmallobjects, &ptr, &len,
-                     retval,
-                     profile, swiz, swizcount, smap, smapcount,
-                     m, f, d);
+    readsmallobjects(numsmallobjects, &ptr, &len, retval,
+                     swiz, swizcount, smap, smapcount);
 
     /* Parse "large" object table. */
-    readlargeobjects(numlargeobjects, numsmallobjects, &ptr, &len,
-                     retval,
-                     profile, swiz, swizcount, smap, smapcount,
-                     m, f, d);
-
-    /* Store MojoShader profile in effect structure */
-    retval->profile = (char *) m(strlen(profile) + 1, d);
-    if (retval->profile == NULL)
-        goto parseEffect_outOfMemory;
-    strcpy((char *) retval->profile, profile);
+    readlargeobjects(numlargeobjects, numsmallobjects, &ptr, &len, retval,
+                     swiz, swizcount, smap, smapcount);
 
     return retval;
 
@@ -974,7 +982,7 @@ MOJOSHADER_effect *MOJOSHADER_parseEffect(const char *profile,
 parseEffect_notAnEffectsFile:
 parseEffect_unexpectedEOF:
 parseEffect_outOfMemory:
-    MOJOSHADER_freeEffect(retval);
+    MOJOSHADER_deleteEffect(retval);
     return &MOJOSHADER_out_of_mem_effect;
 } // MOJOSHADER_parseEffect
 
@@ -1009,14 +1017,14 @@ void freevalue(MOJOSHADER_effectValue *value, MOJOSHADER_free f, void *d)
 } // freevalue
 
 
-void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
+void MOJOSHADER_deleteEffect(const MOJOSHADER_effect *_effect)
 {
     MOJOSHADER_effect *effect = (MOJOSHADER_effect *) _effect;
     if ((effect == NULL) || (effect == &MOJOSHADER_out_of_mem_effect))
         return;  // no-op.
 
-    MOJOSHADER_free f = effect->free;
-    void *d = effect->malloc_data;
+    MOJOSHADER_free f = effect->ctx.f;
+    void *d = effect->ctx.malloc_data;
     int i, j, k;
 
     /* Free errors */
@@ -1026,9 +1034,6 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
         f((void *) effect->errors[i].filename, d);
     } // for
     f((void *) effect->errors, d);
-
-    /* Free profile string */
-    f((void *) effect->profile, d);
 
     /* Free parameters, including annotations */
     for (i = 0; i < effect->param_count; i++)
@@ -1082,7 +1087,7 @@ void MOJOSHADER_freeEffect(const MOJOSHADER_effect *_effect)
             if (object->shader.is_preshader)
                 MOJOSHADER_freePreshader(object->shader.preshader);
             else
-                MOJOSHADER_freeParseData(object->shader.shader);
+                effect->ctx.deleteShader(object->shader.shader);
             f((void *) object->shader.params, d);
             f((void *) object->shader.samplers, d);
             f((void *) object->shader.preshader_params, d);
@@ -1304,155 +1309,13 @@ MOJOSHADER_preshader *copypreshader(const MOJOSHADER_preshader *src,
 } // copypreshader
 
 
-MOJOSHADER_parseData *copyparsedata(const MOJOSHADER_parseData *src,
-                                    MOJOSHADER_malloc m,
-                                    void *d)
-{
-    int i;
-    uint32 siz;
-    char *stringcopy;
-    MOJOSHADER_parseData *retval;
-
-    retval = (MOJOSHADER_parseData *) m(sizeof (MOJOSHADER_parseData), d);
-    memset(retval, '\0', sizeof (MOJOSHADER_parseData));
-
-    /* Copy malloc/free */
-    retval->malloc = src->malloc;
-    retval->free = src->free;
-    retval->malloc_data = src->malloc_data;
-
-    // !!! FIXME: Out of memory check!
-    #define COPY_STRING(location) \
-        siz = strlen(src->location) + 1; \
-        stringcopy = (char *) m(siz, d); \
-        strcpy(stringcopy, src->location); \
-        retval->location = stringcopy; \
-
-    /* Copy errors */
-    siz = sizeof (MOJOSHADER_error) * src->error_count;
-    retval->error_count = src->error_count;
-    retval->errors = (MOJOSHADER_error *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->errors, '\0', siz);
-    for (i = 0; i < retval->error_count; i++)
-    {
-        COPY_STRING(errors[i].error)
-        COPY_STRING(errors[i].filename)
-        retval->errors[i].error_position = src->errors[i].error_position;
-    } // for
-
-    /* Copy profile string constant */
-    retval->profile = src->profile;
-
-    /* Copy shader output */
-    retval->output_len = src->output_len;
-    stringcopy = (char *) m(src->output_len, d);
-    memcpy(stringcopy, src->output, src->output_len);
-    retval->output = stringcopy;
-
-    /* Copy miscellaneous shader info */
-    retval->instruction_count = src->instruction_count;
-    retval->shader_type = src->shader_type;
-    retval->major_ver = src->major_ver;
-    retval->minor_ver = src->minor_ver;
-
-    /* Copy main function string */
-    COPY_STRING(mainfn);
-
-    /* Copy uniforms */
-    siz = sizeof (MOJOSHADER_uniform) * src->uniform_count;
-    retval->uniform_count = src->uniform_count;
-    retval->uniforms = (MOJOSHADER_uniform *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->uniforms, '\0', siz);
-    for (i = 0; i < retval->uniform_count; i++)
-    {
-        retval->uniforms[i].type = src->uniforms[i].type;
-        retval->uniforms[i].index = src->uniforms[i].index;
-        retval->uniforms[i].array_count = src->uniforms[i].array_count;
-        retval->uniforms[i].constant = src->uniforms[i].constant;
-        COPY_STRING(uniforms[i].name)
-    } // for
-
-    /* Copy constants */
-    siz = sizeof (MOJOSHADER_constant) * src->constant_count;
-    retval->constant_count = src->constant_count;
-    retval->constants = (MOJOSHADER_constant *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memcpy(retval->constants, src->constants, siz);
-
-    /* Copy samplers */
-    siz = sizeof (MOJOSHADER_sampler) * src->sampler_count;
-    retval->sampler_count = src->sampler_count;
-    retval->samplers = (MOJOSHADER_sampler *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->samplers, '\0', siz);
-    for (i = 0; i < retval->sampler_count; i++)
-    {
-        retval->samplers[i].type = src->samplers[i].type;
-        retval->samplers[i].index = src->samplers[i].index;
-        COPY_STRING(samplers[i].name)
-        retval->samplers[i].texbem = src->samplers[i].texbem;
-    } // for
-
-    /* Copy attributes */
-    siz = sizeof (MOJOSHADER_attribute) * src->attribute_count;
-    retval->attribute_count = src->attribute_count;
-    retval->attributes = (MOJOSHADER_attribute *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->attributes, '\0', siz);
-    for (i = 0; i < retval->attribute_count; i++)
-    {
-        retval->attributes[i].usage = src->attributes[i].usage;
-        retval->attributes[i].index = src->attributes[i].index;
-        COPY_STRING(attributes[i].name)
-    } // for
-
-    /* Copy outputs */
-    siz = sizeof (MOJOSHADER_attribute) * src->output_count;
-    retval->output_count = src->output_count;
-    retval->outputs = (MOJOSHADER_attribute *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->outputs, '\0', siz);
-    for (i = 0; i < retval->output_count; i++)
-    {
-        retval->outputs[i].usage = src->outputs[i].usage;
-        retval->outputs[i].index = src->outputs[i].index;
-        COPY_STRING(outputs[i].name)
-    } // for
-
-    #undef COPY_STRING
-
-    /* Copy swizzles */
-    siz = sizeof (MOJOSHADER_swizzle) * src->swizzle_count;
-    retval->swizzle_count = src->swizzle_count;
-    retval->swizzles = (MOJOSHADER_swizzle *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memcpy(retval->swizzles, src->swizzles, siz);
-
-    /* Copy symbols */
-    siz = sizeof (MOJOSHADER_symbol) * src->symbol_count;
-    retval->symbol_count = src->symbol_count;
-    retval->symbols = (MOJOSHADER_symbol *) m(siz, d);
-    // !!! FIXME: Out of memory check!
-    memset(retval->symbols, '\0', siz);
-    for (i = 0; i < retval->symbol_count; i++)
-        copysymbol(&retval->symbols[i], &src->symbols[i], m, d);
-
-    /* Copy preshader */
-    if (src->preshader != NULL)
-        retval->preshader = copypreshader(src->preshader, m, d);
-
-    return retval;
-} // copyparsedata
-
-
 MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
 {
     int i, j, k;
+    MOJOSHADER_parseData *pd;
     MOJOSHADER_effect *clone;
-    MOJOSHADER_malloc m = effect->malloc;
-    void *d = effect->malloc_data;
+    MOJOSHADER_malloc m = effect->ctx.m;
+    void *d = effect->ctx.malloc_data;
     uint32 siz = 0;
     char *stringcopy = NULL;
     uint32 curSampler;
@@ -1465,10 +1328,8 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
         return NULL; // Maybe out_of_mem_effect instead?
     memset(clone, '\0', sizeof (MOJOSHADER_effect));
 
-    /* Copy malloc/free */
-    clone->malloc = effect->malloc;
-    clone->free = effect->free;
-    clone->malloc_data = effect->malloc_data;
+    /* Copy ctx */
+    memcpy(&clone->ctx, &effect->ctx, sizeof(MOJOSHADER_effectShaderContext));
 
     #define COPY_STRING(location) \
         siz = strlen(effect->location) + 1; \
@@ -1491,9 +1352,6 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
         COPY_STRING(errors[i].filename)
         clone->errors[i].error_position = effect->errors[i].error_position;
     } // for
-
-    /* Copy profile string */
-    COPY_STRING(profile)
 
     /* Copy parameters */
     siz = sizeof (MOJOSHADER_effectParam) * effect->param_count;
@@ -1629,8 +1487,9 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
                 continue;
             } // if
 
-            clone->objects[i].shader.shader = copyparsedata(effect->objects[i].shader.shader,
-                                                            m, d);
+            effect->ctx.shaderAddRef(effect->objects[i].shader.shader);
+            clone->objects[i].shader.shader = effect->objects[i].shader.shader;
+            pd = clone->ctx.getParseData(clone->objects[i].shader.shader);
 
             siz = sizeof (MOJOSHADER_samplerStateRegister) * effect->objects[i].shader.sampler_count;
             clone->objects[i].shader.sampler_count = effect->objects[i].shader.sampler_count;
@@ -1638,11 +1497,11 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
             if (clone->objects[i].shader.samplers == NULL)
                 goto cloneEffect_outOfMemory;
             curSampler = 0;
-            for (j = 0; j < clone->objects[i].shader.shader->symbol_count; j++)
-                if (clone->objects[i].shader.shader->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
+            for (j = 0; j < pd->symbol_count; j++)
+                if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
                 {
                     clone->objects[i].shader.samplers[curSampler].sampler_name = clone->params[clone->objects[i].shader.params[j]].value.name;
-                    clone->objects[i].shader.samplers[curSampler].sampler_register = clone->objects[i].shader.shader->symbols[j].register_index;
+                    clone->objects[i].shader.samplers[curSampler].sampler_register = pd->symbols[j].register_index;
                     clone->objects[i].shader.samplers[curSampler].sampler_state_count = clone->params[clone->objects[i].shader.params[j]].value.value_count;
                     clone->objects[i].shader.samplers[curSampler].sampler_states = clone->params[clone->objects[i].shader.params[j]].value.valuesSS;
                     curSampler++;
@@ -1667,7 +1526,7 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
     return clone;
 
 cloneEffect_outOfMemory:
-    MOJOSHADER_freeEffect(clone);
+    MOJOSHADER_deleteEffect(clone);
     return NULL;
 } // MOJOSHADER_cloneEffect
 
@@ -1743,6 +1602,270 @@ const MOJOSHADER_effectTechnique *MOJOSHADER_effectFindNextValidTechnique(const 
     assert(0 && "Technique is not part of this effect!");
     return NULL;
 } // MOJOSHADER_effectFindNextValidTechnique
+
+
+void MOJOSHADER_effectBegin(MOJOSHADER_effect *effect,
+                            unsigned int *numPasses,
+                            int saveShaderState,
+                            MOJOSHADER_effectStateChanges *stateChanges)
+{
+    *numPasses = effect->current_technique->pass_count;
+    effect->restore_shader_state = saveShaderState;
+    effect->state_changes = stateChanges;
+
+    if (effect->restore_shader_state)
+    {
+        effect->ctx.getBoundShaders(&effect->prev_vertex_shader,
+                                    &effect->prev_pixel_shader);
+    } // if
+} // MOJOSHADER_effectBegin
+
+
+void MOJOSHADER_effectBeginPass(MOJOSHADER_effect *effect,
+                                unsigned int pass)
+{
+    int i, j;
+    MOJOSHADER_effectPass *curPass;
+    MOJOSHADER_effectState *state;
+    MOJOSHADER_effectShader *rawVert = effect->current_vert_raw;
+    MOJOSHADER_effectShader *rawPixl = effect->current_pixl_raw;
+    int has_preshader = 0;
+
+    effect->ctx.getBoundShaders(&effect->current_vert,
+                                &effect->current_pixl);
+
+    assert(effect->current_pass == -1);
+    effect->current_pass = pass;
+    curPass = &effect->current_technique->passes[pass];
+
+    // !!! FIXME: I bet this could be stored at parse/compile time. -flibit
+    for (i = 0; i < curPass->state_count; i++)
+    {
+        state = &curPass->states[i];
+        if (state->type == MOJOSHADER_RS_VERTEXSHADER)
+        {
+            rawVert = &effect->objects[*state->value.valuesI].shader;
+            if (rawVert->is_preshader)
+                has_preshader = 1;
+            else
+                effect->current_vert = rawVert->shader;
+        } // if
+        else if (state->type == MOJOSHADER_RS_PIXELSHADER)
+        {
+            rawPixl = &effect->objects[*state->value.valuesI].shader;
+            if (rawPixl->is_preshader)
+                has_preshader = 1;
+            else
+                effect->current_pixl = rawPixl->shader;
+        }
+    } // for
+
+    effect->state_changes->render_state_changes = curPass->states;
+    effect->state_changes->render_state_change_count = curPass->state_count;
+
+    effect->current_vert_raw = rawVert;
+    effect->current_pixl_raw = rawPixl;
+
+    /* If this effect pass has an array of shaders, we get to wait until
+     * CommitChanges to actually bind the final shaders.
+     * -flibit
+     */
+    if (!has_preshader)
+    {
+        effect->ctx.bindShaders(effect->current_vert,
+                                effect->current_pixl);
+        if (effect->current_vert_raw != NULL)
+        {
+            effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
+            effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
+        } // if
+        if (effect->current_pixl_raw != NULL)
+        {
+            effect->state_changes->sampler_state_changes = rawPixl->samplers;
+            effect->state_changes->sampler_state_change_count = rawPixl->sampler_count;
+        } // if
+    } // if
+
+    MOJOSHADER_effectCommitChanges(effect);
+} // MOJOSHADER_effectBeginPass
+
+
+static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
+                                       unsigned int *param_loc,
+                                       MOJOSHADER_symbol *symbols,
+                                       unsigned int symbol_count,
+                                       float *regf, int *regi, uint8 *regb)
+{
+    int i, j, r, c;
+
+    i = 0;
+    for (i = 0; i < symbol_count; i++)
+    {
+        const MOJOSHADER_symbol *sym = &symbols[i];
+        const MOJOSHADER_effectValue *param = &params[param_loc[i]].value;
+
+        // float/int registers are vec4, so they have 4 elements each
+        const uint32 start = sym->register_index << 2;
+
+        if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
+            memcpy(regf + start, param->valuesF, sym->register_count << 4);
+        else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
+        {
+            // Structs are a whole different world...
+            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
+                memcpy(regf + start, param->valuesF, sym->register_count << 4);
+            else
+            {
+                // Sometimes int/bool parameters get thrown into float registers...
+                j = 0;
+                do
+                {
+                    c = 0;
+                    do
+                    {
+                        regf[start + (j << 2) + c] = (float) param->valuesI[(j << 2) + c];
+                    } while (++c < param->type.columns);
+                } while (++j < sym->register_count);
+            } // else
+        } // else if
+        else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
+            memcpy(regi + start, param->valuesI, sym->register_count << 4);
+        else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
+        {
+            j = 0;
+            r = 0;
+            do
+            {
+                c = 0;
+                do
+                {
+                    // regb is not a vec4, enjoy that 'start' bitshift! -flibit
+                    regb[(start >> 2) + r + c] = param->valuesI[(j << 2) + c];
+                    c++;
+                } while (c < param->type.columns && ((r + c) < sym->register_count));
+                r += c;
+                j++;
+            } while (r < sym->register_count);
+        } // else if
+    } // for
+} // copy_parameter_data
+
+
+void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect)
+{
+    MOJOSHADER_effectShader *rawVert = effect->current_vert_raw;
+    MOJOSHADER_effectShader *rawPixl = effect->current_pixl_raw;
+
+    /* Used for shader selection from preshaders */
+    int i, j;
+    MOJOSHADER_effectValue *param;
+    MOJOSHADER_parseData *pd;
+    float selector;
+    int shader_object;
+    int selector_ran = 0;
+
+    float *vs_reg_file_f, *ps_reg_file_f;
+    int *vs_reg_file_i, *ps_reg_file_i;
+    uint8 *vs_reg_file_b, *ps_reg_file_b;
+
+    /* For effect passes with arrays of shaders, we have to run a preshader
+     * that determines which shader to use, based on a parameter's value.
+     * -flibit
+     */
+    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
+    #define SELECT_SHADER_FROM_PRESHADER(raw, gls) \
+        if (raw != NULL && raw->is_preshader) \
+        { \
+            i = 0; \
+            do \
+            { \
+                param = &effect->params[raw->preshader_params[i]].value; \
+                for (j = 0; j < (param->value_count >> 2); j++) \
+                    memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index + j, \
+                           param->valuesI + (j << 2), \
+                           param->type.columns << 2); \
+            } while (++i < raw->preshader->symbol_count); \
+            MOJOSHADER_runPreshader(raw->preshader, &selector); \
+            shader_object = effect->params[raw->params[0]].value.valuesI[(int) selector]; \
+            raw = &effect->objects[shader_object].shader; \
+            gls = raw->shader; \
+            selector_ran = 1; \
+        }
+    SELECT_SHADER_FROM_PRESHADER(rawVert, effect->current_vert)
+    SELECT_SHADER_FROM_PRESHADER(rawPixl, effect->current_pixl)
+    #undef SELECT_SHADER_FROM_PRESHADER
+    if (selector_ran)
+    {
+        effect->ctx.bindShaders(effect->current_vert,
+                                effect->current_pixl);
+        if (effect->current_vert_raw != NULL)
+        {
+            effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
+            effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
+        } // if
+        if (effect->current_pixl_raw != NULL)
+        {
+            effect->state_changes->sampler_state_changes = rawPixl->samplers;
+            effect->state_changes->sampler_state_change_count = rawPixl->sampler_count;
+        } // if
+    } // if
+
+    /* This is where parameters are copied into the constant buffers.
+     * If you're looking for where things slow down immensely, look at
+     * the copy_parameter_data() and MOJOSHADER_runPreshader() functions.
+     * -flibit
+     */
+    // !!! FIXME: We're just copying everything every time. Blech. -flibit
+    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
+    // !!! FIXME: Will the preshader ever want int/bool registers? -flibit
+    #define COPY_PARAMETER_DATA(raw, stage) \
+        if (raw != NULL) \
+        { \
+            pd = effect->ctx.getParseData(raw->shader); \
+            copy_parameter_data(effect->params, raw->params, \
+                                pd->symbols, \
+                                pd->symbol_count, \
+                                stage##_reg_file_f, \
+                                stage##_reg_file_i, \
+                                stage##_reg_file_b); \
+            if (pd->preshader) \
+            { \
+                copy_parameter_data(effect->params, raw->preshader_params, \
+                                    pd->preshader->symbols, \
+                                    pd->preshader->symbol_count, \
+                                    pd->preshader->registers, \
+                                    NULL, \
+                                    NULL); \
+                MOJOSHADER_runPreshader(pd->preshader, stage##_reg_file_f); \
+            } \
+        }
+    effect->ctx.mapUniformBufferMemory(&vs_reg_file_f, &vs_reg_file_i, &vs_reg_file_b,
+                                       &ps_reg_file_f, &ps_reg_file_i, &ps_reg_file_b);
+    COPY_PARAMETER_DATA(rawVert, vs)
+    COPY_PARAMETER_DATA(rawPixl, ps)
+    effect->ctx.unmapUniformBufferMemory();
+    #undef COPY_PARAMETER_DATA
+} // MOJOSHADER_effectCommitChanges
+
+
+void MOJOSHADER_effectEndPass(MOJOSHADER_effect *effect)
+{
+    assert(effect->current_pass != -1);
+    effect->current_pass = -1;
+} // MOJOSHADER_effectEndPass
+
+
+void MOJOSHADER_effectEnd(MOJOSHADER_effect *effect)
+{
+    if (effect->restore_shader_state)
+    {
+        effect->restore_shader_state = 0;
+        effect->ctx.bindShaders(effect->prev_vertex_shader,
+                                effect->prev_pixel_shader);
+    } // if
+
+    effect->state_changes = NULL;
+} // MOJOSHADER_effectEnd
 
 #endif // MOJOSHADER_EFFECT_SUPPORT
 

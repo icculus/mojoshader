@@ -1896,6 +1896,13 @@ compile_shader_fail:
 } // MOJOSHADER_glCompileShader
 
 
+void MOJOSHADER_glShaderAddRef(MOJOSHADER_glShader *shader)
+{
+    if (shader != NULL)
+        shader->refcount++;
+} // MOJOSHADER_glShaderAddRef
+
+
 const MOJOSHADER_parseData *MOJOSHADER_glGetShaderParseData(
                                                 MOJOSHADER_glShader *shader)
 {
@@ -2430,6 +2437,26 @@ void MOJOSHADER_glBindShaders(MOJOSHADER_glShader *v, MOJOSHADER_glShader *p)
 } // MOJOSHADER_glBindShaders
 
 
+void MOJOSHADER_glGetBoundShaders(MOJOSHADER_glShader **v,
+                                  MOJOSHADER_glShader **p)
+{
+    if (v != NULL)
+    {
+        if (ctx->bound_program != NULL)
+            *v = ctx->bound_program->vertex;
+        else
+            *v = NULL;
+    } // if
+    if (p != NULL)
+    {
+        if (ctx->bound_program != NULL)
+            *p = ctx->bound_program->fragment;
+        else
+            *p = NULL;
+    } // if
+} // MOJOSHADER_glGetBoundShaders
+
+
 static inline uint minuint(const uint a, const uint b)
 {
     return ((a < b) ? a : b);
@@ -2600,6 +2627,24 @@ void MOJOSHADER_glGetPixelShaderUniformB(unsigned int idx, int *data,
             *(data++) = (int) *(rptr++);
     } // if
 } // MOJOSHADER_glGetPixelShaderUniformB
+
+
+void MOJOSHADER_glMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                         float **psf, int **psi, unsigned char **psb)
+{
+    *vsf = ctx->vs_reg_file_f;
+    *vsi = ctx->vs_reg_file_i;
+    *vsb = ctx->vs_reg_file_b;
+    *psf = ctx->ps_reg_file_f;
+    *psi = ctx->ps_reg_file_i;
+    *psb = ctx->ps_reg_file_b;
+} // MOJOSHADER_glMapUniformBufferMemory
+
+
+void MOJOSHADER_glUnmapUniformBufferMemory()
+{
+    ctx->generation++;
+} // MOJOSHADER_glUnmapUniformBufferMemory
 
 
 static inline GLenum opengl_attr_type(const MOJOSHADER_attributeType type)
@@ -2944,432 +2989,6 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_glDestroyContext
-
-
-#ifdef MOJOSHADER_EFFECT_SUPPORT
-
-
-struct MOJOSHADER_glEffect
-{
-    MOJOSHADER_effect *effect;
-    unsigned int num_shaders;
-    MOJOSHADER_glShader *shaders;
-    unsigned int *shader_indices;
-    unsigned int num_preshaders;
-    unsigned int *preshader_indices;
-    MOJOSHADER_glShader *current_vert;
-    MOJOSHADER_glShader *current_frag;
-    MOJOSHADER_effectShader *current_vert_raw;
-    MOJOSHADER_effectShader *current_frag_raw;
-    MOJOSHADER_glProgram *prev_program;
-};
-
-
-MOJOSHADER_glEffect *MOJOSHADER_glCompileEffect(MOJOSHADER_effect *effect)
-{
-    int i;
-    MOJOSHADER_malloc m = effect->malloc;
-    MOJOSHADER_free f = effect->free;
-    void *d = effect->malloc_data;
-    int current_shader = 0;
-    int current_preshader = 0;
-    GLuint shader = 0;
-
-    MOJOSHADER_glEffect *retval = (MOJOSHADER_glEffect *) m(sizeof (MOJOSHADER_glEffect), d);
-    if (retval == NULL)
-    {
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval, '\0', sizeof (MOJOSHADER_glEffect));
-
-    // Count the number of shaders before allocating
-    for (i = 0; i < effect->object_count; i++)
-    {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
-        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-        {
-            if (object->shader.is_preshader)
-                retval->num_preshaders++;
-            else
-                retval->num_shaders++;
-        } // if
-    } // for
-
-    // Alloc shader information
-    retval->shaders = (MOJOSHADER_glShader *) m(retval->num_shaders * sizeof (MOJOSHADER_glShader), d);
-    if (retval->shaders == NULL)
-    {
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shaders, '\0', retval->num_shaders * sizeof (MOJOSHADER_glShader));
-    retval->shader_indices = (unsigned int *) m(retval->num_shaders * sizeof (unsigned int), d);
-    if (retval->shader_indices == NULL)
-    {
-        f(retval->shaders, d);
-        f(retval, d);
-        out_of_memory();
-        return NULL;
-    } // if
-    memset(retval->shader_indices, '\0', retval->num_shaders * sizeof (unsigned int));
-
-    // Alloc preshader information
-    if (retval->num_preshaders > 0)
-    {
-        retval->preshader_indices = (unsigned int *) m(retval->num_preshaders * sizeof (unsigned int), d);
-        if (retval->preshader_indices == NULL)
-        {
-            f(retval->shaders, d);
-            f(retval->shader_indices, d);
-            f(retval, d);
-            out_of_memory();
-            return NULL;
-        } // if
-        memset(retval->preshader_indices, '\0', retval->num_preshaders * sizeof (unsigned int));
-    } // if
-
-    // Run through the shaders again, compiling and tracking the object indices
-    for (i = 0; i < effect->object_count; i++)
-    {
-        MOJOSHADER_effectObject *object = &effect->objects[i];
-        if (object->type == MOJOSHADER_SYMTYPE_PIXELSHADER
-         || object->type == MOJOSHADER_SYMTYPE_VERTEXSHADER)
-        {
-            if (object->shader.is_preshader)
-            {
-                retval->preshader_indices[current_preshader++] = i;
-                continue;
-            } // if
-            if (!ctx->profileCompileShader(object->shader.shader, &shader))
-                goto compile_shader_fail;
-            retval->shaders[current_shader].parseData = object->shader.shader;
-            retval->shaders[current_shader].handle = shader;
-            retval->shaders[current_shader].refcount = 1;
-            retval->shader_indices[current_shader] = i;
-            current_shader++;
-        } // if
-    } // for
-
-    retval->effect = effect;
-    return retval;
-
-compile_shader_fail:
-    for (i = 0; i < retval->num_shaders; i++)
-        if (retval->shaders[i].handle != 0)
-            ctx->profileDeleteShader(retval->shaders[i].handle);
-    f(retval->shader_indices, d);
-    f(retval->shaders, d);
-    f(retval, d);
-    return NULL;
-} // MOJOSHADER_glCompileEffect
-
-
-void MOJOSHADER_glDeleteEffect(MOJOSHADER_glEffect *glEffect)
-{
-    int i;
-    MOJOSHADER_free f = glEffect->effect->free;
-    void *d = glEffect->effect->malloc_data;
-
-    for (i = 0; i < glEffect->num_shaders; i++)
-    {
-        /* Arbitarily add a reference to the refcount.
-         * We're going to be calling glDeleteShader so we can clean out the
-         * program cache, but we can NOT let it free() the array elements!
-         * We'll do that ourselves, as we malloc()'d in CompileEffect.
-         * -flibit
-         */
-        glEffect->shaders[i].refcount++;
-        MOJOSHADER_glDeleteShader(&glEffect->shaders[i]);
-
-        /* Delete the shader, but do NOT delete the parse data!
-         * The parse data belongs to the parent effect.
-         * -flibit
-         */
-        ctx->profileDeleteShader(glEffect->shaders[i].handle);
-    } // for
-
-    f(glEffect->shader_indices, d);
-    f(glEffect->preshader_indices, d);
-    f(glEffect, d);
-} // MOJOSHADER_glDeleteEffect
-
-
-void MOJOSHADER_glEffectBegin(MOJOSHADER_glEffect *glEffect,
-                              unsigned int *numPasses,
-                              int saveShaderState,
-                              MOJOSHADER_effectStateChanges *stateChanges)
-{
-    *numPasses = glEffect->effect->current_technique->pass_count;
-    glEffect->effect->restore_shader_state = saveShaderState;
-    glEffect->effect->state_changes = stateChanges;
-
-    if (glEffect->effect->restore_shader_state)
-        glEffect->prev_program = ctx->bound_program;
-} // MOJOSHADER_glEffectBegin
-
-
-void MOJOSHADER_glEffectBeginPass(MOJOSHADER_glEffect *glEffect,
-                                  unsigned int pass)
-{
-    int i, j;
-    MOJOSHADER_effectPass *curPass;
-    MOJOSHADER_effectState *state;
-    MOJOSHADER_effectShader *rawVert = glEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = glEffect->current_frag_raw;
-    int has_preshader = 0;
-
-    if (ctx->bound_program != NULL)
-    {
-        glEffect->current_vert = ctx->bound_program->vertex;
-        glEffect->current_frag = ctx->bound_program->fragment;
-    } // if
-
-    assert(glEffect->effect->current_pass == -1);
-    glEffect->effect->current_pass = pass;
-    curPass = &glEffect->effect->current_technique->passes[pass];
-
-    // !!! FIXME: I bet this could be stored at parse/compile time. -flibit
-    for (i = 0; i < curPass->state_count; i++)
-    {
-        state = &curPass->states[i];
-        #define ASSIGN_SHADER(stype, raw, gls) \
-            (state->type == stype) \
-            { \
-                j = 0; \
-                do \
-                { \
-                    if (*state->value.valuesI == glEffect->shader_indices[j]) \
-                    { \
-                        raw = &glEffect->effect->objects[*state->value.valuesI].shader; \
-                        glEffect->gls = &glEffect->shaders[j]; \
-                        break; \
-                    } \
-                    else if (glEffect->num_preshaders > 0 \
-                          && *state->value.valuesI == glEffect->preshader_indices[j]) \
-                    { \
-                        raw = &glEffect->effect->objects[*state->value.valuesI].shader; \
-                        has_preshader = 1; \
-                        break; \
-                    } \
-                } while (++j < glEffect->num_shaders); \
-            }
-        if ASSIGN_SHADER(MOJOSHADER_RS_VERTEXSHADER, rawVert, current_vert)
-        else if ASSIGN_SHADER(MOJOSHADER_RS_PIXELSHADER, rawFrag, current_frag)
-        #undef ASSIGN_SHADER
-    } // for
-
-    glEffect->effect->state_changes->render_state_changes = curPass->states;
-    glEffect->effect->state_changes->render_state_change_count = curPass->state_count;
-
-    glEffect->current_vert_raw = rawVert;
-    glEffect->current_frag_raw = rawFrag;
-
-    /* If this effect pass has an array of shaders, we get to wait until
-     * CommitChanges to actually bind the final shaders.
-     * -flibit
-     */
-    if (!has_preshader)
-    {
-        MOJOSHADER_glBindShaders(glEffect->current_vert,
-                                 glEffect->current_frag);
-        if (glEffect->current_vert_raw != NULL)
-        {
-            glEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            glEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (glEffect->current_frag_raw != NULL)
-        {
-            glEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            glEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    MOJOSHADER_glEffectCommitChanges(glEffect);
-} // MOJOSHADER_glEffectBeginPass
-
-
-static inline void copy_parameter_data(MOJOSHADER_effectParam *params,
-                                       unsigned int *param_loc,
-                                       MOJOSHADER_symbol *symbols,
-                                       unsigned int symbol_count,
-                                       GLfloat *regf, GLint *regi, uint8 *regb)
-{
-    int i, j, r, c;
-
-    i = 0;
-    for (i = 0; i < symbol_count; i++)
-    {
-        const MOJOSHADER_symbol *sym = &symbols[i];
-        const MOJOSHADER_effectValue *param = &params[param_loc[i]].value;
-
-        // float/int registers are vec4, so they have 4 elements each
-        const uint32 start = sym->register_index << 2;
-
-        if (param->type.parameter_type == MOJOSHADER_SYMTYPE_FLOAT)
-            memcpy(regf + start, param->valuesF, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_FLOAT4)
-        {
-            // Structs are a whole different world...
-            if (param->type.parameter_class == MOJOSHADER_SYMCLASS_STRUCT)
-                memcpy(regf + start, param->valuesF, sym->register_count << 4);
-            else
-            {
-                // Sometimes int/bool parameters get thrown into float registers...
-                j = 0;
-                do
-                {
-                    c = 0;
-                    do
-                    {
-                        regf[start + (j << 2) + c] = (float) param->valuesI[(j << 2) + c];
-                    } while (++c < param->type.columns);
-                } while (++j < sym->register_count);
-            } // else
-        } // else if
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_INT4)
-            memcpy(regi + start, param->valuesI, sym->register_count << 4);
-        else if (sym->register_set == MOJOSHADER_SYMREGSET_BOOL)
-        {
-            j = 0;
-            r = 0;
-            do
-            {
-                c = 0;
-                do
-                {
-                    // regb is not a vec4, enjoy that 'start' bitshift! -flibit
-                    regb[(start >> 2) + r + c] = param->valuesI[(j << 2) + c];
-                    c++;
-                } while (c < param->type.columns && ((r + c) < sym->register_count));
-                r += c;
-                j++;
-            } while (r < sym->register_count);
-        } // else if
-    } // for
-} // copy_parameter_data
-
-
-void MOJOSHADER_glEffectCommitChanges(MOJOSHADER_glEffect *glEffect)
-{
-    MOJOSHADER_effectShader *rawVert = glEffect->current_vert_raw;
-    MOJOSHADER_effectShader *rawFrag = glEffect->current_frag_raw;
-
-    /* Used for shader selection from preshaders */
-    int i, j;
-    MOJOSHADER_effectValue *param;
-    float selector;
-    int shader_object;
-    int selector_ran = 0;
-
-    /* For effect passes with arrays of shaders, we have to run a preshader
-     * that determines which shader to use, based on a parameter's value.
-     * -flibit
-     */
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    #define SELECT_SHADER_FROM_PRESHADER(raw, gls) \
-        if (raw != NULL && raw->is_preshader) \
-        { \
-            i = 0; \
-            do \
-            { \
-                param = &glEffect->effect->params[raw->preshader_params[i]].value; \
-                for (j = 0; j < (param->value_count >> 2); j++) \
-                    memcpy(raw->preshader->registers + raw->preshader->symbols[i].register_index + j, \
-                           param->valuesI + (j << 2), \
-                           param->type.columns << 2); \
-            } while (++i < raw->preshader->symbol_count); \
-            MOJOSHADER_runPreshader(raw->preshader, &selector); \
-            shader_object = glEffect->effect->params[raw->params[0]].value.valuesI[(int) selector]; \
-            raw = &glEffect->effect->objects[shader_object].shader; \
-            i = 0; \
-            do \
-            { \
-                if (shader_object == glEffect->shader_indices[i]) \
-                { \
-                    gls = &glEffect->shaders[i]; \
-                    break; \
-                } \
-            } while (++i < glEffect->num_shaders); \
-            selector_ran = 1; \
-        }
-    SELECT_SHADER_FROM_PRESHADER(rawVert, glEffect->current_vert)
-    SELECT_SHADER_FROM_PRESHADER(rawFrag, glEffect->current_frag)
-    #undef SELECT_SHADER_FROM_PRESHADER
-    if (selector_ran)
-    {
-        MOJOSHADER_glBindShaders(glEffect->current_vert,
-                                 glEffect->current_frag);
-        if (glEffect->current_vert_raw != NULL)
-        {
-            glEffect->effect->state_changes->vertex_sampler_state_changes = rawVert->samplers;
-            glEffect->effect->state_changes->vertex_sampler_state_change_count = rawVert->sampler_count;
-        } // if
-        if (glEffect->current_frag_raw != NULL)
-        {
-            glEffect->effect->state_changes->sampler_state_changes = rawFrag->samplers;
-            glEffect->effect->state_changes->sampler_state_change_count = rawFrag->sampler_count;
-        } // if
-    } // if
-
-    /* This is where parameters are copied into the constant buffers.
-     * If you're looking for where things slow down immensely, look at
-     * the copy_parameter_data() and MOJOSHADER_runPreshader() functions.
-     * -flibit
-     */
-    // !!! FIXME: We're just copying everything every time. Blech. -flibit
-    // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
-    // !!! FIXME: Will the preshader ever want int/bool registers? -flibit
-    #define COPY_PARAMETER_DATA(raw, stage) \
-        if (raw != NULL) \
-        { \
-            copy_parameter_data(glEffect->effect->params, raw->params, \
-                                raw->shader->symbols, \
-                                raw->shader->symbol_count, \
-                                ctx->stage##_reg_file_f, \
-                                ctx->stage##_reg_file_i, \
-                                ctx->stage##_reg_file_b); \
-            if (raw->shader->preshader) \
-            { \
-                copy_parameter_data(glEffect->effect->params, raw->preshader_params, \
-                                    raw->shader->preshader->symbols, \
-                                    raw->shader->preshader->symbol_count, \
-                                    raw->shader->preshader->registers, \
-                                    NULL, \
-                                    NULL); \
-                MOJOSHADER_runPreshader(raw->shader->preshader, ctx->stage##_reg_file_f); \
-            } \
-        }
-    COPY_PARAMETER_DATA(rawVert, vs)
-    COPY_PARAMETER_DATA(rawFrag, ps)
-    #undef COPY_PARAMETER_DATA
-
-    ctx->generation++;
-} // MOJOSHADER_glEffectCommitChanges
-
-
-void MOJOSHADER_glEffectEndPass(MOJOSHADER_glEffect *glEffect)
-{
-    assert(glEffect->effect->current_pass != -1);
-    glEffect->effect->current_pass = -1;
-} // MOJOSHADER_glEffectEndPass
-
-
-void MOJOSHADER_glEffectEnd(MOJOSHADER_glEffect *glEffect)
-{
-    if (glEffect->effect->restore_shader_state)
-    {
-        glEffect->effect->restore_shader_state = 0;
-        MOJOSHADER_glBindProgram(glEffect->prev_program);
-    } // if
-
-    glEffect->effect->state_changes = NULL;
-} // MOJOSHADER_glEffectEnd
-
-
-#endif // MOJOSHADER_EFFECT_SUPPORT
 
 // end of mojoshader_opengl.c ...
 
