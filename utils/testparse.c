@@ -698,7 +698,9 @@ static void print_effect(const char *fname, const MOJOSHADER_effect *effect,
                 {
                     printf("OBJECT #%d: SHADER, technique %u, pass %u\n", i,
                            object->shader.technique, object->shader.pass);
-                    print_shader(fname, object->shader.shader, indent + 1);
+                    print_shader(fname,
+                                 (MOJOSHADER_parseData*) object->shader.shader,
+                                 indent + 1);
                 } // else
             } // if
             else if (object->type == MOJOSHADER_SYMTYPE_STRING)
@@ -797,7 +799,8 @@ static int do_parse(const char *fname, const unsigned char *buf,
                 case MOJOSHADER_SYMTYPE_PIXELSHADER:
                     if (!object->shader.is_preshader)
                     {
-                        const MOJOSHADER_parseData *shader = object->shader.shader;
+                        const MOJOSHADER_parseData *shader =
+                            ctx.getParseData(object->shader.shader);
                         if (shader)
                             error_count += shader->error_count;
                     } // if
