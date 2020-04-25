@@ -222,7 +222,7 @@ int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
     ctx->deviceContext = (ID3D11DeviceContext*) deviceContext;
 
     // Grab the D3DCompile function pointer
-    HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler.dll");
+    HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler47.dll");
     assert(d3dCompilerModule != NULL);
     ctx->D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(d3dCompilerModule, "D3DCompile");
 
