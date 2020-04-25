@@ -145,11 +145,21 @@ typedef struct SpirvResult
     uint32 id;
 } SpirvResult;
 
+// This doesn't 100% correspond to glslangValidator semantics. It just says which mode to use at
+// runtime (different from compile-time support being enabled). Technically, we could generate the
+// same for both, but that would require GL code to use UBOs.
+typedef enum SpirvMode
+{
+    SPIRV_MODE_GL,
+    SPIRV_MODE_VK,
+} SpirvMode;
+
 typedef struct SpirvContext
 {
 #if SUPPORT_PROFILE_GLSPIRV
     uint32 id_vs_main_end;
 #endif // SUPPORT_PROFILE_GLSPIRV
+    SpirvMode mode;
     // ext. glsl instructions have been imported
     uint32 idext;
     uint32 idmax;
@@ -178,6 +188,7 @@ typedef struct SpirvContext
         uint32 idivec4;
         uint32 idbool;
     } uniform_arrays;
+    uint32 id_uniform_block;
     struct {
         uint32 idvec4;
     } constant_arrays;

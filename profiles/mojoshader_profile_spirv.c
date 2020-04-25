@@ -359,11 +359,15 @@ static uint32 spv_get_type(Context *ctx, SpirvTypeIdx tidx)
         uint32 tid_base = spv_get_type(ctx, (SpirvTypeIdx)((1 << 4) | (type << 2) | dim));
         static const SpvStorageClass sc_map[] = {
             SpvStorageClassInput,
+            SpvStorageClassInput,
+            SpvStorageClassOutput,
             SpvStorageClassOutput,
             SpvStorageClassPrivate,
+            SpvStorageClassPrivate,
             SpvStorageClassUniformConstant,
+            SpvStorageClassUniform,
         };
-        SpvStorageClass sc = sc_map[tidx & 0x3];
+        SpvStorageClass sc = sc_map[((tidx & 0x3) << 1) | (ctx->spirv.mode == SPIRV_MODE_VK)];
         tid = spv_bumpid(ctx);
         spv_emit(ctx, 4, SpvOpTypePointer, tid, sc, tid_base);
     } // else if
@@ -731,7 +735,20 @@ static uint32 spv_access_uniform(Context *ctx, SpirvTypeIdx sti_ptr, RegisterTyp
     uint32 id_arr = spv_get_uniform_array_id(ctx, regtype);
     uint32 id_access = spv_bumpid(ctx);
     push_output(ctx, &ctx->mainline);
-    spv_emit(ctx, 5, SpvOpAccessChain, tid_ptr, id_access, id_arr, id_offset);
+    if (ctx->spirv.mode == SPIRV_MODE_VK)
+    {
+        uint32 id_uniform_block = ctx->spirv.id_uniform_block;
+        if (id_uniform_block == 0)
+        {
+            id_uniform_block = spv_bumpid(ctx);
+            ctx->spirv.id_uniform_block = id_uniform_block;
+        } // if
+        spv_emit(ctx, 4+2, SpvOpAccessChain, tid_ptr, id_access, id_uniform_block, id_arr, id_offset);
+    } // if
+    else
+    {
+        spv_emit(ctx, 4+1, SpvOpAccessChain, tid_ptr, id_access, id_arr, id_offset);
+    } // else
     pop_output(ctx);
     return id_access;
 } // spv_access_uniform
@@ -942,8 +959,6 @@ static SpirvResult spv_load_srcarg(Context *ctx, const size_t idx, const int wri
                     ctx->spirv.constant_arrays.idvec4 = id_array;
                 } // if
             } // if
-            else
-                id_array = spv_get_uniform_array_id(ctx, arg->regtype);
 
             RegisterList *reg_rel = spv_getreg(ctx, arg->relative_regtype, arg->relative_regnum);
 
@@ -982,11 +997,17 @@ static SpirvResult spv_load_srcarg(Context *ctx, const size_t idx, const int wri
                 spv_emit(ctx, 5, SpvOpIAdd, id_int, id_offset, id_a, id_b);
             } // if
 
-            uint32 id_pvec4 = is_constant
-                ? spv_get_type(ctx, STI_PTR_VEC4_P)
-                : spv_get_type(ctx, STI_PTR_VEC4_U);
-            uint32 id_pvalue = spv_bumpid(ctx);
-            spv_emit(ctx, 5, SpvOpAccessChain, id_pvec4, id_pvalue, id_array, id_offset);
+            uint32 id_pvalue;
+            if (is_constant)
+            {
+                uint32 id_pvec4 = spv_get_type(ctx, STI_PTR_VEC4_P);
+                id_pvalue = spv_bumpid(ctx);
+                spv_emit(ctx, 4+1, SpvOpAccessChain, id_pvec4, id_pvalue, id_array, id_offset);
+            } // if
+            else
+            {
+                id_pvalue = spv_access_uniform(ctx, STI_PTR_VEC4_U, arg->regtype, id_offset);
+            } // else
 
             result.tid = spv_get_type(ctx, STI_VEC4);
             result.id = spv_bumpid(ctx);
@@ -1714,7 +1735,6 @@ static void spv_texbem(Context* ctx, int luminanceCorrection)
     // );
 
     // Load 2x2 transform matrix from uniform data (stored as vec4).
-    uint32 id_array = spv_get_uniform_array_id(ctx, REG_TYPE_CONST);
     assert(sampler_idx < 4);
     uint32 id_offset = ctx->spirv.sampler_extras[sampler_idx].idtexbem;
     if (!id_offset)
@@ -1723,12 +1743,10 @@ static void spv_texbem(Context* ctx, int luminanceCorrection)
         ctx->spirv.sampler_extras[sampler_idx].idtexbem = id_offset;
     } // if
     uint32 tid_vec4 = spv_get_type(ctx, STI_VEC4);
-    uint32 tid_pvec4 = spv_get_type(ctx, STI_PTR_VEC4_U);
-    uint32 id_pmatrix = spv_bumpid(ctx);
+    uint32 id_pmatrix = spv_access_uniform(ctx, STI_PTR_VEC4_U, REG_TYPE_CONST, id_offset);
     SpirvResult matrix;
     matrix.tid = tid_vec4;
     matrix.id = spv_bumpid(ctx);
-    spv_emit(ctx, 5, SpvOpAccessChain, tid_pvec4, id_pmatrix, id_array, id_offset);
     spv_emit(ctx, 4, SpvOpLoad, matrix.tid, matrix.id, id_pmatrix);
 
     // transform src0 using matrix and translate result using src1
@@ -1766,13 +1784,12 @@ static void spv_texbem(Context* ctx, int luminanceCorrection)
         uint32 tid_float = spv_get_type(ctx, STI_FLOAT);
 
         SpirvResult src0_z = spv_swizzle(ctx, src0, 0x2, 0x1);
-        uint32 id_l_ptr = spv_bumpid(ctx);
+        uint32 id_l_ptr = spv_access_uniform(ctx, STI_PTR_VEC4_U, REG_TYPE_CONST, id_l_offset);
 
         SpirvResult l;
         l.tid = tid_vec4;
         l.id = spv_bumpid(ctx);
 
-        spv_emit(ctx, 5, SpvOpAccessChain, tid_pvec4, id_l_ptr, id_array, id_l_offset);
         spv_emit(ctx, 4, SpvOpLoad, l.tid, l.id, id_l_ptr);
 
         SpirvResult l_x = spv_swizzle(ctx, l, 0x0, 0x1);
@@ -1808,17 +1825,21 @@ void emit_SPIRV_start(Context *ctx, const char *profilestr)
         return;
     } // if
 
+    memset(&(ctx->spirv), '\0', sizeof(ctx->spirv));
+
 #if SUPPORT_PROFILE_GLSPIRV
     if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSPIRV) == 0)
+    {
         ctx->profile_supports_glspirv = 1;
+        ctx->spirv.mode = SPIRV_MODE_GL;
+    } // if
     else
 #endif // SUPPORT_PROFILE_GLSPIRV
     {
+        ctx->spirv.mode = SPIRV_MODE_VK;
         if (strcmp(profilestr, MOJOSHADER_PROFILE_SPIRV) != 0)
             failf(ctx, "Profile '%s' unsupported or unknown.", profilestr);
     } // else
-
-    memset(&(ctx->spirv), '\0', sizeof(ctx->spirv));
 
     ctx->spirv.idmain = spv_bumpid(ctx);
 
@@ -2254,41 +2275,14 @@ void emit_SPIRV_attribute(Context *ctx, RegisterType regtype, int regnum,
         fail(ctx, "Unknown shader type");  // state machine should catch this.
 } // emit_SPIRV_attribute
 
-static void output_SPIRV_uniform_array(Context *ctx, const RegisterType regtype,
-                                       const int size)
+static void spv_emit_uniform_constant_array(Context *ctx,
+                                            const RegisterType regtype,
+                                            const int size, uint32 id_var,
+                                            uint32 id_type_base,
+                                            uint32* dst_location_offset)
 {
-    if (size <= 0)
-        return;
-
-    uint32 id_var, id_type_base;
-    uint32* dst_location_offset;
-    switch (regtype)
-    {
-        case REG_TYPE_CONST:
-            id_var = ctx->spirv.uniform_arrays.idvec4;
-            id_type_base = spv_get_type(ctx, STI_VEC4);
-            dst_location_offset = &ctx->spirv.patch_table.array_vec4.offset;
-            break;
-
-        case REG_TYPE_CONSTINT:
-            id_var = ctx->spirv.uniform_arrays.idivec4;
-            id_type_base = spv_get_type(ctx, STI_IVEC4);
-            dst_location_offset = &ctx->spirv.patch_table.array_ivec4.offset;
-            break;
-
-        case REG_TYPE_CONSTBOOL:
-            id_var = ctx->spirv.uniform_arrays.idbool;
-            id_type_base = spv_get_type(ctx, STI_INT);
-            dst_location_offset = &ctx->spirv.patch_table.array_bool.offset;
-            break;
-
-        default:
-            fail(ctx, "BUG: used a uniform we don't know how to define.");
-            return;
-    } // switch
-
-    if (id_var == 0)
-        return; // Never used, no need to declare.
+    assert(size > 0);
+    assert(id_var != 0);
 
     uint32 id_size = spv_getscalari(ctx, size);
     uint32 id_type = spv_bumpid(ctx);
@@ -2304,7 +2298,7 @@ static void output_SPIRV_uniform_array(Context *ctx, const RegisterType regtype,
     spv_output_name(ctx, id_var, buf);
 
     *dst_location_offset = spv_output_location(ctx, id_var, ~0u);
-} // output_SPIRV_uniform_array
+} // spv_emit_uniform_constant_array
 
 void emit_SPIRV_finalize(Context *ctx)
 {
@@ -2322,9 +2316,118 @@ void emit_SPIRV_finalize(Context *ctx)
     spv_emit_vs_main_end(ctx);
     spv_emit_func_lit(ctx);
 
-    output_SPIRV_uniform_array(ctx, REG_TYPE_CONST, ctx->uniform_float4_count);
-    output_SPIRV_uniform_array(ctx, REG_TYPE_CONSTINT, ctx->uniform_int4_count);
-    output_SPIRV_uniform_array(ctx, REG_TYPE_CONSTBOOL, ctx->uniform_bool_count);
+    bool emit_vec4 = ctx->uniform_float4_count > 0 && ctx->spirv.uniform_arrays.idvec4;
+    bool emit_ivec4 = ctx->uniform_int4_count > 0 && ctx->spirv.uniform_arrays.idivec4;
+    bool emit_bool = ctx->uniform_bool_count > 0 && ctx->spirv.uniform_arrays.idbool;
+    bool emit_any = emit_vec4 | emit_ivec4 | emit_bool;
+    if (ctx->spirv.mode == SPIRV_MODE_GL)
+    {
+        if (emit_vec4)
+            spv_emit_uniform_constant_array(ctx, REG_TYPE_CONST,
+                ctx->uniform_float4_count,
+                ctx->spirv.uniform_arrays.idvec4,
+                spv_get_type(ctx, STI_VEC4),
+                &ctx->spirv.patch_table.array_vec4.offset
+            );
+
+        if (emit_ivec4)
+            spv_emit_uniform_constant_array(ctx, REG_TYPE_CONSTINT,
+                ctx->uniform_int4_count,
+                ctx->spirv.uniform_arrays.idivec4,
+                spv_get_type(ctx, STI_IVEC4),
+                &ctx->spirv.patch_table.array_ivec4.offset
+            );
+
+        if (emit_bool)
+            spv_emit_uniform_constant_array(ctx, REG_TYPE_CONSTBOOL,
+                ctx->uniform_bool_count,
+                ctx->spirv.uniform_arrays.idbool,
+                spv_get_type(ctx, STI_INT),
+                &ctx->spirv.patch_table.array_bool.offset
+            );
+    } // if
+    else if (emit_any)
+    {
+        assert(ctx->spirv.mode == SPIRV_MODE_VK);
+        uint32 member_tid[3];
+        uint32 member_offset[3];
+        uint32 member_count = 0;
+        uint32 struct_size = 0;
+
+        uint32 tid_arr_idx = spv_get_type(ctx, STI_INT);
+
+        push_output(ctx, &ctx->mainline_intro);
+
+        if (emit_vec4)
+        {
+            int size = ctx->uniform_float4_count;
+            uint32 id_size = spv_getscalari(ctx, size);
+            uint32 tid_type_base = spv_get_type(ctx, STI_VEC4);
+            uint32 tid_array = spv_bumpid(ctx);
+            spv_emit(ctx, 4, SpvOpTypeArray, tid_array, tid_type_base, id_size);
+            uint32 i = member_count++;
+            spv_emit(ctx, 4, SpvOpConstant, tid_arr_idx, ctx->spirv.uniform_arrays.idvec4, i);
+            member_tid[i] = tid_array;
+            member_offset[i] = struct_size;
+            struct_size += size * 16;
+        } // if
+
+        if (emit_ivec4)
+        {
+            int size = ctx->uniform_int4_count;
+            uint32 id_size = spv_getscalari(ctx, size);
+            uint32 tid_type_base = spv_get_type(ctx, STI_IVEC4);
+            uint32 tid_array = spv_bumpid(ctx);
+            spv_emit(ctx, 4, SpvOpTypeArray, tid_array, tid_type_base, id_size);
+            uint32 i = member_count++;
+            spv_emit(ctx, 4, SpvOpConstant, tid_arr_idx, ctx->spirv.uniform_arrays.idivec4, i);
+            member_tid[i] = tid_array;
+            member_offset[i] = struct_size;
+            struct_size += size * 16;
+        } // if
+
+        if (emit_bool)
+        {
+            int size = ctx->uniform_bool_count;
+            uint32 id_size = spv_getscalari(ctx, size);
+            uint32 tid_type_base = spv_get_type(ctx, STI_INT);
+            uint32 tid_array = spv_bumpid(ctx);
+            spv_emit(ctx, 4, SpvOpTypeArray, tid_array, tid_type_base, id_size);
+            uint32 i = member_count++;
+            spv_emit(ctx, 4, SpvOpConstant, tid_arr_idx, ctx->spirv.uniform_arrays.idbool, i);
+            member_tid[i] = tid_array;
+            member_offset[i] = struct_size;
+            struct_size += size * 16;
+        } // if
+
+        uint32 tid_struct = spv_bumpid(ctx);
+        uint32 tid_pstruct = spv_bumpid(ctx);
+        uint32 id_pstruct = ctx->spirv.id_uniform_block;
+        spv_emit_part(ctx, 2 + member_count, 2, SpvOpTypeStruct, tid_struct);
+        for (i = 0; i < member_count; i++)
+            spv_emit_word(ctx, member_tid[i]);
+        spv_emit(ctx, 4, SpvOpTypePointer, tid_pstruct, SpvStorageClassUniform, tid_struct);
+        spv_emit(ctx, 4, SpvOpVariable, tid_pstruct, id_pstruct, SpvStorageClassUniform);
+
+        pop_output(ctx);
+
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s_uniforms", ctx->shader_type_str);
+        spv_output_name(ctx, id_pstruct, buf);
+
+        push_output(ctx, &ctx->helpers);
+        spv_emit(ctx, 3+0, SpvOpDecorate, tid_struct, SpvDecorationBlock);
+        spv_emit(ctx, 3+1, SpvOpDecorate, id_pstruct, SpvDecorationDescriptorSet, 0);
+        spv_emit(ctx, 3+1, SpvOpDecorate, id_pstruct, SpvDecorationBinding, 0);
+
+        for (uint32 i = 0; i < member_count; i++)
+        {
+            spv_emit(ctx, 3+1, SpvOpDecorate, member_tid[i], SpvDecorationArrayStride, 16);
+            spv_emit(ctx, 4+1, SpvOpMemberDecorate, tid_struct, i, SpvDecorationOffset, member_offset[i]);
+        } // for
+
+        pop_output(ctx);
+    } // else if
 
     push_output(ctx, &ctx->preflight);
 
@@ -2402,6 +2505,8 @@ void emit_SPIRV_finalize(Context *ctx)
             spv_emit_word(ctx, r->spirv.iddecl);
         } // if
 
+        // vk semantics = default origin is upper left
+        // gl semantics = default origin is lower left
         spv_emit(ctx, 3, SpvOpExecutionMode, ctx->spirv.idmain, SpvExecutionModeOriginUpperLeft);
     } // if
 
