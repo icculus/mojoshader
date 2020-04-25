@@ -136,7 +136,7 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
         (ID3D11DeviceContext*) ctx->deviceContext,
         (ID3D11Resource*) shader->ubo,
         0,
-        D3D11_MAP_WRITE,
+        D3D11_MAP_WRITE_DISCARD,
         0,
         &res
     );
