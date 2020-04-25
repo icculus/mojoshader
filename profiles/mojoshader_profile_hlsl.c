@@ -985,6 +985,8 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 output_line(ctx, "struct %s_Input", ctx->mainfn);
                 output_line(ctx, "{");
+		// SV_Position must be at the top!
+		output_line(ctx, "        float4 m_pos : SV_Position;");
             } // if
             ctx->indent++;
 
@@ -994,6 +996,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (mt == MISCTYPE_TYPE_FACE)
                     output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
                 else if (mt == MISCTYPE_TYPE_POSITION)
+                    // !!! FIXME: This is wrong!
                     output_line(ctx, "float4 m_%s : SV_Position;", var);
                 else
                     fail(ctx, "BUG: unhandled misc register");

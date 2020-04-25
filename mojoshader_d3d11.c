@@ -286,7 +286,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         NULL,
         pd->mainfn,
         isvert ? "vs_4_0" : "ps_4_0",
-        0,
+        0, /* Replace this with 1 if you want HLSL debug info! */
         0,
         (ID3DBlob**) &retval->dataBlob,
         &errorBlob
