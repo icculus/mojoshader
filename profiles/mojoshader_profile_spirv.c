@@ -2316,10 +2316,10 @@ void emit_SPIRV_finalize(Context *ctx)
     spv_emit_vs_main_end(ctx);
     spv_emit_func_lit(ctx);
 
-    bool emit_vec4 = ctx->uniform_float4_count > 0 && ctx->spirv.uniform_arrays.idvec4;
-    bool emit_ivec4 = ctx->uniform_int4_count > 0 && ctx->spirv.uniform_arrays.idivec4;
-    bool emit_bool = ctx->uniform_bool_count > 0 && ctx->spirv.uniform_arrays.idbool;
-    bool emit_any = emit_vec4 | emit_ivec4 | emit_bool;
+    uint8 emit_vec4 = ctx->uniform_float4_count > 0 && ctx->spirv.uniform_arrays.idvec4;
+    uint8 emit_ivec4 = ctx->uniform_int4_count > 0 && ctx->spirv.uniform_arrays.idivec4;
+    uint8 emit_bool = ctx->uniform_bool_count > 0 && ctx->spirv.uniform_arrays.idbool;
+    uint8 emit_any = emit_vec4 | emit_ivec4 | emit_bool;
     if (ctx->spirv.mode == SPIRV_MODE_GL)
     {
         if (emit_vec4)
