@@ -3539,31 +3539,33 @@ DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
 typedef struct MOJOSHADER_d3d11Shader MOJOSHADER_d3d11Shader;
 
 /* FIXME: Document me! */
-int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
+DECLSPEC int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
                                   MOJOSHADER_malloc m, MOJOSHADER_free f,
                                   void *malloc_d);
-void MOJOSHADER_d3d11DestroyContext(void);
-MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
+DECLSPEC void MOJOSHADER_d3d11DestroyContext(void);
+DECLSPEC MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
                                                       const unsigned char *tokenbuf,
                                                       const unsigned int bufsize,
                                                       const MOJOSHADER_swizzle *swiz,
                                                       const unsigned int swizcount,
                                                       const MOJOSHADER_samplerMap *smap,
                                                       const unsigned int smapcount);
-void MOJOSHADER_d3d11ShaderAddRef(MOJOSHADER_d3d11Shader *shader);
-void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader);
-const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
+DECLSPEC void MOJOSHADER_d3d11ShaderAddRef(MOJOSHADER_d3d11Shader *shader);
+DECLSPEC void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader);
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
                                                 MOJOSHADER_d3d11Shader *shader);
-void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
+DECLSPEC void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
                                  MOJOSHADER_d3d11Shader *pshader);
-void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
+DECLSPEC void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
                                      MOJOSHADER_d3d11Shader **pshader);
-void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+DECLSPEC void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
                                             float **psf, int **psi, unsigned char **psb);
-void MOJOSHADER_d3d11UnmapUniformBufferMemory();
-int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
+DECLSPEC void MOJOSHADER_d3d11UnmapUniformBufferMemory();
+DECLSPEC int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
                                             MOJOSHADER_usage usage, int index);
-const char *MOJOSHADER_d3d11GetError(void);
+DECLSPEC const void *MOJOSHADER_d3d11GetBytecode(MOJOSHADER_d3d11Shader *shader);
+DECLSPEC int MOJOSHADER_d3d11GetBytecodeLength(MOJOSHADER_d3d11Shader *shader);
+DECLSPEC const char *MOJOSHADER_d3d11GetError(void);
 
 
 /* Effects interface... */

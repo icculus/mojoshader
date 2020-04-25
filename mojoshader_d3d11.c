@@ -469,6 +469,16 @@ int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
     return -1;
 } // MOJOSHADER_d3d11GetVertexAttribLocation
 
+const void *MOJOSHADER_d3d11GetBytecode(MOJOSHADER_d3d11Shader *shader)
+{
+	return ID3D10Blob_GetBufferPointer((ID3DBlob*) shader->dataBlob);
+} // MOJOSHADER_d3d11GetShaderBytecode
+
+int MOJOSHADER_d3d11GetBytecodeLength(MOJOSHADER_d3d11Shader *shader)
+{
+	return ID3D10Blob_GetBufferSize((ID3DBlob*) shader->dataBlob);
+} // MOJOSHADER_d3d11GetShaderBytecodeLength
+
 const char *MOJOSHADER_d3d11GetError(void)
 {
     return error_buffer;
