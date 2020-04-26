@@ -369,8 +369,10 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
             shader->refcount--;
         else
         {
-            ID3D11Buffer_Release((ID3D11Buffer*) shader->ubo);
+            if (shader->ubo != NULL)
+                ID3D11Buffer_Release((ID3D11Buffer*) shader->ubo);
             ID3D10Blob_Release((ID3DBlob*) shader->dataBlob);
+            MOJOSHADER_freeParseData(shader->parseData);
             ctx->free_fn(shader, ctx->malloc_data);
         } // else
     } // if
