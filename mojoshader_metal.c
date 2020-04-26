@@ -564,6 +564,7 @@ void MOJOSHADER_mtlDeleteShader(MOJOSHADER_mtlShader *shader)
         else
         {
             dealloc_ubo(shader, ctx->free_fn, ctx->malloc_data);
+            MOJOSHADER_freeParseData(shader->parseData);
             ctx->free_fn(shader, ctx->malloc_data);
         } // else
     } // if
