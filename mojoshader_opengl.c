@@ -1721,7 +1721,12 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         GLint maxTextures;
         GLint maxVertexTextures;
         ctx->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxTextures);
-        maxVertexTextures = ((maxTextures - 16) < 4) ? (maxTextures - 16) : 4;
+        if (maxTextures > 20)
+            maxTextures = 20;
+        if (maxTextures > 16)
+            maxVertexTextures = maxTextures - 16;
+        else
+            maxVertexTextures = 0;
         ctx->vertex_sampler_offset = maxTextures - maxVertexTextures;
 #endif
 
