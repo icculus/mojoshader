@@ -151,14 +151,9 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 
     // Map the buffer
     D3D11_MAPPED_SUBRESOURCE res;
-    ID3D11DeviceContext_Map(
-        (ID3D11DeviceContext*) ctx->deviceContext,
-        (ID3D11Resource*) shader->ubo,
-        0,
-        D3D11_MAP_WRITE_DISCARD,
-        0,
-        &res
-    );
+    ID3D11DeviceContext_Map((ID3D11DeviceContext*) ctx->deviceContext,
+                            (ID3D11Resource*) shader->ubo, 0,
+                            D3D11_MAP_WRITE_DISCARD, 0, &res);
 
     // Update the buffer contents
     unsigned char *pData = (unsigned char*) res.pData;
@@ -172,29 +167,17 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
         switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
-                memcpy(
-                    pData + (offset * 16),
-                    &regF[4 * idx],
-                    size * 16
-                );
+                memcpy(pData + (offset * 16), &regF[4 * idx], size * 16);
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
                 // !!! FIXME: Need a test case
-                memcpy(
-                    pData + (offset * 16),
-                    &regI[4 * idx],
-                    size * 16
-                );
+                memcpy(pData + (offset * 16), &regI[4 * idx], size * 16);
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
                 // !!! FIXME: Need a test case
-                memcpy(
-                    pData + offset,
-                    &regB[idx],
-                    size
-                );
+                memcpy(pData + offset, &regB[idx], size);
                 break;
 
             default:
@@ -241,13 +224,12 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     MAKE_STRBUF(vout)
 
     // Split up the pixel shader text...
-
-    // (1) Everything up to the input contents
+    // Part 1: Everything up to the input contents
     a = psrc;
     b = strstr(psrc, "_Input\n{\n") + strlen("_Input\n{\n");
     MAKE_STRBUF(pstart)
 
-    // (2) Everything after the input contents
+    // Part 2: Everything after the input contents
     a = b;
     while (*(a++) != '}') {}
     a--;
@@ -269,19 +251,10 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     strcat(pfinal, pend);
 
     // Compile into bytecode
-    result = ctx->D3DCompileFunc(
-        pfinal,
-        strlen(pfinal),
-        pshader->parseData->mainfn,
-        NULL,
-        NULL,
-        pshader->parseData->mainfn,
-        "ps_4_0",
-        0,
-        0,
-        &blob,
-        &blob
-    );
+    result = ctx->D3DCompileFunc(pfinal, strlen(pfinal),
+                                 pshader->parseData->mainfn, NULL, NULL,
+                                 pshader->parseData->mainfn, "ps_4_0", 0, 0,
+                                 &blob, &blob);
     if (result < 0)
     {
         set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
@@ -292,20 +265,19 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
         return NULL;
     } // if
 
+    // Create the shader
+    ID3D11Device_CreatePixelShader(ctx->device,
+                                   ID3D10Blob_GetBufferPointer(blob),
+                                   ID3D10Blob_GetBufferSize(blob),
+                                   NULL, &retval);
+
     // Clean up
+    ID3D10Blob_Release(blob);
     ctx->free_fn((void *) vout, ctx->malloc_data);
     ctx->free_fn((void *) pstart, ctx->malloc_data);
     ctx->free_fn((void *) pend, ctx->malloc_data);
     ctx->free_fn((void *) pfinal, ctx->malloc_data);
 
-    // Finally, create and return the shader
-    ID3D11Device_CreatePixelShader(
-        ctx->device,
-        ID3D10Blob_GetBufferPointer(blob),
-        ID3D10Blob_GetBufferSize(blob),
-        NULL,
-        &retval
-    );
     return retval;
 } // compilePixelShader
 
@@ -408,19 +380,10 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
     {
         // Compile the shader
         ID3DBlob *blob;
-        HRESULT result = ctx->D3DCompileFunc(
-            pd->output,
-            pd->output_len,
-            pd->mainfn,
-            NULL,
-            NULL,
-            pd->mainfn,
-            isvert ? "vs_4_0" : "ps_4_0",
-            0, /* Replace this with 1 if you want HLSL debug info! */
-            0,
-            (ID3DBlob **) &blob,
-            &blob
-        );
+        HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
+                                             pd->mainfn, NULL, NULL, pd->mainfn,
+                                             isvert ? "vs_4_0" : "ps_4_0",
+                                             0, 0, &blob, &blob);
         if (result < 0)
         {
             set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
@@ -454,11 +417,12 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
                 NULL,
                 (ID3D11PixelShader **) &retval->pixel.shaderMaps[0].pshader
             );
-            // !!! FIXME: Do we need to release the blob?
+            ID3D10Blob_Release(blob);
         } // else
     } // if
     else if (!isvert)
     {
+        // Allocate the shader map array, this will be filled at bind time.
         const int mapCount = 4; // arbitrary!
         retval->pixel.shaderMaps = (d3d11ShaderMap *) m(mapCount * sizeof(d3d11ShaderMap), d);
         if (retval->pixel.shaderMaps == NULL)
@@ -493,12 +457,8 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         bdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         bdesc.MiscFlags = 0;
         bdesc.StructureByteStride = 0;
-        ID3D11Device_CreateBuffer(
-            (ID3D11Device*) ctx->device,
-            &bdesc,
-            NULL,
-            (ID3D11Buffer**) &retval->ubo
-        );
+        ID3D11Device_CreateBuffer((ID3D11Device*) ctx->device, &bdesc, NULL,
+                                  (ID3D11Buffer**) &retval->ubo);
     } // if
 
     return retval;
@@ -536,8 +496,6 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
                 for (int i = 0; i < shader->pixel.numMaps; i++)
                     ID3D11PixelShader_Release((ID3D11PixelShader *) shader->pixel.shaderMaps[i].pshader);
 
-                // !!! FIXME: When do we need to free blobs?
-
                 ctx->free_fn(shader->pixel.shaderMaps, ctx->malloc_data);
                 shader->pixel.shaderMaps = NULL;
             } // else if
@@ -558,7 +516,6 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
                                  MOJOSHADER_d3d11Shader *pshader)
 {
     // Use the last bound shader in case of NULL
-
     if (pshader != NULL)
     {
         ctx->pixelShader = pshader;
@@ -567,7 +524,7 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
         if (vshader != ctx->vertexShader)
         {
             int noInputs = (pshader->pixel.numMaps == 1 &&
-                pshader->pixel.shaderMaps[0].vshader == NULL);
+                            pshader->pixel.shaderMaps[0].vshader == NULL);
 
             // Is there already a mapping for this vertex shader?
             for (int i = 0; i < pshader->pixel.numMaps; i++)
@@ -588,10 +545,11 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
                 {
                     d3d11ShaderMap *newMap = (d3d11ShaderMap *) ctx->malloc_fn(
                         sizeof(d3d11ShaderMap) * pshader->pixel.mapCapacity * 2,
-                        ctx->malloc_data);
+                        ctx->malloc_data
+                    );
 
                     memcpy(newMap, pshader->pixel.shaderMaps,
-                        sizeof(d3d11ShaderMap) * pshader->pixel.mapCapacity);
+                           sizeof(d3d11ShaderMap) * pshader->pixel.mapCapacity);
 
                     pshader->pixel.mapCapacity *= 2;
                     ctx->free_fn(pshader->pixel.shaderMaps, ctx->malloc_data);
@@ -607,16 +565,9 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
             } // if
         } // if
 
-        ID3D11DeviceContext_PSSetShader(
-            ctx->deviceContext,
-            realPS,
-            NULL,
-            0
-        );
+        ID3D11DeviceContext_PSSetShader(ctx->deviceContext, realPS, NULL, 0);
         ID3D11DeviceContext_PSSetConstantBuffers(
-            ctx->deviceContext,
-            0,
-            1,
+            ctx->deviceContext, 0, 1,
             (ID3D11Buffer **) &pshader->ubo
         );
     } // if
@@ -627,13 +578,10 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
         ID3D11DeviceContext_VSSetShader(
             ctx->deviceContext,
             (ID3D11VertexShader*) vshader->vertex.shader,
-            NULL,
-            0
+            NULL, 0
         );
         ID3D11DeviceContext_VSSetConstantBuffers(
-            ctx->deviceContext,
-            0,
-            1,
+            ctx->deviceContext, 0, 1,
             (ID3D11Buffer**) &vshader->ubo
         );
     } // if
