@@ -3563,8 +3563,8 @@ DECLSPEC void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, uns
 DECLSPEC void MOJOSHADER_d3d11UnmapUniformBufferMemory();
 DECLSPEC int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
                                             MOJOSHADER_usage usage, int index);
-DECLSPEC const void *MOJOSHADER_d3d11GetBytecode(MOJOSHADER_d3d11Shader *shader);
-DECLSPEC int MOJOSHADER_d3d11GetBytecodeLength(MOJOSHADER_d3d11Shader *shader);
+DECLSPEC const void *MOJOSHADER_d3d11GetBytecode(MOJOSHADER_d3d11Shader *vshader);
+DECLSPEC int MOJOSHADER_d3d11GetBytecodeLength(MOJOSHADER_d3d11Shader *vshader);
 DECLSPEC const char *MOJOSHADER_d3d11GetError(void);
 
 

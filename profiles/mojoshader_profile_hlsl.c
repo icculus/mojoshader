@@ -555,6 +555,8 @@ void emit_HLSL_finalize(Context *ctx)
     if (ctx->outputs)
     {
         push_output(ctx, &ctx->outputs);
+        if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
+            output_line(ctx, "\tfloat4 m_oPos : SV_Position;");
         output_line(ctx, "};");
         output_blank_line(ctx);
         pop_output(ctx);
@@ -848,7 +850,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     break;
                 case MOJOSHADER_USAGE_POSITION:
                     // !!! FIXME: multiple positions? -caleb
-                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    output_line(ctx, "float4 m_%s : POSITION;", var);
                     break;
                 case MOJOSHADER_USAGE_POSITIONT:
                     output_line(ctx, "float4 m_%s : POSITIONT;", var);
@@ -901,7 +903,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : NORMAL;", var);
                     break;
                 case MOJOSHADER_USAGE_POSITION:
-                    output_line(ctx, "float4 m_%s : SV_Position;", var);
+                    // This gets written at the very end.
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float m_%s : PSIZE;", var);
@@ -985,8 +987,8 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 output_line(ctx, "struct %s_Input", ctx->mainfn);
                 output_line(ctx, "{");
-		// SV_Position must be at the top!
-		output_line(ctx, "        float4 m_pos : SV_Position;");
+                output_line(ctx, "\t// This must match the vertex output!");
+                output_line(ctx, "\t// Rewrite at link time if needed!");
             } // if
             ctx->indent++;
 
@@ -996,7 +998,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 if (mt == MISCTYPE_TYPE_FACE)
                     output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
                 else if (mt == MISCTYPE_TYPE_POSITION)
-                    // !!! FIXME: This is wrong!
                     output_line(ctx, "float4 m_%s : SV_Position;", var);
                 else
                     fail(ctx, "BUG: unhandled misc register");
