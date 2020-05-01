@@ -26,8 +26,12 @@ typedef struct d3d11ShaderMap
 typedef struct MOJOSHADER_d3d11Shader
 {
     const MOJOSHADER_parseData *parseData;
-    void *ubo; // ID3DBuffer*
     uint32 refcount;
+
+    void *ubo; // ID3DBuffer*
+    size_t buflen;
+    unsigned char *constantData;
+
     union
     {
         struct
@@ -149,35 +153,36 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
         regB = ctx->ps_reg_file_b;
     } // else
 
-    // Map the buffer
-    D3D11_MAPPED_SUBRESOURCE res;
-    ID3D11DeviceContext_Map((ID3D11DeviceContext*) ctx->deviceContext,
-                            (ID3D11Resource*) shader->ubo, 0,
-                            D3D11_MAP_WRITE_DISCARD, 0, &res);
-
     // Update the buffer contents
-    unsigned char *pData = (unsigned char*) res.pData;
+    int needsUpdate = 0;
     size_t offset = 0;
     for (int i = 0; i < shader->parseData->uniform_count; i++)
     {
         int idx = shader->parseData->uniforms[i].index;
         int arrayCount = shader->parseData->uniforms[i].array_count;
+
+        void *src, *dst;
         size_t size = arrayCount ? arrayCount : 1;
 
         switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
-                memcpy(pData + (offset * 16), &regF[4 * idx], size * 16);
+                src = &regF[4 * idx];
+                dst = shader->constantData + offset;
+                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
                 // !!! FIXME: Need a test case
-                memcpy(pData + (offset * 16), &regI[4 * idx], size * 16);
+                src = &regI[4 * idx];
+                dst = shader->constantData + offset;
+                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
                 // !!! FIXME: Need a test case
-                memcpy(pData + offset, &regB[idx], size);
+                src = &regB[idx];
+                dst = shader->constantData + offset;
                 break;
 
             default:
@@ -185,15 +190,33 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
                 break;
         } // switch
 
+        if (memcmp(dst, src, size) != 0)
+        {
+            memcpy(dst, src, size);
+            needsUpdate = 1;
+        } // if
+
         offset += size;
     } // for
 
-    // Unmap the buffer
-    ID3D11DeviceContext_Unmap(
-        (ID3D11DeviceContext*) ctx->deviceContext,
-        (ID3D11Resource*) shader->ubo,
-        0
-    );
+    if (needsUpdate)
+    {
+        // Map the buffer
+        D3D11_MAPPED_SUBRESOURCE res;
+        ID3D11DeviceContext_Map((ID3D11DeviceContext*) ctx->deviceContext,
+                                (ID3D11Resource*) shader->ubo, 0,
+                                D3D11_MAP_WRITE_DISCARD, 0, &res);
+
+        // Copy the contents
+        memcpy(res.pData, shader->constantData, shader->buflen);
+
+        // Unmap the buffer
+        ID3D11DeviceContext_Unmap(
+            (ID3D11DeviceContext*) ctx->deviceContext,
+            (ID3D11Resource*) shader->ubo,
+            0
+        );
+    } // if
 } // update_uniform_buffer
 
 /* Pixel Shader Compilation Utility */
@@ -358,11 +381,12 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         goto compile_shader_fail;
 
     retval->parseData = pd;
-    retval->ubo = NULL;
     retval->refcount = 1;
+    retval->ubo = NULL;
+    retval->constantData = NULL;
+    retval->buflen = 0;
 
-    int isvert = (pd->shader_type == MOJOSHADER_TYPE_VERTEX);
-    if (isvert)
+    if (pd->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
         retval->vertex.dataBlob = NULL;
         retval->vertex.shader = NULL;
@@ -377,7 +401,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
     /* Only vertex shaders get compiled here. Pixel shaders will be compiled
      * at link time since they depend on the vertex shader output layout.
      */
-    if (isvert)
+    if (pd->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
         // Compile the shader
         ID3DBlob *blob;
@@ -399,7 +423,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
             (ID3D11VertexShader **) &retval->vertex.shader
         );
     } // if
-    else if (!isvert)
+    else
     {
         // Allocate the shader map array, this will be filled at bind time.
         const int mapCount = 4; // arbitrary!
@@ -413,24 +437,23 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
             retval->pixel.shaderMaps[i].vshader = NULL;
             retval->pixel.shaderMaps[i].pshader = NULL;
         } // for
-    } // else if
+    } // else
 
     // Create the uniform buffer, if needed
     if (pd->uniform_count > 0)
     {
         // Calculate how big we need to make the buffer
-        int buflen = 0;
         for (i = 0; i < pd->uniform_count; i++)
         {
             int arrayCount = pd->uniforms[i].array_count;
             int uniformSize = 16;
             if (pd->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
                 uniformSize = 1;
-            buflen += (arrayCount ? arrayCount : 1) * uniformSize;
+            retval->buflen += (arrayCount ? arrayCount : 1) * uniformSize;
         } // for
 
         D3D11_BUFFER_DESC bdesc;
-        bdesc.ByteWidth = next_highest_alignment(buflen);
+        bdesc.ByteWidth = next_highest_alignment(retval->buflen);
         bdesc.Usage = D3D11_USAGE_DYNAMIC;
         bdesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         bdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -438,6 +461,10 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         bdesc.StructureByteStride = 0;
         ID3D11Device_CreateBuffer((ID3D11Device*) ctx->device, &bdesc, NULL,
                                   (ID3D11Buffer**) &retval->ubo);
+
+        // Additionally allocate a CPU-side staging buffer
+        retval->constantData = (unsigned char *) m(retval->buflen, d);
+        memset(retval->constantData, '\0', retval->buflen);
     } // if
 
     return retval;
@@ -463,7 +490,10 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
         else
         {
             if (shader->ubo != NULL)
+            {
                 ID3D11Buffer_Release((ID3D11Buffer*) shader->ubo);
+                ctx->free_fn(shader->constantData, ctx->malloc_data);
+            } // if
 
             if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
             {
