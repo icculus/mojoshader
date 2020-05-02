@@ -348,8 +348,8 @@ init_fail:
 
 void MOJOSHADER_d3d11DestroyContext(void)
 {
-    // !!! FIXME: What else?
     ctx->free_fn(ctx, ctx->malloc_data);
+    ctx = NULL;
 } // MOJOSHADER_d3d11DestroyContext
 
 MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
