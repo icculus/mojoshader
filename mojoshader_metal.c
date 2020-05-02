@@ -396,6 +396,7 @@ void MOJOSHADER_mtlDestroyContext(void)
 {
     ctx->free_fn(ctx->buffersInUse, ctx->malloc_data);
     ctx->free_fn(ctx, ctx->malloc_data);
+    ctx = NULL;
 } // MOJOSHADER_mtlDestroyContext
 
 void *MOJOSHADER_mtlCompileLibrary(MOJOSHADER_effect *effect)
