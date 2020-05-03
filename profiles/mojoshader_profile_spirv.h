@@ -12,6 +12,11 @@
 
 #if SUPPORT_PROFILE_SPIRV
 
+#define MOJOSHADER_SPIRV_VS_SAMPLER_SET 0
+#define MOJOSHADER_SPIRV_PS_SAMPLER_SET 1
+#define MOJOSHADER_SPIRV_VS_UNIFORM_SET 2
+#define MOJOSHADER_SPIRV_PS_UNIFORM_SET 3
+
 // For baked-in constants in SPIR-V we want to store scalar values that we can
 // use in composites, since OpConstantComposite uses result ids constituates
 // rather than value literals.

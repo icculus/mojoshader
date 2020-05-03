@@ -271,16 +271,23 @@ static uint32 spv_output_location(Context *ctx, uint32 id, uint32 loc)
     return (buffer_size(ctx->helpers) >> 2) - 1;
 } // spv_output_location
 
-static void spv_output_set_binding(Context *ctx, uint32 id, uint32 set, uint32 binding)
+static void spv_output_sampler_binding(Context *ctx, uint32 id, uint32 binding)
 {
     if (isfail(ctx))
         return;
+
+    uint32 set = 0;
+    if (ctx->spirv.mode == SPIRV_MODE_VK)
+    {
+        set = shader_is_vertex(ctx) ? MOJOSHADER_SPIRV_VS_SAMPLER_SET
+                                    : MOJOSHADER_SPIRV_PS_SAMPLER_SET;
+    } // if
 
     push_output(ctx, &ctx->helpers);
     spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationDescriptorSet, set);
     spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationBinding, binding);
     pop_output(ctx);
-} // spv_output_set_binding
+} // spv_output_sampler_binding
 
 static SpirvTypeIdx spv_change_base_type_vec_dim(SpirvTypeIdx sti, uint32 dim)
 {
@@ -2114,11 +2121,14 @@ void emit_SPIRV_sampler(Context *ctx, int stage, TextureType ttype, int texbem)
     pop_output(ctx);
 
     // hnn: specify uniform location for SPIR-V shaders (required per gl_arb_spirv spec)
-    spv_output_set_binding(ctx, result, 0, sampler_reg->regnum);
-    uint32 location_offset = spv_output_location(ctx, result, ~0u);
+    spv_output_sampler_binding(ctx, result, sampler_reg->regnum);
 
-    assert(sampler_reg->regnum < STATICARRAYLEN(ctx->spirv.patch_table.samplers));
-    ctx->spirv.patch_table.samplers[sampler_reg->regnum].offset = location_offset;
+    if (ctx->spirv.mode == SPIRV_MODE_GL)
+    {
+        assert(sampler_reg->regnum < STATICARRAYLEN(ctx->spirv.patch_table.samplers));
+        uint32 location_offset = spv_output_location(ctx, result, ~0u);
+        ctx->spirv.patch_table.samplers[sampler_reg->regnum].offset = location_offset;
+    }
 
     spv_output_regname(ctx, result, REG_TYPE_SAMPLER, stage);
 } // emit_SPIRV_sampler
@@ -2283,6 +2293,7 @@ static void spv_emit_uniform_constant_array(Context *ctx,
 {
     assert(size > 0);
     assert(id_var != 0);
+    assert(ctx->spirv.mode == SPIRV_MODE_GL);
 
     uint32 id_size = spv_getscalari(ctx, size);
     uint32 id_type = spv_bumpid(ctx);
@@ -2415,9 +2426,11 @@ void emit_SPIRV_finalize(Context *ctx)
         snprintf(buf, sizeof(buf), "%s_uniforms", ctx->shader_type_str);
         spv_output_name(ctx, id_pstruct, buf);
 
+        uint32 set = shader_is_vertex(ctx) ? MOJOSHADER_SPIRV_VS_UNIFORM_SET
+                                           : MOJOSHADER_SPIRV_PS_UNIFORM_SET;
         push_output(ctx, &ctx->helpers);
         spv_emit(ctx, 3+0, SpvOpDecorate, tid_struct, SpvDecorationBlock);
-        spv_emit(ctx, 3+1, SpvOpDecorate, id_pstruct, SpvDecorationDescriptorSet, 0);
+        spv_emit(ctx, 3+1, SpvOpDecorate, id_pstruct, SpvDecorationDescriptorSet, set);
         spv_emit(ctx, 3+1, SpvOpDecorate, id_pstruct, SpvDecorationBinding, 0);
 
         for (uint32 i = 0; i < member_count; i++)
