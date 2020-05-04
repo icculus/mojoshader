@@ -3240,11 +3240,6 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
                 case REG_TYPE_DEPTHOUT:
                     ignore = 1;
                     break;
-                case REG_TYPE_TEXTURE:
-                case REG_TYPE_MISCTYPE:
-                case REG_TYPE_INPUT:
-                    ignore = shader_is_pixel(ctx);
-                    break;
                 default:
                     ignore = 0;
                     break;
@@ -3252,16 +3247,11 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
 
             if (!ignore)
             {
-                if (shader_is_pixel(ctx))
-                    fail(ctx, "BUG: pixel shader with vertex attributes");
-                else
-                {
-                    wptr->usage = item->usage;
-                    wptr->index = item->index;
-                    wptr->name = alloc_varname(ctx, item);
-                    wptr++;
-                    count++;
-                } // else
+                wptr->usage = item->usage;
+                wptr->index = item->index;
+                wptr->name = alloc_varname(ctx, item);
+                wptr++;
+                count++;
             } // if
 
             item = item->next;
@@ -3516,6 +3506,7 @@ static void process_definitions(Context *ctx)
         RegisterList *next = item->next;
         const RegisterType regtype = item->regtype;
         const int regnum = item->regnum;
+        MOJOSHADER_usage usage;
 
         if (!get_defined_register(ctx, regtype, regnum))
         {
@@ -3537,9 +3528,27 @@ static void process_definitions(Context *ctx)
 
                     // Apparently this is an attribute that wasn't DCL'd.
                     //  Add it to the attribute list; deal with it later.
-                    // !!! FIXME: we should use something other than UNKNOWN here.
-                    add_attribute_register(ctx, regtype, regnum,
-                                           MOJOSHADER_USAGE_UNKNOWN, 0, 0xF, 0);
+                    if (regtype == REG_TYPE_RASTOUT)
+                    {
+                        if ((RastOutType) regnum == RASTOUT_TYPE_POSITION)
+                            usage = MOJOSHADER_USAGE_POSITION;
+                        else if ((RastOutType) regnum == RASTOUT_TYPE_FOG)
+                            usage = MOJOSHADER_USAGE_FOG;
+                        else if ((RastOutType) regnum==RASTOUT_TYPE_POINT_SIZE)
+                            usage = MOJOSHADER_USAGE_POINTSIZE;
+                    } // if
+                    else if (regtype == REG_TYPE_ATTROUT ||
+                             regtype == REG_TYPE_COLOROUT)
+                    {
+                        usage = MOJOSHADER_USAGE_COLOR;
+                    } // else if
+                    else if (regtype == REG_TYPE_TEXCRDOUT)
+                        usage = MOJOSHADER_USAGE_TEXCOORD;
+                    else if (regtype == REG_TYPE_DEPTHOUT)
+                        usage = MOJOSHADER_USAGE_DEPTH;
+
+                    add_attribute_register(ctx, regtype, regnum, usage,
+                                           regnum, 0xF, 0);
                     break;
 
                 case REG_TYPE_ADDRESS:
