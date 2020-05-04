@@ -228,12 +228,16 @@ static void replaceVarname(const char *find, const char *replace,
     size_t find_len = strlen(find);
     size_t replace_len = strlen(replace);
 
+    #define IS_PARTIAL_TOKEN(token) \
+        (isalnum(*(token + find_len)) || isalnum(*(token-1)))
+
     // How many times does `find` occur in the source buffer?
     int count = 0;
-    char *ptr = strstr(srcbuf, find);
+    char *ptr = (char *) strstr(srcbuf, find);
     while (ptr != NULL)
     {
-        count++;
+        if (!IS_PARTIAL_TOKEN(ptr))
+            count++;
         ptr = strstr(ptr + find_len, find);
     } // while
 
@@ -244,11 +248,10 @@ static void replaceVarname(const char *find, const char *replace,
     // Easy case; just find/replace in the original buffer
     if (newlen == oldlen)
     {
-        ptr = strstr(srcbuf, find);
+        ptr = (char *) strstr(srcbuf, find);
         while (ptr != NULL)
         {
-            // Don't replace partial tokens!
-            if (!isalnum(*(ptr + find_len)))
+            if (!IS_PARTIAL_TOKEN(ptr))
                 memcpy(ptr, replace, replace_len);
             ptr = strstr(ptr + find_len, find);
         } // while
@@ -262,22 +265,29 @@ static void replaceVarname(const char *find, const char *replace,
     // Find + replace
     char *prev_ptr = (char *) srcbuf;
     char *curr_ptr = (char *) newbuf;
-    ptr = strstr(srcbuf, find);
+    ptr = (char*) strstr(srcbuf, find);
     while (ptr != NULL)
     {
-        // Don't replace partial tokens!
-        if (!isalnum(*(ptr + find_len)))
-        {
-            memcpy(curr_ptr, prev_ptr, ptr - prev_ptr);
-            curr_ptr += ptr - prev_ptr;
+        memcpy(curr_ptr, prev_ptr, ptr - prev_ptr);
+        curr_ptr += ptr - prev_ptr;
 
+        if (!IS_PARTIAL_TOKEN(ptr))
+        {
             memcpy(curr_ptr, replace, replace_len);
             curr_ptr += replace_len;
-        }
+        } // if
+        else
+        {
+            // Don't accidentally eat partial tokens...
+            memcpy(curr_ptr, find, find_len);
+            curr_ptr += find_len;
+        } // else
 
         prev_ptr = ptr + find_len;
         ptr = strstr(prev_ptr, find);
     } // while
+
+    #undef IS_PARTIAL_TOKEN
 
     // Copy the remaining part of the source buffer
     memcpy(curr_ptr, prev_ptr, (srcbuf + oldlen) - prev_ptr);
@@ -343,7 +353,6 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
                 vvarname = vpd->outputs[j].name;
                 if (strcmp(pvarname, vvarname) != 0)
                     replaceVarname(pvarname, vvarname, &pend);
-                break;
             }
         }
     }
@@ -501,6 +510,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
                                              pd->mainfn, NULL, NULL, pd->mainfn,
                                              "vs_4_0", 0, 0, &blob, &blob);
+
         if (result < 0)
         {
             set_error((const char *) ID3D10Blob_GetBufferPointer(blob));

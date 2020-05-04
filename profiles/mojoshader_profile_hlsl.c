@@ -555,8 +555,14 @@ void emit_HLSL_finalize(Context *ctx)
     if (ctx->outputs)
     {
         push_output(ctx, &ctx->outputs);
-        if (ctx->shader_type == MOJOSHADER_TYPE_VERTEX)
-            output_line(ctx, "\tfloat4 m_oPos : SV_Position;");
+
+        // !!! FIXME: Maybe have a better check for this?
+        if (ctx->hlsl_outpos_name[0] != '\0')
+        {
+            output_line(ctx, "\tfloat4 m_%s : SV_Position;",
+                        ctx->hlsl_outpos_name);
+        } // if
+
         output_line(ctx, "};");
         output_blank_line(ctx);
         pop_output(ctx);
@@ -903,7 +909,8 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : NORMAL;", var);
                     break;
                 case MOJOSHADER_USAGE_POSITION:
-                    // This gets written at the very end.
+                    snprintf(ctx->hlsl_outpos_name,
+                             sizeof(ctx->hlsl_outpos_name), "%s", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float m_%s : PSIZE;", var);

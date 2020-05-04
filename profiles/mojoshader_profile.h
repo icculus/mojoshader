@@ -213,6 +213,10 @@ typedef struct Context
 #if SUPPORT_PROFILE_GLSPIRV
     int profile_supports_glspirv;
 #endif
+
+#if SUPPORT_PROFILE_HLSL
+    char hlsl_outpos_name[16];
+#endif
 } Context;
 
 // Use these macros so we can remove all bits of these profiles from the build.
