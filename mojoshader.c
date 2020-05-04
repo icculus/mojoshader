@@ -3240,10 +3240,6 @@ static MOJOSHADER_attribute *build_attributes(Context *ctx, int *_count)
                 case REG_TYPE_DEPTHOUT:
                     ignore = 1;
                     break;
-                case REG_TYPE_TEXTURE:
-                case REG_TYPE_MISCTYPE:
-                    ignore = shader_is_pixel(ctx);
-                    break;
                 default:
                     ignore = 0;
                     break;
