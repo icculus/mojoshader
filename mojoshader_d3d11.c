@@ -219,20 +219,88 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     } // if
 } // update_uniform_buffer
 
-/* Pixel Shader Compilation Utility */
+/* Pixel Shader Compilation Utilities */
 
-static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
-                                             MOJOSHADER_d3d11Shader *pshader)
+static void replaceVarname(const char *find, const char *replace,
+                           const char **source)
 {
-    ID3D11PixelShader *retval = NULL;
-    ID3DBlob *blob;
-    const char *a, *b, *vout, *pstart, *pend, *loc;
-    char *pfinal;
-    size_t substr_len;
-    HRESULT result;
+    const char *srcbuf = *source;
+    size_t find_len = strlen(find);
+    size_t replace_len = strlen(replace);
 
-    const char *vsrc = vshader->parseData->output;
-    const char *psrc = pshader->parseData->output;
+    // How many times does `find` occur in the source buffer?
+    int count = 0;
+    char *ptr = strstr(srcbuf, find);
+    while (ptr != NULL)
+    {
+        count++;
+        ptr = strstr(ptr + find_len, find);
+    } // while
+
+    // How big should we make the new text buffer?
+    size_t oldlen = strlen(srcbuf) + 1;
+    size_t newlen = oldlen + (count * (replace_len - find_len));
+
+    // Easy case; just find/replace in the original buffer
+    if (newlen == oldlen)
+    {
+        ptr = strstr(srcbuf, find);
+        while (ptr != NULL)
+        {
+            // Don't replace partial tokens!
+            if (!isalnum(*(ptr + find_len)))
+                memcpy(ptr, replace, replace_len);
+            ptr = strstr(ptr + find_len, find);
+        } // while
+        return;
+    } // if
+
+    // Allocate a new buffer
+    char *newbuf = (char *) ctx->malloc_fn(newlen, ctx->malloc_data);
+    memset(newbuf, '\0', newlen);
+
+    // Find + replace
+    char *prev_ptr = (char *) srcbuf;
+    char *curr_ptr = (char *) newbuf;
+    ptr = strstr(srcbuf, find);
+    while (ptr != NULL)
+    {
+        // Don't replace partial tokens!
+        if (!isalnum(*(ptr + find_len)))
+        {
+            memcpy(curr_ptr, prev_ptr, ptr - prev_ptr);
+            curr_ptr += ptr - prev_ptr;
+
+            memcpy(curr_ptr, replace, replace_len);
+            curr_ptr += replace_len;
+        }
+
+        prev_ptr = ptr + find_len;
+        ptr = strstr(prev_ptr, find);
+    } // while
+
+    // Copy the remaining part of the source buffer
+    memcpy(curr_ptr, prev_ptr, (srcbuf + oldlen) - prev_ptr);
+
+    // Free the source buffer
+    ctx->free_fn((void *) srcbuf, ctx->malloc_data);
+
+    // Point the source parameter to the new buffer
+    *source = newbuf;
+} // replaceVarname
+
+static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
+                                MOJOSHADER_d3d11Shader *pshader)
+{
+    const MOJOSHADER_parseData *vpd = vshader->parseData;
+    const MOJOSHADER_parseData *ppd = pshader->parseData;
+    const char *_Output = "_Output\n{\n";
+    const char *_Input = "_Input\n{\n";
+    const char *vsrc = vpd->output;
+    const char *psrc = ppd->output;
+    const char *a, *b, *vout, *pstart, *pend;
+    size_t substr_len;
+    char *pfinal;
 
     #define MAKE_STRBUF(buf) \
         substr_len = b - a; \
@@ -240,34 +308,47 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
         memset((void *) buf, '\0', substr_len + 1); \
         memcpy((void *) buf, a, substr_len);
 
-    // Copy the contents of the vertex function's output struct into a buffer
-    a = strstr(vsrc, "_Output\n{\n") + strlen("_Output\n{\n");
+    // Copy the vertex function's output struct into a buffer
+    a = strstr(vsrc, _Output) + strlen(_Output);
     b = a;
     while (*(b++) != '}') {}
     b--;
     MAKE_STRBUF(vout)
 
     // Split up the pixel shader text...
-    // Part 1: Everything up to the input contents
+
+    // ...everything up to the input contents...
     a = psrc;
-    b = strstr(psrc, "_Input\n{\n") + strlen("_Input\n{\n");
+    b = strstr(psrc, _Input) + strlen(_Input);
     MAKE_STRBUF(pstart)
 
-    // Part 2: Everything after the input contents
+    // ...everything after the input contents.
     a = b;
     while (*(a++) != '}') {}
     a--;
     while (*(b++) != '\0') {}
     MAKE_STRBUF(pend)
 
-    // Modify the copied vertex output so it works as pixel input
-    while ((loc = strstr(vout, "m_oD")) != NULL)
-        memcpy((void*) loc, " m_v", strlen(" m_v"));
-    while ((loc = strstr(vout, "m_oT")) != NULL)
-        memcpy((void*) loc, " m_t", strlen(" m_t"));
-    // !!! FIXME: Others?
+    // Find matching semantics
+    int i, j;
+    const char *pvarname, *vvarname;
+    for (i = 0; i < ppd->attribute_count; i++)
+    {
+        for (j = 0; j < vpd->output_count; j++)
+        {
+            if (ppd->attributes[i].usage == vpd->outputs[j].usage &&
+                ppd->attributes[i].index == vpd->outputs[j].index)
+            {
+                pvarname = ppd->attributes[i].name;
+                vvarname = vpd->outputs[j].name;
+                if (strcmp(pvarname, vvarname) != 0)
+                    replaceVarname(pvarname, vvarname, &pend);
+                break;
+            }
+        }
+    }
 
-    // Concatenate the pieces together again
+    // Concatenate the shader pieces together
     substr_len = strlen(pstart) + strlen(vout) + strlen(pend);
     pfinal = (char *) ctx->malloc_fn(substr_len + 1, ctx->malloc_data);
     memset((void *) pfinal, '\0', substr_len + 1);
@@ -275,34 +356,45 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     memcpy(pfinal + strlen(pstart), vout, strlen(vout));
     memcpy(pfinal + strlen(pstart) + strlen(vout), pend, strlen(pend));
 
-    // Compile into bytecode
-    result = ctx->D3DCompileFunc(pfinal, strlen(pfinal),
+    // Free the temporary buffers
+    ctx->free_fn((void *) vout, ctx->malloc_data);
+    ctx->free_fn((void *) pstart, ctx->malloc_data);
+    ctx->free_fn((void *) pend, ctx->malloc_data);
+
+    #undef MAKE_STRBUF
+
+    return pfinal;
+} // spliceVertexShaderInput
+
+static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
+                                             MOJOSHADER_d3d11Shader *pshader)
+{
+    ID3D11PixelShader *retval = NULL;
+    const char *source;
+    ID3DBlob *blob;
+    HRESULT result;
+
+    source = rewritePixelShader(vshader, pshader);
+
+    result = ctx->D3DCompileFunc(source, strlen(source),
                                  pshader->parseData->mainfn, NULL, NULL,
                                  pshader->parseData->mainfn, "ps_4_0", 0, 0,
                                  &blob, &blob);
+
     if (result < 0)
     {
         set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
-        ctx->free_fn((void *) vout, ctx->malloc_data);
-        ctx->free_fn((void *) pstart, ctx->malloc_data);
-        ctx->free_fn((void *) pend, ctx->malloc_data);
-        ctx->free_fn((void *) pfinal, ctx->malloc_data);
+        ctx->free_fn((void *) source, ctx->malloc_data);
         return NULL;
     } // if
 
-    // Create the shader
     ID3D11Device_CreatePixelShader(ctx->device,
                                    ID3D10Blob_GetBufferPointer(blob),
                                    ID3D10Blob_GetBufferSize(blob),
                                    NULL, &retval);
 
-    // Clean up
     ID3D10Blob_Release(blob);
-    ctx->free_fn((void *) vout, ctx->malloc_data);
-    ctx->free_fn((void *) pstart, ctx->malloc_data);
-    ctx->free_fn((void *) pend, ctx->malloc_data);
-    ctx->free_fn((void *) pfinal, ctx->malloc_data);
-
+    ctx->free_fn((void *) source, ctx->malloc_data);
     return retval;
 } // compilePixelShader
 
@@ -368,6 +460,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse("hlsl", mainfn, tokenbuf,
                                                      bufsize, swiz, swizcount,
                                                      smap, smapcount, m, f, d);
+
     if (pd->error_count > 0)
     {
         // !!! FIXME: put multiple errors in the buffer? Don't use
