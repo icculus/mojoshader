@@ -383,7 +383,10 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     ID3DBlob *blob;
     HRESULT result;
 
-    source = rewritePixelShader(vshader, pshader);
+    if (pshader->parseData->attribute_count > 0)
+        source = rewritePixelShader(vshader, pshader);
+    else
+        source = pshader->parseData->output;
 
     result = ctx->D3DCompileFunc(source, strlen(source),
                                  pshader->parseData->mainfn, NULL, NULL,
