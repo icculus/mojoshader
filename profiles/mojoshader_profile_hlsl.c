@@ -779,6 +779,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
     const char *usage_str = NULL;
     char index_str[16] = { '\0' };
     char var[64];
+    char a[256];
 
     get_HLSL_varname_in_buf(ctx, regtype, regnum, var, sizeof (var));
 
@@ -922,7 +923,6 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
                 default:
-                    char a[256];
                     snprintf(a, sizeof(a), "Invalid vertex output semantic %d", usage);
                     fail(ctx, a);
                     break;

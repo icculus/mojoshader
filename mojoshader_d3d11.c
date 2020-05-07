@@ -161,7 +161,8 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
         int idx = shader->parseData->uniforms[i].index;
         int arrayCount = shader->parseData->uniforms[i].array_count;
 
-        void *src, *dst;
+        void *src = NULL;
+        void *dst = NULL;
         size_t size = arrayCount ? arrayCount : 1;
 
         switch (shader->parseData->uniforms[i].type)
@@ -577,7 +578,6 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
 
 compile_shader_fail:
     MOJOSHADER_freeParseData(pd);
-    f(retval, d);
     return NULL;
 } // MOJOSHADER_d3d11CompileShader
 
