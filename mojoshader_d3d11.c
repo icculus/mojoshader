@@ -7,15 +7,20 @@
  *  This file written by Ryan C. Gordon.
  */
 
-#ifdef _WIN32
 #define D3D11_NO_HELPERS
 #define CINTERFACE
 #define COBJMACROS
 #include <d3d11.h>
-#endif
 
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
+
+#ifndef WINAPI_FAMILY_WINRT
+#define WINAPI_FAMILY_WINRT 0
+#endif
+#if WINAPI_FAMILY_WINRT
+#include <d3dcompiler.h>
+#endif
 
 typedef struct d3d11ShaderMap
 {
@@ -439,9 +444,13 @@ int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
     ctx->deviceContext = (ID3D11DeviceContext*) deviceContext;
 
     // Grab the D3DCompile function pointer
+#if WINAPI_FAMILY_WINRT
+    ctx->D3DCompileFunc = D3DCompile;
+#else
     HMODULE d3dCompilerModule = LoadLibrary("d3dcompiler_47.dll");
     assert(d3dCompilerModule != NULL);
     ctx->D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(d3dCompilerModule, "D3DCompile");
+#endif /* WINAPI_FAMILY_WINRT */
 
     return 0;
 
