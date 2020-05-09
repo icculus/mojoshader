@@ -225,7 +225,32 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     } // if
 } // update_uniform_buffer
 
-/* Pixel Shader Compilation Utilities */
+/* Shader Compilation Utilities */
+
+static void compileVertexShader(MOJOSHADER_d3d11Shader *shader)
+{
+        ID3DBlob *blob;
+        const MOJOSHADER_parseData *pd = shader->parseData;
+        HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
+                                             pd->mainfn, NULL, NULL, pd->mainfn,
+                                             "vs_4_0", 0, 0, &blob, &blob);
+
+        if (result < 0)
+        {
+            set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
+            ID3D10Blob_Release(blob);
+            return;
+        } // if
+
+        shader->vertex.dataBlob = blob;
+        ID3D11Device_CreateVertexShader(
+            ctx->device,
+            ID3D10Blob_GetBufferPointer((ID3DBlob *) shader->vertex.dataBlob),
+            ID3D10Blob_GetBufferSize((ID3DBlob *) shader->vertex.dataBlob),
+            NULL,
+            (ID3D11VertexShader **) &shader->vertex.shader
+        );
+} // compileVertexShader
 
 static void replaceVarname(const char *find, const char *replace,
                            const char **source)
@@ -513,35 +538,10 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         retval->pixel.numMaps = 0;
     } // else
 
-    /* Only vertex shaders get compiled here. Pixel shaders will be compiled
-     * at link time since they depend on the vertex shader output layout.
-     */
-    if (pd->shader_type == MOJOSHADER_TYPE_VERTEX)
+    // Allocate the mapping array for pixel shaders.
+    //  This will be filled at bind time.
+    if (pd->shader_type == MOJOSHADER_TYPE_PIXEL)
     {
-        // Compile the shader
-        ID3DBlob *blob;
-        HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
-                                             pd->mainfn, NULL, NULL, pd->mainfn,
-                                             "vs_4_0", 0, 0, &blob, &blob);
-
-        if (result < 0)
-        {
-            set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
-            goto compile_shader_fail;
-        } // if
-
-        retval->vertex.dataBlob = blob;
-        ID3D11Device_CreateVertexShader(
-            ctx->device,
-            ID3D10Blob_GetBufferPointer((ID3DBlob *) retval->vertex.dataBlob),
-            ID3D10Blob_GetBufferSize((ID3DBlob *) retval->vertex.dataBlob),
-            NULL,
-            (ID3D11VertexShader **) &retval->vertex.shader
-        );
-    } // if
-    else
-    {
-        // Allocate the shader map array, this will be filled at bind time.
         const int mapCount = 4; // arbitrary!
         retval->pixel.shaderMaps = (d3d11ShaderMap *) m(mapCount * sizeof(d3d11ShaderMap), d);
         if (retval->pixel.shaderMaps == NULL)
@@ -553,7 +553,7 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
             retval->pixel.shaderMaps[i].vshader = NULL;
             retval->pixel.shaderMaps[i].pshader = NULL;
         } // for
-    } // else
+    } // if
 
     // Create the uniform buffer, if needed
     if (pd->uniform_count > 0)
@@ -610,7 +610,8 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
                 ctx->free_fn(shader->constantData, ctx->malloc_data);
             } // if
 
-            if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
+            if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX &&
+                shader->vertex.dataBlob != NULL)
             {
                 ID3D10Blob_Release((ID3DBlob *) shader->vertex.dataBlob);
                 ID3D11VertexShader_Release((ID3D11VertexShader *) shader->vertex.shader);
@@ -643,6 +644,10 @@ void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
     if (vshader != NULL)
     {
         ctx->vertexShader = vshader;
+
+        if (vshader->vertex.dataBlob == NULL)
+            compileVertexShader(vshader);
+
         ID3D11DeviceContext_VSSetShader(
             ctx->deviceContext,
             (ID3D11VertexShader*) vshader->vertex.shader,
