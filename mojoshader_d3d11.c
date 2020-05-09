@@ -310,8 +310,8 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
 {
     const MOJOSHADER_parseData *vpd = vshader->parseData;
     const MOJOSHADER_parseData *ppd = pshader->parseData;
-    const char *_Output = "_Output\n{\n";
-    const char *_Input = "_Input\n{\n";
+    const char *_Output = "_Output" ENDLINE_STR "{" ENDLINE_STR;
+    const char *_Input = "_Input" ENDLINE_STR "{" ENDLINE_STR;
     const char *vsrc = vpd->output;
     const char *psrc = ppd->output;
     const char *a, *b, *vout, *pstart, *pend;
