@@ -844,7 +844,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : BINORMAL%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_BLENDINDICES:
-                    output_line(ctx, "int4 m_%s : BLENDINDICES%d;", var, index);
+                    output_line(ctx, "float4 m_%s : BLENDINDICES%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_BLENDWEIGHT:
                     output_line(ctx, "float4 m_%s : BLENDWEIGHT%d;", var, index);
