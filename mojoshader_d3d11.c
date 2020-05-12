@@ -7,13 +7,20 @@
  *  This file written by Ryan C. Gordon.
  */
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN 1
+#include <windows.h> // Include this early to avoid SDL conflicts
+#endif
+
+#define __MOJOSHADER_INTERNAL__ 1
+#include "mojoshader_internal.h"
+
+#if SUPPORT_PROFILE_HLSL
+
 #define D3D11_NO_HELPERS
 #define CINTERFACE
 #define COBJMACROS
 #include <d3d11.h>
-
-#define __MOJOSHADER_INTERNAL__ 1
-#include "mojoshader_internal.h"
 
 #ifndef WINAPI_FAMILY_WINRT
 #define WINAPI_FAMILY_WINRT 0
@@ -21,6 +28,38 @@
 #if WINAPI_FAMILY_WINRT
 #include <d3dcompiler.h>
 #endif
+
+/* Error state */
+
+static char error_buffer[1024] = { '\0' };
+
+static void set_error(const char *str)
+{
+    snprintf(error_buffer, sizeof (error_buffer), "%s", str);
+} // set_error
+
+static inline void out_of_memory(void)
+{
+    set_error("out of memory");
+} // out_of_memory
+
+/* D3DCompile signature */
+
+typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
+    LPCVOID pSrcData,
+    SIZE_T SrcDataSize,
+    LPCSTR pSourceName,
+    const D3D_SHADER_MACRO *pDefines,
+    ID3DInclude *pInclude,
+    LPCSTR pEntrypoint,
+    LPCSTR pTarget,
+    UINT Flags1,
+    UINT Flags2,
+    ID3DBlob **ppCode,
+    ID3DBlob **ppErrorMsgs
+);
+
+/* Structs */
 
 typedef struct d3d11ShaderMap
 {
@@ -53,40 +92,6 @@ typedef struct MOJOSHADER_d3d11Shader
         } pixel;
     };
 } MOJOSHADER_d3d11Shader;
-
-// Error state...
-static char error_buffer[1024] = { '\0' };
-
-static void set_error(const char *str)
-{
-    snprintf(error_buffer, sizeof (error_buffer), "%s", str);
-} // set_error
-
-static inline void out_of_memory(void)
-{
-    set_error("out of memory");
-} // out_of_memory
-
-// profile-specific implementations...
-
-#if SUPPORT_PROFILE_HLSL
-#ifdef MOJOSHADER_EFFECT_SUPPORT
-
-typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
-    LPCVOID pSrcData,
-    SIZE_T SrcDataSize,
-    LPCSTR pSourceName,
-    const D3D_SHADER_MACRO *pDefines,
-    ID3DInclude *pInclude,
-    LPCSTR pEntrypoint,
-    LPCSTR pTarget,
-    UINT Flags1,
-    UINT Flags2,
-    ID3DBlob **ppCode,
-    ID3DBlob **ppErrorMsgs
-);
-
-/* Structs */
 
 // Max entries for each register file type...
 #define MAX_REG_FILE_F 8192
@@ -781,7 +786,6 @@ const char *MOJOSHADER_d3d11GetError(void)
     return error_buffer;
 } // MOJOSHADER_d3d11GetError
 
-#endif /* MOJOSHADER_EFFECT_SUPPORT */
 #endif /* SUPPORT_PROFILE_HLSL */
 
 // end of mojoshader_d3d11.c ...
