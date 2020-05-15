@@ -63,34 +63,31 @@ typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
 
 typedef struct d3d11ShaderMap
 {
-    void *vshader; // ID3D11VertexShader*
-    void *pshader; // ID3D11PixelShader*
-} d3d11ShaderMap;
+    void *val;
+    union
+    {
+        struct
+        {
+            uint64 layoutHash;
+            ID3D10Blob *blob;
+        } vertex;
+        struct
+        {
+            MOJOSHADER_d3d11Shader *vshader;
+        } pixel;
+    };
+} d3d11PixelShaderMap;
 
 typedef struct MOJOSHADER_d3d11Shader
 {
     const MOJOSHADER_parseData *parseData;
     uint32 refcount;
-
-    void *ubo; // ID3DBuffer*
+    ID3D11Buffer *ubo;
     size_t buflen;
     unsigned char *constantData;
-
-    union
-    {
-        struct
-        {
-            void *dataBlob; // ID3DBlob*
-            void *shader; // ID3D11VertexShader*
-        } vertex;
-
-        struct
-        {
-            d3d11ShaderMap *shaderMaps;
-            unsigned int mapCapacity;
-            unsigned int numMaps;
-        } pixel;
-    };
+    unsigned int mapCapacity;
+    unsigned int numMaps;
+    d3d11ShaderMap *shaderMaps;
 } MOJOSHADER_d3d11Shader;
 
 // Max entries for each register file type...
@@ -124,6 +121,8 @@ typedef struct MOJOSHADER_d3d11Context
     // Currently bound vertex and pixel shaders.
     MOJOSHADER_d3d11Shader *vertexShader;
     MOJOSHADER_d3d11Shader *pixelShader;
+    int vertexNeedsBound;
+    int pixelNeedsBound;
 
     // D3DCompile function pointer.
     PFN_D3DCOMPILE D3DCompileFunc;
@@ -230,31 +229,51 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     } // if
 } // update_uniform_buffer
 
+static inline void expand_map(MOJOSHADER_d3d11Shader *shader)
+{
+    if (shader->numMaps == shader->mapCapacity)
+    {
+        d3d11ShaderMap *newMap = (d3d11ShaderMap *) ctx->malloc_fn(
+            sizeof(d3d11ShaderMap) * shader->mapCapacity * 2,
+            ctx->malloc_data
+        );
+        memcpy(newMap, shader->shaderMaps,
+            sizeof(d3d11ShaderMap) * shader->mapCapacity);
+        shader->mapCapacity *= 2;
+        ctx->free_fn(shader->shaderMaps, ctx->malloc_data);
+        shader->shaderMaps = newMap;
+        newMap = NULL;
+    } // if
+}
+
 /* Shader Compilation Utilities */
 
-static void compileVertexShader(MOJOSHADER_d3d11Shader *shader)
+static ID3D11VertexShader *compileVertexShader(MOJOSHADER_d3d11Shader *shader,
+                                               ID3D10Blob **blob)
 {
-        ID3DBlob *blob;
-        const MOJOSHADER_parseData *pd = shader->parseData;
-        HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
-                                             pd->mainfn, NULL, NULL, pd->mainfn,
-                                             "vs_4_0", 0, 0, &blob, &blob);
+    const MOJOSHADER_parseData *pd = shader->parseData;
+    HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
+                                         pd->mainfn, NULL, NULL, pd->mainfn,
+                                         "vs_4_0", 0, 0, blob, blob);
 
-        if (result < 0)
-        {
-            set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
-            ID3D10Blob_Release(blob);
-            return;
-        } // if
+    if (result < 0)
+    {
+        set_error((const char *) ID3D10Blob_GetBufferPointer(*blob));
+        ID3D10Blob_Release(*blob);
+        return NULL;
+    } // if
 
-        shader->vertex.dataBlob = blob;
-        ID3D11Device_CreateVertexShader(
-            ctx->device,
-            ID3D10Blob_GetBufferPointer((ID3DBlob *) shader->vertex.dataBlob),
-            ID3D10Blob_GetBufferSize((ID3DBlob *) shader->vertex.dataBlob),
-            NULL,
-            (ID3D11VertexShader **) &shader->vertex.shader
-        );
+    void *bytecode = ID3D10Blob_GetBufferPointer(*blob);
+    int bytecodeLength = ID3D10Blob_GetBufferSize(*blob);
+    ID3D11VertexShader *ret = NULL;
+    ID3D11Device_CreateVertexShader(
+        ctx->device,
+        bytecode,
+        bytecodeLength,
+        NULL,
+        &ret
+    );
+    return ret;
 } // compileVertexShader
 
 static void replaceVarname(const char *find, const char *replace,
@@ -530,35 +549,15 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
     retval->ubo = NULL;
     retval->constantData = NULL;
     retval->buflen = 0;
+    retval->numMaps = 0;
 
-    if (pd->shader_type == MOJOSHADER_TYPE_VERTEX)
-    {
-        retval->vertex.dataBlob = NULL;
-        retval->vertex.shader = NULL;
-    } // if
-    else
-    {
-        retval->pixel.shaderMaps = NULL;
-        retval->pixel.mapCapacity = 0;
-        retval->pixel.numMaps = 0;
-    } // else
+    // Allocate shader maps
+    retval->mapCapacity = 4; // arbitrary!
+    retval->shaderMaps = (d3d11ShaderMap *) m(retval->mapCapacity * sizeof(d3d11ShaderMap), d);
+    if (retval->shaderMaps == NULL)
+        goto compile_shader_fail;
 
-    // Allocate the mapping array for pixel shaders.
-    //  This will be filled at bind time.
-    if (pd->shader_type == MOJOSHADER_TYPE_PIXEL)
-    {
-        const int mapCount = 4; // arbitrary!
-        retval->pixel.shaderMaps = (d3d11ShaderMap *) m(mapCount * sizeof(d3d11ShaderMap), d);
-        if (retval->pixel.shaderMaps == NULL)
-            goto compile_shader_fail;
-
-        retval->pixel.mapCapacity = mapCount;
-        for (i = 0; i < mapCount; i++)
-        {
-            retval->pixel.shaderMaps[i].vshader = NULL;
-            retval->pixel.shaderMaps[i].pshader = NULL;
-        } // for
-    } // if
+    memset(retval->shaderMaps, '\0', retval->mapCapacity * sizeof(d3d11ShaderMap));
 
     // Create the uniform buffer, if needed
     if (pd->uniform_count > 0)
@@ -615,21 +614,22 @@ void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader)
                 ctx->free_fn(shader->constantData, ctx->malloc_data);
             } // if
 
-            if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX &&
-                shader->vertex.dataBlob != NULL)
+            if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
             {
-                ID3D10Blob_Release((ID3DBlob *) shader->vertex.dataBlob);
-                ID3D11VertexShader_Release((ID3D11VertexShader *) shader->vertex.shader);
+                for (int i = 0; i < shader->numMaps; i++)
+                {
+                    ID3D11VertexShader_Release((ID3D11VertexShader *) shader->shaderMaps[i].val);
+                    ID3D10Blob_Release(shader->shaderMaps[i].vertex.blob);
+                } // for
             } // if
             else if (shader->parseData->shader_type == MOJOSHADER_TYPE_PIXEL)
             {
-                for (int i = 0; i < shader->pixel.numMaps; i++)
-                    ID3D11PixelShader_Release((ID3D11PixelShader *) shader->pixel.shaderMaps[i].pshader);
-
-                ctx->free_fn(shader->pixel.shaderMaps, ctx->malloc_data);
-                shader->pixel.shaderMaps = NULL;
+                for (int i = 0; i < shader->numMaps; i++)
+                    ID3D11PixelShader_Release((ID3D11PixelShader *) shader->shaderMaps[i].val);
             } // else if
 
+            ctx->free_fn(shader->shaderMaps, ctx->malloc_data);
+            shader->shaderMaps = NULL;
             MOJOSHADER_freeParseData(shader->parseData);
             ctx->free_fn(shader, ctx->malloc_data);
         } // else
@@ -645,81 +645,18 @@ const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
 void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
                                  MOJOSHADER_d3d11Shader *pshader)
 {
-    // Use the last bound shader in case of NULL
+    // Use the last bound shaders in case of NULL
     if (vshader != NULL)
     {
         ctx->vertexShader = vshader;
-
-        if (vshader->vertex.dataBlob == NULL)
-            compileVertexShader(vshader);
-
-        ID3D11DeviceContext_VSSetShader(
-            ctx->deviceContext,
-            (ID3D11VertexShader*) vshader->vertex.shader,
-            NULL, 0
-        );
-        ID3D11DeviceContext_VSSetConstantBuffers(
-            ctx->deviceContext, 0, 1,
-            (ID3D11Buffer**) &vshader->ubo
-        );
-    } // if
+        ctx->vertexNeedsBound = 1;
+    }
 
     if (pshader != NULL)
     {
         ctx->pixelShader = pshader;
-
-        // Now we have to figure out which _real_ pixel shader to use...
-        ID3D11PixelShader *realPS = NULL;
-
-        // Is there already a mapping for this vertex shader?
-        for (int i = 0; i < pshader->pixel.numMaps; i++)
-        {
-            if (pshader->pixel.shaderMaps[i].vshader == ctx->vertexShader)
-            {
-                realPS = (ID3D11PixelShader *) pshader->pixel.shaderMaps[i].pshader;
-                break;
-            } // if
-        } // for
-
-        if (realPS == NULL)
-        {
-            // We have to create a new vertex/pixel shader mapping...
-
-            // Expand the mapping array if needed
-            if (pshader->pixel.numMaps == pshader->pixel.mapCapacity)
-            {
-                d3d11ShaderMap *newMap = (d3d11ShaderMap *) ctx->malloc_fn(
-                    sizeof(d3d11ShaderMap) * pshader->pixel.mapCapacity * 2,
-                    ctx->malloc_data
-                );
-
-                memcpy(newMap, pshader->pixel.shaderMaps,
-                        sizeof(d3d11ShaderMap) * pshader->pixel.mapCapacity);
-
-                pshader->pixel.mapCapacity *= 2;
-                ctx->free_fn(pshader->pixel.shaderMaps, ctx->malloc_data);
-                pshader->pixel.shaderMaps = newMap;
-                newMap = NULL;
-            } // if
-
-            // Add the new mapping
-            pshader->pixel.shaderMaps[pshader->pixel.numMaps].vshader = ctx->vertexShader;
-            realPS = compilePixelShader(ctx->vertexShader, pshader);
-            pshader->pixel.shaderMaps[pshader->pixel.numMaps].pshader = realPS;
-            pshader->pixel.numMaps++;
-            if (realPS == NULL)
-            {
-                // !!! FIXME: Just for debug purposes... <_<
-                assert(0 && "OH CRAP");
-            }
-        } // if
-
-        ID3D11DeviceContext_PSSetShader(ctx->deviceContext, realPS, NULL, 0);
-        ID3D11DeviceContext_PSSetConstantBuffers(
-            ctx->deviceContext, 0, 1,
-            (ID3D11Buffer **) &pshader->ubo
-        );
-    } // if
+        ctx->pixelNeedsBound = 1;
+    }
 } // MOJOSHADER_d3d11BindShaders
 
 void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
@@ -771,15 +708,113 @@ int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
     return -1;
 } // MOJOSHADER_d3d11GetVertexAttribLocation
 
-const void *MOJOSHADER_d3d11GetBytecode(MOJOSHADER_d3d11Shader *vshader)
+void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
+                                         unsigned long long elementsHash,
+                                         void **bytecode, int *bytecodeLength)
 {
-    return ID3D10Blob_GetBufferPointer((ID3DBlob*) vshader->vertex.dataBlob);
-} // MOJOSHADER_d3d11GetShaderBytecode
+    MOJOSHADER_d3d11Shader *vshader = ctx->vertexShader;
+    ID3D10Blob *blob;
 
-int MOJOSHADER_d3d11GetBytecodeLength(MOJOSHADER_d3d11Shader *vshader)
+    // Don't bother if there's already a mapping for this layout.
+    for (int i = 0; i < vshader->numMaps; i++)
+    {
+        if (inputLayoutHash == vshader->shaderMaps[i].vertex.layoutHash)
+        {
+            blob = vshader->shaderMaps[i].vertex.blob;
+            *bytecode = ID3D10Blob_GetBufferPointer(blob);
+            *bytecodeLength = ID3D10Blob_GetBufferSize(blob);
+            return;
+        }
+    }
+
+    // Expand the map array, if needed
+    expand_map(vshader);
+
+    // !!! FIXME: Use elementsHash
+
+    // Add the new mapping
+    vshader->shaderMaps[vshader->numMaps].vertex.layoutHash = inputLayoutHash;
+    ID3D11VertexShader *vs = compileVertexShader(vshader, &blob);
+    vshader->shaderMaps[ctx->vertexShader->numMaps].val = vs;
+    vshader->shaderMaps[ctx->vertexShader->numMaps].vertex.blob = blob;
+    ctx->vertexShader->numMaps++;
+    if (vs == NULL)
+    {
+        // !!! FIXME: Just for debug purposes... <_<
+        assert(0 && "OH CRAP");
+    } // if
+
+    // Return the bytecode info
+    *bytecode = ID3D10Blob_GetBufferPointer(blob);
+    *bytecodeLength = ID3D10Blob_GetBufferSize(blob);
+} // MOJOSHADER_d3d11CompileVertexShader
+
+void MOJOSHADER_d3d11ProgramReady(unsigned long long inputLayoutHash)
 {
-    return ID3D10Blob_GetBufferSize((ID3DBlob*) vshader->vertex.dataBlob);
-} // MOJOSHADER_d3d11GetShaderBytecodeLength
+    MOJOSHADER_d3d11Shader *vshader = ctx->vertexShader;
+    MOJOSHADER_d3d11Shader *pshader = ctx->pixelShader;
+
+    // Vertex shader...
+    if (ctx->vertexNeedsBound)
+    {
+        ID3D11VertexShader *realVS = NULL;
+        for (int i = 0; i < vshader->numMaps; i++)
+        {
+            if (inputLayoutHash == vshader->shaderMaps[i].vertex.layoutHash)
+            {
+                realVS = (ID3D11VertexShader *) vshader->shaderMaps[i].val;
+                break;
+            } // if
+        } // for
+        if (realVS == NULL)
+        {
+            // !!! FIXME: Just for debug purposes... <_<
+            assert(0 && "OH CRAP");
+        } // if
+        ID3D11DeviceContext_VSSetShader(ctx->deviceContext, realVS, NULL, 0);
+        ID3D11DeviceContext_VSSetConstantBuffers(ctx->deviceContext, 0, 1,
+                                                 &vshader->ubo);
+        ctx->vertexNeedsBound = 0;
+    } // if
+
+    // Pixel shader...
+    if (ctx->pixelNeedsBound)
+    {
+        // Is there already a mapping for the current vertex shader?
+        ID3D11PixelShader *realPS = NULL;
+        for (int i = 0; i < pshader->numMaps; i++)
+        {
+            if (pshader->shaderMaps[i].pixel.vshader == vshader)
+            {
+                realPS = (ID3D11PixelShader *) pshader->shaderMaps[i].val;
+                break;
+            } // if
+        } // for
+
+        // We have to create a new vertex/pixel shader mapping...
+        if (realPS == NULL)
+        {
+            // Expand the map array, if needed
+            expand_map(pshader);
+
+            // Add the new mapping
+            pshader->shaderMaps[pshader->numMaps].pixel.vshader = vshader;
+            realPS = compilePixelShader(vshader, pshader);
+            pshader->shaderMaps[pshader->numMaps].val = realPS;
+            pshader->numMaps++;
+            if (realPS == NULL)
+            {
+                // !!! FIXME: Just for debug purposes... <_<
+                assert(0 && "OH CRAP");
+            } // if
+        } // if
+
+        ID3D11DeviceContext_PSSetShader(ctx->deviceContext, realPS, NULL, 0);
+        ID3D11DeviceContext_PSSetConstantBuffers(ctx->deviceContext, 0, 1,
+                                                 &pshader->ubo);
+        ctx->pixelNeedsBound = 0;
+    } // if
+} // MOJOSHADER_d3d11ProgramReady
 
 const char *MOJOSHADER_d3d11GetError(void)
 {
