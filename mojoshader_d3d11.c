@@ -246,15 +246,45 @@ static inline void expand_map(MOJOSHADER_d3d11Shader *shader)
     } // if
 }
 
+static inline int element_is_uint(DXGI_FORMAT format)
+{
+    return  format == DXGI_FORMAT_R32G32B32A32_UINT ||
+            format == DXGI_FORMAT_R32G32B32_UINT ||
+            format == DXGI_FORMAT_R16G16B16A16_UINT ||
+            format == DXGI_FORMAT_R32G32_UINT ||
+            format == DXGI_FORMAT_R10G10B10A2_UINT ||
+            format == DXGI_FORMAT_R8G8B8A8_UINT ||
+            format == DXGI_FORMAT_R16G16_UINT ||
+            format == DXGI_FORMAT_R32_UINT ||
+            format == DXGI_FORMAT_R8G8_UINT ||
+            format == DXGI_FORMAT_R16_UINT ||
+            format == DXGI_FORMAT_R8_UINT;
+} // element_is_uint
+
+static inline int element_is_int(DXGI_FORMAT format)
+{
+    return  format == DXGI_FORMAT_R32G32B32A32_SINT ||
+            format == DXGI_FORMAT_R32G32B32_SINT ||
+            format == DXGI_FORMAT_R16G16B16A16_SINT ||
+            format == DXGI_FORMAT_R32G32_SINT ||
+            format == DXGI_FORMAT_R8G8B8A8_SINT ||
+            format == DXGI_FORMAT_R16G16_SINT ||
+            format == DXGI_FORMAT_R32_SINT ||
+            format == DXGI_FORMAT_R8G8_SINT ||
+            format == DXGI_FORMAT_R16_SINT ||
+            format == DXGI_FORMAT_R8_SINT;
+} // element_is_int
+
 /* Shader Compilation Utilities */
 
 static ID3D11VertexShader *compileVertexShader(MOJOSHADER_d3d11Shader *shader,
+                                               const char *src, int src_len,
                                                ID3D10Blob **blob)
 {
     const MOJOSHADER_parseData *pd = shader->parseData;
-    HRESULT result = ctx->D3DCompileFunc(pd->output, pd->output_len,
-                                         pd->mainfn, NULL, NULL, pd->mainfn,
-                                         "vs_4_0", 0, 0, blob, blob);
+    HRESULT result = ctx->D3DCompileFunc(src, src_len, pd->mainfn,
+                                         NULL, NULL, pd->mainfn, "vs_4_0",
+                                         0, 0, blob, blob);
 
     if (result < 0)
     {
@@ -266,13 +296,8 @@ static ID3D11VertexShader *compileVertexShader(MOJOSHADER_d3d11Shader *shader,
     void *bytecode = ID3D10Blob_GetBufferPointer(*blob);
     int bytecodeLength = ID3D10Blob_GetBufferSize(*blob);
     ID3D11VertexShader *ret = NULL;
-    ID3D11Device_CreateVertexShader(
-        ctx->device,
-        bytecode,
-        bytecodeLength,
-        NULL,
-        &ret
-    );
+    ID3D11Device_CreateVertexShader(ctx->device, bytecode, bytecodeLength,
+                                    NULL, &ret);
     return ret;
 } // compileVertexShader
 
@@ -709,13 +734,13 @@ int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
 } // MOJOSHADER_d3d11GetVertexAttribLocation
 
 void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
-                                         unsigned long long elementsHash,
+                                         void* elements, int elementCount,
                                          void **bytecode, int *bytecodeLength)
 {
     MOJOSHADER_d3d11Shader *vshader = ctx->vertexShader;
     ID3D10Blob *blob;
 
-    // Don't bother if there's already a mapping for this layout.
+    // Don't compile if there's already a mapping for this layout.
     for (int i = 0; i < vshader->numMaps; i++)
     {
         if (inputLayoutHash == vshader->shaderMaps[i].vertex.layoutHash)
@@ -727,14 +752,54 @@ void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
         }
     }
 
+    // Check for and replace non-float types
+    D3D11_INPUT_ELEMENT_DESC *d3dElements = (D3D11_INPUT_ELEMENT_DESC*) elements;
+    const char *origSource = vshader->parseData->output;
+    int srcLength = vshader->parseData->output_len;
+    char *newSource = (char*) origSource;
+    for (int i = 0; i < elementCount; i += 1)
+    {
+        D3D11_INPUT_ELEMENT_DESC e = d3dElements[i];
+
+        const char *replace;
+        if (element_is_uint(e.Format))
+            replace = " uint4";
+        else if (element_is_int(e.Format))
+            replace = "  int4";
+        else
+            replace = NULL;
+
+        if (replace != NULL)
+        {
+            char sem[16];
+            memset(sem, '\0', sizeof(sem));
+            snprintf(sem, sizeof(sem), "%s%d", e.SemanticName, e.SemanticIndex);
+            // !!! FIXME: POSITIONT has no index. What to do? -caleb
+
+            if (newSource == origSource)
+            {
+                newSource = (char *) ctx->malloc_fn(srcLength + 1,
+                                                    ctx->malloc_data);
+                strcpy(newSource, origSource);
+            } // if
+
+            char *ptr = strstr(newSource, sem);
+            assert(ptr != NULL && "Could not find semantic in shader source!");
+
+            int spaces = 0;
+            while (spaces < 3)
+                if (*(--ptr) == ' ') spaces++;
+            memcpy(ptr - strlen("float4"), replace, strlen(replace));
+        } // if
+    } // for
+
     // Expand the map array, if needed
     expand_map(vshader);
 
-    // !!! FIXME: Use elementsHash
-
     // Add the new mapping
     vshader->shaderMaps[vshader->numMaps].vertex.layoutHash = inputLayoutHash;
-    ID3D11VertexShader *vs = compileVertexShader(vshader, &blob);
+    ID3D11VertexShader *vs = compileVertexShader(vshader, newSource,
+                                                 srcLength, &blob);
     vshader->shaderMaps[ctx->vertexShader->numMaps].val = vs;
     vshader->shaderMaps[ctx->vertexShader->numMaps].vertex.blob = blob;
     ctx->vertexShader->numMaps++;

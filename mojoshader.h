@@ -3564,7 +3564,7 @@ DECLSPEC void MOJOSHADER_d3d11UnmapUniformBufferMemory();
 DECLSPEC int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
                                             MOJOSHADER_usage usage, int index);
 DECLSPEC void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
-                                                  unsigned long long elementsHash,
+                                                  void *elements, int elementCount,
                                                   void **bytecode, int *bytecodeLength);
 DECLSPEC void MOJOSHADER_d3d11ProgramReady(unsigned long long inputLayoutHash);
 DECLSPEC const char *MOJOSHADER_d3d11GetError(void);

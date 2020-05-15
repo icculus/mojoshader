@@ -844,7 +844,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : BINORMAL%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_BLENDINDICES:
-                    output_line(ctx, "uint4 m_%s : BLENDINDICES%d;", var, index);
+                    output_line(ctx, "float4 m_%s : BLENDINDICES%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_BLENDWEIGHT:
                     output_line(ctx, "float4 m_%s : BLENDWEIGHT%d;", var, index);
@@ -856,8 +856,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_POSITION:
-                    // !!! FIXME: multiple positions? -caleb
-                    output_line(ctx, "float4 m_%s : POSITION;", var);
+                    output_line(ctx, "float4 m_%s : POSITION%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_POSITIONT:
                     output_line(ctx, "float4 m_%s : POSITIONT;", var);
