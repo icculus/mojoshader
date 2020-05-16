@@ -76,7 +76,7 @@ typedef struct d3d11ShaderMap
             MOJOSHADER_d3d11Shader *vshader;
         } pixel;
     };
-} d3d11PixelShaderMap;
+} d3d11ShaderMap;
 
 typedef struct MOJOSHADER_d3d11Shader
 {
