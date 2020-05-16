@@ -918,8 +918,11 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_POSITION:
-                    snprintf(ctx->hlsl_outpos_name,
-                             sizeof(ctx->hlsl_outpos_name), "%s", var);
+                    if (index == 0)
+                        snprintf(ctx->hlsl_outpos_name,
+                                 sizeof(ctx->hlsl_outpos_name), "%s", var);
+                    else
+                        output_line(ctx, "float4 m_%s : POSITION%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_POSITIONT:
                     output_line(ctx, "float4 m_%s : POSITIONT;", var);
