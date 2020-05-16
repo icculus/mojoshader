@@ -930,6 +930,9 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                 case MOJOSHADER_USAGE_TANGENT:
                     output_line(ctx, "float4 m_%s : TANGENT%d;", var, index);
                     break;
+                case MOJOSHADER_USAGE_TESSFACTOR:
+                    output_line(ctx, "float m_%s : TESSFACTOR%d;", var, index);
+                    break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
                     break;
