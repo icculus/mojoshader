@@ -575,6 +575,15 @@ void emit_HLSL_finalize(Context *ctx)
         output_blank_line(ctx);
         pop_output(ctx);
     } // if
+
+    if (ctx->need_max_float)
+    {
+        push_output(ctx, &ctx->mainline_top);
+        ctx->indent++;
+        output_line(ctx, "#define FLT_MAX 1e38");
+        ctx->indent--;
+        pop_output(ctx);
+    } // if
 } // emit_HLSL_finalize
 
 void emit_HLSL_global(Context *ctx, RegisterType regtype, int regnum)
@@ -1129,7 +1138,9 @@ void emit_HLSL_RCP(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "rcp(%s)", src0, src0);
+    ctx->need_max_float = 1;
+    make_HLSL_destarg_assign(ctx, code, sizeof (code),
+                             "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RCP
 
@@ -1137,7 +1148,10 @@ void emit_HLSL_RSQ(Context *ctx)
 {
     char src0[64]; make_HLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
     char code[128];
-    make_HLSL_destarg_assign(ctx, code, sizeof (code), "rsqrt(abs(%s))", src0, src0);
+    ctx->need_max_float = 1;
+    make_HLSL_destarg_assign(ctx, code, sizeof (code),
+                             "(%s == 0.0) ? FLT_MAX : rsqrt(abs(%s))",
+                             src0, src0);
     output_line(ctx, "%s", code);
 } // emit_HLSL_RSQ
 
