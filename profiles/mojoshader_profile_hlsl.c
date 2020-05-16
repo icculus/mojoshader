@@ -899,6 +899,15 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
             switch (usage)
             {
+                case MOJOSHADER_USAGE_BINORMAL:
+                    output_line(ctx, "float4 m_%s : BINORMAL%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_BLENDINDICES:
+                    output_line(ctx, "float4 m_%s : BLENDINDICES%d;", var, index);
+                    break;
+                case MOJOSHADER_USAGE_BLENDWEIGHT:
+                    output_line(ctx, "float4 m_%s : BLENDWEIGHT%d;", var, index);
+                    break;
                 case MOJOSHADER_USAGE_COLOR:
                     output_line(ctx, "float4 m_%s : COLOR%d;", var, index);
                     break;
@@ -906,17 +915,20 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float m_%s : FOG;", var);
                     break;
                 case MOJOSHADER_USAGE_NORMAL:
-                    output_line(ctx, "float4 m_%s : NORMAL;", var);
+                    output_line(ctx, "float4 m_%s : NORMAL%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_POSITION:
                     snprintf(ctx->hlsl_outpos_name,
                              sizeof(ctx->hlsl_outpos_name), "%s", var);
                     break;
+                case MOJOSHADER_USAGE_POSITIONT:
+                    output_line(ctx, "float4 m_%s : POSITIONT;", var);
+                    break;
                 case MOJOSHADER_USAGE_POINTSIZE:
                     output_line(ctx, "float m_%s : PSIZE;", var);
                     break;
-                case MOJOSHADER_USAGE_TESSFACTOR:
-                    output_line(ctx, "float m_%s : TESSFACTOR%d;", var, index);
+                case MOJOSHADER_USAGE_TANGENT:
+                    output_line(ctx, "float4 m_%s : TANGENT%d;", var, index);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                     output_line(ctx, "float4 m_%s : TEXCOORD%d;", var, index);
