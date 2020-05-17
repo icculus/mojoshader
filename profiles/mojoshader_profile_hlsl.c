@@ -871,7 +871,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     output_line(ctx, "float4 m_%s : POSITIONT;", var);
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
-                    output_line(ctx, "float m_%s : PSIZE;", var);
+                    output_line(ctx, "float4 m_%s : PSIZE;", var);
                     break;
                 case MOJOSHADER_USAGE_TANGENT:
                     output_line(ctx, "float4 m_%s : TANGENT%d;", var, index);
