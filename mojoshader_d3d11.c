@@ -167,6 +167,9 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     size_t offset = 0;
     for (int i = 0; i < shader->parseData->uniform_count; i++)
     {
+        if (shader->parseData->uniforms[i].constant)
+            continue;
+
         int idx = shader->parseData->uniforms[i].index;
         int arrayCount = shader->parseData->uniforms[i].array_count;
 
