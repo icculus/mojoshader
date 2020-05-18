@@ -497,7 +497,6 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     {
         set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
         ctx->free_fn((void *) source, ctx->malloc_data);
-
         return NULL;
     } // if
 
