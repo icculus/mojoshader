@@ -29,6 +29,8 @@
 #include <d3dcompiler.h>
 #endif
 
+#include <stdio.h>
+
 /* Error state */
 
 static char error_buffer[1024] = { '\0' };
@@ -391,7 +393,7 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
     const char *_Input = "_Input" ENDLINE_STR "{" ENDLINE_STR;
     const char *vsrc = vpd->output;
     const char *psrc = ppd->output;
-    const char *a, *b, *vout, *pstart, *pend;
+    const char *a, *b, *vout, *pstart, *vface, *pend;
     size_t substr_len;
     char *pfinal;
 
@@ -424,6 +426,7 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
 
     // Find matching semantics
     int i, j;
+    int vfaceidx = -1;
     const char *pvarname, *vvarname;
     for (i = 0; i < ppd->attribute_count; i++)
     {
@@ -436,17 +439,33 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
                 vvarname = vpd->outputs[j].name;
                 if (strcmp(pvarname, vvarname) != 0)
                     replaceVarname(pvarname, vvarname, &pend);
-            }
-        }
-    }
+            } // if
+            else if (strcmp(ppd->attributes[i].name, "vPos") == 0 &&
+                     vpd->outputs[j].usage == MOJOSHADER_USAGE_POSITION &&
+                     vpd->outputs[j].index == 0)
+            {
+                pvarname = ppd->attributes[i].name;
+                vvarname = vpd->outputs[j].name;
+                if (strcmp(pvarname, vvarname) != 0)
+                    replaceVarname(pvarname, vvarname, &pend);
+            } // else if
+        } // for
+
+        if (strcmp(ppd->attributes[i].name, "vFace") == 0)
+            vfaceidx = i;
+    } // for
+
+    // Special handling for VFACE
+    vface = (vfaceidx != -1) ? "\tbool m_vFace : SV_IsFrontFace;\n" : "";
 
     // Concatenate the shader pieces together
-    substr_len = strlen(pstart) + strlen(vout) + strlen(pend);
+    substr_len = strlen(pstart) + strlen(vout) + strlen(vface) + strlen(pend);
     pfinal = (char *) ctx->malloc_fn(substr_len + 1, ctx->malloc_data);
     memset((void *) pfinal, '\0', substr_len + 1);
     memcpy(pfinal, pstart, strlen(pstart));
     memcpy(pfinal + strlen(pstart), vout, strlen(vout));
-    memcpy(pfinal + strlen(pstart) + strlen(vout), pend, strlen(pend));
+    memcpy(pfinal + strlen(pstart) + strlen(vout), vface, strlen(vface));
+    memcpy(pfinal + strlen(pstart) + strlen(vout) + strlen(vface), pend, strlen(pend));
 
     // Free the temporary buffers
     ctx->free_fn((void *) vout, ctx->malloc_data);
