@@ -1015,6 +1015,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                  (regtype == REG_TYPE_MISCTYPE))
         {
             int skipreference = 0;
+            int vface = 0;
             push_output(ctx, &ctx->inputs);
             if (buffer_size(ctx->inputs) == 0)
             {
@@ -1029,7 +1030,13 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 const MiscTypeType mt = (MiscTypeType) regnum;
                 if (mt == MISCTYPE_TYPE_FACE)
-                    output_line(ctx, "bool m_%s : SV_IsFrontFace;", var);
+                {
+                    // In SM 3.0, VFACE was a float whose sign determined
+                    //  face direction. In SM 4.0+, it's just a bool, so
+                    //  we convert the value when we output the #define.
+                    output_line(ctx, "uint m_%s : SV_IsFrontFace;", var);
+                    vface = 1;
+                } // if
                 else if (mt == MISCTYPE_TYPE_POSITION)
                     output_line(ctx, "float4 m_%s : SV_Position;", var);
                 else
@@ -1063,7 +1070,8 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 push_output(ctx, &ctx->mainline_top);
                 ctx->indent++;
-                output_line(ctx, "#define %s input.m_%s", var, var);
+                output_line(ctx, "#define %s (input.m_%s%s)", var, var,
+                            vface ? " * 2 - 1" : "");
                 pop_output(ctx);
                 push_output(ctx, &ctx->mainline);
                 ctx->indent++;

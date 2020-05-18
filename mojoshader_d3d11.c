@@ -29,8 +29,6 @@
 #include <d3dcompiler.h>
 #endif
 
-#include <stdio.h>
-
 /* Error state */
 
 static char error_buffer[1024] = { '\0' };
@@ -456,7 +454,7 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
     } // for
 
     // Special handling for VFACE
-    vface = (vfaceidx != -1) ? "\tbool m_vFace : SV_IsFrontFace;\n" : "";
+    vface = (vfaceidx != -1) ? "\tuint m_vFace : SV_IsFrontFace;\n" : "";
 
     // Concatenate the shader pieces together
     substr_len = strlen(pstart) + strlen(vout) + strlen(vface) + strlen(pend);
