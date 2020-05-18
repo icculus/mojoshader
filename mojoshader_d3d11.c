@@ -454,7 +454,7 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
     } // for
 
     // Special handling for VFACE
-    vface = (vfaceidx != -1) ? "\tuint m_vFace : SV_IsFrontFace;\n" : "";
+    vface = (vfaceidx != -1) ? "\tbool m_vFace : SV_IsFrontFace;\n" : "";
 
     // Concatenate the shader pieces together
     substr_len = strlen(pstart) + strlen(vout) + strlen(vface) + strlen(pend);
@@ -497,6 +497,7 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     {
         set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
         ctx->free_fn((void *) source, ctx->malloc_data);
+
         return NULL;
     } // if
 
