@@ -482,11 +482,18 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
     const char *source;
     ID3DBlob *blob;
     HRESULT result;
+    int needs_free;
 
     if (pshader->parseData->attribute_count > 0)
+    {
         source = rewritePixelShader(vshader, pshader);
+        needs_free = 1;
+    } // if
     else
+    {
         source = pshader->parseData->output;
+        needs_free = 0;
+    } // else
 
     result = ctx->D3DCompileFunc(source, strlen(source),
                                  pshader->parseData->mainfn, NULL, NULL,
@@ -506,7 +513,8 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
                                    NULL, &retval);
 
     ID3D10Blob_Release(blob);
-    ctx->free_fn((void *) source, ctx->malloc_data);
+    if (needs_free)
+        ctx->free_fn((void *) source, ctx->malloc_data);
     return retval;
 } // compilePixelShader
 
