@@ -3704,7 +3704,7 @@ DECLSPEC void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayout
 /*
  * Inform MojoShader that it should commit any pending state and prepare the
  *  final shader program object, linking the input/output parameter data to
- *  be compatible with the more-struct Shader Model 4 rule set. This must be
+ *  be compatible with the more-strict Shader Model 4 rule set. This must be
  *  called after you bind shaders and update any inputs, right before you start
  *  drawing, so any outstanding changes made to the shared constants array (etc)
  *  can propagate to the shader during this call.
