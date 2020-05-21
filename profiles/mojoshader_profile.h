@@ -165,12 +165,12 @@ typedef struct Context
     int predicated;
     int uses_pointsize;
     int uses_fog;
+    int need_max_float;
 
     // !!! FIXME: move these into SUPPORT_PROFILE sections.
     int glsl_generated_lit_helper;
     int glsl_generated_texlod_setup;
     int glsl_generated_texm3x3spec_helper;
-    int glsl_need_max_float;
     int arb1_wrote_position;
     // !!! FIXME: move these into SUPPORT_PROFILE sections.
 
@@ -212,6 +212,10 @@ typedef struct Context
 #endif
 #if SUPPORT_PROFILE_GLSPIRV
     int profile_supports_glspirv;
+#endif
+
+#if SUPPORT_PROFILE_HLSL
+    char hlsl_outpos_name[16];
 #endif
 } Context;
 

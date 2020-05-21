@@ -4,6 +4,7 @@ PROJECT(MojoShader)
 OPTION(BUILD_SHARED_LIBS "Build MojoShader as a shared library" OFF)
 OPTION(PROFILE_D3D "Build MojoShader with support for the D3D profile" ON)
 OPTION(PROFILE_BYTECODE "Build MojoShader with support for the BYTECODE profile" ON)
+OPTION(PROFILE_HLSL "Build MojoShader with support for the HLSL profile" ON)
 OPTION(PROFILE_GLSL120 "Build MojoShader with support for the GLSL120 profile" ON)
 OPTION(PROFILE_GLSLES "Build MojoShader with support for the GLSLES profile" ON)
 OPTION(PROFILE_GLSL "Build MojoShader with support for the GLSL profile" ON)
@@ -108,6 +109,9 @@ ENDIF(NOT PROFILE_D3D)
 IF(NOT PROFILE_BYTECODE)
     ADD_DEFINITIONS(-DSUPPORT_PROFILE_BYTECODE=0)
 ENDIF(NOT PROFILE_BYTECODE)
+IF(NOT PROFILE_HLSL)
+    ADD_DEFINITIONS(-DSUPPORT_PROFILE_HLSL=0)
+ENDIF(NOT PROFILE_HLSL)
 IF(NOT PROFILE_GLSL120)
     ADD_DEFINITIONS(-DSUPPORT_PROFILE_GLSL120=0)
 ENDIF(NOT PROFILE_GLSL120)
@@ -159,9 +163,11 @@ ADD_LIBRARY(mojoshader
     mojoshader_common.c
     mojoshader_opengl.c
     mojoshader_metal.c
+    mojoshader_d3d11.c
     profiles/mojoshader_profile_arb1.c
     profiles/mojoshader_profile_bytecode.c
     profiles/mojoshader_profile_d3d.c
+    profiles/mojoshader_profile_hlsl.c
     profiles/mojoshader_profile_glsl.c
     profiles/mojoshader_profile_metal.c
     profiles/mojoshader_profile_spirv.c

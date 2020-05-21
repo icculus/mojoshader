@@ -131,6 +131,10 @@ typedef Uint64 uint64;
 #define SUPPORT_PROFILE_BYTECODE 1
 #endif
 
+#ifndef SUPPORT_PROFILE_HLSL
+#define SUPPORT_PROFILE_HLSL 1
+#endif
+
 #ifndef SUPPORT_PROFILE_GLSL
 #define SUPPORT_PROFILE_GLSL 1
 #endif

@@ -686,6 +686,11 @@ typedef struct MOJOSHADER_parseData
 #define MOJOSHADER_PROFILE_BYTECODE "bytecode"
 
 /*
+ * Profile string for HLSL Shader Model 4 output.
+ */
+#define MOJOSHADER_PROFILE_HLSL "hlsl"
+
+/*
  * Profile string for GLSL: OpenGL high-level shader language output.
  */
 #define MOJOSHADER_PROFILE_GLSL "glsl"
@@ -3526,6 +3531,209 @@ DECLSPEC void MOJOSHADER_mtlEndFrame(void);
  *  before calling this function.
  */
 DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
+
+
+/* D3D11 interface... */
+
+typedef struct MOJOSHADER_d3d11Shader MOJOSHADER_d3d11Shader;
+
+/*
+ * Prepare MojoShader to manage Direct3D 11 shaders.
+ *
+ * You do not need to call this if all you want is MOJOSHADER_parse().
+ *
+ * You must call this once AFTER you have successfully built your D3D11 context.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC int MOJOSHADER_d3d11CreateContext(void *device, void *deviceContext,
+                                           MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                           void *malloc_d);
+
+/*
+ * Get any error state we might have picked up, such as failed shader
+ *  compilation.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ */
+DECLSPEC const char *MOJOSHADER_d3d11GetError(void);
+
+/*
+ * Compile a buffer of Direct3D 9 shader bytecode into a Direct3D 11 shader.
+ *  You still need to link the shader before you may render with it.
+ *
+ *   (mainfn) is the name of the shader's main function.
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
+ *
+ * Returns NULL on error, or a shader handle on success.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
+                                                               const unsigned char *tokenbuf,
+                                                               const unsigned int bufsize,
+                                                               const MOJOSHADER_swizzle *swiz,
+                                                               const unsigned int swizcount,
+                                                               const MOJOSHADER_samplerMap *smap,
+                                                               const unsigned int smapcount);
+
+/*
+ * Increments a shader's internal refcount. To decrement the refcount, call
+ *  MOJOSHADER_glDeleteShader().
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11ShaderAddRef(MOJOSHADER_d3d11Shader *shader);
+
+/*
+ * Get the MOJOSHADER_parseData structure that was produced from the
+ *  call to MOJOSHADER_d3d11CompileShader().
+ *
+ * This data is read-only, and you should NOT attempt to free it. This
+ *  pointer remains valid until the shader is deleted.
+ */
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_d3d11GetShaderParseData(
+                                                MOJOSHADER_d3d11Shader *shader);
+
+/*
+ * This binds individual shaders together, to be linked into a single working
+ *  program once MOJOSHADER_d3d11ProgramReady is called.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11BindShaders(MOJOSHADER_d3d11Shader *vshader,
+                                          MOJOSHADER_d3d11Shader *pshader);
+
+/*
+ * This queries for the shaders currently bound to the active context.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ * the effects API.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11GetBoundShaders(MOJOSHADER_d3d11Shader **vshader,
+                                              MOJOSHADER_d3d11Shader **pshader);
+
+/*
+ * Fills register pointers with pointers that are directly used to push uniform
+ *  data to the D3D11 shader context.
+ *
+ * This function is really just for the effects API, you should NOT be using
+ *  this unless you know every single line of MojoShader from memory.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11MapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
+                                                     float **psf, int **psi, unsigned char **psb);
+
+/*
+ * Tells the context that you are done with the memory mapped by
+ *  MOJOSHADER_d3d11MapUniformBufferMemory().
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11UnmapUniformBufferMemory();
+
+/*
+ * Return the location of a vertex attribute for the given vertex shader.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be used when building the
+ *  input layout object.
+ */
+DECLSPEC int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *vert,
+                                                     MOJOSHADER_usage usage,
+                                                     int index);
+
+/*
+ * Using the given input layout, compiles the vertex shader with input
+ *  parameters that will be compatible with the incoming vertex data.
+ *
+ * (inputLayoutHash) is an application-defined value to differentiate unique
+ *  vertex declarations that will be passed to the vertex shader.
+ *  (elements) is an array of D3D11_INPUT_ELEMENT_DESCs, with (elementCount)
+ *  entries. (bytecode) and (bytecodeLength) will be filled with the final
+ *  compiled D3D11 vertex shader.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
+                                                  void *elements, int elementCount,
+                                                  void **bytecode, int *bytecodeLength);
+
+/*
+ * Inform MojoShader that it should commit any pending state and prepare the
+ *  final shader program object, linking the input/output parameter data to
+ *  be compatible with the more-struct Shader Model 4 rule set. This must be
+ *  called after you bind shaders and update any inputs, right before you start
+ *  drawing, so any outstanding changes made to the shared constants array (etc)
+ *  can propagate to the shader during this call.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11ProgramReady(unsigned long long inputLayoutHash);
+
+/*
+ * Free the resources of a compiled shader. This will delete the shader object
+ *  and free memory.
+ *
+ * This call is only as thread safe as your D3D11 context! If you call your
+ *  context from multiple threads, you must protect this call with whatever
+ *  thread synchronization technique you have for your other D3D calls.
+ */
+DECLSPEC void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Shader *shader);
+
+/*
+ * Deinitialize MojoShader's D3D11 shader management.
+ *
+ * This will clean up resources previously allocated for the active context.
+ *
+ * This will NOT clean up shaders you created! Please destroy all shaders
+ *  before calling this function.
+ */
+DECLSPEC void MOJOSHADER_d3d11DestroyContext(void);
 
 
 /* Effects interface... */
