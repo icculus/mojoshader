@@ -12,8 +12,11 @@
 #include <SDL_assert.h>
 #include <SDL_stdinc.h>
 #include <math.h> /* Needed for isinf/isnan :( */
+
+/* FIXME: These includes are needed for alloca :( */
+#include <stdlib.h>
 #ifndef __APPLE__
-#include <malloc.h> /* Needed for alloca :( */
+#include <malloc.h>
 #endif
 
 /* stdint.h */
