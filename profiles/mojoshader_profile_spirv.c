@@ -1298,8 +1298,9 @@ static void spv_assign_destarg(Context *ctx, SpirvResult value)
 
 static void spv_emit_vs_main_end(Context* ctx)
 {
+#if SUPPORT_PROFILE_GLSPIRV
 #if defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
-    if (!shader_is_vertex(ctx))
+    if (!ctx->profile_supports_glspirv || !shader_is_vertex(ctx))
         return;
 
     uint32 tid_void = spv_get_type(ctx, STI_VOID);
@@ -1347,25 +1348,22 @@ static void spv_emit_vs_main_end(Context* ctx)
     ctx->spirv.patch_table.vpflip.offset = spv_output_location(ctx, id_pvpflip, ~0u);
 #endif // MOJOSHADER_FLIP_RENDERTARGET
 
-#if SUPPORT_PROFILE_GLSPIRV && defined(MOJOSHADER_DEPTH_CLIPPING)
-    if (ctx->profile_supports_glspirv)
-    {
-        // gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
-        uint32 id_2 = spv_getscalarf(ctx, 2.0f);
-        uint32 id_old_z = spv_bumpid(ctx);
-        uint32 id_old_w = spv_bumpid(ctx);
-        uint32 id_2z = spv_bumpid(ctx);
-        uint32 id_new_z = spv_bumpid(ctx);
-        id_new_output = spv_bumpid(ctx);
+#ifdef MOJOSHADER_DEPTH_CLIPPING
+    // gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
+    uint32 id_2 = spv_getscalarf(ctx, 2.0f);
+    uint32 id_old_z = spv_bumpid(ctx);
+    uint32 id_old_w = spv_bumpid(ctx);
+    uint32 id_2z = spv_bumpid(ctx);
+    uint32 id_new_z = spv_bumpid(ctx);
+    id_new_output = spv_bumpid(ctx);
 
-        spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_old_z, output.id, 2);
-        spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_old_w, output.id, 3);
-        spv_emit(ctx, 5, SpvOpFMul, tid_float, id_2z, id_old_z, id_2);
-        spv_emit(ctx, 5, SpvOpFSub, tid_float, id_new_z, id_2z, id_old_w);
-        spv_emit(ctx, 6, SpvOpCompositeInsert, output.tid, id_new_output, id_new_z, output.id, 2);
-        output.id = id_new_output;
-    } // if
-#endif // SUPPORT_PROFILE_GLSPIRV && defined(MOJOSHADER_DEPTH_CLIPPING)
+    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_old_z, output.id, 2);
+    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_old_w, output.id, 3);
+    spv_emit(ctx, 5, SpvOpFMul, tid_float, id_2z, id_old_z, id_2);
+    spv_emit(ctx, 5, SpvOpFSub, tid_float, id_new_z, id_2z, id_old_w);
+    spv_emit(ctx, 6, SpvOpCompositeInsert, output.tid, id_new_output, id_new_z, output.id, 2);
+    output.id = id_new_output;
+#endif // MOJOSHADER_DEPTH_CLIPPING
 
     spv_emit(ctx, 3, SpvOpStore, reg->spirv.iddecl, output.id);
     spv_emit(ctx, 1, SpvOpReturn);
@@ -1374,6 +1372,7 @@ static void spv_emit_vs_main_end(Context* ctx)
 
     spv_output_name(ctx, id_func, "vs_epilogue");
 #endif // defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
+#endif // SUPPORT_PROFILE_GLSPIRV
 } // spv_emit_vs_main_end
 
 static void spv_emit_func_lit(Context *ctx)
@@ -1489,8 +1488,11 @@ static void spv_emit_func_end(Context *ctx)
 {
     push_output(ctx, &ctx->mainline);
 
+#if SUPPORT_PROFILE_GLSPIRV
 #if defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
-    if (shader_is_vertex(ctx) && ctx->spirv.id_vs_main_end == 0)
+    if (ctx->profile_supports_glspirv
+     && shader_is_vertex(ctx)
+     && ctx->spirv.id_vs_main_end == 0)
     {
         ctx->spirv.id_vs_main_end = spv_bumpid(ctx);
         uint32 tid_void = spv_get_type(ctx, STI_VOID);
@@ -1501,6 +1503,7 @@ static void spv_emit_func_end(Context *ctx)
         pop_output(ctx);
     } // if
 #endif // defined(MOJOSHADER_DEPTH_CLIPPING) || defined(MOJOSHADER_FLIP_RENDERTARGET)
+#endif // SUPPORT_PROFILE_GLSPIRV
 
     spv_emit(ctx, 1, SpvOpReturn);
     spv_emit(ctx, 1, SpvOpFunctionEnd);
