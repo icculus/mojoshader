@@ -1348,7 +1348,7 @@ static void spv_emit_vs_main_end(Context* ctx)
 #endif // MOJOSHADER_FLIP_RENDERTARGET
 
 #if SUPPORT_PROFILE_GLSPIRV && defined(MOJOSHADER_DEPTH_CLIPPING)
-    if (!ctx->profile_supports_glspirv)
+    if (ctx->profile_supports_glspirv)
     {
         // gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;
         uint32 id_2 = spv_getscalarf(ctx, 2.0f);
