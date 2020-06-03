@@ -1050,7 +1050,7 @@ static int parse_args_DCL(Context *ctx)
             const uint32 ttype = ((token >> 27) & 0xF);
             if (!valid_texture_type(ttype))
                 fail(ctx, "Unknown sampler texture type");
-            reserved_mask = 0x6FFFFFFF;
+            reserved_mask = 0x0FFFFFFF;
             ctx->dwords[0] = ttype;
         } // else if
         else
