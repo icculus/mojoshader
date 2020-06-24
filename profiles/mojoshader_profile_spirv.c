@@ -1516,8 +1516,13 @@ static void spv_link_vs_attributes(Context *ctx, uint32 id, MOJOSHADER_usage usa
     switch (usage)
     {
         case MOJOSHADER_USAGE_POSITION:
-            assert(index == 0);
-            spv_output_builtin(ctx, id, SpvBuiltInPosition);
+            if (index == 0)
+                spv_output_builtin(ctx, id, SpvBuiltInPosition);
+            else // locations [24,32]
+            {
+                assert(index < 10);
+                spv_output_location(ctx, id, 24 + (index - 1));
+            } // else
             break;
         case MOJOSHADER_USAGE_POINTSIZE:
             spv_output_builtin(ctx, id, SpvBuiltInPointSize);
@@ -1687,6 +1692,10 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
                 } // case
                 case MOJOSHADER_USAGE_NORMAL:
                     spv_output_location(ctx, id, 14 + index);
+                    break;
+                case MOJOSHADER_USAGE_POSITION:
+                    assert(index > 0 && index < 10);
+                    spv_output_location(ctx, id, 24 + (index - 1));
                     break;
                 default:
                     failf(ctx, "unexpected attribute usage %d in pixel shader", usage);
