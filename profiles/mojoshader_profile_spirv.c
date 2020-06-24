@@ -1522,30 +1522,30 @@ static void spv_link_vs_attributes(Context *ctx, uint32 id, MOJOSHADER_usage usa
         case MOJOSHADER_USAGE_POINTSIZE:
             spv_output_builtin(ctx, id, SpvBuiltInPointSize);
             break;
-        case MOJOSHADER_USAGE_COLOR: // locations [0,1]
-            assert(index < 2);
+        case MOJOSHADER_USAGE_COLOR: // locations [0,3]
+            assert(index < 4);
             spv_output_location(ctx, id, 0 + index);
             break;
-        case MOJOSHADER_USAGE_TEXCOORD: // locations [2,11]
+        case MOJOSHADER_USAGE_TEXCOORD: // locations [4,13]
             assert(index < 10);
-            spv_output_location(ctx, id, 2 + index);
+            spv_output_location(ctx, id, 4 + index);
             break;
-        case MOJOSHADER_USAGE_NORMAL: // locations [12,21]
+        case MOJOSHADER_USAGE_NORMAL: // locations [14,23]
             // FIXME: SM_3_0 allows basically any non-built-in semantic to use any index. We can
             // either blow up the number of indices and use them sparsely, or patch them when linking
             // vertex and pixel shader together.
             assert(index < 10);
-            spv_output_location(ctx, id, 12 + index);
+            spv_output_location(ctx, id, 14 + index);
             break;
 
-        case MOJOSHADER_USAGE_FOG: // location [12]
+        case MOJOSHADER_USAGE_FOG: // location [14]
             // FIXME: Missing PS handling.
-            spv_output_location(ctx, id, 12);
+            spv_output_location(ctx, id, 14);
             break;
-        case MOJOSHADER_USAGE_TANGENT: // location [13]
+        case MOJOSHADER_USAGE_TANGENT: // location [15]
             // FIXME: Missing PS handling.
             assert(index == 0);
-            spv_output_location(ctx, id, 13 + index);
+            spv_output_location(ctx, id, 15 + index);
             break;
 
         default:
@@ -1573,20 +1573,18 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
             switch (usage)
             {
                 case MOJOSHADER_USAGE_COLOR:
-                    assert(index < 2);
+                    assert(index < 4);
                     spv_output_location(ctx, id, 0 + index);
                     break;
                 case MOJOSHADER_USAGE_TEXCOORD:
                 {
-                    assert(index < 10);
-                    uint32 location_offset = spv_output_location(ctx, id, 2 + index);
+                    uint32 location_offset = spv_output_location(ctx, id, 4 + index);
                     if (index == 0)
                         ctx->spirv.patch_table.ps_texcoord0_offset = location_offset;
                     break;
                 } // case
                 case MOJOSHADER_USAGE_NORMAL:
-                    assert(index < 10);
-                    spv_output_location(ctx, id, 12 + index);
+                    spv_output_location(ctx, id, 14 + index);
                     break;
                 default:
                     failf(ctx, "unexpected attribute usage %d in pixel shader", usage);
@@ -1595,7 +1593,7 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
             break;
         case REG_TYPE_TEXTURE: // t# (MOJOSHADER_USAGE_TEXCOORD aka `oT#` in vertex shader)
             assert(index < 10);
-            spv_output_location(ctx, id, 2 + index);
+            spv_output_location(ctx, id, 4 + index);
             break;
         case REG_TYPE_DEPTHOUT:
             spv_output_builtin(ctx, id, SpvBuiltInFragDepth);
