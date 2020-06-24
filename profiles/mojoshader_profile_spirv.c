@@ -1554,6 +1554,108 @@ static void spv_link_vs_attributes(Context *ctx, uint32 id, MOJOSHADER_usage usa
     } // switch
 } // spv_link_vs_attributes
 
+static void spv_emit_vpos_glmode(Context *ctx, uint32 id)
+{
+    // In SM3.0 vPos only has x and y defined, but we should be
+    // fine to leave the z and w attributes in that
+    // SpvBuiltInFragCoord gives.
+
+    uint32 tid_float = spv_get_type(ctx, STI_FLOAT);
+    uint32 tid_vec2 = spv_get_type(ctx, STI_VEC2);
+    uint32 tid_vec4 = spv_get_type(ctx, STI_VEC4);
+    uint32 tid_pvec4i = spv_get_type(ctx, STI_PTR_VEC4_I);
+    uint32 tid_pvec2u = spv_bumpid(ctx);
+    uint32 tid_pvec4p = spv_get_type(ctx, STI_PTR_VEC4_P);
+
+    uint32 id_var_fragcoord = spv_bumpid(ctx);
+    uint32 id_var_vposflip = spv_bumpid(ctx);
+    uint32 id_var_vpos = id;
+
+    uint32 id_fragcoord = spv_bumpid(ctx);
+    uint32 id_fragcoord_y = spv_bumpid(ctx);
+    uint32 id_vposflip = spv_bumpid(ctx);
+    uint32 id_vposflip_x = spv_bumpid(ctx);
+    uint32 id_vposflip_y = spv_bumpid(ctx);
+    uint32 id_tmp = spv_bumpid(ctx);
+    uint32 id_vpos_y = spv_bumpid(ctx);
+    uint32 id_vpos = spv_bumpid(ctx);
+
+    // vec4 gl_FragCoord = <compiler magic builtin>;
+    // uniform vec2 vposFlip;
+    // vec4 ps_vPos = vec4(
+    //     gl_FragCoord.x,
+    //     (gl_FragCoord.y * vposFlip.x) + vposFlip.y,
+    //     gl_FragCoord.z,
+    //     gl_FragCoord.w
+    // );
+
+    push_output(ctx, &ctx->mainline_intro);
+    // Define uniform vec2*. This is the only place that uses it right now.
+    spv_emit(ctx, 4, SpvOpTypePointer, tid_pvec2u, SpvStorageClassUniformConstant, tid_vec2);
+    // Define all variables involved.
+    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4i, id_var_fragcoord, SpvStorageClassInput);
+    spv_emit(ctx, 4, SpvOpVariable, tid_pvec2u, id_var_vposflip, SpvStorageClassUniformConstant);
+    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4p, id_var_vpos, SpvStorageClassPrivate);
+    pop_output(ctx);
+
+    spv_output_builtin(ctx, id_var_fragcoord, SpvBuiltInFragCoord);
+    spv_output_name(ctx, id_var_vposflip, "vposFlip");
+
+    // Initialize vPos using vPosFlip and built in FragCoord.
+    push_output(ctx, &ctx->mainline_top);
+    spv_emit(ctx, 4, SpvOpLoad, tid_vec4, id_fragcoord, id_var_fragcoord);
+    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_fragcoord_y, id_fragcoord, 1);
+    spv_emit(ctx, 4, SpvOpLoad, tid_vec2, id_vposflip, id_var_vposflip);
+    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_vposflip_x, id_vposflip, 0);
+    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_vposflip_y, id_vposflip, 1);
+    spv_emit(ctx, 5, SpvOpFMul, tid_float, id_tmp, id_fragcoord_y, id_vposflip_x);
+    spv_emit(ctx, 5, SpvOpFAdd, tid_float, id_vpos_y, id_tmp, id_vposflip_y);
+    spv_emit(ctx, 6, SpvOpCompositeInsert, tid_vec4, id_vpos, id_vpos_y, id_fragcoord, 1);
+    spv_emit(ctx, 3, SpvOpStore, id_var_vpos, id_vpos);
+    pop_output(ctx);
+
+    ctx->spirv.id_var_fragcoord = id_var_fragcoord;
+    ctx->spirv.id_var_vpos = id_var_vpos;
+    ctx->spirv.patch_table.vpflip.offset = spv_output_location(ctx, id_var_vposflip, ~0u);
+} // spv_emit_vpos_glmode
+
+static void spv_emit_vpos_vkmode(Context *ctx, uint32 id)
+{
+    // In SM3.0 vPos only has x and y defined, but we should be
+    // fine to leave the z and w attributes in that
+    // SpvBuiltInFragCoord gives.
+
+    uint32 tid_vec4 = spv_get_type(ctx, STI_VEC4);
+    uint32 tid_pvec4i = spv_get_type(ctx, STI_PTR_VEC4_I);
+    uint32 tid_pvec4p = spv_get_type(ctx, STI_PTR_VEC4_P);
+
+    uint32 id_var_fragcoord = spv_bumpid(ctx);
+    uint32 id_var_vpos = id;
+
+    uint32 id_fragcoord = spv_bumpid(ctx);
+    uint32 id_vpos = spv_bumpid(ctx);
+
+    // vec4 gl_FragCoord = <compiler magic builtin>;
+    // vec4 ps_vPos = gl_FragCoord;
+
+    push_output(ctx, &ctx->mainline_intro);
+    // Define all variables involved.
+    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4i, id_var_fragcoord, SpvStorageClassInput);
+    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4p, id_var_vpos, SpvStorageClassPrivate);
+    pop_output(ctx);
+
+    spv_output_builtin(ctx, id_var_fragcoord, SpvBuiltInFragCoord);
+
+    // Initialize vPos using built in FragCoord.
+    push_output(ctx, &ctx->mainline_top);
+    spv_emit(ctx, 4, SpvOpLoad, tid_vec4, id_fragcoord, id_var_fragcoord);
+    spv_emit(ctx, 3, SpvOpStore, id_var_vpos, id_fragcoord);
+    pop_output(ctx);
+
+    ctx->spirv.id_var_fragcoord = id_var_fragcoord;
+    ctx->spirv.id_var_vpos = id_var_vpos;
+} // spv_emit_vpos_vkmode
+
 static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype, MOJOSHADER_usage usage, int index)
 {
     switch (regtype)
@@ -1604,68 +1706,10 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
             {
                 case MISCTYPE_TYPE_POSITION: // vPos
                 {
-                    // In SM3.0 vPos only has x and y defined, but we should be
-                    // fine to leave the z and w attributes in that
-                    // SpvBuiltInFragCoord gives.
-                    // FIXME: Is the flip needed for Vulkan?
-
-                    uint32 tid_float = spv_get_type(ctx, STI_FLOAT);
-                    uint32 tid_vec2 = spv_get_type(ctx, STI_VEC2);
-                    uint32 tid_vec4 = spv_get_type(ctx, STI_VEC4);
-                    uint32 tid_pvec4i = spv_get_type(ctx, STI_PTR_VEC4_I);
-                    uint32 tid_pvec2u = spv_bumpid(ctx);
-                    uint32 tid_pvec4p = spv_get_type(ctx, STI_PTR_VEC4_P);
-
-                    uint32 id_var_fragcoord = spv_bumpid(ctx);
-                    uint32 id_var_vposflip = spv_bumpid(ctx);
-                    uint32 id_var_vpos = id;
-
-                    uint32 id_fragcoord = spv_bumpid(ctx);
-                    uint32 id_fragcoord_y = spv_bumpid(ctx);
-                    uint32 id_vposflip = spv_bumpid(ctx);
-                    uint32 id_vposflip_x = spv_bumpid(ctx);
-                    uint32 id_vposflip_y = spv_bumpid(ctx);
-                    uint32 id_tmp = spv_bumpid(ctx);
-                    uint32 id_vpos_y = spv_bumpid(ctx);
-                    uint32 id_vpos = spv_bumpid(ctx);
-
-                    // vec4 gl_FragCoord = <compiler magic builtin>;
-                    // uniform vec2 vposFlip;
-                    // vec4 ps_vPos = vec4(
-                    //     gl_FragCoord.x,
-                    //     (gl_FragCoord.y * vposFlip.x) + vposFlip.y,
-                    //     gl_FragCoord.z,
-                    //     gl_FragCoord.w
-                    // );
-
-                    push_output(ctx, &ctx->mainline_intro);
-                    // Define uniform vec2*. This is the only place that uses it right now.
-                    spv_emit(ctx, 4, SpvOpTypePointer, tid_pvec2u, SpvStorageClassUniformConstant, tid_vec2);
-                    // Define all variables involved.
-                    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4i, id_var_fragcoord, SpvStorageClassInput);
-                    spv_emit(ctx, 4, SpvOpVariable, tid_pvec2u, id_var_vposflip, SpvStorageClassUniformConstant);
-                    spv_emit(ctx, 4, SpvOpVariable, tid_pvec4p, id_var_vpos, SpvStorageClassPrivate);
-                    pop_output(ctx);
-
-                    spv_output_builtin(ctx, id_var_fragcoord, SpvBuiltInFragCoord);
-                    spv_output_name(ctx, id_var_vposflip, "vposFlip");
-
-                    // Initialize vPos using vPosFlip and built in FragCoord.
-                    push_output(ctx, &ctx->mainline_top);
-                    spv_emit(ctx, 4, SpvOpLoad, tid_vec4, id_fragcoord, id_var_fragcoord);
-                    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_fragcoord_y, id_fragcoord, 1);
-                    spv_emit(ctx, 4, SpvOpLoad, tid_vec2, id_vposflip, id_var_vposflip);
-                    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_vposflip_x, id_vposflip, 0);
-                    spv_emit(ctx, 5, SpvOpCompositeExtract, tid_float, id_vposflip_y, id_vposflip, 1);
-                    spv_emit(ctx, 5, SpvOpFMul, tid_float, id_tmp, id_fragcoord_y, id_vposflip_x);
-                    spv_emit(ctx, 5, SpvOpFAdd, tid_float, id_vpos_y, id_tmp, id_vposflip_y);
-                    spv_emit(ctx, 6, SpvOpCompositeInsert, tid_vec4, id_vpos, id_vpos_y, id_fragcoord, 1);
-                    spv_emit(ctx, 3, SpvOpStore, id_var_vpos, id_vpos);
-                    pop_output(ctx);
-
-                    ctx->spirv.id_var_fragcoord = id_var_fragcoord;
-                    ctx->spirv.id_var_vpos = id_var_vpos;
-                    ctx->spirv.patch_table.vpflip.offset = spv_output_location(ctx, id_var_vposflip, ~0u);
+                    if (ctx->spirv.mode == SPIRV_MODE_GL)
+                        spv_emit_vpos_glmode(ctx, id);
+                    else
+                        spv_emit_vpos_vkmode(ctx, id);
                     break;
                 } // case
 
