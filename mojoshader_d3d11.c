@@ -29,6 +29,10 @@
 #include <d3dcompiler.h>
 #endif
 
+// D3DCompile optimization can be overzealous and cause very visible bugs,
+//  so we disable it when compiling shaders to preserve correctness.
+#define D3D_SKIP_OPT (1 << 2)
+
 /* Error state */
 
 static char error_buffer[1024] = { '\0' };
@@ -288,7 +292,7 @@ static ID3D11VertexShader *compileVertexShader(MOJOSHADER_d3d11Shader *shader,
     const MOJOSHADER_parseData *pd = shader->parseData;
     HRESULT result = ctx->D3DCompileFunc(src, src_len, pd->mainfn,
                                          NULL, NULL, pd->mainfn, "vs_4_0",
-                                         0, 0, blob, blob);
+                                         D3D_SKIP_OPT, 0, blob, blob);
 
     if (result < 0)
     {
@@ -498,8 +502,8 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
 
     result = ctx->D3DCompileFunc(source, strlen(source),
                                  pshader->parseData->mainfn, NULL, NULL,
-                                 pshader->parseData->mainfn, "ps_4_0", 0, 0,
-                                 &blob, &blob);
+                                 pshader->parseData->mainfn, "ps_4_0",
+                                 D3D_SKIP_OPT, 0, &blob, &blob);
 
     if (result < 0)
     {
