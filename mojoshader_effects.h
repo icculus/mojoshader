@@ -506,6 +506,7 @@ typedef void (MOJOSHADERCALL * MOJOSHADER_mapUniformBufferMemoryFunc)(
     float **psf, int **psi, unsigned char **psb
 );
 typedef void (MOJOSHADERCALL * MOJOSHADER_unmapUniformBufferMemoryFunc)();
+typedef const char* (MOJOSHADERCALL * MOJOSHADER_getErrorFunc)();
 
 typedef struct MOJOSHADER_effectShaderContext
 {
@@ -518,6 +519,7 @@ typedef struct MOJOSHADER_effectShaderContext
     MOJOSHADER_getBoundShadersFunc getBoundShaders;
     MOJOSHADER_mapUniformBufferMemoryFunc mapUniformBufferMemory;
     MOJOSHADER_unmapUniformBufferMemoryFunc unmapUniformBufferMemory;
+    MOJOSHADER_getErrorFunc getError;
 
     /* Allocator */
     MOJOSHADER_malloc m;

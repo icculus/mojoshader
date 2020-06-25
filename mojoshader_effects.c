@@ -686,6 +686,12 @@ static void readsmallobjects(const uint32 numsmallobjects,
             object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                               swiz, swizcount,
                                                               smap, smapcount);
+            if (object->shader.shader == NULL)
+            {
+                // Bail ASAP, so we can get the error to the application
+                errorlist_add(errors, NULL, 0, effect->ctx.getError());
+                return;
+            } // if
             pd = effect->ctx.getParseData(object->shader.shader);
             if (pd->error_count > 0)
             {
@@ -816,6 +822,12 @@ static void readlargeobjects(const uint32 numlargeobjects,
                 object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                                   swiz, swizcount,
                                                                   smap, smapcount);
+                if (object->shader.shader == NULL)
+                {
+                    // Bail ASAP, so we can get the error to the application
+                    errorlist_add(errors, NULL, 0, effect->ctx.getError());
+                    return;
+                } // if
                 pd = effect->ctx.getParseData(object->shader.shader);
                 if (pd->error_count > 0)
                 {
