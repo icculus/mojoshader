@@ -1710,12 +1710,12 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
                 } // case
                 case MOJOSHADER_USAGE_POSITION:
                 {
-                    assert(index < SPV_LENGTH_POSITION);
+                    assert(index <= SPV_LENGTH_POSITION);
                     spv_output_location(ctx, id, SPV_OFFSET_POSITION + (index - 1));
                 } // case
                 case MOJOSHADER_USAGE_POINTSIZE:
                 {
-                    assert(index < SPV_LENGTH_PSIZE);
+                    assert(index <= SPV_LENGTH_PSIZE);
                     spv_output_location(ctx, id, SPV_OFFSET_PSIZE + (index - 1));
                 } // case
                 default:
