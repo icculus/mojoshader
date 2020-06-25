@@ -213,6 +213,31 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
 static MOJOSHADER_effect MOJOSHADER_out_of_mem_effect = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+static MOJOSHADER_error MOJOSHADER_need_a_backend_error = {
+    "Need a MOJOSHADER_effectShaderContext", NULL, MOJOSHADER_POSITION_NONE
+};
+static MOJOSHADER_effect MOJOSHADER_need_a_backend_effect = {
+    1, &MOJOSHADER_need_a_backend_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+static MOJOSHADER_error MOJOSHADER_unexpected_eof_error = {
+    "Unexpected EOF", NULL, MOJOSHADER_POSITION_NONE
+};
+static MOJOSHADER_effect MOJOSHADER_unexpected_eof_effect = {
+    1, &MOJOSHADER_unexpected_eof_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+static MOJOSHADER_error MOJOSHADER_not_an_effect_error = {
+    "Not an Effects Framework binary", NULL, MOJOSHADER_POSITION_NONE
+};
+static MOJOSHADER_effect MOJOSHADER_not_an_effect_effect = {
+    1, &MOJOSHADER_not_an_effect_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static void push_errors(ErrorList *list, MOJOSHADER_error *errors, int len)
+{
+    int i;
+    for (i = 0; i < len; i += 1)
+        errorlist_add(list, errors[i].filename, errors[i].error_position, errors[i].error);
+} // push_errors
 
 static uint32 readui32(const uint8 **_ptr, uint32 *_len)
 {
@@ -608,7 +633,8 @@ static void readsmallobjects(const uint32 numsmallobjects,
                              const MOJOSHADER_swizzle *swiz,
                              const unsigned int swizcount,
                              const MOJOSHADER_samplerMap *smap,
-                             const unsigned int smapcount)
+                             const unsigned int smapcount,
+                             ErrorList *errors)
 {
     int i, j;
     MOJOSHADER_parseData *pd;
@@ -657,11 +683,16 @@ static void readsmallobjects(const uint32 numsmallobjects,
             snprintf(mainfn, sizeof(mainfn), "ShaderFunction%u", (unsigned int) index);
             object->shader.technique = -1;
             object->shader.pass = -1;
-            // !!! FIXME: check for errors.
             object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                               swiz, swizcount,
                                                               smap, smapcount);
             pd = effect->ctx.getParseData(object->shader.shader);
+            if (pd->error_count > 0)
+            {
+                // Bail ASAP, so we can get the error to the application
+                push_errors(errors, pd->errors, pd->error_count);
+                return;
+            } // if
 
             for (j = 0; j < pd->symbol_count; j++)
                 if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
@@ -717,7 +748,8 @@ static void readlargeobjects(const uint32 numlargeobjects,
                              const MOJOSHADER_swizzle *swiz,
                              const unsigned int swizcount,
                              const MOJOSHADER_samplerMap *smap,
-                             const unsigned int smapcount)
+                             const unsigned int smapcount,
+                             ErrorList *errors)
 {
     int i, j;
     MOJOSHADER_parseData *pd;
@@ -781,11 +813,16 @@ static void readlargeobjects(const uint32 numlargeobjects,
             {
                 char mainfn[32];
                 snprintf(mainfn, sizeof (mainfn), "ShaderFunction%u", (unsigned int) objectIndex);
-                // !!! FIXME: check for errors.
                 object->shader.shader = effect->ctx.compileShader(mainfn, *ptr, length,
                                                                   swiz, swizcount,
                                                                   smap, smapcount);
                 pd = effect->ctx.getParseData(object->shader.shader);
+                if (pd->error_count > 0)
+                {
+                    // Bail ASAP, so we can get the error to the application
+                    push_errors(errors, pd->errors, pd->error_count);
+                    return;
+                } // if
 
                 for (j = 0; j < pd->symbol_count; j++)
                     if (pd->symbols[j].register_set == MOJOSHADER_SYMREGSET_SAMPLER)
@@ -862,13 +899,14 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
 {
     const uint8 *ptr = (const uint8 *) buf;
     uint32 len = (uint32) _len;
+    ErrorList *errors;
     MOJOSHADER_malloc m;
     MOJOSHADER_free f;
     void *d;
 
     /* Need a backend! */
     if (ctx == NULL)
-        return &MOJOSHADER_out_of_mem_effect;
+        return &MOJOSHADER_need_a_backend_effect;
 
     /* Supply both m and f, or neither */
     if ( ((ctx->m == NULL) && (ctx->f != NULL))
@@ -916,7 +954,10 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
         header = readui32(&ptr, &len);
     } // if
     if (header != 0xFEFF0901)
-        goto parseEffect_notAnEffectsFile;
+    {
+        MOJOSHADER_deleteEffect(retval);
+        return &MOJOSHADER_not_an_effect_effect;
+    } // if
     else
     {
         const uint32 offset = readui32(&ptr, &len);
@@ -967,19 +1008,29 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
     const int numsmallobjects = readui32(&ptr, &len);
     const int numlargeobjects = readui32(&ptr, &len);
 
+    errors = errorlist_create(m, f, d);
+    if (errors == NULL)
+        goto parseEffect_outOfMemory;
+
     /* Parse "small" object table */
     readsmallobjects(numsmallobjects, &ptr, &len, retval,
-                     swiz, swizcount, smap, smapcount);
+                     swiz, swizcount, smap, smapcount, errors);
+    if (errorlist_count(errors) == 0)
+    {
+        /* Parse "large" object table. */
+        readlargeobjects(numlargeobjects, numsmallobjects, &ptr, &len, retval,
+                         swiz, swizcount, smap, smapcount, errors);
+    } // if
 
-    /* Parse "large" object table. */
-    readlargeobjects(numlargeobjects, numsmallobjects, &ptr, &len, retval,
-                     swiz, swizcount, smap, smapcount);
+    retval->error_count = errorlist_count(errors);
+    retval->errors = errorlist_flatten(errors);
+    errorlist_destroy(errors);
 
     return retval;
 
-// !!! FIXME: do something with this.
-parseEffect_notAnEffectsFile:
 parseEffect_unexpectedEOF:
+    MOJOSHADER_deleteEffect(retval);
+    return &MOJOSHADER_unexpected_eof_effect;
 parseEffect_outOfMemory:
     MOJOSHADER_deleteEffect(retval);
     return &MOJOSHADER_out_of_mem_effect;
