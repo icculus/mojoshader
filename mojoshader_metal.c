@@ -101,7 +101,6 @@ typedef struct MOJOSHADER_mtlContext
     void* selNewFunctionWithName;
     void* selNewLibraryWithSource;
     void* selRelease;
-    void* selRetain;
     void* selUTF8String;
 } MOJOSHADER_mtlContext;
 
@@ -233,7 +232,6 @@ MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void* mtlDevice,
     ctx->selNewFunctionWithName = sel_registerName("newFunctionWithName:");
     ctx->selNewLibraryWithSource = sel_registerName("newLibraryWithSource:options:error:");
     ctx->selRelease = sel_registerName("release");
-    ctx->selRetain = sel_registerName("retain");
     ctx->selUTF8String = sel_registerName("UTF8String");
 
     // Create uniform buffer array
