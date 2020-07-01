@@ -164,6 +164,7 @@ ADD_LIBRARY(mojoshader
     mojoshader_opengl.c
     mojoshader_metal.c
     mojoshader_d3d11.c
+    mojoshader_vulkan.c
     profiles/mojoshader_profile_arb1.c
     profiles/mojoshader_profile_bytecode.c
     profiles/mojoshader_profile_d3d.c
@@ -189,6 +190,10 @@ ENDIF(COMPILER_SUPPORT)
 IF(BUILD_SHARED_LIBS)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(BUILD_SHARED_LIBS)
+
+TARGET_INCLUDE_DIRECTORIES(mojoshader PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../Vulkan-Headers/include/vulkan>
+)
 
 SET_SOURCE_FILES_PROPERTIES(
     mojoshader_compiler.c
