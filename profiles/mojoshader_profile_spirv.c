@@ -3528,6 +3528,11 @@ void emit_SPIRV_TEXLD(Context *ctx)
             return;
         } // if
 
+        // OpImageSampleImplicitLod should ignore the components of this argument that
+        // it doesn't need, so we don't need to mask it
+        uint32 texcoord = spv_load_srcarg_full(ctx, 0).id;
+        uint32 sampler = spv_load_srcarg_full(ctx, 1).id;
+
         // Special case for TEXLDB
         // !!! FIXME: does the d3d bias value map directly to GLSL?
         uint32 bias;
@@ -3540,7 +3545,7 @@ void emit_SPIRV_TEXLD(Context *ctx)
 
             // The w component of texcoord_reg specifies the bias. Extract it from texcoord_reg
             push_output(ctx, &ctx->mainline);
-            spv_emit(ctx, 4 + 1, SpvOpCompositeExtract, float_tid, bias, texcoord_reg->spirv.iddecl, 3);
+            spv_emit(ctx, 4 + 1, SpvOpCompositeExtract, float_tid, bias, texcoord, 3);
             pop_output(ctx);
         } // if
         else
@@ -3563,10 +3568,6 @@ void emit_SPIRV_TEXLD(Context *ctx)
         // Prep the result
         uint32 vec4_tid = spv_get_type(ctx, STI_VEC4);
         uint32 result = spv_bumpid(ctx);
-        uint32 sampler = spv_load_srcarg_full(ctx, 1).id;
-        // OpImageSampleImplicitLod should ignore the components of this argument that
-        // it doesn't need, so we don't need to mask it
-        uint32 texcoord = spv_load_srcarg_full(ctx, 0).id;
 
         // Generate the instruction.
         // OpImageSampleImplicitLod should ignore the components of the
