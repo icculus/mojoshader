@@ -12,7 +12,7 @@
 
 #if SUPPORT_PROFILE_SPIRV
 
-#include "vulkan.h"
+#include "vulkan/vulkan.h"
 
 #define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
     typedef ret (VKAPI_CALL *vkfntype_MOJOSHADER_##func) params;
