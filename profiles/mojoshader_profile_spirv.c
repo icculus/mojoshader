@@ -1518,7 +1518,7 @@ static void spv_emit_func_end(Context *ctx)
 #define SPV_OFFSET_NORMAL       (SPV_OFFSET_TEXCOORD + SPV_LENGTH_TEXCOORD)
 #define SPV_LENGTH_NORMAL       8 // Arbitrary!
 #define SPV_OFFSET_FOG          (SPV_OFFSET_NORMAL + SPV_LENGTH_NORMAL)
-#define SPV_LENGTH_FOG          1 // Arbitrary!
+#define SPV_LENGTH_FOG          2 // Arbitrary!
 #define SPV_OFFSET_TANGENT      (SPV_OFFSET_FOG + SPV_LENGTH_FOG)
 #define SPV_LENGTH_TANGENT      1 // Arbitrary!
 #define SPV_OFFSET_BLENDINDICES (SPV_OFFSET_TANGENT + SPV_LENGTH_TANGENT)
