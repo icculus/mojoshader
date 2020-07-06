@@ -216,7 +216,7 @@ static uint32_t uniform_data_size(MOJOSHADER_vkShader *shader)
         const int32_t arrayCount = shader->parseData->uniforms[i].array_count;
         uniformSize = 16;
         if (shader->parseData->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
-            uniformSize = 1;
+            uniformSize = 4; /* bools are represented as ints in spir-v */
         buflen += (arrayCount ? arrayCount : 1) * uniformSize;
     } // for
 
@@ -297,46 +297,40 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
     contents = ubo->mapPointer + ubo->dynamicOffset;
 
     offset = 0;
-    for (i = 0; i < shader->parseData->uniform_count; i++)
+    for (int i = 0; i < shader->parseData->uniform_count; i++)
     {
-        const int32_t index = shader->parseData->uniforms[i].index;
-        const int32_t arrayCount = shader->parseData->uniforms[i].array_count;
-        const int32_t size = arrayCount ? arrayCount : 1;
+        if (shader->parseData->uniforms[i].constant)
+            continue;
+
+        int idx = shader->parseData->uniforms[i].index;
+        int arrayCount = shader->parseData->uniforms[i].array_count;
+
+        void *src = NULL;
+        int size = arrayCount ? arrayCount : 1;
 
         switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
-                memcpy(
-                    contents + (offset * 16),
-                    &regF[4 * index],
-                    size * 16
-                );
+                src = &regF[4 * idx];
+                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
-                memcpy(
-                    contents + (offset * 16),
-                    &regI[4 * index],
-                    size * 16
-                );
+                src = &regI[4 * idx];
+                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
-                memcpy(
-                    contents + offset,
-                    &regB[index],
-                    size
-                );
+                src = &regB[idx];
+                size *= 4; /* bools are represented as ints in spir-v */
                 break;
 
             default:
-                set_error(
-                    "SOMETHING VERY WRONG HAPPENED WHEN UPDATING UNIFORMS"
-                );
-                assert(0);
+                assert(0); // This should never happen.
                 break;
         } // switch
 
+        memcpy(contents + offset, src, size);
         offset += size;
     } // for
 
