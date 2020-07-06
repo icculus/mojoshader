@@ -288,7 +288,6 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 
     ubo->currentBlockSize = next_highest_offset_alignment(uniform_data_size(shader));
 
-    // Rotate buffer if it would overrun
     if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize)
     {
         set_error("UBO overflow!!");
@@ -609,7 +608,7 @@ void MOJOSHADER_vkEndFrame()
     ctx->vertUboBuffer->dynamicOffset = 0;
     ctx->vertUboBuffer->currentBlockSize = 0;
     ctx->fragUboBuffer->dynamicOffset = 0;
-    ctx->fragUboBuffer->dynamicOffset = 0;
+    ctx->fragUboBuffer->currentBlockSize = 0;
 } // MOJOSHADER_VkEndFrame
 
 int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
