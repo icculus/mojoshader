@@ -20,8 +20,7 @@
 	typedef ret (VKAPI_CALL *vkfntype_MOJOSHADER_##func) params;
 #include "mojoshader_vulkan_vkfuncs.h"
 
-#define UBO_BUFFER_COUNT 8
-#define UBO_BUFFER_SIZE 1048576 /* ~1MB */
+#define UBO_BUFFER_SIZE 8000000 /* 8MB */
 
 // Internal struct defs...
 
@@ -35,11 +34,11 @@ typedef struct MOJOSHADER_vkShader
 typedef struct MOJOSHADER_vkUniformBuffer
 {
     VkBuffer buffer;
+    VkDeviceMemory deviceMemory;
     VkDeviceSize bufferSize;
-    VkDeviceSize memoryOffset;
     VkDeviceSize dynamicOffset;
     VkDeviceSize currentBlockSize;
-    int32_t full; // Records frame on which it became full, -1 if not full
+    uint8_t *mapPointer;
 } MOJOSHADER_vkUniformBuffer;
 
 // Error state...
@@ -87,20 +86,11 @@ typedef struct MOJOSHADER_vkContext
     int32_t ps_reg_file_i[MAX_REG_FILE_I * 4];
     uint8_t ps_reg_file_b[MAX_REG_FILE_B * 4];
 
-    VkDeviceMemory vertUboMemory;
-    MOJOSHADER_vkUniformBuffer **vertUboBuffers;
-    uint32_t vertUboCurrentIndex;
-
-    VkDeviceMemory fragUboMemory;
-    MOJOSHADER_vkUniformBuffer **fragUboBuffers;
-    uint32_t fragUboCurrentIndex;
-
-    uint32_t uboBufferCount;
+    MOJOSHADER_vkUniformBuffer *vertUboBuffer;
+    MOJOSHADER_vkUniformBuffer *fragUboBuffer;
 
     MOJOSHADER_vkShader *vertexShader;
     MOJOSHADER_vkShader *pixelShader;
-
-    uint32_t currentFrame;
 
     #define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
         vkfntype_MOJOSHADER_##func func;
@@ -143,17 +133,19 @@ static uint32_t next_highest_offset_alignment(uint32_t offset)
     );
 } // next_highest_offset_alignment
 
-static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx,
-                                              MOJOSHADER_malloc m,
-                                              void *d
-) {
-    MOJOSHADER_vkUniformBuffer *result = (MOJOSHADER_vkUniformBuffer *) m(
+static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx) {
+    MOJOSHADER_vkUniformBuffer *result = (MOJOSHADER_vkUniformBuffer *) ctx->malloc_fn(
         sizeof(MOJOSHADER_vkUniformBuffer),
-        d
+        ctx->malloc_data
     );
     VkBufferCreateInfo bufferCreateInfo =
     {
         VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
+    };
+    VkMemoryRequirements memoryRequirements;
+    VkMemoryAllocateInfo allocateInfo =
+    {
+        VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
     };
 
     bufferCreateInfo.flags = 0;
@@ -170,10 +162,46 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx,
         &result->buffer
     );
 
+    ctx->vkGetBufferMemoryRequirements(
+        *ctx->logical_device,
+        result->buffer,
+        &memoryRequirements
+    );
+
+    allocateInfo.allocationSize = UBO_BUFFER_SIZE;
+
+    if (!find_memory_type(ctx,
+                          memoryRequirements.memoryTypeBits,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &allocateInfo.memoryTypeIndex))
+    {
+        set_error("failed to find suitable memory type for UBO memory");
+        return NULL;
+    }
+
+    ctx->vkAllocateMemory(*ctx->logical_device,
+                          &allocateInfo,
+                          NULL,
+                          &result->deviceMemory
+    );
+
+    ctx->vkBindBufferMemory(*ctx->logical_device,
+                            result->buffer,
+                            result->deviceMemory,
+                            0
+    );
+
+    ctx->vkMapMemory(*ctx->logical_device,
+                     result->deviceMemory,
+                     0,
+                     UBO_BUFFER_SIZE,
+                     0,
+                     (void**) &result->mapPointer
+    );
+
     result->bufferSize = UBO_BUFFER_SIZE;
     result->currentBlockSize = 0;
     result->dynamicOffset = 0;
-    result->full = -1;
 
     return result;
 } // create_ubo
@@ -201,9 +229,9 @@ static VkBuffer get_uniform_buffer(MOJOSHADER_vkShader *shader)
         return VK_NULL_HANDLE;
 
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
-        return ctx->vertUboBuffers[ctx->vertUboCurrentIndex]->buffer;
+        return ctx->vertUboBuffer->buffer;
     else
-        return ctx->fragUboBuffers[ctx->fragUboCurrentIndex]->buffer;
+        return ctx->fragUboBuffer->buffer;
 } // get_uniform_buffer
 
 static VkDeviceSize get_uniform_offset(MOJOSHADER_vkShader *shader)
@@ -212,9 +240,9 @@ static VkDeviceSize get_uniform_offset(MOJOSHADER_vkShader *shader)
         return 0;
 
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
-        return ctx->vertUboBuffers[ctx->vertUboCurrentIndex]->dynamicOffset;
+        return ctx->vertUboBuffer->dynamicOffset;
     else
-        return ctx->fragUboBuffers[ctx->fragUboCurrentIndex]->dynamicOffset;
+        return ctx->fragUboBuffer->dynamicOffset;
 } // get_uniform_offset
 
 static VkDeviceSize get_uniform_size(MOJOSHADER_vkShader *shader)
@@ -223,20 +251,18 @@ static VkDeviceSize get_uniform_size(MOJOSHADER_vkShader *shader)
         return 0;
 
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
-        return ctx->vertUboBuffers[ctx->vertUboCurrentIndex]->currentBlockSize;
+        return ctx->vertUboBuffer->currentBlockSize;
     else
-        return ctx->fragUboBuffers[ctx->fragUboCurrentIndex]->currentBlockSize;
+        return ctx->fragUboBuffer->currentBlockSize;
 } // get_uniform_size
 
 static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 {
     int32_t i;
-    void *map;
     int32_t offset;
     uint8_t *contents;
     float *regF; int *regI; uint8_t *regB;
     MOJOSHADER_vkUniformBuffer *ubo;
-    VkDeviceMemory uboMemory;
 
     if (shader == NULL || shader->parseData->uniform_count == 0)
         return;
@@ -247,8 +273,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
         regI = ctx->vs_reg_file_i;
         regB = ctx->vs_reg_file_b;
 
-        ubo = ctx->vertUboBuffers[ctx->vertUboCurrentIndex];
-        uboMemory = ctx->vertUboMemory;
+        ubo = ctx->vertUboBuffer;
     } // if
     else
     {
@@ -256,8 +281,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
         regI = ctx->ps_reg_file_i;
         regB = ctx->ps_reg_file_b;
 
-        ubo = ctx->fragUboBuffers[ctx->fragUboCurrentIndex];
-        uboMemory = ctx->fragUboMemory;
+        ubo = ctx->fragUboBuffer;
     } // else
 
     ubo->dynamicOffset += ubo->currentBlockSize;
@@ -267,48 +291,10 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
     // Rotate buffer if it would overrun
     if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize)
     {
-        ubo->full = ctx->currentFrame;
-
-        if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
-        {
-            for (i = 0; i < ctx->uboBufferCount; i++)
-            {
-                ctx->vertUboCurrentIndex = (ctx->vertUboCurrentIndex + 1) % ctx->uboBufferCount;
-                if (ctx->vertUboBuffers[ctx->vertUboCurrentIndex]->full == -1)
-                    break;
-            } // for
-
-            ubo = ctx->vertUboBuffers[ctx->vertUboCurrentIndex];
-        }
-        else
-        {
-            for (int i = 0; i < ctx->uboBufferCount; i++)
-            {
-                ctx->fragUboCurrentIndex = (ctx->fragUboCurrentIndex + 1) % ctx->uboBufferCount;
-                if (ctx->fragUboBuffers[ctx->fragUboCurrentIndex]->full == -1)
-                    break;
-            } // for
-
-            ubo = ctx->fragUboBuffers[ctx->fragUboCurrentIndex];
-        } // else
-
-        ubo->dynamicOffset = 0;
-        ubo->currentBlockSize = next_highest_offset_alignment(uniform_data_size(shader));
-
-        if (ubo->full >= 0)
-            set_error("all UBO buffers are full");
+        set_error("UBO overflow!!");
     } // if
 
-    ctx->vkMapMemory(
-        *ctx->logical_device,
-        uboMemory,
-        ubo->memoryOffset,
-        ubo->bufferSize,
-        0,
-        &map
-    );
-
-    contents = ((uint8_t *) map) + ubo->dynamicOffset;
+    contents = ubo->mapPointer + ubo->dynamicOffset;
 
     offset = 0;
     for (i = 0; i < shader->parseData->uniform_count; i++)
@@ -354,10 +340,6 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
         offset += size;
     } // for
 
-    ctx->vkUnmapMemory(
-        *ctx->logical_device,
-        uboMemory
-    );
 } // update_uniform_buffer
 
 static void lookup_entry_points(MOJOSHADER_vkContext *ctx)
@@ -432,111 +414,11 @@ MOJOSHADER_vkContext *MOJOSHADER_vkCreateContext(
     resultCtx->graphics_queue_family_index = graphics_queue_family_index;
     resultCtx->maxUniformBufferRange = max_uniform_buffer_range;
     resultCtx->minUniformBufferOffsetAlignment = min_uniform_buffer_offset_alignment;
-    resultCtx->currentFrame = 0;
 
     lookup_entry_points(resultCtx);
 
-    resultCtx->uboBufferCount = UBO_BUFFER_COUNT;
-
-    // Allocate vert UBO
-
-    resultCtx->vertUboCurrentIndex = 0;
-    resultCtx->vertUboBuffers = (MOJOSHADER_vkUniformBuffer**) m(
-        sizeof(MOJOSHADER_vkUniformBuffer*) * resultCtx->uboBufferCount,
-        malloc_d
-    );
-
-    for (i = 0; i < resultCtx->uboBufferCount; i++)
-        resultCtx->vertUboBuffers[i] = create_ubo(resultCtx, m, malloc_d);
-
-    resultCtx->vkGetBufferMemoryRequirements(
-        *resultCtx->logical_device,
-        resultCtx->vertUboBuffers[0]->buffer,
-        &memoryRequirements
-    );
-
-    allocate_info.allocationSize = UBO_BUFFER_SIZE * resultCtx->uboBufferCount;
-
-    if (!find_memory_type(resultCtx,
-                          memoryRequirements.memoryTypeBits,
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          &allocate_info.memoryTypeIndex))
-    {
-        set_error("failed to find suitable memory type for UBO memory");
-        return NULL;
-    } // if
-
-    resultCtx->vkAllocateMemory(
-        *resultCtx->logical_device,
-        &allocate_info,
-        NULL,
-        &resultCtx->vertUboMemory
-    );
-
-    uboMemoryOffset = 0;
-    for (i = 0; i < resultCtx->uboBufferCount; i++)
-    {
-        resultCtx->vertUboBuffers[i]->memoryOffset = uboMemoryOffset;
-
-        resultCtx->vkBindBufferMemory(
-            *resultCtx->logical_device,
-            resultCtx->vertUboBuffers[i]->buffer,
-            resultCtx->vertUboMemory,
-            uboMemoryOffset
-        );
-
-        uboMemoryOffset += UBO_BUFFER_SIZE;
-    } // for
-
-    // Allocate frag UBO
-
-    resultCtx->fragUboCurrentIndex = 0;
-    resultCtx->fragUboBuffers = (MOJOSHADER_vkUniformBuffer**) m(
-        sizeof(MOJOSHADER_vkUniformBuffer*) * resultCtx->uboBufferCount,
-        malloc_d
-    );
-
-    for (i = 0; i < resultCtx->uboBufferCount; i++)
-        resultCtx->fragUboBuffers[i] = create_ubo(resultCtx, m, malloc_d);
-
-    resultCtx->vkGetBufferMemoryRequirements(
-        *resultCtx->logical_device,
-        resultCtx->fragUboBuffers[0]->buffer,
-        &memoryRequirements
-    );
-
-    allocate_info.allocationSize = UBO_BUFFER_SIZE * resultCtx->uboBufferCount;
-
-    if (!find_memory_type(resultCtx,
-                          memoryRequirements.memoryTypeBits,
-                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                          &allocate_info.memoryTypeIndex))
-    {
-        set_error("failed to find suitable memory type for UBO memory");
-        return NULL;
-    } // if
-
-    resultCtx->vkAllocateMemory(
-        *resultCtx->logical_device,
-        &allocate_info,
-        NULL,
-        &resultCtx->fragUboMemory
-    );
-
-    uboMemoryOffset = 0;
-    for (i = 0; i < resultCtx->uboBufferCount; i++)
-    {
-        resultCtx->fragUboBuffers[i]->memoryOffset = uboMemoryOffset;
-
-        resultCtx->vkBindBufferMemory(
-            *resultCtx->logical_device,
-            resultCtx->fragUboBuffers[i]->buffer,
-            resultCtx->fragUboMemory,
-            uboMemoryOffset
-        );
-
-        uboMemoryOffset += UBO_BUFFER_SIZE;
-    } // for
+    resultCtx->vertUboBuffer = create_ubo(resultCtx);
+    resultCtx->fragUboBuffer = create_ubo(resultCtx);
 
     return resultCtx;
 
@@ -554,39 +436,25 @@ void MOJOSHADER_vkMakeContextCurrent(MOJOSHADER_vkContext *_ctx)
 void MOJOSHADER_vkDestroyContext()
 {
     int32_t i;
-    for (i = 0; i < ctx->uboBufferCount; i++)
-    {
-        ctx->vkDestroyBuffer(
-            *ctx->logical_device,
-            ctx->vertUboBuffers[i]->buffer,
-            NULL
-        );
 
-        ctx->free_fn(ctx->vertUboBuffers[i], ctx->malloc_data);
+    ctx->vkDestroyBuffer(*ctx->logical_device,
+                         ctx->vertUboBuffer->buffer,
+                         NULL);
 
-        ctx->vkDestroyBuffer(
-            *ctx->logical_device,
-            ctx->fragUboBuffers[i]->buffer,
-            NULL
-        );
+    ctx->vkDestroyBuffer(*ctx->logical_device,
+                         ctx->fragUboBuffer->buffer,
+                         NULL);
 
-        ctx->free_fn(ctx->fragUboBuffers[i], ctx->malloc_data);
-    } // for
+    ctx->vkFreeMemory(*ctx->logical_device,
+                      ctx->vertUboBuffer->deviceMemory,
+                      NULL);
 
-    ctx->free_fn(ctx->vertUboBuffers, ctx->malloc_data);
-    ctx->free_fn(ctx->fragUboBuffers, ctx->malloc_data);
-
-    ctx->vkFreeMemory(
-        *ctx->logical_device,
-        ctx->vertUboMemory,
-        NULL
-    );
-
-    ctx->vkFreeMemory(
-        *ctx->logical_device,
-        ctx->fragUboMemory,
-        NULL
-    );
+    ctx->vkFreeMemory(*ctx->logical_device,
+                      ctx->fragUboBuffer->deviceMemory,
+                      NULL);
+   
+    ctx->free_fn(ctx->vertUboBuffer, ctx->malloc_data);
+    ctx->free_fn(ctx->fragUboBuffer, ctx->malloc_data);
 
     ctx->free_fn(ctx, ctx->malloc_data);
 } // MOJOSHADER_vkDestroyContext
@@ -744,24 +612,10 @@ void MOJOSHADER_vkGetUniformBuffers(VkBuffer *vbuf, unsigned long long *voff, un
 
 void MOJOSHADER_vkEndFrame()
 {
-    int32_t i;
-    ctx->currentFrame = (ctx->currentFrame + 1) % ctx->frames_in_flight;
-    for (i = 0; i < ctx->uboBufferCount; i++)
-    {
-        if (ctx->vertUboBuffers[i]->full == ctx->currentFrame)
-        {
-            ctx->vertUboBuffers[i]->dynamicOffset = 0;
-            ctx->vertUboBuffers[i]->currentBlockSize = 0;
-            ctx->vertUboBuffers[i]->full = -1;
-        } // if
-
-        if (ctx->fragUboBuffers[i]->full == ctx->currentFrame)
-        {
-            ctx->fragUboBuffers[i]->dynamicOffset = 0;
-            ctx->fragUboBuffers[i]->currentBlockSize = 0;
-            ctx->fragUboBuffers[i]->full = -1;
-        } // if
-    } // for
+    ctx->vertUboBuffer->dynamicOffset = 0;
+    ctx->vertUboBuffer->currentBlockSize = 0;
+    ctx->fragUboBuffer->dynamicOffset = 0;
+    ctx->fragUboBuffer->dynamicOffset = 0;
 } // MOJOSHADER_VkEndFrame
 
 int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
