@@ -181,14 +181,11 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx,
 static uint32_t uniform_data_size(MOJOSHADER_vkShader *shader)
 {
     int32_t i;
-    int32_t uniformSize;
     int32_t buflen = 0;
+    const int32_t uniformSize = 16; // Yes, even the bool registers
     for (i = 0; i < shader->parseData->uniform_count; i++)
     {
         const int32_t arrayCount = shader->parseData->uniforms[i].array_count;
-        uniformSize = 16;
-        if (shader->parseData->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
-            uniformSize = 1;
         buflen += (arrayCount ? arrayCount : 1) * uniformSize;
     } // for
 
@@ -230,10 +227,11 @@ static VkDeviceSize get_uniform_size(MOJOSHADER_vkShader *shader)
 
 static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 {
-    int32_t i;
+    int32_t i, j;
     void *map;
     int32_t offset;
     uint8_t *contents;
+    uint32_t *contentsI;
     float *regF; int *regI; uint8_t *regB;
     MOJOSHADER_vkUniformBuffer *ubo;
     VkDeviceMemory uboMemory;
@@ -321,7 +319,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
                 memcpy(
-                    contents + (offset * 16),
+                    contents + offset,
                     &regF[4 * index],
                     size * 16
                 );
@@ -329,18 +327,16 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 
             case MOJOSHADER_UNIFORM_INT:
                 memcpy(
-                    contents + (offset * 16),
+                    contents + offset,
                     &regI[4 * index],
                     size * 16
                 );
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
-                memcpy(
-                    contents + offset,
-                    &regB[index],
-                    size
-                );
+                contentsI = (uint32_t *) (contents + offset);
+                for (j = 0; j < size; j++)
+                    contentsI[j * 4] = regB[index + j];
                 break;
 
             default:
@@ -351,7 +347,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
                 break;
         } // switch
 
-        offset += size;
+        offset += size * 16;
     } // for
 
     ctx->vkUnmapMemory(
