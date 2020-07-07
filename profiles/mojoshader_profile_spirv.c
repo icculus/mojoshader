@@ -271,17 +271,14 @@ static uint32 spv_output_location(Context *ctx, uint32 id, uint32 loc)
     return (buffer_size(ctx->helpers) >> 2) - 1;
 } // spv_output_location
 
-static uint32 spv_output_attrib_location(Context *ctx, uint32 id,
-                                         MOJOSHADER_usage usage, uint32 index)
+static void spv_output_attrib_location(Context *ctx, uint32 id,
+                                       MOJOSHADER_usage usage, uint32 index)
 {
-    uint32 result;
     SpirvPatchTable* table = &ctx->spirv.patch_table;
     push_output(ctx, &ctx->helpers);
     spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationLocation, 0xDEADBEEF);
     pop_output(ctx);
-    result = (buffer_size(ctx->helpers) >> 2) - 1;
-    table->attrib_offsets[usage][index] = result;
-    return result;
+    table->attrib_offsets[usage][index] = (buffer_size(ctx->helpers) >> 2) - 1;
 } // spv_output_attrib_location
 
 static void spv_output_sampler_binding(Context *ctx, uint32 id, uint32 binding)
@@ -1631,7 +1628,10 @@ static void spv_link_vs_attributes(Context *ctx, uint32 id,
     if (usage == MOJOSHADER_USAGE_POSITION && index == 0)
         spv_output_builtin(ctx, id, SpvBuiltInPosition);
     else if (usage == MOJOSHADER_USAGE_POINTSIZE && index == 0)
+    {
         spv_output_builtin(ctx, id, SpvBuiltInPointSize);
+        ctx->spirv.patch_table.attrib_offsets[usage][index] = 1;
+    } // else if
     else if (usage == MOJOSHADER_USAGE_COLOR && index == 0)
         spv_output_location(ctx, id, 0);
     else

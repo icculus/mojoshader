@@ -1091,6 +1091,8 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         const MOJOSHADER_attribute *vAttr = &vertex->outputs[i];
         if (vAttr->usage == MOJOSHADER_USAGE_POSITION && vAttr->index == 0)
             continue;
+        if (vAttr->usage == MOJOSHADER_USAGE_POINTSIZE && vAttr->index == 0)
+            continue;
         if (vAttr->usage == MOJOSHADER_USAGE_COLOR && vAttr->index == 0)
             continue;
 
