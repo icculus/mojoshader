@@ -3323,6 +3323,7 @@ DECLSPEC void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *ctx);
 
 /* Metal interface... */
 
+typedef struct MOJOSHADER_mtlContext MOJOSHADER_mtlContext;
 typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
 
 /*
@@ -3337,10 +3338,6 @@ typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
  *
  * (device) refers to the active MTLDevice, cast from id<MTLDevice> to void*.
  *
- * (framesInFlight) is the maximum number of frames that can be processed
- *  simultaneously. This determines how many uniform buffers will be
- *  allocated for each shader.
- *
  * As MojoShader requires some memory to be allocated, you may provide a
  *  custom allocator to this function, which will be used to allocate/free
  *  memory. They function just like malloc() and free(). We do not use
@@ -3349,32 +3346,23 @@ typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
  *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
  *  functions.
  *
- * The context created by this function will automatically become the current
- *  context. No further action is needed by the caller.
- *
- * Returns 0 on success or -1 on failure.
+ * Returns a new context on success, NULL on error. If you get a new context,
+ *  you need to make it current before using it with
+ *  MOJOSHADER_mtlMakeContextCurrent().
  */
-DECLSPEC int MOJOSHADER_mtlCreateContext(void *mtlDevice, int framesInFlight,
-                                         MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                         void *malloc_d);
+DECLSPEC MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void *mtlDevice,
+                                        MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                        void *malloc_d);
 
 /*
- * Get any error state we might have picked up, such as failed shader
- *  compilation.
+ * You must call this before using the context that you got from
+ *  MOJOSHADER_mtlCreateContext(), and must use it when you switch to a new
+ *  context.
  *
- * Returns a human-readable string. This string is for debugging purposes, and
- *  not guaranteed to be localized, coherent, or user-friendly in any way.
- *  It's for programmers!
- *
- * The latest error may remain between calls. New errors replace any existing
- *  error. Don't check this string for a sign that an error happened, check
- *  return codes instead and use this for explanation when debugging.
- *
- * Do not free the returned string: it's a pointer to a static internal
- *  buffer. Do not keep the pointer around, either, as it's likely to become
- *  invalid as soon as you call into MojoShader again.
+ * It is legal to call this with a NULL pointer to make no context current,
+ *  but you need a valid context to be current to use most of MojoShader.
  */
-DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+DECLSPEC void MOJOSHADER_mtlMakeContextCurrent(MOJOSHADER_mtlContext *ctx);
 
 /*
  * Transform a buffer of Direct3D shader bytecode into a struct containing
@@ -3395,16 +3383,16 @@ DECLSPEC const char *MOJOSHADER_mtlGetError(void);
  *
  * Returns NULL on error, or a shader handle on success.
  *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC MOJOSHADER_mtlShader *MOJOSHADER_mtlCompileShader(const char *mainfn,
-                                                           const unsigned char *tokenbuf,
-                                                           const unsigned int bufsize,
-                                                           const MOJOSHADER_swizzle *swiz,
-                                                           const unsigned int swizcount,
-                                                           const MOJOSHADER_samplerMap *smap,
-                                                           const unsigned int smapcount);
+                                                const unsigned char *tokenbuf,
+                                                const unsigned int bufsize,
+                                                const MOJOSHADER_swizzle *swiz,
+                                                const unsigned int swizcount,
+                                                const MOJOSHADER_samplerMap *smap,
+                                                const unsigned int smapcount);
 
 /*
  * Increments a shader's internal refcount. To decrement the refcount, call
@@ -3430,8 +3418,8 @@ DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_mtlGetShaderParseData(
  * This function is only for convenience, specifically for compatibility with
  *  the effects API.
  *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC void MOJOSHADER_mtlBindShaders(MOJOSHADER_mtlShader *vshader,
                                         MOJOSHADER_mtlShader *pshader);
@@ -3443,23 +3431,10 @@ DECLSPEC void MOJOSHADER_mtlBindShaders(MOJOSHADER_mtlShader *vshader,
  *  the effects API.
  *
  * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC void MOJOSHADER_mtlGetBoundShaders(MOJOSHADER_mtlShader **vshader,
                                             MOJOSHADER_mtlShader **pshader);
-
-/*
- * This queries for the uniform buffer and byte offset for each of the
- *  currently bound shaders.
- *
- * This function is only for convenience, specifically for compatibility with
- *  the effects API.
- *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
- */
-DECLSPEC void MOJOSHADER_mtlGetUniformBuffers(void **vbuf, int *voff,
-                                              void **pbuf, int *poff);
 
 /*
  * Fills register pointers with pointers that are directly used to push uniform
@@ -3468,8 +3443,8 @@ DECLSPEC void MOJOSHADER_mtlGetUniformBuffers(void **vbuf, int *voff,
  * This function is really just for the effects API, you should NOT be using
  *  this unless you know every single line of MojoShader from memory.
  *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC void MOJOSHADER_mtlMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
                                                    float **psf, int **psi, unsigned char **psb);
@@ -3478,10 +3453,34 @@ DECLSPEC void MOJOSHADER_mtlMapUniformBufferMemory(float **vsf, int **vsi, unsig
  * Tells the context that you are done with the memory mapped by
  *  MOJOSHADER_mtlMapUniformBufferMemory().
  *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC void MOJOSHADER_mtlUnmapUniformBufferMemory();
+
+/*
+ * This queries for the uniform buffer and byte offsets for each of the
+ *  currently bound shaders.
+ *
+ * This function is only for convenience, specifically for compatibility with
+ *  the effects API.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_mtlGetUniformData(void **buf, int *voff, int *poff);
+
+/*
+ * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
+ */
+DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
+
+/*
+ * Resets buffer offsets to prepare for the next frame.
+ *
+ * Always call this after submitting the final command buffer for a frame!
+ */
+DECLSPEC void MOJOSHADER_mtlEndFrame(void);
 
 /*
  * Return the location of a vertex attribute for the given shader.
@@ -3496,41 +3495,66 @@ DECLSPEC int MOJOSHADER_mtlGetVertexAttribLocation(MOJOSHADER_mtlShader *vert,
                                           MOJOSHADER_usage usage, int index);
 
 /*
+ * Get any error state we might have picked up, such as failed shader
+ *  compilation.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * This call does NOT require a valid MOJOSHADER_mtlContext to have been made
+ *  current. The error buffer is shared between contexts, so you can get
+ *  error results from a failed MOJOSHADER_mtlCreateContext().
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ */
+DECLSPEC const char *MOJOSHADER_mtlGetError(void);
+
+/*
+ * Release the given MTLLibrary and all MTLFunctions it contains.
+ *
+ * This does NOT free MOJOSHADER_mtlShaders! Call MOJOSHADER_mtlDeleteShader()
+ *  on all the shaders of the library before you call this.
+ *
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_mtlDeleteLibrary(void *library);
+
+/*
  * Free the resources of a compiled shader. This will delete the MojoShader
  *  shader struct and free memory.
  *
  * This does NOT release the actual shader! The shader data belongs to an
  *  MTLLibrary that must be deleted with MOJOSHADER_mtlDeleteLibrary().
  *
- * This call requires a valid MOJOSHADER_mtlContext to have been created,
- *  or it will crash your program. See MOJOSHADER_mtlCreateContext().
+ * This call requires a valid MOJOSHADER_mtlContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC void MOJOSHADER_mtlDeleteShader(MOJOSHADER_mtlShader *shader);
 
 /*
- * Get the MTLFunction* from the given MOJOSHADER_mtlShader.
- *
- * This function calls [retain] on the MTLFunction* before returning!
- *  Please call [release] on the result when you no longer need it.
- */
-DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
-
-/*
- * Swaps uniform buffers and resets offsets to prepare for the next frame.
- *
- * Always call this after submitting the final command buffer for a frame!
- */
-DECLSPEC void MOJOSHADER_mtlEndFrame(void);
-
-/*
  * Deinitialize MojoShader's Metal shader management.
  *
- * This will clean up resources previously allocated for the active context.
+ * This should be the last MOJOSHADER_mtl* function you call until you've
+ *  prepared a context again.
  *
- * This will NOT clean up shaders you created! Please destroy all shaders
- *  before calling this function.
+ * This will clean up resources previously allocated, and may call into Metal.
+ *
+ * This will not clean up shaders and libraries you created! Please call
+ *  MOJOSHADER_mtlDeleteShader() and MOJOSHADER_mtlDeleteLibrary() to clean
+ *  those up before calling this function!
+ *
+ * This function destroys the MOJOSHADER_mtlContext you pass it. If it's the
+ *  current context, then no context will be current upon return.
  */
-DECLSPEC void MOJOSHADER_mtlDestroyContext(void);
+DECLSPEC void MOJOSHADER_mtlDestroyContext(MOJOSHADER_mtlContext *_ctx);
 
 /* Vulkan interface */
 
