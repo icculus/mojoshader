@@ -1056,6 +1056,8 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
 } // MOJOSHADER_printFloat
 
 #if SUPPORT_PROFILE_SPIRV
+#include "spirv/spirv.h"
+#include "spirv/GLSL.std.450.h"
 void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
                                       const MOJOSHADER_parseData *pixel)
 {
@@ -1066,6 +1068,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     int pDataLen = pixel->output_len - sizeof(SpirvPatchTable);
     SpirvPatchTable *vTable = (SpirvPatchTable *) &vertex->output[vDataLen];
     SpirvPatchTable *pTable = (SpirvPatchTable *) &pixel->output[pDataLen];
+    const uint32 texcoord0Loc = pTable->attrib_offsets[MOJOSHADER_USAGE_TEXCOORD][0];
 
     for (i = 0; i < pixel->attribute_count; i++)
     {
@@ -1078,9 +1081,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         vOffset = vTable->attrib_offsets[pAttr->usage][pAttr->index];
         ((uint32 *) pixel->output)[pOffset] = attr_loc;
         if (vOffset)
-        {
             ((uint32 *) vertex->output)[vOffset] = attr_loc;
-        } // if
         attr_loc++;
     } // for
 
@@ -1099,6 +1100,21 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
             ((uint32 *) vertex->output)[vOffset] = attr_loc++;
         } // if
     } // while
+
+    // gl_PointCoord support
+    if (texcoord0Loc)
+    {
+        if (vTable->attrib_offsets[MOJOSHADER_USAGE_POINTSIZE][0] > 0)
+        {
+            ((uint32 *) pixel->output)[texcoord0Loc - 1] = SpvDecorationBuiltIn;
+            ((uint32 *) pixel->output)[texcoord0Loc] = SpvBuiltInPointCoord;
+        } // if
+        else
+        {
+            // texcoord0Loc should already have attr_loc from the above work!
+            ((uint32 *) pixel->output)[texcoord0Loc - 1] = SpvDecorationLocation;
+        } // if
+    } // if
 } // MOJOSHADER_spirv_link_attributes
 #endif
 
