@@ -1113,7 +1113,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         {
             // texcoord0Loc should already have attr_loc from the above work!
             ((uint32 *) pixel->output)[texcoord0Loc - 1] = SpvDecorationLocation;
-        } // if
+        } // else
     } // if
 } // MOJOSHADER_spirv_link_attributes
 #endif

@@ -3751,7 +3751,7 @@ DECLSPEC MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vsh
 
 /*
  * This binds the program to the active context, and does nothing particularly
- * special until you start working with uniform buffers.
+ * special until you start working with uniform buffers or shader modules.
  *
  * After binding a program, you should update any uniforms you care about
  *  with MOJOSHADER_vkMapUniformBufferMemory() (etc), set any vertex arrays
