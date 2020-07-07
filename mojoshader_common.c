@@ -1055,5 +1055,52 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
     return (text - textstart);
 } // MOJOSHADER_printFloat
 
+#if SUPPORT_PROFILE_SPIRV
+void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
+                                      const MOJOSHADER_parseData *pixel)
+{
+    int i;
+    uint32 attr_loc = 1; // 0 is reserved for COLOR0
+    uint32 vOffset, pOffset;
+    int vDataLen = vertex->output_len - sizeof(SpirvPatchTable);
+    int pDataLen = pixel->output_len - sizeof(SpirvPatchTable);
+    SpirvPatchTable *vTable = (SpirvPatchTable *) &vertex->output[vDataLen];
+    SpirvPatchTable *pTable = (SpirvPatchTable *) &pixel->output[pDataLen];
+
+    for (i = 0; i < pixel->attribute_count; i++)
+    {
+        const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
+        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pAttr->index == 0)
+            continue;
+
+        // The input may not exist in the output list!
+        pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
+        vOffset = vTable->attrib_offsets[pAttr->usage][pAttr->index];
+        ((uint32 *) pixel->output)[pOffset] = attr_loc;
+        if (vOffset)
+        {
+            ((uint32 *) vertex->output)[vOffset] = attr_loc;
+        } // if
+        attr_loc++;
+    } // for
+
+    // There may be outputs not present in the input list!
+    for (i = 0; i < vertex->output_count; i++)
+    {
+        const MOJOSHADER_attribute *vAttr = &vertex->outputs[i];
+        if (vAttr->usage == MOJOSHADER_USAGE_POSITION && vAttr->index == 0)
+            continue;
+        if (vAttr->usage == MOJOSHADER_USAGE_COLOR && vAttr->index == 0)
+            continue;
+
+        if (!pTable->attrib_offsets[vAttr->usage][vAttr->index])
+        {
+            vOffset = vTable->attrib_offsets[vAttr->usage][vAttr->index];
+            ((uint32 *) vertex->output)[vOffset] = attr_loc++;
+        } // if
+    } // while
+} // MOJOSHADER_spirv_link_attributes
+#endif
+
 // end of mojoshader_common.c ...
 

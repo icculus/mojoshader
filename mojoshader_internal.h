@@ -743,23 +743,20 @@ typedef struct SpirvPatchEntry
 
 typedef struct SpirvPatchTable
 {
+    // Patches for uniforms
     SpirvPatchEntry vpflip;
     SpirvPatchEntry array_vec4;
     SpirvPatchEntry array_ivec4;
     SpirvPatchEntry array_bool;
     SpirvPatchEntry samplers[16];
     int32 location_count;
-    union
-    {
-        // VS only; non-0 when there is PSIZE output
-        uint32 vs_has_psize;
 
-        // PS only; offset to TEXCOORD0 location part of OpDecorate.
-        // Used to find OpDecorate and patch it to BuiltIn PointCoord when
-        // VS outputs PSIZE.
-        uint32 ps_texcoord0_offset;
-    };
+    // Patches for linking vertex output/pixel input
+    uint32 attrib_offsets[MOJOSHADER_USAGE_TOTAL][16];
 } SpirvPatchTable;
+
+void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
+                                      const MOJOSHADER_parseData *pixel);
 #endif
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_
