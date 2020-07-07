@@ -448,14 +448,14 @@ static const SpirvPatchTable* spv_getPatchTable(MOJOSHADER_glShader *shader)
     return (const SpirvPatchTable *) (pd->output + table_offset);
 } // spv_getPatchTable
 
-static int spv_CompileShader(const MOJOSHADER_parseData *pd, int32 base_location, GLuint *s, int32 patch_pcoord)
+static int spv_CompileShader(const MOJOSHADER_parseData *pd, int32 base_location, GLuint *s)
 {
     GLint ok = 0;
 
     GLsizei data_len = pd->output_len - sizeof(SpirvPatchTable);
     const GLvoid* data = pd->output;
     uint32 *patched_data = NULL;
-    if (base_location || patch_pcoord)
+    if (base_location)
     {
         size_t i, max;
 
@@ -473,16 +473,6 @@ static int spv_CompileShader(const MOJOSHADER_parseData *pd, int32 base_location
             if (entry.offset)
                 patched_data[entry.offset] += base_location;
         } // for
-
-        if (patch_pcoord && table->ps_texcoord0_offset)
-        {
-            // Subtract 3 to get from Location value offset to start of op.
-            uint32 op_base = table->ps_texcoord0_offset - 3;
-            assert(patched_data[op_base+0] == (SpvOpDecorate | (4 << 16)));
-            assert(patched_data[op_base+2] == SpvDecorationLocation);
-            patched_data[op_base+2] = SpvDecorationBuiltIn;
-            patched_data[op_base+3] = SpvBuiltInPointCoord;
-        } // if
 
         data = patched_data;
     } // if
@@ -521,27 +511,29 @@ static GLuint impl_SPIRV_LinkProgram(MOJOSHADER_glShader *vshader,
                                      MOJOSHADER_glShader *pshader)
 {
     GLint ok = 0;
-
-    // Shader compilation postponed until linking due to uniform locations being global in program.
-    // To avoid overlap between VS and PS, we need to know about other shader stages to assign final
-    // uniform locations before compilation.
     GLuint vs_handle = 0;
     int32 base_location = 0;
-    int32 patch_pcoord = 0;
+
+    // Shader compilation postponed until linking due to locations being global
+    // in program. To avoid overlap between VS and PS, we need to know about
+    // other shader stages to assign final uniform/attrib locations before
+    // compilation.
+
+    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
+
     if (vshader)
     {
-        if (!spv_CompileShader(vshader->parseData, base_location, &vs_handle, patch_pcoord))
+        if (!spv_CompileShader(vshader->parseData, base_location, &vs_handle))
             return 0;
 
         const SpirvPatchTable* patch_table = spv_getPatchTable(vshader);
         base_location += patch_table->location_count;
-        patch_pcoord = patch_table->vs_has_psize;
     } // if
 
     GLuint ps_handle = 0;
     if (pshader)
     {
-        if (!spv_CompileShader(pshader->parseData, base_location, &ps_handle, patch_pcoord))
+        if (!spv_CompileShader(pshader->parseData, base_location, &ps_handle))
             return 0;
     } // if
 

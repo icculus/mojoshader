@@ -3558,6 +3558,7 @@ VK_DEFINE_HANDLE(VkInstance)
 VK_DEFINE_HANDLE(VkDevice)
 VK_DEFINE_HANDLE(VkPhysicalDevice)
 VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkBuffer)
+VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkShaderModule)
 
 #endif /* !NO_MOJOSHADER_VULKAN_TYPEDEFS */
 
@@ -3573,6 +3574,7 @@ typedef PFN_MOJOSHADER_vkVoidFunction (VKAPI_PTR *PFN_MOJOSHADER_vkGetInstancePr
 
 typedef struct MOJOSHADER_vkContext MOJOSHADER_vkContext;
 typedef struct MOJOSHADER_vkShader MOJOSHADER_vkShader;
+typedef struct MOJOSHADER_vkProgram MOJOSHADER_vkProgram;
 
 /*
  * Prepares a context to manage Vulkan shaders.
@@ -3671,7 +3673,7 @@ DECLSPEC const char *MOJOSHADER_vkGetError();
  * This function destroys the MOJOSHADER_vkContext you pass it. If it's the
  *  current context, then no context will be current upon return.
  */
-DECLSPEC void MOJOSHADER_vkDestroyContext();
+DECLSPEC void MOJOSHADER_vkDestroyContext(MOJOSHADER_vkContext *ctx);
 
 /*
  * Compile a buffer of Direct3D shader bytecode into a Vulkan shader module.
@@ -3726,6 +3728,53 @@ DECLSPEC void MOJOSHADER_vkDeleteShader(MOJOSHADER_vkShader *shader);
  */
 DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_vkGetShaderParseData(
                                                 MOJOSHADER_vkShader *shader);
+
+/*
+ * Link a vertex and pixel shader into a working Vulkan shader program.
+ *  (vshader) or (pshader) can NOT be NULL, unlike OpenGL.
+ *
+ * You can reuse shaders in various combinations across
+ *  multiple programs, by relinking different pairs.
+ *
+ * It is illegal to give a vertex shader for (pshader) or a pixel shader
+ *  for (vshader).
+ *
+ * Once you have successfully linked a program, you may render with it.
+ *
+ * Returns NULL on error, or a program handle on success.
+ *
+ * This call requires a valid MOJOSHADER_vkContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_vkMakeContextCurrent().
+ */
+DECLSPEC MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vshader,
+                                                        MOJOSHADER_vkShader *pshader);
+
+/*
+ * This binds the program to the active context, and does nothing particularly
+ * special until you start working with uniform buffers or shader modules.
+ *
+ * After binding a program, you should update any uniforms you care about
+ *  with MOJOSHADER_vkMapUniformBufferMemory() (etc), set any vertex arrays
+ *  using MOJOSHADER_vkGetVertexAttribLocation(), and finally call
+ *  MOJOSHADER_vkGetShaderModules() to get the final modules. Then you may
+ *  begin building your pipeline state objects.
+ *
+ * This call requires a valid MOJOSHADER_vkContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_vkMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_vkBindProgram(MOJOSHADER_vkProgram *program);
+
+/*
+ * Free the resources of a linked program. This will delete the shader modules
+ *  and free memory.
+ *
+ * If the program is currently bound by MOJOSHADER_vkBindProgram(), it will
+ *  be deleted as soon as it becomes unbound.
+ *
+ * This call requires a valid MOJOSHADER_vkContext to have been made current,
+ *  or it will crash your program. See MOJOSHADER_vkMakeContextCurrent().
+ */
+DECLSPEC void MOJOSHADER_vkDeleteProgram(MOJOSHADER_vkProgram *program);
 
 /*
  * This "binds" individual shaders, which effectively means the context
@@ -3816,10 +3865,10 @@ DECLSPEC int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
                                                   int index);
 
 /*
- * Get the VkShaderModule from the given MOJOSHADER_vkShader.
+ * Get the VkShaderModules from the currently bound shader program.
  */
-DECLSPEC unsigned long long MOJOSHADER_vkGetShaderModule(
-                                                MOJOSHADER_vkShader *shader);
+DECLSPEC void MOJOSHADER_vkGetShaderModules(VkShaderModule *vmodule,
+                                            VkShaderModule *pmodule);
 
 /* D3D11 interface... */
 
