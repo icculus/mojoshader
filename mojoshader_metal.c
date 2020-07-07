@@ -72,14 +72,8 @@ typedef struct MOJOSHADER_mtlContext
     // Pointer to the active MTLDevice.
     void* device;
 
-    // The maximum number of frames in flight.
-    int framesInFlight;
-
-    // The current frame index.
-    int currentFrame;
-
-    // The array of uniform MTLBuffers.
-    void **ubos;
+    // The uniform MTLBuffer shared between all shaders in the context.
+    void *ubo;
 
     // The current offsets into the UBO, per shader.
     int vertexUniformOffset;
@@ -141,9 +135,7 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
         regB = ctx->ps_reg_file_b;
     } // else
 
-    void *buf = ctx->ubos[ctx->currentFrame];
-    void *contents = msg(buf, ctx->selContents) + ctx->totalUniformOffset;
-
+    void *contents = msg(ctx->ubo, ctx->selContents) + ctx->totalUniformOffset;
     int offset = 0;
     for (int i = 0; i < shader->parseData->uniform_count; i++)
     {
@@ -182,7 +174,7 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
     } // for
 
     ctx->totalUniformOffset = next_highest_alignment(ctx->totalUniformOffset + offset);
-    if (ctx->totalUniformOffset >= (int) msg(buf, ctx->selLength))
+    if (ctx->totalUniformOffset >= (int) msg(ctx->ubo, ctx->selLength))
     {
         // !!! FIXME: Is there a better way to handle this?
         assert(0 && "Uniform data exceeded the size of the buffer!");
@@ -192,8 +184,8 @@ static void update_uniform_buffer(MOJOSHADER_mtlShader *shader)
 /* Public API */
 
 MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void* mtlDevice,
-                                    int framesInFlight, MOJOSHADER_malloc m,
-                                    MOJOSHADER_free f, void *malloc_d)
+                                    MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                    void *malloc_d)
 {
     MOJOSHADER_mtlContext *retval = NULL;
     MOJOSHADER_mtlContext *current_ctx = ctx;
@@ -218,8 +210,6 @@ MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void* mtlDevice,
 
     // Initialize the Metal state
     ctx->device = mtlDevice;
-    ctx->framesInFlight = framesInFlight;
-    ctx->currentFrame = 0;
 
     // Grab references to Objective-C selectors
     ctx->classNSString = objc_getClass("NSString");
@@ -234,14 +224,9 @@ MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void* mtlDevice,
     ctx->selRelease = sel_registerName("release");
     ctx->selUTF8String = sel_registerName("UTF8String");
 
-    // Create uniform buffer array
-    ctx->ubos = (void**) m(framesInFlight * sizeof(void*), malloc_d);
-    for (i = 0; i < framesInFlight; i++)
-    {
-        // One buffer per frame, ~1 MB in size with HazardTrackingModeUntracked
-        ctx->ubos[i] = msg_uu(mtlDevice, ctx->selNewBufferWithLength,
-                              next_highest_alignment(1000000), 256);
-    } // for
+    // Create the uniform buffer
+    ctx->ubo = msg_uu(mtlDevice, ctx->selNewBufferWithLength,
+                      next_highest_alignment(1000000), 0);
 
     retval = ctx;
     ctx = current_ctx;
@@ -478,7 +463,7 @@ void MOJOSHADER_mtlUnmapUniformBufferMemory()
 
 void MOJOSHADER_mtlGetUniformData(void **buf, int *voff, int *poff)
 {
-    *buf = ctx->ubos[ctx->currentFrame];
+    *buf = ctx->ubo;
     *voff = ctx->vertexUniformOffset;
     *poff = ctx->pixelUniformOffset;
 } // MOJOSHADER_mtlGetUniformBuffers
@@ -495,7 +480,6 @@ void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader)
 
 void MOJOSHADER_mtlEndFrame()
 {
-    ctx->currentFrame = (ctx->currentFrame + 1) % ctx->framesInFlight;
     ctx->totalUniformOffset = 0;
     ctx->vertexUniformOffset = 0;
     ctx->pixelUniformOffset = 0;
@@ -555,12 +539,8 @@ void MOJOSHADER_mtlDestroyContext(MOJOSHADER_mtlContext *_ctx)
     MOJOSHADER_mtlContext *current_ctx = ctx;
     ctx = _ctx;
 
-    if (ctx->ubos != NULL)
-    {
-        for (int i = 0; i < ctx->framesInFlight; i++)
-            msg(ctx->ubos[i], ctx->selRelease);
-        ctx->free_fn(ctx->ubos, ctx->malloc_data);
-    } // if
+    if (ctx->ubo != NULL)
+        msg(ctx->ubo, ctx->selRelease);
 
     if (ctx != NULL)
         ctx->free_fn(ctx, ctx->malloc_data);

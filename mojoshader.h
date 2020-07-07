@@ -3338,10 +3338,6 @@ typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
  *
  * (device) refers to the active MTLDevice, cast from id<MTLDevice> to void*.
  *
- * (framesInFlight) is the maximum number of frames that can be processed
- *  simultaneously. This determines how many uniform buffers will be
- *  allocated for each shader.
- *
  * As MojoShader requires some memory to be allocated, you may provide a
  *  custom allocator to this function, which will be used to allocate/free
  *  memory. They function just like malloc() and free(). We do not use
@@ -3355,8 +3351,8 @@ typedef struct MOJOSHADER_mtlShader MOJOSHADER_mtlShader;
  *  MOJOSHADER_mtlMakeContextCurrent().
  */
 DECLSPEC MOJOSHADER_mtlContext *MOJOSHADER_mtlCreateContext(void *mtlDevice,
-                                        int framesInFlight, MOJOSHADER_malloc m,
-                                        MOJOSHADER_free f, void *malloc_d);
+                                        MOJOSHADER_malloc m, MOJOSHADER_free f,
+                                        void *malloc_d);
 
 /*
  * You must call this before using the context that you got from
@@ -3480,7 +3476,7 @@ DECLSPEC void MOJOSHADER_mtlGetUniformData(void **buf, int *voff, int *poff);
 DECLSPEC void *MOJOSHADER_mtlGetFunctionHandle(MOJOSHADER_mtlShader *shader);
 
 /*
- * Swaps uniform buffers and resets offsets to prepare for the next frame.
+ * Resets buffer offsets to prepare for the next frame.
  *
  * Always call this after submitting the final command buffer for a frame!
  */
