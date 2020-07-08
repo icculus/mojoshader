@@ -638,7 +638,8 @@ MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vshader,
     if ((vshader == NULL) && (pshader == NULL))
         return NULL;
 
-    result = ctx->malloc_fn(sizeof (MOJOSHADER_vkProgram), ctx->malloc_data);
+    result = (MOJOSHADER_vkProgram *) ctx->malloc_fn(sizeof (MOJOSHADER_vkProgram),
+                                                     ctx->malloc_data);
     if (result == NULL)
     {
         out_of_memory();
