@@ -55,6 +55,7 @@ typedef struct Context
     uint32 tokenbuf[16];    // bytecode tokens!
     int tokenbufpos;        // bytecode tokens!
     DestArgInfo dest_arg;
+    uint8 default_writemask;
     Buffer *output;
     Buffer *token_to_source;
     Buffer *ctab;
@@ -552,8 +553,11 @@ static int parse_destination_token(Context *ctx)
     int invalid_writemask = 0;
     if (nexttoken(ctx) != ((Token) '.'))
     {
-        info->writemask = 0xF;
-        info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
+        info->writemask = ctx->default_writemask;
+        info->writemask0 = ((info->writemask >> 0) & 0x1);
+        info->writemask1 = ((info->writemask >> 1) & 0x1);
+        info->writemask2 = ((info->writemask >> 2) & 0x1);
+        info->writemask3 = ((info->writemask >> 3) & 0x1);
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
     else if (nexttoken(ctx) != TOKEN_IDENTIFIER)
@@ -1107,14 +1111,15 @@ typedef int (*args_function)(Context *ctx);
 typedef struct
 {
     const char *opcode_string;
+    const uint8 default_writemask;
     args_function parse_args;
 } Instruction;
 
 
 static const Instruction instructions[] =
 {
-    #define INSTRUCTION_STATE(op, opstr, s, a, t) { opstr, parse_args_##a },
-    #define INSTRUCTION(op, opstr, slots, a, t) { opstr, parse_args_##a },
+    #define INSTRUCTION_STATE(op, opstr, s, a, t, w) { opstr, w, parse_args_##a },
+    #define INSTRUCTION(op, opstr, slots, a, t, w) { opstr, w, parse_args_##a },
     #define MOJOSHADER_DO_INSTRUCTION_TABLE 1
     #include "mojoshader_internal.h"
 };
@@ -1235,6 +1240,7 @@ static int parse_instruction_token(Context *ctx, Token token)
     // !!! FIXME: predicated instructions
 
     ctx->tokenbufpos = 0;
+    ctx->default_writemask = instruction->default_writemask;
 
     const int tokcount = instruction->parse_args(ctx);
 
@@ -1448,6 +1454,7 @@ static Context *build_context(const char *filename,
     ctx->free = f;
     ctx->malloc_data = d;
     ctx->current_position = MOJOSHADER_POSITION_BEFORE;
+    ctx->default_writemask = 0xF;
 
     const size_t outblk = sizeof (uint32) * 4 * 64; // 64 4-token instrs.
     ctx->output = buffer_create(outblk, MallocBridge, FreeBridge, ctx);

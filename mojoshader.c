@@ -1975,12 +1975,12 @@ typedef struct
 //  of the instruction token.
 static const Instruction instructions[] =
 {
-    #define INSTRUCTION_STATE(op, opstr, slots, a, t) { \
+    #define INSTRUCTION_STATE(op, opstr, slots, a, t, w) { \
         opstr, slots, t, parse_args_##a, state_##op, PROFILE_EMITTERS(op) \
     },
 
-    #define INSTRUCTION(op, opstr, slots, a, t) { \
-        opstr, slots, t, parse_args_##a, 0, PROFILE_EMITTERS(op) \
+    #define INSTRUCTION(op, opstr, slots, a, t, w) { \
+        opstr, slots, t, parse_args_##a, NULL, PROFILE_EMITTERS(op) \
     },
 
     #define MOJOSHADER_DO_INSTRUCTION_TABLE 1
