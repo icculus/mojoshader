@@ -1985,10 +1985,6 @@ static const Instruction instructions[] =
 
     #define MOJOSHADER_DO_INSTRUCTION_TABLE 1
     #include "mojoshader_internal.h"
-    #undef MOJOSHADER_DO_INSTRUCTION_TABLE
-
-    #undef INSTRUCTION
-    #undef INSTRUCTION_STATE
 };
 
 
