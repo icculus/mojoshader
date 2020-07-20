@@ -696,31 +696,51 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
         pushback(ctx);  // not relative addressing?
     else
     {
-        if (!relok)
-            fail(ctx, "Relative addressing not permitted here.");
-        else
-            retval++;
-
-        parse_source_token_maybe_relative(ctx, 0);
-        relative = 1;
-
-        if (nexttoken(ctx) != ((Token) '+'))
-            pushback(ctx);
-        else
+        // quick hack here to make "c[5]" convert to "c5". This will also
+        //  work with "c0[5]" but that's possibly illegal...?
+        int skip_relative_parsing = 0;
+        if ((regtype == REG_TYPE_CONST) && (regnum == 0))
         {
-            // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
-            if (regnum != 0)
-                fail(ctx, "Relative addressing with explicit register number.");
-
             uint32 ui32 = 0;
-            if ( (nexttoken(ctx) != TOKEN_INT_LITERAL) ||
-                 (!ui32fromtoken(ctx, &ui32)) ||
-                 (ctx->tokenlen != 0) )
+            if (nexttoken(ctx) != TOKEN_INT_LITERAL)
+                pushback(ctx);
+            else if (!ui32fromtoken(ctx, &ui32))
+                pushback(ctx);
+            else
             {
-                fail(ctx, "Invalid relative addressing offset");
-            } // if
-            regnum += (int) ui32;
-        } // else
+                regnum = ui32;
+                skip_relative_parsing = 1;
+            } // else
+        } // if
+
+        if (!skip_relative_parsing)
+        {
+            if (!relok)
+                fail(ctx, "Relative addressing not permitted here.");
+            else
+                retval++;
+
+            parse_source_token_maybe_relative(ctx, 0);
+            relative = 1;
+
+            if (nexttoken(ctx) != ((Token) '+'))
+                pushback(ctx);
+            else
+            {
+                // !!! FIXME: maybe c3[a0.x + 5] is legal and becomes c[a0.x + 8] ?
+                if (regnum != 0)
+                    fail(ctx, "Relative addressing with explicit register number.");
+
+                uint32 ui32 = 0;
+                if ( (nexttoken(ctx) != TOKEN_INT_LITERAL) ||
+                     (!ui32fromtoken(ctx, &ui32)) ||
+                     (ctx->tokenlen != 0) )
+                {
+                    fail(ctx, "Invalid relative addressing offset");
+                } // if
+                regnum += (int) ui32;
+            } // else
+        } // if
 
         if (nexttoken(ctx) != ((Token) ']'))
             fail(ctx, "Expected ']'");
