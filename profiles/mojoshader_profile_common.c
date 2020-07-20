@@ -331,9 +331,9 @@ int writemask_y(const int writemask)
 
 int replicate_swizzle(const int swizzle)
 {
-    return ( (((swizzle >> 0) & 0x3) == ((swizzle >> 2) & 0x3)) &&
-             (((swizzle >> 2) & 0x3) == ((swizzle >> 4) & 0x3)) &&
-             (((swizzle >> 4) & 0x3) == ((swizzle >> 6) & 0x3)) );
+    // elements 1|2 match 3|4 and element 1 matches element 2.
+    return ( (((swizzle >> 4) & 0xF) == ((swizzle >> 0) & 0xF)) &&
+             (((swizzle >> 0) & 0x3) == ((swizzle >> 2) & 0x3)) );
 } // replicate_swizzle
 
 int no_swizzle(const int swizzle)
