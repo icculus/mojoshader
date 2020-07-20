@@ -1194,19 +1194,28 @@ void emit_GLSL_MUL(Context *ctx)
 
 void emit_GLSL_RCP(Context *ctx)
 {
-    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
+    char cast[16] = { '\0' };
+    if (vecsize != 1)
+        snprintf(cast, sizeof (cast), "vec%d", vecsize);
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
     char code[128];
     ctx->need_max_float = 1;
-    make_GLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : 1.0 / %s", src0, src0);
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s((%s == 0.0) ? FLT_MAX : 1.0 / %s)", cast, src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RCP
 
 void emit_GLSL_RSQ(Context *ctx)
 {
-    char src0[64]; make_GLSL_srcarg_string_masked(ctx, 0, src0, sizeof (src0));
+    const int vecsize = vecsize_from_writemask(ctx->dest_arg.writemask);
+    char cast[16] = { '\0' };
+    if (vecsize != 1)
+        snprintf(cast, sizeof (cast), "vec%d", vecsize);
+
+    char src0[64]; make_GLSL_srcarg_string_scalar(ctx, 0, src0, sizeof (src0));
     char code[128];
     ctx->need_max_float = 1;
-    make_GLSL_destarg_assign(ctx, code, sizeof (code), "(%s == 0.0) ? FLT_MAX : inversesqrt(abs(%s))", src0, src0);
+    make_GLSL_destarg_assign(ctx, code, sizeof (code), "%s((%s == 0.0) ? FLT_MAX : inversesqrt(abs(%s)))", cast, src0, src0);
     output_line(ctx, "%s", code);
 } // emit_GLSL_RSQ
 
