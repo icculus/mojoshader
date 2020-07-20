@@ -550,21 +550,16 @@ static int parse_destination_token(Context *ctx)
     // !!! FIXME: can dest registers do relative addressing?
 
     int invalid_writemask = 0;
-    int implicit_writemask = 0;
     if (nexttoken(ctx) != ((Token) '.'))
     {
-        implicit_writemask = 1;
         info->writemask = 0xF;
         info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
         pushback(ctx);  // no explicit writemask; do full mask.
     } // if
-
-    // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
-    //else if (scalar_register(ctx->shader_type, info->regtype, info->regnum))
-    else if ( (scalar_register(ctx->shader_type, info->regtype, info->regnum)) && (info->regtype != REG_TYPE_DEPTHOUT) )
-        fail(ctx, "Writemask specified for scalar register");
     else if (nexttoken(ctx) != TOKEN_IDENTIFIER)
+    {
         invalid_writemask = 1;
+    } // else if
     else
     {
         char tokenbytes[5] = { '\0', '\0', '\0', '\0', '\0' };
@@ -584,18 +579,24 @@ static int parse_destination_token(Context *ctx)
                             ((info->writemask1 & 0x1) << 1) |
                             ((info->writemask2 & 0x1) << 2) |
                             ((info->writemask3 & 0x1) << 3) );
+
+        // Cg generates code with oDepth.z, and Microsoft's tools accept
+        //  oFog.x and probably others. For safety's sake, we'll allow
+        //  any single channel to be specified and will just wipe out the
+        //  writemask as if it wasn't specified at all. More than one
+        //  channel will be a fail, though.
+        if (!invalid_writemask && scalar_register(ctx->shader_type, info->regtype, info->regnum))
+        {
+            const int numchans = info->writemask0 + info->writemask1 + info->writemask2 + info->writemask3;
+            if (numchans != 1)
+                fail(ctx, "Non-scalar writemask specified for scalar register");
+            info->writemask = 0xF;
+            info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
+        } // if
     } // else
 
     if (invalid_writemask)
         fail(ctx, "Invalid writemask");
-
-    // !!! FIXME: Cg generates code with oDepth.z ... this is a bug, I think.
-    if (info->regtype == REG_TYPE_DEPTHOUT)
-    {
-        if ( (!implicit_writemask) && ((info->writemask0 + info->writemask1 +
-               info->writemask2 + info->writemask3) > 1) )
-            fail(ctx, "Writemask specified for scalar register");
-    } // if
 
     info->orig_writemask = info->writemask;
 
