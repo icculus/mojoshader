@@ -128,6 +128,19 @@ static inline int isfail(const Context *ctx)
     return ctx->isfail;
 } // isfail
 
+static int vecsize_from_writemask(const uint8 m)
+{
+    return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1) + ((m >> 3) & 1);
+} // vecsize_from_writemask
+
+static void set_dstarg_writemask(DestArgInfo *dst, const uint8 mask)
+{
+    dst->writemask = mask;
+    dst->writemask0 = ((mask >> 0) & 1);
+    dst->writemask1 = ((mask >> 1) & 1);
+    dst->writemask2 = ((mask >> 2) & 1);
+    dst->writemask3 = ((mask >> 3) & 1);
+} // set_dstarg_writemask
 
 // Shader model version magic...
 
@@ -553,12 +566,8 @@ static int parse_destination_token(Context *ctx)
     int invalid_writemask = 0;
     if (nexttoken(ctx) != ((Token) '.'))
     {
-        info->writemask = ctx->default_writemask;
-        info->writemask0 = ((info->writemask >> 0) & 0x1);
-        info->writemask1 = ((info->writemask >> 1) & 0x1);
-        info->writemask2 = ((info->writemask >> 2) & 0x1);
-        info->writemask3 = ((info->writemask >> 3) & 0x1);
-        pushback(ctx);  // no explicit writemask; do full mask.
+        set_dstarg_writemask(info, ctx->default_writemask);
+        pushback(ctx);  // no explicit writemask; do default mask.
     } // if
     else if (nexttoken(ctx) != TOKEN_IDENTIFIER)
     {
@@ -570,19 +579,14 @@ static int parse_destination_token(Context *ctx)
         const unsigned int tokenlen = ctx->tokenlen;
         memcpy(tokenbytes, ctx->token, ((tokenlen < 4) ? tokenlen : 4));
         char *ptr = tokenbytes;
-
-        if ((*ptr == 'r') || (*ptr == 'x')) { info->writemask0 = 1; ptr++; }
-        if ((*ptr == 'g') || (*ptr == 'y')) { info->writemask1 = 1; ptr++; }
-        if ((*ptr == 'b') || (*ptr == 'z')) { info->writemask2 = 1; ptr++; }
-        if ((*ptr == 'a') || (*ptr == 'w')) { info->writemask3 = 1; ptr++; }
+        uint8 writemask = 0;
+        if ((*ptr == 'r') || (*ptr == 'x')) { writemask |= (1<<0); ptr++; }
+        if ((*ptr == 'g') || (*ptr == 'y')) { writemask |= (1<<1); ptr++; }
+        if ((*ptr == 'b') || (*ptr == 'z')) { writemask |= (1<<2); ptr++; }
+        if ((*ptr == 'a') || (*ptr == 'w')) { writemask |= (1<<3); ptr++; }
 
         if (*ptr != '\0')
             invalid_writemask = 1;
-
-        info->writemask = ( ((info->writemask0 & 0x1) << 0) |
-                            ((info->writemask1 & 0x1) << 1) |
-                            ((info->writemask2 & 0x1) << 2) |
-                            ((info->writemask3 & 0x1) << 3) );
 
         // Cg generates code with oDepth.z, and Microsoft's tools accept
         //  oFog.x and probably others. For safety's sake, we'll allow
@@ -591,12 +595,13 @@ static int parse_destination_token(Context *ctx)
         //  channel will be a fail, though.
         if (!invalid_writemask && scalar_register(ctx->shader_type, info->regtype, info->regnum))
         {
-            const int numchans = info->writemask0 + info->writemask1 + info->writemask2 + info->writemask3;
+            const int numchans = vecsize_from_writemask(writemask);
             if (numchans != 1)
                 fail(ctx, "Non-scalar writemask specified for scalar register");
-            info->writemask = 0xF;
-            info->writemask0 = info->writemask1 = info->writemask2 = info->writemask3 = 1;
+            writemask = 0xF;
         } // if
+
+        set_dstarg_writemask(info, writemask);
     } // else
 
     if (invalid_writemask)
