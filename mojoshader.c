@@ -1501,7 +1501,7 @@ static void state_MOVA(Context *ctx)
 static void state_RCP(Context *ctx)
 {
     if (!replicate_swizzle(ctx->source_args[0].swizzle))
-        fail(ctx, "RCP without replicate swizzzle");
+        fail(ctx, "RCP without replicate swizzle");
 } // state_RCP
 
 static void state_LOOP(Context *ctx)
@@ -1528,7 +1528,7 @@ static void state_BREAKP(Context *ctx)
     if (regtype != REG_TYPE_PREDICATE)
         fail(ctx, "BREAKP argument isn't predicate register");
     else if (!replicate_swizzle(ctx->source_args[0].swizzle))
-        fail(ctx, "BREAKP without replicate swizzzle");
+        fail(ctx, "BREAKP without replicate swizzle");
     else if ((ctx->loops == 0) && (ctx->reps == 0))
         fail(ctx, "BREAKP outside LOOP/ENDLOOP or REP/ENDREP");
 } // state_BREAKP
