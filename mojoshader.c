@@ -1937,8 +1937,6 @@ static void state_TEXLD(Context *ctx)
         if (info->regtype != REG_TYPE_TEXTURE)
             fail(ctx, "TEX param must be a texture register");
         add_sampler(ctx, sampler, TEXTURE_TYPE_2D, 0);
-        add_attribute_register(ctx, REG_TYPE_TEXTURE, sampler,
-                               MOJOSHADER_USAGE_TEXCOORD, sampler, 0xF, 0);
     } // else
 } // state_TEXLD
 
