@@ -2247,7 +2247,7 @@ void emit_GLSL_DP2ADD(Context *ctx)
     char src0[64]; make_GLSL_srcarg_string_vec2(ctx, 0, src0, sizeof (src0));
     char src1[64]; make_GLSL_srcarg_string_vec2(ctx, 1, src1, sizeof (src1));
     char src2[64]; make_GLSL_srcarg_string_scalar(ctx, 2, src2, sizeof (src2));
-    char extra[64]; snprintf(extra, sizeof (extra), " + %s", src2);
+    char extra[128]; snprintf(extra, sizeof (extra), " + %s", src2);
     emit_GLSL_dotprod(ctx, src0, src1, extra);
 } // emit_GLSL_DP2ADD
 
