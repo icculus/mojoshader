@@ -412,6 +412,7 @@ void buffer_patch(Buffer *buffer, const size_t start,
 #define FXLC_ID 0x434C5846  // 0x434C5846 == 'FXLC'
 
 // we need to reference these by explicit value occasionally...
+#define OPCODE_RCP 6
 #define OPCODE_RET 28
 #define OPCODE_IF 40
 #define OPCODE_IFC 41

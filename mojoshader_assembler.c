@@ -56,6 +56,7 @@ typedef struct Context
     int tokenbufpos;        // bytecode tokens!
     DestArgInfo dest_arg;
     uint8 default_writemask;
+    uint8 default_swizzle;
     Buffer *output;
     Buffer *token_to_source;
     Buffer *ctab;
@@ -641,6 +642,12 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
 {
     int retval = 1;
 
+    // If we've set a weird default swizzle, save it off and then go back to
+    //  the default, so it won't reuse the setting for relative addressing
+    //  processing. We only need a weird default for a handful of instructions.
+    const uint8 default_swizzle = ctx->default_swizzle;
+    ctx->default_swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
+
     if (tokenbuf_overflow(ctx))
         return 0;
 
@@ -759,8 +766,8 @@ static int parse_source_token_maybe_relative(Context *ctx, const int relok)
     uint32 swizzle = 0;
     if (nexttoken(ctx) != ((Token) '.'))
     {
-        swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
-        pushback(ctx);  // no explicit writemask; do full mask.
+        swizzle = default_swizzle;
+        pushback(ctx);  // no explicit swizzle; use the default.
     } // if
     else if (scalar_register(ctx->shader_type, regtype, regnum))
         fail(ctx, "Swizzle specified for scalar register");
@@ -1246,6 +1253,9 @@ static int parse_instruction_token(Context *ctx, Token token)
 
     ctx->tokenbufpos = 0;
     ctx->default_writemask = instruction->default_writemask;
+
+    if (opcode == OPCODE_RCP)  // RCP has an implicit swizzle of .xxxx if not specified.
+        ctx->default_swizzle = 0;  // .xxxx replicate swizzle.
 
     const int tokcount = instruction->parse_args(ctx);
 
