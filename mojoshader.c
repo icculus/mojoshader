@@ -3585,13 +3585,49 @@ static void process_definitions(Context *ctx)
 
                 case REG_TYPE_INPUT:
                     // You don't have to dcl_ your inputs in Shader Model 1.
-                    if (shader_is_pixel(ctx)&&!shader_version_atleast(ctx,2,0))
+                    if (!shader_version_atleast(ctx,2,0))
                     {
-                        add_attribute_register(ctx, regtype, regnum,
-                                               MOJOSHADER_USAGE_COLOR, regnum,
-                                               0xF, 0);
-                        break;
+                        if (shader_is_pixel(ctx))
+                        {
+                            add_attribute_register(ctx, regtype, regnum,
+                                                   MOJOSHADER_USAGE_COLOR, regnum,
+                                                   0xF, 0);
+                            break;
+                        } // if
+                        else if (shader_is_vertex(ctx))
+                        {
+                            MOJOSHADER_usage usage = MOJOSHADER_USAGE_UNKNOWN;
+                            int index = 0;
+                            switch (regnum)  // these are hardcoded for Shader Model 1: v0 is POSITION, v1 is BLENDWEIGHT, etc.
+                            {
+                                case 0: usage = MOJOSHADER_USAGE_POSITION; break;
+                                case 1: usage = MOJOSHADER_USAGE_BLENDWEIGHT; break;
+                                case 2: usage = MOJOSHADER_USAGE_BLENDINDICES; break;
+                                case 3: usage = MOJOSHADER_USAGE_NORMAL; break;
+                                case 4: usage = MOJOSHADER_USAGE_POINTSIZE; break;
+                                case 5: usage = MOJOSHADER_USAGE_COLOR; break;  // diffuse
+                                case 6: usage = MOJOSHADER_USAGE_COLOR; index = 1; break; // specular
+                                case 7: usage = MOJOSHADER_USAGE_TEXCOORD; break;
+                                case 8: usage = MOJOSHADER_USAGE_TEXCOORD; index = 1; break;
+                                case 9: usage = MOJOSHADER_USAGE_TEXCOORD; index = 2; break;
+                                case 10: usage = MOJOSHADER_USAGE_TEXCOORD; index = 3; break;
+                                case 11: usage = MOJOSHADER_USAGE_TEXCOORD; index = 4; break;
+                                case 12: usage = MOJOSHADER_USAGE_TEXCOORD; index = 5; break;
+                                case 13: usage = MOJOSHADER_USAGE_TEXCOORD; index = 6; break;
+                                case 14: usage = MOJOSHADER_USAGE_TEXCOORD; index = 7; break;
+                                case 15: usage = MOJOSHADER_USAGE_POSITION; index = 1; break;
+                                case 16: usage = MOJOSHADER_USAGE_NORMAL; index = 1; break;
+                                default: break;
+                            } // switch
+
+                            if (usage != MOJOSHADER_USAGE_UNKNOWN)
+                            {
+                                add_attribute_register(ctx, regtype, regnum, usage, index, 0xF, 0);
+                                break;
+                            } // if
+                        } // else if
                     } // if
+
                     // fall through...
 
                 default:
