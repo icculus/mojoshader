@@ -1254,7 +1254,8 @@ static int parse_instruction_token(Context *ctx, Token token)
     ctx->tokenbufpos = 0;
     ctx->default_writemask = instruction->default_writemask;
 
-    if (opcode == OPCODE_RCP)  // RCP has an implicit swizzle of .xxxx if not specified.
+    // RCP and RSQ have an implicit swizzle of .xxxx if not specified.
+    if ((opcode == OPCODE_RCP) || (opcode == OPCODE_RSQ))
         ctx->default_swizzle = 0;  // .xxxx replicate swizzle.
 
     const int tokcount = instruction->parse_args(ctx);

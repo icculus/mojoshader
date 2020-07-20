@@ -1504,6 +1504,12 @@ static void state_RCP(Context *ctx)
         fail(ctx, "RCP without replicate swizzle");
 } // state_RCP
 
+static void state_RSQ(Context *ctx)
+{
+    if (!replicate_swizzle(ctx->source_args[0].swizzle))
+        fail(ctx, "RSQ without replicate swizzle");
+} // state_RSQ
+
 static void state_LOOP(Context *ctx)
 {
     if (ctx->source_args[0].regtype != REG_TYPE_LOOP)
