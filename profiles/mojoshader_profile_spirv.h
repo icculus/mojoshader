@@ -211,6 +211,11 @@ typedef struct SpirvContext
         uint32 idtexbeml;
     } sampler_extras[4];
 
+    // TEX opcode in ps_1_3 and below has one implicit texcoord input attribute for each texture
+    // register. We use this array to hold SSA id of this input attribute (see emit_SPIRV_global
+    // for details).
+    uint32 id_implicit_input[4];
+
     int loop_stack_idx;
     SpirvLoopInfo loop_stack[32];
 } SpirvContext;
