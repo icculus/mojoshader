@@ -10,7 +10,6 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h> // Include this early to avoid SDL conflicts
-#endif
 
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
@@ -912,5 +911,6 @@ const char *MOJOSHADER_d3d11GetError(void)
 } // MOJOSHADER_d3d11GetError
 
 #endif /* SUPPORT_PROFILE_HLSL */
+#endif /* _WIN32 */
 
 // end of mojoshader_d3d11.c ...
