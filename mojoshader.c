@@ -1737,15 +1737,6 @@ static void state_texops(Context *ctx, const char *opcode,
         add_sampler(ctx, dst->regnum, ttyp, texbem);
     } // if
 
-    add_attribute_register(ctx, REG_TYPE_TEXTURE, dst->regnum,
-                           MOJOSHADER_USAGE_TEXCOORD, dst->regnum, 0xF, 0);
-
-    // Strictly speaking, there should be a TEX opcode prior to this call that
-    //  should fill in this metadata, but I'm not sure that's required for the
-    //  shader to assemble in D3D, so we'll do this so we don't fail with a
-    //  cryptic error message even if the developer didn't do the TEX.
-    add_attribute_register(ctx, REG_TYPE_TEXTURE, src->regnum,
-                           MOJOSHADER_USAGE_TEXCOORD, src->regnum, 0xF, 0);
 } // state_texops
 
 static void state_texbem(Context *ctx, const char *opcode)
