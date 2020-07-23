@@ -1945,7 +1945,9 @@ void emit_SPIRV_global(Context *ctx, RegisterType regtype, int regnum)
 
                     // Overwrite Private variable with Input variable, so emit_SPIRV_finalize outputs
                     // OpEntryPoint with correct references to Input and Output variables.
+                    ctx->spirv.id_implicit_input[regnum] = id_input_var;
                     r->spirv.iddecl = id_input_var;
+                    spv_output_regname(ctx, id_input_var, regtype, regnum);
                     return;
                 } // if
                 tid = spv_get_type(ctx, STI_PTR_VEC4_P);
@@ -2481,8 +2483,21 @@ void emit_SPIRV_finalize(Context *ctx)
     /* 3 is for opcode + exec. model + idmain */
     uint32 inoutcount = ctx->spirv.inoutcount;
 
-    if (shader_is_pixel(ctx) && !shader_version_atleast(ctx, 2, 0))
-        inoutcount += 1;
+    uint32 implicit_input_count = sizeof(ctx->spirv.id_implicit_input) / sizeof(uint32);
+    if (shader_is_pixel(ctx))
+    {
+        if (!shader_version_atleast(ctx, 1, 4))
+        {
+            for (uint32 i = 0; i < implicit_input_count; i++)
+            {
+                if (ctx->spirv.id_implicit_input[i])
+                    inoutcount += 1;
+            } // for
+        } // if
+
+        if (!shader_version_atleast(ctx, 2, 0))
+            inoutcount += 1;
+    } // if
 
     spv_emit_part(ctx, 3 + spv_strlen(ctx->mainfn) + inoutcount, 3, SpvOpEntryPoint,
         model, ctx->spirv.idmain
@@ -2520,6 +2535,16 @@ void emit_SPIRV_finalize(Context *ctx)
     // only applies to pixel shaders
     if (shader_is_pixel(ctx))
     {
+        if (!shader_version_atleast(ctx, 1, 4))
+        {
+            for (uint32 i = 0; i < implicit_input_count; i++)
+            {
+                uint32 id = ctx->spirv.id_implicit_input[i];
+                if (id)
+                    spv_emit_word(ctx, id);
+            } // for
+        } // if
+
         if (!shader_version_atleast(ctx, 2, 0))
         {
             // r0 is used as color output.
