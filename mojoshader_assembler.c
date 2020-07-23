@@ -1471,6 +1471,7 @@ static Context *build_context(const char *filename,
     ctx->malloc_data = d;
     ctx->current_position = MOJOSHADER_POSITION_BEFORE;
     ctx->default_writemask = 0xF;
+    ctx->default_swizzle = 0xE4;  // 0xE4 == 11100100 ... 0 1 2 3. No swizzle.
 
     const size_t outblk = sizeof (uint32) * 4 * 64; // 64 4-token instrs.
     ctx->output = buffer_create(outblk, MallocBridge, FreeBridge, ctx);
