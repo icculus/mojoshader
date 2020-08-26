@@ -1073,6 +1073,8 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     for (i = 0; i < pixel->attribute_count; i++)
     {
         const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
+        if (pAttr->usage == MOJOSHADER_USAGE_UNKNOWN)
+            continue; // Probably something like VPOS, ignore!
         if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pAttr->index == 0)
             continue;
 
@@ -1089,6 +1091,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     for (i = 0; i < vertex->output_count; i++)
     {
         const MOJOSHADER_attribute *vAttr = &vertex->outputs[i];
+        assert(vAttr->usage != MOJOSHADER_USAGE_UNKNOWN);
         if (vAttr->usage == MOJOSHADER_USAGE_POSITION && vAttr->index == 0)
             continue;
         if (vAttr->usage == MOJOSHADER_USAGE_POINTSIZE && vAttr->index == 0)
