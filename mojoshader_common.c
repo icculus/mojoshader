@@ -1070,6 +1070,20 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     SpirvPatchTable *pTable = (SpirvPatchTable *) &pixel->output[pDataLen];
     const uint32 texcoord0Loc = pTable->attrib_offsets[MOJOSHADER_USAGE_TEXCOORD][0];
 
+    // We need locations for color outputs first!
+    for (i = 0; i < pixel->output_count; i ++)
+    {
+        const MOJOSHADER_attribute *pAttr = &pixel->outputs[i];
+        assert(pAttr->usage == MOJOSHADER_USAGE_COLOR);
+        if (pAttr->index == 0)
+            continue;
+
+        pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
+        ((uint32 *) pixel->output)[pOffset] = attr_loc;
+        attr_loc++;
+    } // for
+
+    // Okay, now we can start linking pixel/vertex attributes
     for (i = 0; i < pixel->attribute_count; i++)
     {
         const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
@@ -1104,7 +1118,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
             vOffset = vTable->attrib_offsets[vAttr->usage][vAttr->index];
             ((uint32 *) vertex->output)[vOffset] = attr_loc++;
         } // if
-    } // while
+    } // for
 
     // gl_PointCoord support
     if (texcoord0Loc)
