@@ -100,6 +100,11 @@ typedef struct MOJOSHADER_vkContext
     MOJOSHADER_vkProgram *bound_program;
     HashTable *linker_cache;
 
+    // Note that these may not necessarily align with bound_program!
+    // We need to store these so effects can have overlapping shaders.
+    MOJOSHADER_vkShader *bound_vshader;
+    MOJOSHADER_vkShader *bound_pshader;
+
     #define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
         vkfntype_MOJOSHADER_##func func;
     #define VULKAN_DEVICE_FUNCTION(ret, func, params) \
@@ -635,7 +640,7 @@ MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vshader,
 {
     MOJOSHADER_vkProgram *result;
 
-    if ((vshader == NULL) && (pshader == NULL))
+    if ((vshader == NULL) || (pshader == NULL)) // Both shaders MUST exist!
         return NULL;
 
     result = (MOJOSHADER_vkProgram *) ctx->malloc_fn(sizeof (MOJOSHADER_vkProgram),
@@ -687,6 +692,9 @@ void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
     shaders.vertex = vshader;
     shaders.fragment = pshader;
 
+    ctx->bound_vshader = vshader;
+    ctx->bound_pshader = pshader;
+
     const void *val = NULL;
     if (hash_find(ctx->linker_cache, &shaders, &val))
         program = (MOJOSHADER_vkProgram *) val;
@@ -726,14 +734,14 @@ void MOJOSHADER_vkGetBoundShaders(MOJOSHADER_vkShader **vshader,
         if (ctx->bound_program != NULL)
             *vshader = ctx->bound_program->vertexShader;
         else
-            *vshader = NULL;
+            *vshader = ctx->bound_vshader; // In case a pshader isn't set yet
     } // if
     if (pshader != NULL)
     {
         if (ctx->bound_program != NULL)
             *pshader = ctx->bound_program->pixelShader;
         else
-            *pshader = NULL;
+            *pshader = ctx->bound_pshader; // In case a vshader isn't set yet
     } // if
 } // MOJOSHADER_vkGetBoundShaders
 
@@ -750,10 +758,8 @@ void MOJOSHADER_vkMapUniformBufferMemory(float **vsf, int **vsi, unsigned char *
 
 void MOJOSHADER_vkUnmapUniformBufferMemory()
 {
-    /* Why is this function named unmap instead of update?
-     * the world may never know...
-     */
-    assert(ctx->bound_program != NULL);
+    if (ctx->bound_program == NULL)
+        return; // Ignore buffer updates until we have a real program linked
     update_uniform_buffer(ctx->bound_program->vertexShader);
     update_uniform_buffer(ctx->bound_program->pixelShader);
 } // MOJOSHADER_vkUnmapUniformBufferMemory
