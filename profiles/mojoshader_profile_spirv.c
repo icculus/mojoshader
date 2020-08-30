@@ -276,7 +276,7 @@ static void spv_output_attrib_location(Context *ctx, uint32 id,
 {
     SpirvPatchTable* table = &ctx->spirv.patch_table;
     push_output(ctx, &ctx->helpers);
-    spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationLocation, 0xDEADBEEF);
+    spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationLocation, index);
     pop_output(ctx);
     table->attrib_offsets[usage][index] = (buffer_size(ctx->helpers) >> 2) - 1;
 } // spv_output_attrib_location
