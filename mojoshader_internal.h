@@ -755,6 +755,7 @@ typedef struct SpirvPatchTable
 
     // Patches for linking vertex output/pixel input
     uint32 attrib_offsets[MOJOSHADER_USAGE_TOTAL][16];
+    uint32 output_offsets[16];
 } SpirvPatchTable;
 
 void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,

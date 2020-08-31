@@ -271,6 +271,15 @@ static uint32 spv_output_location(Context *ctx, uint32 id, uint32 loc)
     return (buffer_size(ctx->helpers) >> 2) - 1;
 } // spv_output_location
 
+static void spv_output_color_location(Context *ctx, uint32 id, uint32 index)
+{
+    SpirvPatchTable* table = &ctx->spirv.patch_table;
+    push_output(ctx, &ctx->helpers);
+    spv_emit(ctx, 4, SpvOpDecorate, id, SpvDecorationLocation, index);
+    pop_output(ctx);
+    table->output_offsets[index] = (buffer_size(ctx->helpers) >> 2) - 1;
+} // spv_output_color_location
+
 static void spv_output_attrib_location(Context *ctx, uint32 id,
                                        MOJOSHADER_usage usage, uint32 index)
 {
@@ -1632,8 +1641,6 @@ static void spv_link_vs_attributes(Context *ctx, uint32 id,
         spv_output_builtin(ctx, id, SpvBuiltInPointSize);
         ctx->spirv.patch_table.attrib_offsets[usage][index] = 1;
     } // else if
-    else if (usage == MOJOSHADER_USAGE_COLOR && index == 0)
-        spv_output_location(ctx, id, 0);
     else
         spv_output_attrib_location(ctx, id, usage, index);
 } // spv_link_vs_attributes
@@ -1652,16 +1659,10 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
             // - decorated with location 0
             // - not decorated as a built-in variable.
             // There is no implicit broadcast.
-            if (index == 0)
-                spv_output_location(ctx, id, 0);
-            else
-                spv_output_attrib_location(ctx, id, MOJOSHADER_USAGE_COLOR, index);
+            spv_output_color_location(ctx, id, index);
             break;
         case REG_TYPE_INPUT: // v# (MOJOSHADER_USAGE_COLOR aka `oC#` in vertex shader)
-            if (usage == MOJOSHADER_USAGE_COLOR && index == 0)
-                spv_output_location(ctx, id, 0);
-            else
-                spv_output_attrib_location(ctx, id, usage, index);
+            spv_output_attrib_location(ctx, id, usage, index);
             break;
         case REG_TYPE_TEXTURE: // t# (MOJOSHADER_USAGE_TEXCOORD aka `oT#` in vertex shader)
             spv_output_attrib_location(ctx, id, MOJOSHADER_USAGE_TEXCOORD, index);
@@ -2625,6 +2626,9 @@ void emit_SPIRV_finalize(Context *ctx)
         for (j = 0; j < 16; j++)
             if (table->attrib_offsets[i][j])
                 table->attrib_offsets[i][j] += base_offset;
+    for (i = 0; i < 16; i++)
+        if (table->output_offsets[i])
+            table->output_offsets[i] += base_offset;
 
     push_output(ctx, &ctx->postflight);
     buffer_append(ctx->output, &ctx->spirv.patch_table, sizeof(ctx->spirv.patch_table));

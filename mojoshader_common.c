@@ -1062,7 +1062,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
                                       const MOJOSHADER_parseData *pixel)
 {
     int i;
-    uint32 attr_loc = 1; // 0 is reserved for COLOR0
+    uint32 attr_loc = 0;
     uint32 vOffset, pOffset;
     int vDataLen = vertex->output_len - sizeof(SpirvPatchTable);
     int pDataLen = pixel->output_len - sizeof(SpirvPatchTable);
@@ -1075,11 +1075,21 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     {
         const MOJOSHADER_attribute *pAttr = &pixel->outputs[i];
         assert(pAttr->usage == MOJOSHADER_USAGE_COLOR);
-        if (pAttr->index == 0)
-            continue;
 
-        pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
+        // Set the loc for the output declaration...
+        pOffset = pTable->output_offsets[pAttr->index];
+        assert(pOffset > 0);
         ((uint32 *) pixel->output)[pOffset] = attr_loc;
+
+        // Set the same value for the vertex output/pixel input...
+        pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
+        if (pOffset)
+            ((uint32 *) pixel->output)[pOffset] = attr_loc;
+        vOffset = vTable->attrib_offsets[pAttr->usage][pAttr->index];
+        if (vOffset)
+            ((uint32 *) vertex->output)[vOffset] = attr_loc;
+
+        // ... increment location index, finally.
         attr_loc++;
     } // for
 
@@ -1089,7 +1099,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
         if (pAttr->usage == MOJOSHADER_USAGE_UNKNOWN)
             continue; // Probably something like VPOS, ignore!
-        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pAttr->index == 0)
+        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[pAttr->index])
             continue;
 
         // The input may not exist in the output list!
@@ -1110,7 +1120,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
             continue;
         if (vAttr->usage == MOJOSHADER_USAGE_POINTSIZE && vAttr->index == 0)
             continue;
-        if (vAttr->usage == MOJOSHADER_USAGE_COLOR && vAttr->index == 0)
+        if (vAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[vAttr->index])
             continue;
 
         if (!pTable->attrib_offsets[vAttr->usage][vAttr->index])
