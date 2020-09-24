@@ -3637,7 +3637,6 @@ typedef struct MOJOSHADER_vkProgram MOJOSHADER_vkProgram;
 DECLSPEC MOJOSHADER_vkContext *MOJOSHADER_vkCreateContext(VkInstance *instance,
                                                           VkPhysicalDevice *physical_device,
                                                           VkDevice *logical_device,
-                                                          int frames_in_flight,
                                                           PFN_MOJOSHADER_vkGetInstanceProcAddr instance_lookup,
                                                           PFN_MOJOSHADER_vkGetDeviceProcAddr lookup,
                                                           unsigned int graphics_queue_family_index,

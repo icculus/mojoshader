@@ -21,6 +21,7 @@
 #include "mojoshader_vulkan_vkfuncs.h"
 
 #define UBO_BUFFER_SIZE 8000000 // 8MB
+#define UBO_ACTUAL_SIZE (UBO_BUFFER_SIZE * 2) /* double so we can "rotate" the buffer and unblock main thread */
 
 // Internal struct defs...
 
@@ -78,7 +79,7 @@ typedef struct MOJOSHADER_vkContext
     uint32_t maxUniformBufferRange;
     uint32_t minUniformBufferOffsetAlignment;
 
-    int32_t frames_in_flight;
+    uint32_t frameIndex;
 
     MOJOSHADER_malloc malloc_fn;
     MOJOSHADER_free free_fn;
@@ -164,7 +165,7 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx)
     };
 
     bufferCreateInfo.flags = 0;
-    bufferCreateInfo.size = UBO_BUFFER_SIZE;
+    bufferCreateInfo.size = UBO_ACTUAL_SIZE;
     bufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     bufferCreateInfo.queueFamilyIndexCount = 1;
@@ -183,7 +184,7 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx)
         &memoryRequirements
     );
 
-    allocateInfo.allocationSize = UBO_BUFFER_SIZE;
+    allocateInfo.allocationSize = UBO_ACTUAL_SIZE;
 
     if (!find_memory_type(ctx,
                           memoryRequirements.memoryTypeBits,
@@ -209,12 +210,12 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx)
     ctx->vkMapMemory(*ctx->logical_device,
                      result->deviceMemory,
                      0,
-                     UBO_BUFFER_SIZE,
+                     UBO_ACTUAL_SIZE,
                      0,
                      (void**) &result->mapPointer
     );
 
-    result->bufferSize = UBO_BUFFER_SIZE;
+    result->bufferSize = UBO_ACTUAL_SIZE;
     result->currentBlockSize = 0;
     result->dynamicOffset = 0;
 
@@ -301,7 +302,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 
     ubo->currentBlockSize = next_highest_offset_alignment(uniform_data_size(shader));
 
-    if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize)
+    if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * ctx->frameIndex)
     {
         set_error("UBO overflow!!");
     } // if
@@ -448,7 +449,6 @@ MOJOSHADER_vkContext *MOJOSHADER_vkCreateContext(
     VkInstance *instance,
     VkPhysicalDevice *physical_device,
     VkDevice *logical_device,
-    int frames_in_flight,
     PFN_MOJOSHADER_vkGetInstanceProcAddr instance_lookup,
     PFN_MOJOSHADER_vkGetDeviceProcAddr device_lookup,
     unsigned int graphics_queue_family_index,
@@ -479,7 +479,7 @@ MOJOSHADER_vkContext *MOJOSHADER_vkCreateContext(
     resultCtx->logical_device = (VkDevice*) logical_device;
     resultCtx->instance_proc_lookup = (PFN_vkGetInstanceProcAddr) instance_lookup;
     resultCtx->device_proc_lookup = (PFN_vkGetDeviceProcAddr) device_lookup;
-    resultCtx->frames_in_flight = frames_in_flight;
+    resultCtx->frameIndex = 0;
     resultCtx->graphics_queue_family_index = graphics_queue_family_index;
     resultCtx->maxUniformBufferRange = max_uniform_buffer_range;
     resultCtx->minUniformBufferOffsetAlignment = min_uniform_buffer_offset_alignment;
@@ -778,9 +778,13 @@ void MOJOSHADER_vkGetUniformBuffers(VkBuffer *vbuf, unsigned long long *voff, un
 
 void MOJOSHADER_vkEndFrame()
 {
-    ctx->vertUboBuffer->dynamicOffset = 0;
+    ctx->frameIndex = (ctx->frameIndex + 1) % 2;
+
+    /* Reset counters */
+    /* Offset by size of buffer to simulate "rotating" the buffers */
+    ctx->vertUboBuffer->dynamicOffset = UBO_BUFFER_SIZE * ctx->frameIndex;
     ctx->vertUboBuffer->currentBlockSize = 0;
-    ctx->fragUboBuffer->dynamicOffset = 0;
+    ctx->fragUboBuffer->dynamicOffset = UBO_BUFFER_SIZE * ctx->frameIndex;
     ctx->fragUboBuffer->currentBlockSize = 0;
 } // MOJOSHADER_VkEndFrame
 
