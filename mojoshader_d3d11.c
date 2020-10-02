@@ -504,10 +504,12 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
                                  pshader->parseData->mainfn, "ps_4_0",
                                  D3D_SKIP_OPT, 0, &blob, &blob);
 
+    if (needs_free)
+        ctx->free_fn((void *) source, ctx->malloc_data);
+
     if (result < 0)
     {
         set_error((const char *) ID3D10Blob_GetBufferPointer(blob));
-        ctx->free_fn((void *) source, ctx->malloc_data);
         return NULL;
     } // if
 
@@ -517,8 +519,6 @@ static ID3D11PixelShader *compilePixelShader(MOJOSHADER_d3d11Shader *vshader,
                                    NULL, &retval);
 
     ID3D10Blob_Release(blob);
-    if (needs_free)
-        ctx->free_fn((void *) source, ctx->malloc_data);
     return retval;
 } // compilePixelShader
 
@@ -836,6 +836,8 @@ void MOJOSHADER_d3d11CompileVertexShader(unsigned long long inputLayoutHash,
     vshader->shaderMaps[vshader->numMaps].vertex.layoutHash = inputLayoutHash;
     ID3D11VertexShader *vs = compileVertexShader(vshader, newSource,
                                                  srcLength, &blob);
+    if (newSource != origSource)
+        ctx->free_fn((void *) newSource, ctx->malloc_data);
     vshader->shaderMaps[ctx->vertexShader->numMaps].val = vs;
     vshader->shaderMaps[ctx->vertexShader->numMaps].vertex.blob = blob;
     ctx->vertexShader->numMaps++;
