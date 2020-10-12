@@ -1181,7 +1181,7 @@ static int parse_instruction_token(Context *ctx, Token token)
     const unsigned int origtokenlen = ctx->tokenlen;
 
     // "TEX" is only meaningful in ps_1_1.
-    if ((!shader_version_atleast(ctx, 1, 4)) && (check_token_segment(ctx, "TEX")))
+    if ((!shader_version_atleast(ctx, 1, 4)) && (ctx->tokenlen == 3) && (check_token_segment(ctx, "TEX")))
         controls = 0;
 
     // This might need to be TEXLD instead of TEXLDP.
