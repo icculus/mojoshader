@@ -223,6 +223,8 @@ IF(SDL2)
     TARGET_LINK_LIBRARIES(bestprofile mojoshader ${SDL2} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
     ADD_EXECUTABLE(availableprofiles utils/availableprofiles.c)
     TARGET_LINK_LIBRARIES(availableprofiles mojoshader ${SDL2} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
+    ADD_EXECUTABLE(testglcompile utils/testglcompile.c)
+    TARGET_LINK_LIBRARIES(testglcompile mojoshader ${SDL2} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(SDL2)
 
 IF(COMPILER_SUPPORT)
