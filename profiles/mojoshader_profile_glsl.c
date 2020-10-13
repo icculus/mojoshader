@@ -1057,13 +1057,15 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
                 // ps_1_1 does a different hack for this attribute.
                 //  Refer to emit_GLSL_global()'s REG_TYPE_ADDRESS code.
-                if (shader_version_atleast(ctx, 1, 4) && (index < 4)) // gl_TexCoord[4+] is unreliable!
+                if (!shader_version_atleast(ctx, 1, 4))
+                    usage_str = "";  // just make sure this isn't NULL.
+                else if (index < 4)  // gl_TexCoord[4+] is unreliable!
                 {
                     snprintf(index_str, sizeof (index_str), "%u", (uint) index);
                     usage_str = "gl_TexCoord";
                     arrayleft = "[";
                     arrayright = "]";
-                } // if
+                } // else if
             } // if
 
             else if (usage == MOJOSHADER_USAGE_COLOR)
