@@ -2927,18 +2927,19 @@ void MOJOSHADER_glProgramViewportInfo(int viewportW, int viewportH,
     } // if
 
 #ifdef MOJOSHADER_FLIP_RENDERTARGET
-    assert(ctx->bound_program->vs_flip_loc != -1);
-
-    /* Some compilers require that vpFlip be a float value, rather than int.
-     * However, there's no real reason for it to be a float in the API, so we
-     * do a cast in here. That's not so bad, right...?
-     * -flibit
-     */
-    const int flip = renderTargetBound ? -1 : 1;
-    if (flip != ctx->bound_program->current_flip)
+    if (ctx->bound_program->vs_flip_loc != -1)
     {
-        ctx->glUniform1f(ctx->bound_program->vs_flip_loc, (float) flip);
-        ctx->bound_program->current_flip = flip;
+        /* Some compilers require that vpFlip be a float value, rather than int.
+         * However, there's no real reason for it to be a float in the API, so we
+         * do a cast in here. That's not so bad, right...?
+         * -flibit
+         */
+        const int flip = renderTargetBound ? -1 : 1;
+        if (flip != ctx->bound_program->current_flip)
+        {
+            ctx->glUniform1f(ctx->bound_program->vs_flip_loc, (float) flip);
+            ctx->bound_program->current_flip = flip;
+        } // if
     } // if
 #endif
 } // MOJOSHADER_glViewportInfo
