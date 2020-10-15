@@ -217,7 +217,7 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
                         needsUpdate = 1;
                         vecDst[j * 4] = regB[idx + j];
                     } // if
-                } while (j < arrayCount);
+                } while (++j < arrayCount);
 
                 offset += size;
                 continue; // Skip the rest, do NOT break!
