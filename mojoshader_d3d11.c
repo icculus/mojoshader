@@ -646,11 +646,8 @@ MOJOSHADER_d3d11Shader *MOJOSHADER_d3d11CompileShader(const char *mainfn,
         // Calculate how big we need to make the buffer
         for (i = 0; i < pd->uniform_count; i++)
         {
-            int arrayCount = pd->uniforms[i].array_count;
-            int uniformSize = 16;
-            if (pd->uniforms[i].type == MOJOSHADER_UNIFORM_BOOL)
-                uniformSize = 1;
-            retval->buflen += (arrayCount ? arrayCount : 1) * uniformSize;
+            const int arrayCount = pd->uniforms[i].array_count;
+            retval->buflen += (arrayCount ? arrayCount : 1) * 16;
         } // for
 
         D3D11_BUFFER_DESC bdesc;
