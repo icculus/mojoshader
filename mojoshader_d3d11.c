@@ -151,10 +151,19 @@ static inline void *get_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 
 static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
 {
+    int i, j;
+    float *regF; int *regI; uint8 *regB;
+    int needsUpdate;
+    size_t offset;
+    int idx;
+    int arrayCount;
+    void *src, *dst;
+    size_t size;
+    int *vecDst;
+
     if (shader == NULL || shader->ubo == NULL)
         return;
 
-    float *regF; int *regI; uint8 *regB;
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
         regF = ctx->vs_reg_file_f;
@@ -169,38 +178,49 @@ static void update_uniform_buffer(MOJOSHADER_d3d11Shader *shader)
     } // else
 
     // Update the buffer contents
-    int needsUpdate = 0;
-    size_t offset = 0;
-    for (int i = 0; i < shader->parseData->uniform_count; i++)
+    needsUpdate = 0;
+    offset = 0;
+    for (i = 0; i < shader->parseData->uniform_count; i++)
     {
         if (shader->parseData->uniforms[i].constant)
             continue;
 
-        int idx = shader->parseData->uniforms[i].index;
-        int arrayCount = shader->parseData->uniforms[i].array_count;
+        idx = shader->parseData->uniforms[i].index;
+        arrayCount = shader->parseData->uniforms[i].array_count;
 
-        void *src = NULL;
-        void *dst = NULL;
-        size_t size = arrayCount ? arrayCount : 1;
+        src = NULL;
+        dst = NULL;
+        size = arrayCount ? (arrayCount * 16) : 16;
 
         switch (shader->parseData->uniforms[i].type)
         {
             case MOJOSHADER_UNIFORM_FLOAT:
                 src = &regF[4 * idx];
                 dst = shader->constantData + offset;
-                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_INT:
                 src = &regI[4 * idx];
                 dst = shader->constantData + offset;
-                size *= 16;
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
-                src = &regB[idx];
-                dst = shader->constantData + offset;
-                break;
+                // bool registers are a whole other mess, thanks to alignment.
+                // The bool field is an int4 in HLSL 4+, so we have to cast the
+                // bool to an int, then skip 3 ints. Super efficient, right?
+                vecDst = (int*) (shader->constantData + offset);
+                j = 0;
+                do
+                {
+                    if (vecDst[j * 4] != regB[idx + j])
+                    {
+                        needsUpdate = 1;
+                        vecDst[j * 4] = regB[idx + j];
+                    } // if
+                } while (j < arrayCount);
+
+                offset += size;
+                continue; // Skip the rest, do NOT break!
 
             default:
                 assert(0); // This should never happen.
