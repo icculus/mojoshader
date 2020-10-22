@@ -47,6 +47,7 @@ typedef struct MOJOSHADER_vkUniformBuffer
     VkDeviceSize bufferSize;
     VkDeviceSize dynamicOffset;
     VkDeviceSize currentBlockSize;
+    VkDeviceSize currentBlockIncrement;
     uint8_t *mapPointer;
 } MOJOSHADER_vkUniformBuffer;
 
@@ -217,6 +218,7 @@ static MOJOSHADER_vkUniformBuffer *create_ubo(MOJOSHADER_vkContext *ctx)
 
     result->bufferSize = UBO_ACTUAL_SIZE;
     result->currentBlockSize = 0;
+    result->currentBlockIncrement = 0;
     result->dynamicOffset = 0;
 
     return result;
@@ -298,9 +300,10 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
         ubo = ctx->fragUboBuffer;
     } // else
 
-    ubo->dynamicOffset += ubo->currentBlockSize;
+    ubo->dynamicOffset += ubo->currentBlockIncrement;
 
     ubo->currentBlockSize = next_highest_offset_alignment(uniform_data_size(shader));
+    ubo->currentBlockIncrement = ubo->currentBlockSize;
 
     if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * ctx->frameIndex)
     {
@@ -783,9 +786,9 @@ void MOJOSHADER_vkEndFrame()
     // Reset counters
     // Offset by size of buffer to simulate "rotating" the buffers
     ctx->vertUboBuffer->dynamicOffset = UBO_BUFFER_SIZE * ctx->frameIndex;
-    ctx->vertUboBuffer->currentBlockSize = 0;
+    ctx->vertUboBuffer->currentBlockIncrement = 0;
     ctx->fragUboBuffer->dynamicOffset = UBO_BUFFER_SIZE * ctx->frameIndex;
-    ctx->fragUboBuffer->currentBlockSize = 0;
+    ctx->fragUboBuffer->currentBlockIncrement = 0;
 } // MOJOSHADER_VkEndFrame
 
 int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
