@@ -557,6 +557,31 @@ static void determine_constants_arrays(Context *ctx)
     } // for
 } // determine_constants_arrays
 
+static void shader_model_1_input_usage(const int regnum, MOJOSHADER_usage *usage, int *index)
+{
+    *index = 0;
+    switch (regnum)  // these are hardcoded for Shader Model 1: v0 is POSITION, v1 is BLENDWEIGHT, etc.
+    {
+        case 0: *usage = MOJOSHADER_USAGE_POSITION; break;
+        case 1: *usage = MOJOSHADER_USAGE_BLENDWEIGHT; break;
+        case 2: *usage = MOJOSHADER_USAGE_BLENDINDICES; break;
+        case 3: *usage = MOJOSHADER_USAGE_NORMAL; break;
+        case 4: *usage = MOJOSHADER_USAGE_POINTSIZE; break;
+        case 5: *usage = MOJOSHADER_USAGE_COLOR; break;  // diffuse
+        case 6: *usage = MOJOSHADER_USAGE_COLOR; *index = 1; break; // specular
+        case 7: *usage = MOJOSHADER_USAGE_TEXCOORD; break;
+        case 8: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 1; break;
+        case 9: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 2; break;
+        case 10: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 3; break;
+        case 11: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 4; break;
+        case 12: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 5; break;
+        case 13: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 6; break;
+        case 14: *usage = MOJOSHADER_USAGE_TEXCOORD; *index = 7; break;
+        case 15: *usage = MOJOSHADER_USAGE_POSITION; *index = 1; break;
+        case 16: *usage = MOJOSHADER_USAGE_NORMAL; *index = 1; break;
+        default: *usage = MOJOSHADER_USAGE_UNKNOWN; break;
+    } // switch
+} // shader_model_1_input_usage
 
 static int adjust_swizzle(const Context *ctx, const RegisterType regtype,
                           const int regnum, const int swizzle)
@@ -566,15 +591,31 @@ static int adjust_swizzle(const Context *ctx, const RegisterType regtype,
     else if (ctx->swizzles_count == 0)
         return swizzle;
 
-    const RegisterList *reg = reglist_find(&ctx->attributes, regtype, regnum);
-    if (reg == NULL)
+    MOJOSHADER_usage usage = MOJOSHADER_USAGE_UNKNOWN;
+    int index = 0;
+
+    // Shader Model 1 didn't have to predeclare attribute variables, so
+    //  reglist_find won't be able to look them up at this point, but
+    //  their usages don't change.
+    if (!shader_version_atleast(ctx, 2, 0))
+        shader_model_1_input_usage(regnum, &usage, &index);
+    else
+    {
+        const RegisterList *reg = reglist_find(&ctx->attributes, regtype, regnum);
+        if (reg == NULL)
+            return swizzle;
+        usage = reg->usage;
+        index = reg->index;
+    } // else
+
+    if (usage == MOJOSHADER_USAGE_UNKNOWN)
         return swizzle;
 
     size_t i;
     for (i = 0; i < ctx->swizzles_count; i++)
     {
         const MOJOSHADER_swizzle *swiz = &ctx->swizzles[i];
-        if ((swiz->usage == reg->usage) && (swiz->index == reg->index))
+        if ((swiz->usage == usage) && (swiz->index == index))
         {
             return ( (((int)(swiz->swizzles[((swizzle >> 0) & 0x3)])) << 0) |
                      (((int)(swiz->swizzles[((swizzle >> 2) & 0x3)])) << 2) |
@@ -3501,7 +3542,6 @@ static MOJOSHADER_parseData *build_parsedata(Context *ctx)
     return retval;
 } // build_parsedata
 
-
 static void process_definitions(Context *ctx)
 {
     // !!! FIXME: apparently, pre ps_3_0, sampler registers don't need to be
@@ -3596,30 +3636,8 @@ static void process_definitions(Context *ctx)
                         } // if
                         else if (shader_is_vertex(ctx))
                         {
-                            MOJOSHADER_usage usage = MOJOSHADER_USAGE_UNKNOWN;
                             int index = 0;
-                            switch (regnum)  // these are hardcoded for Shader Model 1: v0 is POSITION, v1 is BLENDWEIGHT, etc.
-                            {
-                                case 0: usage = MOJOSHADER_USAGE_POSITION; break;
-                                case 1: usage = MOJOSHADER_USAGE_BLENDWEIGHT; break;
-                                case 2: usage = MOJOSHADER_USAGE_BLENDINDICES; break;
-                                case 3: usage = MOJOSHADER_USAGE_NORMAL; break;
-                                case 4: usage = MOJOSHADER_USAGE_POINTSIZE; break;
-                                case 5: usage = MOJOSHADER_USAGE_COLOR; break;  // diffuse
-                                case 6: usage = MOJOSHADER_USAGE_COLOR; index = 1; break; // specular
-                                case 7: usage = MOJOSHADER_USAGE_TEXCOORD; break;
-                                case 8: usage = MOJOSHADER_USAGE_TEXCOORD; index = 1; break;
-                                case 9: usage = MOJOSHADER_USAGE_TEXCOORD; index = 2; break;
-                                case 10: usage = MOJOSHADER_USAGE_TEXCOORD; index = 3; break;
-                                case 11: usage = MOJOSHADER_USAGE_TEXCOORD; index = 4; break;
-                                case 12: usage = MOJOSHADER_USAGE_TEXCOORD; index = 5; break;
-                                case 13: usage = MOJOSHADER_USAGE_TEXCOORD; index = 6; break;
-                                case 14: usage = MOJOSHADER_USAGE_TEXCOORD; index = 7; break;
-                                case 15: usage = MOJOSHADER_USAGE_POSITION; index = 1; break;
-                                case 16: usage = MOJOSHADER_USAGE_NORMAL; index = 1; break;
-                                default: break;
-                            } // switch
-
+                            shader_model_1_input_usage(regnum, &usage, &index);
                             if (usage != MOJOSHADER_USAGE_UNKNOWN)
                             {
                                 add_attribute_register(ctx, regtype, regnum, usage, index, 0xF, 0);
