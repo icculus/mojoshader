@@ -75,8 +75,9 @@ typedef enum SpirvTypeIdx
     STI_PTR_IMAGE2D   = 6,
     STI_PTR_IMAGE3D   = 7,
     STI_PTR_IMAGECUBE = 8,
+    STI_PTR_VEC2_I    = 9, // special case, needed only for point coord input.
 
-    // 7 unused entries
+    // 6 unused entries
 
     // 4 base types * 4 vector sizes = 16 entries
     STI_FLOAT = (0 << 5) | (1 << 4) | (ST_FLOAT << 2) | 0,
@@ -175,6 +176,8 @@ typedef struct SpirvContext
     uint32 id_var_vpos;
     uint32 id_var_frontfacing;
     uint32 id_var_vface;
+    uint32 id_var_texcoord0_input;
+    uint32 id_var_texcoord0_private;
     // ids for types so we can reuse them after they're declared
     uint32 tid[STI_LENGTH_];
     uint32 idtrue;

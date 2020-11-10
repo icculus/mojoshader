@@ -1135,6 +1135,8 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     {
         if (vTable->attrib_offsets[MOJOSHADER_USAGE_POINTSIZE][0] > 0)
         {
+            ((uint32 *) pixel->output)[pTable->pointcoord_var_offset + 1] = pTable->tid_pvec2i;
+            ((uint32 *) pixel->output)[pTable->pointcoord_load_offset + 1] = pTable->tid_vec2;
             ((uint32 *) pixel->output)[texcoord0Loc - 1] = SpvDecorationBuiltIn;
             ((uint32 *) pixel->output)[texcoord0Loc] = SpvBuiltInPointCoord;
         } // if
