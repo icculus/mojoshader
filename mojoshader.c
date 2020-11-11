@@ -2566,8 +2566,13 @@ static void parse_preshader(Context *ctx, const uint32 *tokens, uint32 tokcount)
             if (preshader->literals == NULL)
                 return;  // oh well.
             const double *litptr = (const double *) (clit.tokens + 2);
-            for (i = 0; i < lit_count; i++)
-                preshader->literals[i] = SWAPDBL(litptr[i]);
+            // !!! FIXME: This should be a SWAPDBL loop, but in addition to
+            // !!! FIXME:  never having an implementation, it turns out some
+            // !!! FIXME:  MinGW versions do not optimize this correctly, which
+            // !!! FIXME:  can cause random crashes on Win64. -flibit
+            //for (i = 0; i < lit_count; i++)
+            //    preshader->literals[i] = SWAPDBL(litptr[i]);
+            memcpy(preshader->literals, litptr, len);
         } // else if
     } // else
 
