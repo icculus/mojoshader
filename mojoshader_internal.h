@@ -753,6 +753,16 @@ typedef struct SpirvPatchTable
     SpirvPatchEntry samplers[16];
     int32 location_count;
 
+    // TEXCOORD0 is patched to PointCoord if VS outputs PointSize.
+    // In `helpers`: [OpDecorate|id|Location|0xDEADBEEF] -> [OpDecorate|id|BuiltIn|PointCoord]
+    // Offset derived from attrib_offsets[TEXCOORD][0].
+    uint32 pointcoord_var_offset; // in `mainline_intro`, [OpVariable|tid|id|StorageClass], patch tid to pvec2i
+    uint32 pointcoord_load_offset; // in `mainline_top`, [OpLoad|tid|id|src_id], patch tid to vec2
+    uint32 tid_pvec2i;
+    uint32 tid_vec2;
+    uint32 tid_pvec4i;
+    uint32 tid_vec4;
+
     // Patches for linking vertex output/pixel input
     uint32 attrib_offsets[MOJOSHADER_USAGE_TOTAL][16];
     uint32 output_offsets[16];

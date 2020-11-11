@@ -403,6 +403,12 @@ static uint32 spv_get_type(Context *ctx, SpirvTypeIdx tidx)
         tid = spv_bumpid(ctx);
         spv_emit(ctx, 4, SpvOpTypePointer, tid, SpvStorageClassUniformConstant, tid_image);
     } // else if
+    else if (tidx == STI_PTR_VEC2_I)
+    {
+        uint32 tid_base = spv_get_type(ctx, STI_VEC2);
+        tid = spv_bumpid(ctx);
+        spv_emit(ctx, 4, SpvOpTypePointer, tid, SpvStorageClassInput, tid_base);
+    } // else if
     else
         assert(!"Unexpected value of type index.");
     pop_output(ctx);
@@ -2281,11 +2287,56 @@ void emit_SPIRV_attribute(Context *ctx, RegisterType regtype, int regnum,
                 // ps_1_1 is dealt with in emit_SPIRV_global().
                 if (usage != MOJOSHADER_USAGE_TEXCOORD || shader_version_atleast(ctx, 1, 4))
                 {
-                    spv_link_ps_attributes(ctx, r->spirv.iddecl, regtype, usage, index);
-                    push_output(ctx, &ctx->mainline_intro);
-                    tid = spv_get_type(ctx, STI_PTR_VEC4_I);
-                    spv_emit(ctx, 4, SpvOpVariable, tid, r->spirv.iddecl, SpvStorageClassInput);
-                    pop_output(ctx);
+                    if (usage == MOJOSHADER_USAGE_TEXCOORD && index == 0)
+                    {
+                        // This can be either BuiltInPointCoord (vec2) or normal TEXCOORD0 input (vec4).
+                        // To determine correct type, we need to wait until link-time when we can see
+                        // vertex shader outputs and then patch in correct types. To avoid having to
+                        // fix all loads from the input variable, we never access it directly, but
+                        // instead go through private variable that is always vec4.
+                        // Here we generate input and private variables and helper code that gets
+                        // patched at link-time. See SpirvPatchTable for details on patching.
+                        SpirvPatchTable* table = &ctx->spirv.patch_table;
+
+                        uint32 tid_pvec2i = spv_get_type(ctx, STI_PTR_VEC2_I);
+                        uint32 tid_pvec4i = spv_get_type(ctx, STI_PTR_VEC4_I);
+                        uint32 tid_pvec4p = spv_get_type(ctx, STI_PTR_VEC4_P);
+                        uint32 tid_vec2 = spv_get_type(ctx, STI_VEC2);
+                        uint32 tid_vec4 = spv_get_type(ctx, STI_VEC4);
+
+                        table->tid_pvec2i = tid_pvec2i;
+                        table->tid_vec2 = tid_vec2;
+                        table->tid_pvec4i = tid_pvec4i;
+                        table->tid_vec4 = tid_vec4;
+
+                        push_output(ctx, &ctx->mainline_intro);
+                        ctx->spirv.id_var_texcoord0_private = r->spirv.iddecl;
+                        ctx->spirv.id_var_texcoord0_input = spv_bumpid(ctx);
+                        table->pointcoord_var_offset = buffer_size(ctx->mainline_intro) >> 2;
+                        spv_emit(ctx, 4, SpvOpVariable, tid_pvec4i, ctx->spirv.id_var_texcoord0_input, SpvStorageClassInput);
+                        spv_emit(ctx, 4, SpvOpVariable, tid_pvec4p, ctx->spirv.id_var_texcoord0_private, SpvStorageClassPrivate);
+                        pop_output(ctx);
+
+                        spv_link_ps_attributes(ctx, ctx->spirv.id_var_texcoord0_input, regtype, usage, index);
+                        spv_output_name(ctx, ctx->spirv.id_var_texcoord0_input, "ps_PointCoordOrTexCoord0");
+
+                        push_output(ctx, &ctx->mainline_top);
+                        uint32 id_loaded = spv_bumpid(ctx);
+                        uint32 id_shuffled = spv_bumpid(ctx);
+                        table->pointcoord_load_offset = buffer_size(ctx->mainline_top) >> 2;
+                        spv_emit(ctx, 4, SpvOpLoad, tid_vec4, id_loaded, ctx->spirv.id_var_texcoord0_input);
+                        spv_emit(ctx, 9, SpvOpVectorShuffle, tid_vec4, id_shuffled, id_loaded, id_loaded, 0, 1, 2, 3);
+                        spv_emit(ctx, 3, SpvOpStore, ctx->spirv.id_var_texcoord0_private, id_shuffled);
+                        pop_output(ctx);
+                    } // if
+                    else
+                    {
+                        spv_link_ps_attributes(ctx, r->spirv.iddecl, regtype, usage, index);
+                        push_output(ctx, &ctx->mainline_intro);
+                        tid = spv_get_type(ctx, STI_PTR_VEC4_I);
+                        spv_emit(ctx, 4, SpvOpVariable, tid, r->spirv.iddecl, SpvStorageClassInput);
+                        pop_output(ctx);
+                    } // else
                 } // if
                 break;
             default:
@@ -2517,6 +2568,8 @@ void emit_SPIRV_finalize(Context *ctx)
                 spv_emit_word(ctx, ctx->spirv.id_var_fragcoord);
             else if (r->spirv.iddecl == ctx->spirv.id_var_vface)
                 spv_emit_word(ctx, ctx->spirv.id_var_frontfacing);
+            else if (r->spirv.iddecl == ctx->spirv.id_var_texcoord0_private)
+                spv_emit_word(ctx, ctx->spirv.id_var_texcoord0_input);
             else
                 spv_emit_word(ctx, r->spirv.iddecl);
         } // if
@@ -2629,6 +2682,22 @@ void emit_SPIRV_finalize(Context *ctx)
     for (i = 0; i < 16; i++)
         if (table->output_offsets[i])
             table->output_offsets[i] += base_offset;
+
+    base_offset <<= 2;
+    if (ctx->helpers)     base_offset += buffer_size(ctx->helpers);
+    if (ctx->subroutines) base_offset += buffer_size(ctx->subroutines);
+    base_offset >>= 2;
+
+    if (table->pointcoord_var_offset)
+        table->pointcoord_var_offset += base_offset;
+
+    base_offset <<= 2;
+    if (ctx->mainline_intro)     base_offset += buffer_size(ctx->mainline_intro);
+    if (ctx->mainline_arguments) base_offset += buffer_size(ctx->mainline_arguments);
+    base_offset >>= 2;
+
+    if (table->pointcoord_load_offset)
+        table->pointcoord_load_offset += base_offset;
 
     push_output(ctx, &ctx->postflight);
     buffer_append(ctx->output, &ctx->spirv.patch_table, sizeof(ctx->spirv.patch_table));
