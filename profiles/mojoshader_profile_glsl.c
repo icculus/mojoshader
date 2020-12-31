@@ -935,7 +935,23 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     } // if
                     break;
                 case MOJOSHADER_USAGE_POINTSIZE:
-                    usage_str = "gl_PointSize";
+                    if (index == 0)
+                    {
+                        usage_str = "gl_PointSize";
+                    } // if
+                    else
+                    {
+                        push_output(ctx, &ctx->globals);
+#if SUPPORT_PROFILE_GLSLES
+                        if (support_glsles(ctx))
+                            output_line(ctx, "varying highp float io_%i_%i;", usage, index);
+                        else
+#endif
+                        output_line(ctx, "varying float io_%i_%i;", usage, index);
+                        output_line(ctx, "#define %s io_%i_%i", var, usage, index);
+                        pop_output(ctx);
+                        return;
+                    }
                     break;
                 case MOJOSHADER_USAGE_COLOR:
 #if SUPPORT_PROFILE_GLSLES
