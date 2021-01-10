@@ -1109,16 +1109,21 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             const MiscTypeType mt = (MiscTypeType) regnum;
             if (mt == MISCTYPE_TYPE_FACE)
             {
-                push_output(ctx, &ctx->globals);
+                push_output(ctx, &ctx->mainline_intro);
+                ctx->indent++;
                 output_line(ctx, "float %s = gl_FrontFacing ? 1.0 : -1.0;", var);
                 pop_output(ctx);
                 return;
             } // if
             else if (mt == MISCTYPE_TYPE_POSITION)
             {
-                // TODO: For half-pixel offset compensation, floor() this value!
                 push_output(ctx, &ctx->globals);
                 output_line(ctx, "uniform vec2 vposFlip;");
+                pop_output(ctx);
+
+                // TODO: For half-pixel offset compensation, floor() this value!
+                push_output(ctx, &ctx->mainline_intro);
+                ctx->indent++;
                 output_line(ctx, "vec4 %s = vec4(gl_FragCoord.x, (gl_FragCoord.y * vposFlip.x) + vposFlip.y, gl_FragCoord.z, gl_FragCoord.w);", var);
                 pop_output(ctx);
                 return;
