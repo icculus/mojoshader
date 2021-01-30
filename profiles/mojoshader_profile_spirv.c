@@ -1166,8 +1166,10 @@ static SpirvResult spv_load_srcarg(Context *ctx, const size_t idx, const int wri
 
         case SRCMOD_NOT:
         {
+            // We can't do OpLogicalNot on ints, so do (x ^ 1) instead
+            uint32 id_one = spv_getscalari(ctx, 1);
             uint32 id_not = spv_bumpid(ctx);
-            spv_emit(ctx, 4, SpvOpLogicalNot, result.tid, id_not, result.id);
+            spv_emit(ctx, 5, SpvOpBitwiseXor, result.tid, id_not, result.id, id_one);
             result.id = id_not;
             break;
         } // case
