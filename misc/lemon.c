@@ -3466,7 +3466,7 @@ void print_stack_union(
   int maxdtlength;          /* Maximum length of any ".datatype" field. */
   char *stddt;              /* Standardized name for a datatype */
   int i,j;                  /* Loop counters */
-  int hash;                 /* For hashing the name of a type */
+  unsigned int hash;        /* For hashing the name of a type */
   const char *name;         /* Name of the parser */
 
   /* Allocate and initialize types[] and allocate stddt[] */
