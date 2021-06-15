@@ -452,11 +452,13 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
     const char *pvarname, *vvarname;
     for (i = 0; i < ppd->attribute_count; i++)
     {
+        int found_matching_vs_output_for_ps_input = 0;
         for (j = 0; j < vpd->output_count; j++)
         {
             if (ppd->attributes[i].usage == vpd->outputs[j].usage &&
                 ppd->attributes[i].index == vpd->outputs[j].index)
             {
+                found_matching_vs_output_for_ps_input = 1;
                 pvarname = ppd->attributes[i].name;
                 vvarname = vpd->outputs[j].name;
                 if (strcmp(pvarname, vvarname) != 0)
@@ -466,6 +468,7 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
                      vpd->outputs[j].usage == MOJOSHADER_USAGE_POSITION &&
                      vpd->outputs[j].index == 0)
             {
+                found_matching_vs_output_for_ps_input = 1;
                 pvarname = ppd->attributes[i].name;
                 vvarname = vpd->outputs[j].name;
                 if (strcmp(pvarname, vvarname) != 0)
@@ -475,6 +478,14 @@ static char *rewritePixelShader(MOJOSHADER_d3d11Shader *vshader,
 
         if (strcmp(ppd->attributes[i].name, "vFace") == 0)
             vfaceidx = i;
+
+        // A vertex shader that doesn't properly initialize all its outputs
+        //  can produce a situation where vpd->outputs is missing a matching
+        //  entry for the PS's inputs, even though fxc will happily compile
+        //  both shaders together as a technique in FX mode
+        // I don't know how to fix this yet, but a workaround is to
+        //  correct your shader to zero-initialize all its outputs -kg
+        assert(found_matching_vs_output_for_ps_input);
     } // for
 
     // Special handling for VFACE
