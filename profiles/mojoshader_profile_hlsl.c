@@ -1072,7 +1072,7 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     default:
                         fail(ctx, "BUG: unhandled pixel shader input");
                         break;
-                }
+                } // switch
             } // else
 
             pop_output(ctx);
