@@ -229,12 +229,14 @@ ENDIF(SDL2)
 
 IF(COMPILER_SUPPORT)
     ADD_EXECUTABLE(finderrors utils/finderrors.c)
-    TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
     IF(SDL2)
+        TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
         SET_SOURCE_FILES_PROPERTIES(
             utils/finderrors.c
             PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
         )
+    ELSE(SDL2)
+        TARGET_LINK_LIBRARIES(finderrors mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
     ENDIF(SDL2)
 ENDIF(COMPILER_SUPPORT)
 
