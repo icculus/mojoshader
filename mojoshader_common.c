@@ -1074,7 +1074,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     for (i = 0; i < pixel->output_count; i ++)
     {
         const MOJOSHADER_attribute *pAttr = &pixel->outputs[i];
-        assert(pAttr->usage == MOJOSHADER_USAGE_COLOR);
+        assert(pAttr->usage == MOJOSHADER_USAGE_COLOR || pAttr->usage == MOJOSHADER_USAGE_DEPTH);
 
         // Set the loc for the output declaration...
         pOffset = pTable->output_offsets[pAttr->index];
@@ -1099,7 +1099,8 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
         if (pAttr->usage == MOJOSHADER_USAGE_UNKNOWN)
             continue; // Probably something like VPOS, ignore!
-        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[pAttr->index])
+        if ((pAttr->usage == MOJOSHADER_USAGE_COLOR || pAttr->usage == MOJOSHADER_USAGE_DEPTH)
+          && pTable->output_offsets[pAttr->index])
             continue;
 
         // The input may not exist in the output list!
