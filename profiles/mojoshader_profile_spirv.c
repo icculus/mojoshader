@@ -2614,8 +2614,11 @@ void emit_SPIRV_finalize(Context *ctx)
         spv_emit(ctx, 3, SpvOpExecutionMode, ctx->spirv.idmain, SpvExecutionModeOriginUpperLeft);
 
         // This must be explicitly marked when FragDepth is in use!
+        // FIXME: We're naively assuming GL_LEQUAL here, but this may not be true!
+        // Unfortunately we get a validation error if we don't specify a mode, and
+        // there is no specified default execution mode. It seems to be DepthReplacing.
         if (ctx->spirv.hasdepth)
-            spv_emit(ctx, 3, SpvOpExecutionMode, ctx->spirv.idmain, SpvExecutionModeDepthReplacing);
+            spv_emit(ctx, 3, SpvOpExecutionMode, ctx->spirv.idmain, SpvExecutionModeDepthLess);
     } // if
 
     pop_output(ctx);
