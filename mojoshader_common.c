@@ -1071,10 +1071,15 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     const uint32 texcoord0Loc = pTable->attrib_offsets[MOJOSHADER_USAGE_TEXCOORD][0];
 
     // We need locations for color outputs first!
-    for (i = 0; i < pixel->output_count; i ++)
+    for (i = 0; i < pixel->output_count; i++)
     {
         const MOJOSHADER_attribute *pAttr = &pixel->outputs[i];
-        assert(pAttr->usage == MOJOSHADER_USAGE_COLOR || pAttr->usage == MOJOSHADER_USAGE_DEPTH);
+        if (pAttr->usage != MOJOSHADER_USAGE_COLOR)
+        {
+            // This should be FragDepth, which is builtin
+            assert(pAttr->usage == MOJOSHADER_USAGE_DEPTH);
+            continue;
+        } // if
 
         // Set the loc for the output declaration...
         pOffset = pTable->output_offsets[pAttr->index];
@@ -1099,8 +1104,9 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
         const MOJOSHADER_attribute *pAttr = &pixel->attributes[i];
         if (pAttr->usage == MOJOSHADER_USAGE_UNKNOWN)
             continue; // Probably something like VPOS, ignore!
-        if ((pAttr->usage == MOJOSHADER_USAGE_COLOR || pAttr->usage == MOJOSHADER_USAGE_DEPTH)
-          && pTable->output_offsets[pAttr->index])
+        if (pAttr->usage == MOJOSHADER_USAGE_DEPTH)
+            continue; // This should be FragDepth, which is builtin
+        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[pAttr->index])
             continue;
 
         // The input may not exist in the output list!
