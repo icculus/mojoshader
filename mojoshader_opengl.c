@@ -308,8 +308,17 @@ struct MOJOSHADER_glContext
     void (*profileToggleProgramPointSize)(int enable);
 };
 
+#ifdef MOJOSHADER_NO_THREAD_LOCAL
+#define MOJOSHADER_THREADLOCAL
+#elif defined(_MSC_VER)
+#define MOJOSHADER_THREADLOCAL __declspec(thread)
+#elif defined(__GNUC__) || defined(__clang__)
+#define MOJOSHADER_THREADLOCAL __thread
+#else
+#error Please define your platform.
+#endif
 
-static MOJOSHADER_glContext *ctx = NULL;
+static MOJOSHADER_THREADLOCAL MOJOSHADER_glContext *ctx = NULL;
 
 // Error state...
 static char error_buffer[1024] = { '\0' };

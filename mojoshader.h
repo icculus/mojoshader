@@ -2622,6 +2622,13 @@ DECLSPEC MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
  *
  * It is legal to call this with a NULL pointer to make no context current,
  *  but you need a valid context to be current to use most of MojoShader.
+ *
+ * In current times, this allows one context to be current _per thread_,
+ *  as the internal state inside MojoShader is marked thread local. Each
+ *  new thread should call this function before using the context, even if
+ *  other threads have previously set it current. You _also_ have to set
+ *  the OpenGL context itself current for each thread (and have an OpenGL
+ *  implementation that allows that in the first place).
  */
 DECLSPEC void MOJOSHADER_glMakeContextCurrent(MOJOSHADER_glContext *ctx);
 
