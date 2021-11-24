@@ -114,34 +114,35 @@ typedef struct MOJOSHADER_vkContext
     #include "mojoshader_vulkan_vkfuncs.h"
 } MOJOSHADER_vkContext;
 
-static MOJOSHADER_vkContext *ctx = NULL;
 static uint16_t tagCounter = 1;
 
 static uint8_t find_memory_type(
     MOJOSHADER_vkContext *ctx,
-	uint32_t typeFilter,
-	VkMemoryPropertyFlags properties,
-	uint32_t *result
+    uint32_t typeFilter,
+    VkMemoryPropertyFlags properties,
+    uint32_t *result
 ) {
-	uint32_t i;
-	VkPhysicalDeviceMemoryProperties memoryProperties;
-	ctx->vkGetPhysicalDeviceMemoryProperties(*ctx->physical_device, &memoryProperties);
+    uint32_t i;
+    VkPhysicalDeviceMemoryProperties memoryProperties;
+    ctx->vkGetPhysicalDeviceMemoryProperties(*ctx->physical_device, &memoryProperties);
 
-	for (i = 0; i < memoryProperties.memoryTypeCount; i++)
-	{
-		if ((typeFilter & (1 << i))
-		 && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
-		{
-			*result = i;
-			return 1;
-		} // if
-	} // for
+    for (i = 0; i < memoryProperties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (1 << i))
+         && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            *result = i;
+            return 1;
+        } // if
+    } // for
 
-	return 0;
+    return 0;
 } // find_memory_type
 
-static uint32_t next_highest_offset_alignment(uint32_t offset)
-{
+static uint32_t next_highest_offset_alignment(
+    MOJOSHADER_vkContext *ctx,
+    uint32_t offset
+) {
     return (
         (offset + ctx->minUniformBufferOffsetAlignment - 1) /
         ctx->minUniformBufferOffsetAlignment *
@@ -238,8 +239,10 @@ static uint32_t uniform_data_size(MOJOSHADER_vkShader *shader)
     return buflen;
 } // uniform_data_size
 
-static VkBuffer get_uniform_buffer(MOJOSHADER_vkShader *shader)
-{
+static VkBuffer get_uniform_buffer(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     if (shader == NULL || shader->parseData->uniform_count == 0)
         return VK_NULL_HANDLE;
 
@@ -249,8 +252,10 @@ static VkBuffer get_uniform_buffer(MOJOSHADER_vkShader *shader)
         return ctx->fragUboBuffer->buffer;
 } // get_uniform_buffer
 
-static VkDeviceSize get_uniform_offset(MOJOSHADER_vkShader *shader)
-{
+static VkDeviceSize get_uniform_offset(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     if (shader == NULL || shader->parseData->uniform_count == 0)
         return 0;
 
@@ -260,8 +265,10 @@ static VkDeviceSize get_uniform_offset(MOJOSHADER_vkShader *shader)
         return ctx->fragUboBuffer->dynamicOffset;
 } // get_uniform_offset
 
-static VkDeviceSize get_uniform_size(MOJOSHADER_vkShader *shader)
-{
+static VkDeviceSize get_uniform_size(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     if (shader == NULL || shader->parseData->uniform_count == 0)
         return 0;
 
@@ -271,8 +278,10 @@ static VkDeviceSize get_uniform_size(MOJOSHADER_vkShader *shader)
         return ctx->fragUboBuffer->currentBlockSize;
 } // get_uniform_size
 
-static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
-{
+static void update_uniform_buffer(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     int32_t i, j;
     int32_t offset;
     uint8_t *contents;
@@ -302,7 +311,7 @@ static void update_uniform_buffer(MOJOSHADER_vkShader *shader)
 
     ubo->dynamicOffset += ubo->currentBlockIncrement;
 
-    ubo->currentBlockSize = next_highest_offset_alignment(uniform_data_size(shader));
+    ubo->currentBlockSize = next_highest_offset_alignment(ctx, uniform_data_size(shader));
     ubo->currentBlockIncrement = ubo->currentBlockSize;
 
     if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * ctx->frameIndex)
@@ -370,8 +379,10 @@ static int shader_bytecode_len(MOJOSHADER_vkShader *shader)
     return shader->parseData->output_len - sizeof(SpirvPatchTable);
 } // shader_bytecode_len
 
-static VkShaderModule compile_shader(MOJOSHADER_vkShader *shader)
-{
+static VkShaderModule compile_shader(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     VkResult result;
     VkShaderModule module;
     VkShaderModuleCreateInfo shaderModuleCreateInfo =
@@ -439,11 +450,16 @@ static int match_shaders(const void *_a, const void *_b, void *data)
     return 1;
 } // match_shaders
 
-static void nuke_shaders(const void *key, const void *value, void *data)
-{
+static void nuke_shaders(
+    const void *_ctx,
+    const void *key,
+    const void *value,
+    void *data
+) {
+    MOJOSHADER_vkContext *ctx = (MOJOSHADER_vkContext *) _ctx;
     (void) data;
     ctx->free_fn((void *) key, ctx->malloc_data); // this was a BoundShaders struct.
-    MOJOSHADER_vkDeleteProgram((MOJOSHADER_vkProgram *) value);
+    MOJOSHADER_vkDeleteProgram(ctx, (MOJOSHADER_vkProgram *) value);
 } // nuke_shaders
 
 // Public API
@@ -500,19 +516,11 @@ init_fail:
     return NULL;
 } // MOJOSHADER_vkCreateContext
 
-void MOJOSHADER_vkMakeContextCurrent(MOJOSHADER_vkContext *_ctx)
+void MOJOSHADER_vkDestroyContext(MOJOSHADER_vkContext *ctx)
 {
-    ctx = _ctx;
-} // MOJOSHADER_vkMakeContextCurrent
-
-void MOJOSHADER_vkDestroyContext(MOJOSHADER_vkContext *_ctx)
-{
-    MOJOSHADER_vkContext *current_ctx = ctx;
-    ctx = _ctx;
-
-    MOJOSHADER_vkBindProgram(NULL);
+    MOJOSHADER_vkBindProgram(ctx, NULL);
     if (ctx->linker_cache)
-        hash_destroy(ctx->linker_cache);
+        hash_destroy(ctx->linker_cache, ctx);
 
     ctx->vkDestroyBuffer(*ctx->logical_device,
                          ctx->vertUboBuffer->buffer,
@@ -534,11 +542,10 @@ void MOJOSHADER_vkDestroyContext(MOJOSHADER_vkContext *_ctx)
     ctx->free_fn(ctx->fragUboBuffer, ctx->malloc_data);
 
     ctx->free_fn(ctx, ctx->malloc_data);
-
-    ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
 } // MOJOSHADER_vkDestroyContext
 
 MOJOSHADER_vkShader *MOJOSHADER_vkCompileShader(
+    MOJOSHADER_vkContext *ctx,
     const char *mainfn,
     const unsigned char *tokenbuf,
     const unsigned int bufsize,
@@ -590,8 +597,10 @@ void MOJOSHADER_vkShaderAddRef(MOJOSHADER_vkShader *shader)
         shader->refcount++;
 } // MOJOShader_vkShaderAddRef
 
-void MOJOSHADER_vkDeleteShader(MOJOSHADER_vkShader *shader)
-{
+void MOJOSHADER_vkDeleteShader(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *shader
+) {
     if (shader != NULL)
     {
         if (shader->refcount > 1)
@@ -612,7 +621,7 @@ void MOJOSHADER_vkDeleteShader(MOJOSHADER_vkShader *shader)
                     if ((shaders->vertex == shader) || (shaders->fragment == shader))
                     {
                         // Deletes the linked program
-                        hash_remove(ctx->linker_cache, shaders);
+                        hash_remove(ctx->linker_cache, shaders, ctx);
                     } // if
                 } // while
             } // if
@@ -629,8 +638,10 @@ const MOJOSHADER_parseData *MOJOSHADER_vkGetShaderParseData(
     return (shader != NULL) ? shader->parseData : NULL;
 } // MOJOSHADER_vkGetShaderParseData
 
-void MOJOSHADER_vkDeleteProgram(MOJOSHADER_vkProgram *p)
-{
+void MOJOSHADER_vkDeleteProgram(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkProgram *p
+) {
     if (p->vertexModule != VK_NULL_HANDLE)
         ctx->vkDestroyShaderModule(*ctx->logical_device, p->vertexModule, NULL);
     if (p->pixelModule != VK_NULL_HANDLE)
@@ -638,7 +649,8 @@ void MOJOSHADER_vkDeleteProgram(MOJOSHADER_vkProgram *p)
     ctx->free_fn(p, ctx->malloc_data);
 } // MOJOSHADER_vkDeleteProgram
 
-MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vshader,
+MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkContext *ctx,
+                                               MOJOSHADER_vkShader *vshader,
                                                MOJOSHADER_vkShader *pshader)
 {
     MOJOSHADER_vkProgram *result;
@@ -655,28 +667,32 @@ MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkShader *vshader,
     } // if
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
-    result->vertexModule = compile_shader(vshader);
-    result->pixelModule = compile_shader(pshader);
+    result->vertexModule = compile_shader(ctx, vshader);
+    result->pixelModule = compile_shader(ctx, pshader);
     result->vertexShader = vshader;
     result->pixelShader = pshader;
 
     if (result->vertexModule == VK_NULL_HANDLE
      || result->pixelModule == VK_NULL_HANDLE)
     {
-        MOJOSHADER_vkDeleteProgram(result);
+        MOJOSHADER_vkDeleteProgram(ctx, result);
         return NULL;
     }
     return result;
 } // MOJOSHADER_vkLinkProgram
 
-void MOJOSHADER_vkBindProgram(MOJOSHADER_vkProgram *p)
-{
+void MOJOSHADER_vkBindProgram(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkProgram *p
+) {
     ctx->bound_program = p;
 } // MOJOSHADER_vkBindProgram
 
-void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
-                              MOJOSHADER_vkShader *pshader)
-{
+void MOJOSHADER_vkBindShaders(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader *vshader,
+    MOJOSHADER_vkShader *pshader
+) {
     if (ctx->linker_cache == NULL)
     {
         ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
@@ -703,7 +719,7 @@ void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
         program = (MOJOSHADER_vkProgram *) val;
     else
     {
-        program = MOJOSHADER_vkLinkProgram(vshader, pshader);
+        program = MOJOSHADER_vkLinkProgram(ctx, vshader, pshader);
         if (program == NULL)
             return;
 
@@ -711,7 +727,7 @@ void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
                                                              ctx->malloc_data);
         if (item == NULL)
         {
-            MOJOSHADER_vkDeleteProgram(program);
+            MOJOSHADER_vkDeleteProgram(ctx, program);
             return;
         } // if
 
@@ -719,7 +735,7 @@ void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
         if (hash_insert(ctx->linker_cache, item, program) != 1)
         {
             ctx->free_fn(item, ctx->malloc_data);
-            MOJOSHADER_vkDeleteProgram(program);
+            MOJOSHADER_vkDeleteProgram(ctx, program);
             out_of_memory();
             return;
         } // if
@@ -729,9 +745,11 @@ void MOJOSHADER_vkBindShaders(MOJOSHADER_vkShader *vshader,
     ctx->bound_program = program;
 } // MOJOSHADER_vkBindShaders
 
-void MOJOSHADER_vkGetBoundShaders(MOJOSHADER_vkShader **vshader,
-                                  MOJOSHADER_vkShader **pshader)
-{
+void MOJOSHADER_vkGetBoundShaders(
+    MOJOSHADER_vkContext *ctx,
+    MOJOSHADER_vkShader **vshader,
+    MOJOSHADER_vkShader **pshader
+) {
     if (vshader != NULL)
     {
         if (ctx->bound_program != NULL)
@@ -748,9 +766,11 @@ void MOJOSHADER_vkGetBoundShaders(MOJOSHADER_vkShader **vshader,
     } // if
 } // MOJOSHADER_vkGetBoundShaders
 
-void MOJOSHADER_vkMapUniformBufferMemory(float **vsf, int **vsi, unsigned char **vsb,
-                                         float **psf, int **psi, unsigned char **psb)
-{
+void MOJOSHADER_vkMapUniformBufferMemory(
+    MOJOSHADER_vkContext *ctx,
+    float **vsf, int **vsi, unsigned char **vsb,
+    float **psf, int **psi, unsigned char **psb
+) {
     *vsf = ctx->vs_reg_file_f;
     *vsi = ctx->vs_reg_file_i;
     *vsb = ctx->vs_reg_file_b;
@@ -759,27 +779,29 @@ void MOJOSHADER_vkMapUniformBufferMemory(float **vsf, int **vsi, unsigned char *
     *psb = ctx->ps_reg_file_b;
 } // MOJOSHADER_vkMapUniformBufferMemory
 
-void MOJOSHADER_vkUnmapUniformBufferMemory()
+void MOJOSHADER_vkUnmapUniformBufferMemory(MOJOSHADER_vkContext *ctx)
 {
     if (ctx->bound_program == NULL)
         return; // Ignore buffer updates until we have a real program linked
-    update_uniform_buffer(ctx->bound_program->vertexShader);
-    update_uniform_buffer(ctx->bound_program->pixelShader);
+    update_uniform_buffer(ctx, ctx->bound_program->vertexShader);
+    update_uniform_buffer(ctx, ctx->bound_program->pixelShader);
 } // MOJOSHADER_vkUnmapUniformBufferMemory
 
-void MOJOSHADER_vkGetUniformBuffers(VkBuffer *vbuf, unsigned long long *voff, unsigned long long *vsize,
-                                    VkBuffer *pbuf, unsigned long long *poff, unsigned long long *psize)
-{
+void MOJOSHADER_vkGetUniformBuffers(
+    MOJOSHADER_vkContext *ctx,
+    VkBuffer *vbuf, unsigned long long *voff, unsigned long long *vsize,
+    VkBuffer *pbuf, unsigned long long *poff, unsigned long long *psize
+) {
     assert(ctx->bound_program != NULL);
-    *vbuf = get_uniform_buffer(ctx->bound_program->vertexShader);
-    *voff = get_uniform_offset(ctx->bound_program->vertexShader);
-    *vsize = get_uniform_size(ctx->bound_program->vertexShader);
-    *pbuf = get_uniform_buffer(ctx->bound_program->pixelShader);
-    *poff = get_uniform_offset(ctx->bound_program->pixelShader);
-    *psize = get_uniform_size(ctx->bound_program->pixelShader);
+    *vbuf = get_uniform_buffer(ctx, ctx->bound_program->vertexShader);
+    *voff = get_uniform_offset(ctx, ctx->bound_program->vertexShader);
+    *vsize = get_uniform_size(ctx, ctx->bound_program->vertexShader);
+    *pbuf = get_uniform_buffer(ctx, ctx->bound_program->pixelShader);
+    *poff = get_uniform_offset(ctx, ctx->bound_program->pixelShader);
+    *psize = get_uniform_size(ctx, ctx->bound_program->pixelShader);
 } // MOJOSHADER_vkGetUniformBuffers
 
-void MOJOSHADER_vkEndFrame()
+void MOJOSHADER_vkEndFrame(MOJOSHADER_vkContext *ctx)
 {
     ctx->frameIndex = (ctx->frameIndex + 1) % 2;
 
@@ -791,9 +813,10 @@ void MOJOSHADER_vkEndFrame()
     ctx->fragUboBuffer->currentBlockIncrement = 0;
 } // MOJOSHADER_VkEndFrame
 
-int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
-                                         MOJOSHADER_usage usage, int index)
-{
+int MOJOSHADER_vkGetVertexAttribLocation(
+    MOJOSHADER_vkShader *vert,
+    MOJOSHADER_usage usage, int index
+) {
     int32_t i;
     if (vert == NULL)
         return -1;
@@ -811,9 +834,11 @@ int MOJOSHADER_vkGetVertexAttribLocation(MOJOSHADER_vkShader *vert,
     return -1;
 } //MOJOSHADER_vkGetVertexAttribLocation
 
-void MOJOSHADER_vkGetShaderModules(VkShaderModule *vmodule,
-                                   VkShaderModule *pmodule)
-{
+void MOJOSHADER_vkGetShaderModules(
+    MOJOSHADER_vkContext *ctx,
+    VkShaderModule *vmodule,
+    VkShaderModule *pmodule
+) {
     assert(ctx->bound_program != NULL);
     if (vmodule != NULL)
         *vmodule = ctx->bound_program->vertexModule;
@@ -821,7 +846,7 @@ void MOJOSHADER_vkGetShaderModules(VkShaderModule *vmodule,
         *pmodule = ctx->bound_program->pixelModule;
 } //MOJOSHADER_vkGetShaderModules
 
-const char *MOJOSHADER_vkGetError(void)
+const char *MOJOSHADER_vkGetError(MOJOSHADER_vkContext *ctx)
 {
     return error_buffer;
 } // MOJOSHADER_vkGetError

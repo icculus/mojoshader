@@ -2378,8 +2378,9 @@ static int match_shaders(const void *_a, const void *_b, void *data)
     return 1;
 } // match_shaders
 
-static void nuke_shaders(const void *key, const void *value, void *data)
+static void nuke_shaders(const void *_ctx, const void *key, const void *value, void *data)
 {
+    (void) _ctx;
     (void) data;
     Free((void *) key);  // this was a BoundShaders struct.
     MOJOSHADER_glDeleteProgram((MOJOSHADER_glProgram *) value);
@@ -2976,7 +2977,7 @@ void MOJOSHADER_glDeleteShader(MOJOSHADER_glShader *shader)
             if ((shaders->vertex == shader) || (shaders->fragment == shader))
             {
                 // Deletes the linked program, which will unref the shader.
-                hash_remove(ctx->linker_cache, shaders);
+                hash_remove(ctx->linker_cache, shaders, ctx);
             } // if
         } // while
     } // if
@@ -2991,7 +2992,7 @@ void MOJOSHADER_glDestroyContext(MOJOSHADER_glContext *_ctx)
     ctx = _ctx;
     MOJOSHADER_glBindProgram(NULL);
     if (ctx->linker_cache)
-        hash_destroy(ctx->linker_cache);
+        hash_destroy(ctx->linker_cache, ctx);
     lookup_entry_points(NULL, NULL);   // !!! FIXME: is there a value to this?
     Free(ctx);
     ctx = ((current_ctx == _ctx) ? NULL : current_ctx);
