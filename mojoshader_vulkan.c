@@ -12,13 +12,8 @@
 
 #if SUPPORT_PROFILE_SPIRV
 
+#define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
-
-#define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
-    typedef ret (VKAPI_CALL *vkfntype_MOJOSHADER_##func) params;
-#define VULKAN_DEVICE_FUNCTION(ret, func, params) \
-	typedef ret (VKAPI_CALL *vkfntype_MOJOSHADER_##func) params;
-#include "mojoshader_vulkan_vkfuncs.h"
 
 #define UBO_BUFFER_SIZE 8000000 // 8MB
 #define UBO_ACTUAL_SIZE (UBO_BUFFER_SIZE * 2) // Double so we can "rotate" the buffer and unblock main thread
@@ -107,10 +102,10 @@ typedef struct MOJOSHADER_vkContext
     MOJOSHADER_vkShader *bound_vshader;
     MOJOSHADER_vkShader *bound_pshader;
 
-    #define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
-        vkfntype_MOJOSHADER_##func func;
-    #define VULKAN_DEVICE_FUNCTION(ret, func, params) \
-        vkfntype_MOJOSHADER_##func func;
+    #define VULKAN_INSTANCE_FUNCTION(name) \
+        PFN_##name name;
+    #define VULKAN_DEVICE_FUNCTION(name) \
+        PFN_##name name;
     #include "mojoshader_vulkan_vkfuncs.h"
 } MOJOSHADER_vkContext;
 
@@ -367,10 +362,10 @@ static void update_uniform_buffer(
 
 static void lookup_entry_points(MOJOSHADER_vkContext *ctx)
 {
-    #define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
-        ctx->func = (vkfntype_MOJOSHADER_##func) ctx->instance_proc_lookup(*ctx->instance, #func);
-    #define VULKAN_DEVICE_FUNCTION(ret, func, params) \
-        ctx->func = (vkfntype_MOJOSHADER_##func) ctx->device_proc_lookup(*ctx->logical_device, #func);
+    #define VULKAN_INSTANCE_FUNCTION(name) \
+        ctx->name = (PFN_##name) ctx->instance_proc_lookup(*ctx->instance, #name);
+    #define VULKAN_DEVICE_FUNCTION(name) \
+        ctx->name = (PFN_##name) ctx->device_proc_lookup(*ctx->logical_device, #name);
     #include "mojoshader_vulkan_vkfuncs.h"
 } // lookup_entry_points
 
