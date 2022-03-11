@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
 #include <windows.h> // Include this early to avoid SDL conflicts
+#endif
 
 #define __MOJOSHADER_INTERNAL__ 1
 #include "mojoshader_internal.h"
@@ -598,12 +599,16 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
     // Grab the D3DCompile function pointer
 #if WINAPI_FAMILY_WINRT
     ctx->D3DCompileFunc = D3DCompile;
-#else
+#elif defined(_WIN32)
     ctx->d3dcompilerDLL = LoadLibrary("d3dcompiler_47.dll");
     assert(ctx->d3dcompilerDLL != NULL);
     ctx->D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(ctx->d3dcompilerDLL,
                                                           "D3DCompile");
-#endif /* WINAPI_FAMILY_WINRT */
+#else
+    // FIXME: DXBC4 emitter for non-Windows -flibit
+    ctx->d3dcompilerDLL = NULL;
+    ctx->D3DCompileFunc = NULL;
+#endif
 
     return ctx;
 
@@ -615,7 +620,7 @@ init_fail:
 
 void MOJOSHADER_d3d11DestroyContext(MOJOSHADER_d3d11Context *ctx)
 {
-#if !WINAPI_FAMILY_WINRT
+#if !WINAPI_FAMILY_WINRT && defined(_WIN32)
     FreeLibrary(ctx->d3dcompilerDLL);
 #endif
     ctx->free_fn(ctx, ctx->malloc_data);
@@ -970,6 +975,5 @@ const char *MOJOSHADER_d3d11GetError(MOJOSHADER_d3d11Context *ctx)
 } // MOJOSHADER_d3d11GetError
 
 #endif /* SUPPORT_PROFILE_HLSL */
-#endif /* _WIN32 */
 
 // end of mojoshader_d3d11.c ...
