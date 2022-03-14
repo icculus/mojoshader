@@ -17,7 +17,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install cmake ninja-build libsdl2-dev lemon re2c
+        sudo apt-get install cmake ninja-build libsdl2-dev lemon re2c libvulkan-dev
     - name: Get MojoShader sources
       uses: actions/checkout@v2
     - name: Configure CMake
