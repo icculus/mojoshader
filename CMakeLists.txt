@@ -18,7 +18,7 @@ OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" APPLE
 OPTION(PROFILE_SPIRV "Build MojoShader with support for the SPIR-V profile" HAS_VULKAN_H)
 OPTION(PROFILE_GLSPIRV "Build MojoShader with support for the ARB_gl_spirv profile" HAS_VULKAN_H)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
-OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" ON)
+OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" !WIN32) # TODO: Fix lemon on Windows
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
 OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
 OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
