@@ -194,8 +194,12 @@ IF(BUILD_SHARED_LIBS)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(BUILD_SHARED_LIBS)
 
+# These are fallback paths for Vulkan/D3D11, try to have this on the system instead!
 TARGET_INCLUDE_DIRECTORIES(mojoshader PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../Vulkan-Headers/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/directx>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/windows>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/wsi>
 )
 
 SET_SOURCE_FILES_PROPERTIES(
