@@ -29,7 +29,7 @@
 #include <d3dcompiler.h>
 #elif defined(_WIN32)
 #define LOAD_D3DCOMPILER LoadLibrary("d3dcompiler_47.dll")
-#define UNLOAD_D3DCOMPILER(d) UnloadLibrary(d)
+#define UNLOAD_D3DCOMPILER(d) FreeLibrary(d)
 #define LOAD_D3DCOMPILE(d) GetProcAddress(d, "D3DCompile")
 #else
 #if defined(__APPLE__)
