@@ -27,6 +27,18 @@
 #endif
 #if WINAPI_FAMILY_WINRT
 #include <d3dcompiler.h>
+#elif defined(_WIN32)
+#define LOAD_D3DCOMPILER LoadLibrary("d3dcompiler_47.dll")
+#define UNLOAD_D3DCOMPILER(d) UnloadLibrary(d)
+#define LOAD_D3DCOMPILE(d) GetProcAddress(d, "D3DCompile")
+#else
+#if defined(__APPLE__)
+#define LOAD_D3DCOMPILER dlopen("libd3dcompiler.dylib", RTLD_NOW|RTLD_LOCAL)
+#else
+#define LOAD_D3DCOMPILER dlopen("libd3dcompiler.so", RTLD_NOW|RTLD_LOCAL)
+#endif
+#define UNLOAD_D3DCOMPILER(d) dlclose(d)
+#define LOAD_D3DCOMPILE(d) dlsym(d, "D3DCompile")
 #endif
 
 // D3DCompile optimization can be overzealous and cause very visible bugs,
@@ -576,6 +588,22 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
     void *malloc_d
 ) {
     MOJOSHADER_d3d11Context *ctx;
+    PFN_D3DCOMPILE compileFunc;
+
+#if WINAPI_FAMILY_WINRT
+    compileFunc = D3DCompile;
+#else
+    void *compileDLL;
+    compileDLL = LOAD_D3DCOMPILER;
+    if (compileDLL == NULL)
+        return NULL;
+    compileFunc = (PFN_D3DCOMPILE) LOAD_D3DCOMPILE(compileDLL);
+    if (compileFunc == NULL)
+    {
+        UNLOAD_D3DCOMPILER(compileDLL);
+        return NULL;
+    } // if
+#endif
 
     if (m == NULL) m = MOJOSHADER_internal_malloc;
     if (f == NULL) f = MOJOSHADER_internal_free;
@@ -596,18 +624,10 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
     ctx->device = (ID3D11Device*) device;
     ctx->deviceContext = (ID3D11DeviceContext*) deviceContext;
 
-    // Grab the D3DCompile function pointer
-#if WINAPI_FAMILY_WINRT
-    ctx->D3DCompileFunc = D3DCompile;
-#elif defined(_WIN32)
-    ctx->d3dcompilerDLL = LoadLibrary("d3dcompiler_47.dll");
-    assert(ctx->d3dcompilerDLL != NULL);
-    ctx->D3DCompileFunc = (PFN_D3DCOMPILE) GetProcAddress(ctx->d3dcompilerDLL,
-                                                          "D3DCompile");
-#else
-    // FIXME: DXBC4 emitter for non-Windows -flibit
-    ctx->d3dcompilerDLL = NULL;
-    ctx->D3DCompileFunc = NULL;
+    // Store the d3dcompiler info
+    ctx->D3DCompileFunc = compileFunc;
+#if !WINAPI_FAMILY_WINRT
+    ctx->d3dcompilerDLL = compileDLL;
 #endif
 
     return ctx;
@@ -620,8 +640,8 @@ init_fail:
 
 void MOJOSHADER_d3d11DestroyContext(MOJOSHADER_d3d11Context *ctx)
 {
-#if !WINAPI_FAMILY_WINRT && defined(_WIN32)
-    FreeLibrary(ctx->d3dcompilerDLL);
+#if !WINAPI_FAMILY_WINRT
+    UNLOAD_D3DCOMPILER(ctx->d3dcompilerDLL);
 #endif
     ctx->free_fn(ctx, ctx->malloc_data);
 } // MOJOSHADER_d3d11DestroyContext

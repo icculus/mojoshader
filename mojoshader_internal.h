@@ -11,6 +11,7 @@
 #ifdef MOJOSHADER_USE_SDL_STDLIB
 #include <SDL_assert.h>
 #include <SDL_stdinc.h>
+#include <SDL_loadso.h>
 #include <math.h> /* Needed for isinf/isnan :( */
 
 /* FIXME: These includes are needed for alloca :( */
@@ -100,6 +101,11 @@ typedef Uint64 uint64;
 #endif
 /* TODO: Move MojoShader away from strcpy! This len is awful! */
 #define strcpy(dst, src) SDL_strlcpy(dst, src, SDL_strlen(src) + 1)
+
+/* dlfcn.h */
+#define dlopen(a, b) SDL_LoadObject(a)
+#define dlclose SDL_UnloadObject
+#define dlsym SDL_LoadFunction
 #else /* MOJOSHADER_USE_SDL_STDLIB */
 #include <stdio.h>
 #include <string.h>
