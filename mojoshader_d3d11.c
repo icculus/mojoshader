@@ -593,7 +593,7 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
 #if WINAPI_FAMILY_WINRT
     compileFunc = D3DCompile;
 #else
-    void *compileDLL;
+    HMODULE compileDLL;
     compileDLL = LOAD_D3DCOMPILER;
     if (compileDLL == NULL)
         return NULL;
