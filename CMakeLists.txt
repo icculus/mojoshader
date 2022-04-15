@@ -25,46 +25,48 @@ OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior"
 
 INCLUDE_DIRECTORIES(.)
 
-# If Mercurial is installed and we are in a mercurial repository, include the rev# and changeset as version information.
-FIND_PROGRAM(HG hg DOC "Path to hg command line app: http://www.selenic.com/mercurial/")
-IF(NOT HG)
-    MESSAGE(STATUS "Mercurial (hg) not found. You can go on, but version info will be wrong.")
-    SET(MOJOSHADER_VERSION -1)
-    SET(MOJOSHADER_CHANGESET "???")
-ELSE(NOT HG)
-    MARK_AS_ADVANCED(HG)
+# This was a Mercurial thing. In Git, it's always -1.
+SET(MOJOSHADER_VERSION -1)
 
-    # See if we are in an hg repository.
+# If Mercurial is installed and we are in a mercurial repository, include the rev# and changeset as version information.
+FIND_PROGRAM(GIT git DOC "Path to git command line app: https://git-scm.com/")
+IF(NOT GIT)
+    MESSAGE(STATUS "Git not found. You can go on, but version info will be wrong.")
+    SET(MOJOSHADER_CHANGESET "???")
+ELSE(NOT GIT)
+    MARK_AS_ADVANCED(GIT)
+
+    # !!! FIXME: this didn't actually use the GIT variable...
+
+    # See if we are in a git repository.
     EXECUTE_PROCESS(
-        COMMAND hg root
+        COMMAND git rev-parse --show-toplevel
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        RESULT_VARIABLE HGVERSION_RC
+        OUTPUT_VARIABLE MOJOSHADER_GIT_TOPLEVEL_DIR
+        RESULT_VARIABLE GITVERSION_RC
         ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    IF(NOT HGVERSION_RC EQUAL 0)
-        MESSAGE(STATUS "Mercurial (hg) repository not found. You can go on, but version info will be wrong.")
-        SET(MOJOSHADER_VERSION -1)
+    IF(NOT GITVERSION_RC EQUAL 0)
+        MESSAGE(STATUS "Git repository not found. You can go on, but version info will be wrong.")
         SET(MOJOSHADER_CHANGESET "???")
-    ELSE(NOT HGVERSION_RC EQUAL 0)
-        # Query the rev and changeset.
+    ELSE(NOT GITVERSION_RC EQUAL 0)
+        # Query the changeset.
         EXECUTE_PROCESS(
-            COMMAND hg tip --template {rev}
+            COMMAND git rev-list HEAD~..
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            RESULT_VARIABLE HGVERSION_RC
-            OUTPUT_VARIABLE MOJOSHADER_VERSION
+            RESULT_VARIABLE GITVERSION_RC
+            OUTPUT_VARIABLE MOJOSHADER_GIT_CHANGESET
             ERROR_QUIET
             OUTPUT_STRIP_TRAILING_WHITESPACE
         )
-        EXECUTE_PROCESS(
-            COMMAND hg tip --template hg-{rev}:{node|short}
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            RESULT_VARIABLE HGVERSION_RC
-            OUTPUT_VARIABLE MOJOSHADER_CHANGESET
-            ERROR_QUIET
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-    ENDIF(NOT HGVERSION_RC EQUAL 0)
-ENDIF(NOT HG)
+        IF(NOT GITVERSION_RC EQUAL 0)
+            SET(MOJOSHADER_CHANGESET "???")
+        ELSE(NOT GITVERSION_RC EQUAL 0)
+            SET(MOJOSHADER_CHANGESET "git-${MOJOSHADER_GIT_CHANGESET}")
+        ENDIF(NOT GITVERSION_RC EQUAL 0)
+    ENDIF(NOT GITVERSION_RC EQUAL 0)
+ENDIF(NOT GIT)
 
 WRITE_FILE(
     "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_version.h"

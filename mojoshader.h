@@ -58,6 +58,10 @@ extern "C" {
  *    const int linked_against = MOJOSHADER_version();
  *
  * The version is a single integer that increments, not a major/minor value.
+ *
+ * Please note that since moving to git, this function always returns -1;
+ *  when hosted in Mercurial, this number meant something, but even
+ *  there it wasn't reliable. With git, this number no longer exists at all.
  */
 DECLSPEC int MOJOSHADER_version(void);
 
