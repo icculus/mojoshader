@@ -4521,6 +4521,8 @@ static void parse_source(Context *ctx, const char *filename,
 
     ParseHLSLFree(parser, ctx->free, ctx->malloc_data);
     preprocessor_end(pp);
+
+    (void) ParseHLSLFallback;  // !!! FIXME: do we need to do anything with this? It showed up when upgrading lemon.
 } // parse_source
 
 
