@@ -232,7 +232,7 @@ static inline int isfail(const Context *ctx)
 } // isfail
 
 
-static void symbolmap_nuke(const void *k, const void *v, void *d) {/*no-op*/}
+static void symbolmap_nuke(const void *k, const void *v, const void *value, void *d) {/*no-op*/}
 
 static int create_symbolmap(Context *ctx, SymbolMap *map)
 {
