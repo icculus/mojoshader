@@ -203,12 +203,12 @@ singlelinecomment:
     matchptr = cursor;
 /*!re2c
     NEWLINE         {
-                        s->line++;
                         if (s->report_comments)
                         {
                             cursor = matchptr;  // so we RET('\n') next.
                             RET(TOKEN_SINGLE_COMMENT);
                         }
+                        s->line++;
                         token = matchptr;
                         RET('\n');
                     }
