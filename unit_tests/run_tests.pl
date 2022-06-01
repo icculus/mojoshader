@@ -2,7 +2,7 @@
 
 use warnings;
 use strict;
-use Digest::SHA1;
+use Digest::SHA;
 use Cwd;
 
 use FindBin qw($Bin);
@@ -28,8 +28,8 @@ sub compare_files {
         return (0, "Couldn't open '$b' for checksum");
     }
 
-    my $sha1 = Digest::SHA1->new;
-    my $sha2 = Digest::SHA1->new;
+    my $sha1 = Digest::SHA->new('sha256');
+    my $sha2 = Digest::SHA->new('sha256');
 
     if (not $endlines) {
         $sha1->addfile(*FILE1);
