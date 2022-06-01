@@ -480,7 +480,7 @@ void ParseFinalize(void *p){
 #if __MOJOSHADER__
 static void ParseFree(
   void *p,                    /* The parser to be deleted */
-  void (*freeProc)(void*,void*)     /* Function used to reclaim memory */
+  void (*freeProc)(void*,void*),     /* Function used to reclaim memory */
   void *malloc_data
 ){
 #ifndef YYPARSEFREENEVERNULL
