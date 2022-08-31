@@ -33,9 +33,9 @@
 #define LOAD_D3DCOMPILE(d) GetProcAddress(d, "D3DCompile")
 #else
 #if defined(__APPLE__)
-#define LOAD_D3DCOMPILER dlopen("libd3dcompiler.dylib", RTLD_NOW|RTLD_LOCAL)
+#define LOAD_D3DCOMPILER dlopen("libvkd3d-utils.1.dylib", RTLD_NOW|RTLD_LOCAL)
 #else
-#define LOAD_D3DCOMPILER dlopen("libd3dcompiler.so", RTLD_NOW|RTLD_LOCAL)
+#define LOAD_D3DCOMPILER dlopen("libvkd3d-utils.so.1", RTLD_NOW|RTLD_LOCAL)
 #endif
 #define UNLOAD_D3DCOMPILER(d) dlclose(d)
 #define LOAD_D3DCOMPILE(d) dlsym(d, "D3DCompile")
@@ -61,7 +61,26 @@ static inline void out_of_memory(void)
 
 /* D3DCompile signature */
 
-typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
+/* This is largely taken from vkd3d_windows.h */
+#ifdef _WIN32
+#define D3DCOMPILER_API WINAPI
+#else
+# ifdef __stdcall
+#  undef __stdcall
+# endif
+# ifdef __x86_64__
+#  define __stdcall __attribute__((ms_abi))
+# else
+#  if (__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 2)) || defined(__APPLE__)
+#   define __stdcall __attribute__((__stdcall__)) __attribute__((__force_align_arg_pointer__))
+#  else
+#   define __stdcall __attribute__((__stdcall__))
+#  endif
+# endif
+# define D3DCOMPILER_API __stdcall
+#endif
+
+typedef HRESULT(D3DCOMPILER_API *PFN_D3DCOMPILE)(
     LPCVOID pSrcData,
     SIZE_T SrcDataSize,
     LPCSTR pSourceName,
