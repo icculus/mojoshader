@@ -16,7 +16,10 @@
 
 /* FIXME: These includes are needed for alloca :( */
 #include <stdlib.h>
-#ifndef __APPLE__
+#if defined(__linux__) || defined(__sun)
+#include <alloca.h>
+#endif
+#ifdef _MSC_VER
 #include <malloc.h>
 #endif
 
@@ -258,10 +261,6 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 typedef int64_t int64;
 typedef uint64_t uint64;
-#endif
-
-#ifdef sun
-#include <alloca.h>
 #endif
 #endif /* MOJOSHADER_USE_SDL_STDLIB */
 
