@@ -32,6 +32,7 @@
 #define UNLOAD_D3DCOMPILER(d) FreeLibrary(d)
 #define LOAD_D3DCOMPILE(d) GetProcAddress(d, "D3DCompile")
 #else
+#define USING_VKD3D
 #if defined(__APPLE__)
 #define LOAD_D3DCOMPILER dlopen("libvkd3d-utils.1.dylib", RTLD_NOW|RTLD_LOCAL)
 #else
@@ -79,6 +80,28 @@ static inline void out_of_memory(void)
 # endif
 # define D3DCOMPILER_API __stdcall
 #endif
+
+/* vkd3d uses stdcall for its ID3D10Blob implementation */
+#ifdef USING_VKD3D
+typedef struct VKD3DBlob VKD3DBlob;
+typedef struct VKD3DBlobVtbl
+{
+    HRESULT (__stdcall *QueryInterface)(
+        VKD3DBlob *This,
+        REFIID riid,
+        void **ppvObject);
+    ULONG (__stdcall *AddRef)(VKD3DBlob *This);
+    ULONG (__stdcall *Release)(VKD3DBlob *This);
+    void * (__stdcall *GetBufferPointer)(VKD3DBlob *This);
+    SIZE_T (__stdcall *GetBufferSize)(VKD3DBlob *This);
+} VKD3DBlobVtbl;
+struct VKD3DBlob
+{
+    const VKD3DBlobVtbl *lpVtbl;
+};
+#define ID3D10Blob VKD3DBlob
+#define ID3DBlob VKD3DBlob
+#endif // USING_VKD3D
 
 typedef HRESULT(D3DCOMPILER_API *PFN_D3DCOMPILE)(
     LPCVOID pSrcData,
