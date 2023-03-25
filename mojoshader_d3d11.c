@@ -22,6 +22,8 @@
 #define COBJMACROS
 #include <d3d11.h>
 
+/* d3dcompiler DLL */
+
 #ifndef WINAPI_FAMILY_WINRT
 #define WINAPI_FAMILY_WINRT 0
 #endif
@@ -42,27 +44,8 @@
 #define LOAD_D3DCOMPILE(d) dlsym(d, "D3DCompile")
 #endif
 
-// D3DCompile optimization can be overzealous and cause very visible bugs,
-//  so we disable it when compiling shaders to preserve correctness.
-#define D3D_SKIP_OPT (1 << 2)
+/* __stdcall declaration, largely taken from vkd3d_windows.h */
 
-/* Error state */
-
-static char error_buffer[1024] = { '\0' };
-
-static void set_error(const char *str)
-{
-    snprintf(error_buffer, sizeof (error_buffer), "%s", str);
-} // set_error
-
-static inline void out_of_memory(void)
-{
-    set_error("out of memory");
-} // out_of_memory
-
-/* D3DCompile signature */
-
-/* This is largely taken from vkd3d_windows.h */
 #ifdef _WIN32
 #define D3DCOMPILER_API WINAPI
 #else
@@ -82,6 +65,7 @@ static inline void out_of_memory(void)
 #endif
 
 /* vkd3d uses stdcall for its ID3D10Blob implementation */
+
 #ifdef USING_VKD3D
 typedef struct VKD3DBlob VKD3DBlob;
 typedef struct VKD3DBlobVtbl
@@ -103,6 +87,8 @@ struct VKD3DBlob
 #define ID3DBlob VKD3DBlob
 #endif // USING_VKD3D
 
+/* D3DCompile signature */
+
 typedef HRESULT(D3DCOMPILER_API *PFN_D3DCOMPILE)(
     LPCVOID pSrcData,
     SIZE_T SrcDataSize,
@@ -116,6 +102,24 @@ typedef HRESULT(D3DCOMPILER_API *PFN_D3DCOMPILE)(
     ID3DBlob **ppCode,
     ID3DBlob **ppErrorMsgs
 );
+
+// D3DCompile optimization can be overzealous and cause very visible bugs,
+//  so we disable it when compiling shaders to preserve correctness.
+#define D3D_SKIP_OPT (1 << 2)
+
+/* Error state */
+
+static char error_buffer[1024] = { '\0' };
+
+static void set_error(const char *str)
+{
+    snprintf(error_buffer, sizeof (error_buffer), "%s", str);
+} // set_error
+
+static inline void out_of_memory(void)
+{
+    set_error("out of memory");
+} // out_of_memory
 
 /* Structs */
 
