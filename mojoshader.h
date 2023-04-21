@@ -4033,14 +4033,16 @@ DECLSPEC int MOJOSHADER_d3d11GetVertexAttribLocation(MOJOSHADER_d3d11Shader *ver
  *  entries. (bytecode) and (bytecodeLength) will be filled with the final
  *  compiled D3D11 vertex shader.
  *
+ * Returns 0 on success, nonzero on error.
+ *
  * This call is only as thread safe as your D3D11 context! If you call your
  *  context from multiple threads, you must protect this call with whatever
  *  thread synchronization technique you have for your other D3D calls.
  */
-DECLSPEC void MOJOSHADER_d3d11CompileVertexShader(MOJOSHADER_d3d11Context *ctx,
-                                                  unsigned long long inputLayoutHash,
-                                                  void *elements, int elementCount,
-                                                  void **bytecode, int *bytecodeLength);
+DECLSPEC int MOJOSHADER_d3d11CompileVertexShader(MOJOSHADER_d3d11Context *ctx,
+                                                 unsigned long long inputLayoutHash,
+                                                 void *elements, int elementCount,
+                                                 void **bytecode, int *bytecodeLength);
 
 /*
  * Inform MojoShader that it should commit any pending state and prepare the
@@ -4050,12 +4052,14 @@ DECLSPEC void MOJOSHADER_d3d11CompileVertexShader(MOJOSHADER_d3d11Context *ctx,
  *  drawing, so any outstanding changes made to the shared constants array (etc)
  *  can propagate to the shader during this call.
  *
+ * Returns 0 on success, nonzero on error.
+ *
  * This call is only as thread safe as your D3D11 context! If you call your
  *  context from multiple threads, you must protect this call with whatever
  *  thread synchronization technique you have for your other D3D calls.
  */
-DECLSPEC void MOJOSHADER_d3d11ProgramReady(MOJOSHADER_d3d11Context *context,
-                                           unsigned long long inputLayoutHash);
+DECLSPEC int MOJOSHADER_d3d11ProgramReady(MOJOSHADER_d3d11Context *context,
+                                          unsigned long long inputLayoutHash);
 
 /*
  * Free the resources of a compiled shader. This will delete the shader object
