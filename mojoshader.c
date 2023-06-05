@@ -3964,6 +3964,10 @@ const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned char *buf,
 
     // We need just enough Context for allocators and error state.
     Context *ctx = build_context(NULL, NULL, buf, buflen, NULL, 0, NULL, 0, m, f, d);
+    if (ctx == NULL)
+    {
+        return retval; // !!! FIXME: Out of memory struct for MOJOSHADER_preshader
+    }
     parse_preshader(ctx, ctx->tokens, ctx->tokencount);
     if (!isfail(ctx))
     {
