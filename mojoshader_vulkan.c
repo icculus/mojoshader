@@ -309,7 +309,7 @@ static void update_uniform_buffer(
     ubo->currentBlockSize = next_highest_offset_alignment(ctx, uniform_data_size(shader));
     ubo->currentBlockIncrement = ubo->currentBlockSize;
 
-    if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * ctx->frameIndex)
+    if (ubo->dynamicOffset + ubo->currentBlockSize >= ubo->bufferSize * (ctx->frameIndex + 1))
     {
         set_error("UBO overflow!!");
     } // if
