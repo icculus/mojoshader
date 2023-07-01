@@ -30,7 +30,7 @@ INCLUDE_DIRECTORIES(.)
 # This was a Mercurial thing. In Git, it's always -1.
 SET(MOJOSHADER_VERSION -1)
 
-# If Mercurial is installed and we are in a mercurial repository, include the rev# and changeset as version information.
+# If Git is installed and we are in a git repository, include the changeset as version information.
 FIND_PROGRAM(GIT git DOC "Path to git command line app: https://git-scm.com/")
 IF(NOT GIT)
     MESSAGE(STATUS "Git not found. You can go on, but version info will be wrong.")
