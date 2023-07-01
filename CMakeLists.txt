@@ -1,5 +1,7 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.12.0)
 PROJECT(MojoShader)
+
+# !!! FIXME: can we lowercase this file, if nothing else?
 
 INCLUDE(CheckIncludeFile)
 CHECK_INCLUDE_FILE(d3d11.h HAS_D3D11_H)
