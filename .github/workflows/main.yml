@@ -24,7 +24,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install cmake ninja-build lemon re2c libvulkan-dev
     - name: Get MojoShader sources
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Configure CMake
       run: cmake -B build ${{ matrix.platform.flags }}
     - name: Build
