@@ -1,4 +1,5 @@
 # MojoShader
+[![Build](https://github.com/icculus/mojoshader/actions/workflows/main.yml/badge.svg)](https://github.com/icculus/mojoshader/actions/workflows/main.yml)
 
 https://icculus.org/mojoshader/
 
