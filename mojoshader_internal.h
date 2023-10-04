@@ -54,7 +54,7 @@ typedef Uint64 uint64;
 #define asin SDL_asin
 #define atan SDL_atan
 #define atan2 SDL_atan2
-#define cos SDL_acos
+#define cos SDL_cos
 #define exp SDL_exp
 #define floor SDL_floor
 #define log SDL_log
