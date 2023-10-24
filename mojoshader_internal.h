@@ -159,6 +159,10 @@ typedef Uint64 uint64;
 #define SUPPORT_PROFILE_GLSLES 1
 #endif
 
+#ifndef SUPPORT_PROFILE_GLSLES3
+#define SUPPORT_PROFILE_GLSLES3 1
+#endif
+
 #ifndef SUPPORT_PROFILE_ARB1
 #define SUPPORT_PROFILE_ARB1 1
 #endif
@@ -190,6 +194,11 @@ typedef Uint64 uint64;
 #if SUPPORT_PROFILE_GLSLES && !SUPPORT_PROFILE_GLSL
 #error glsles profile requires glsl profile. Fix your build.
 #endif
+
+#if SUPPORT_PROFILE_GLSLES3 && !SUPPORT_PROFILE_GLSLES
+#error glsles3 profile requires glsles profile. Fix your build.
+#endif
+
 
 #if SUPPORT_PROFILE_GLSPIRV && !SUPPORT_PROFILE_SPIRV
 #error glspirv profile requires spirv profile. Fix your build.

@@ -209,6 +209,7 @@ struct MOJOSHADER_glContext
     int have_opengl_2;  // different entry points than ARB extensions.
     int have_opengl_3;  // different extension query.
     int have_opengl_es; // different extension requirements
+    int have_opengl_es3; // different shader synxtax and attributes
     int have_GL_ARB_vertex_program;
     int have_GL_ARB_fragment_program;
     int have_GL_NV_vertex_program2_option;
@@ -1413,6 +1414,11 @@ static void load_extensions(MOJOSHADER_glGetProcAddress lookup, void *d)
         }
         parse_opengl_version_str(str, &ctx->opengl_major, &ctx->opengl_minor);
 
+        if (opengl_version_atleast(3, 0) && ctx->have_opengl_es)
+        {
+            ctx->have_opengl_es3 = 1;
+        }
+
         if ((ctx->have_opengl_3) && (opengl_version_atleast(3, 0)))
         {
             GLint i;
@@ -1567,6 +1573,13 @@ static int valid_profile(const char *profile)
     #endif
 
     #if SUPPORT_PROFILE_GLSLES
+    else if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES3) == 0)
+    {
+        MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSLES3, 3, 00);
+    } // else if
+    #endif
+
+    #if SUPPORT_PROFILE_GLSLES
     else if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0)
     {
         MUST_HAVE_GLSL(MOJOSHADER_PROFILE_GLSLES, 1, 00);
@@ -1639,6 +1652,14 @@ int MOJOSHADER_glAvailableProfiles(MOJOSHADER_glGetProcAddress lookup,
     ctx->malloc_data = malloc_d;
 
     load_extensions(lookup, lookup_d);
+
+#if SUPPORT_PROFILE_GLSLES3
+    if (ctx->have_opengl_es3)
+    {
+        profs[0] = MOJOSHADER_PROFILE_GLSLES3;
+        return 1;
+    } // if
+#endif
 
 #if SUPPORT_PROFILE_GLSLES
     if (ctx->have_opengl_es)
@@ -1763,7 +1784,8 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
 #if SUPPORT_PROFILE_GLSL
     else if ( (strcmp(profile, MOJOSHADER_PROFILE_GLSL) == 0) ||
               (strcmp(profile, MOJOSHADER_PROFILE_GLSL120) == 0) ||
-              (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0) )
+              (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0) ||
+              (strcmp(profile, MOJOSHADER_PROFILE_GLSLES3) == 0) )
     {
         ctx->profileMaxUniforms = impl_GLSL_MaxUniforms;
         ctx->profileCompileShader = impl_GLSL_CompileShader;
@@ -1780,7 +1802,7 @@ MOJOSHADER_glContext *MOJOSHADER_glCreateContext(const char *profile,
         ctx->profilePushSampler = impl_GLSL_PushSampler;
         ctx->profileMustPushConstantArrays = impl_GLSL_MustPushConstantArrays;
         ctx->profileMustPushSamplers = impl_GLSL_MustPushSamplers;
-        if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0)
+        if (strcmp(profile, MOJOSHADER_PROFILE_GLSLES) == 0 || strcmp(profile, MOJOSHADER_PROFILE_GLSLES3) == 0)
             ctx->profileToggleProgramPointSize = impl_NOOP_ToggleProgramPointSize;
         else
             ctx->profileToggleProgramPointSize = impl_REAL_ToggleProgramPointSize;

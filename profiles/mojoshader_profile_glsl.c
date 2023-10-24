@@ -485,7 +485,7 @@ static void prepend_glsl_texlod_extensions(Context *ctx)
     //  so we'll use them if available. Failing that, we'll just fallback
     //  to a regular texture2D call and hope the mipmap it chooses is close
     //  enough.
-    if (!ctx->glsl_generated_texlod_setup)
+    if (!ctx->glsl_generated_texlod_setup && !support_glsles3(ctx))
     {
         ctx->glsl_generated_texlod_setup = 1;
         push_output(ctx, &ctx->preflight);
@@ -530,6 +530,33 @@ void emit_GLSL_start(Context *ctx, const char *profilestr)
         ctx->profile_supports_glsl120 = 1;
         push_output(ctx, &ctx->preflight);
         output_line(ctx, "#version 120");
+        pop_output(ctx);
+    } // else if
+    #endif
+
+    #if SUPPORT_PROFILE_GLSLES3
+    else if (strcmp(profilestr, MOJOSHADER_PROFILE_GLSLES3) == 0)
+    {
+        ctx->profile_supports_glsles3 = 1;
+        push_output(ctx, &ctx->preflight);
+        output_line(ctx, "#version 300 es");
+        output_line(ctx, "#define texture2D texture");
+        output_line(ctx, "#define texture2DLod textureLod");
+        output_line(ctx, "#define texture2DProj textureProj");
+        output_line(ctx, "#define texture2DGrad textureGrad");
+        output_line(ctx, "#define texture2DProjGrad textureProjGrad");
+        output_line(ctx, "#define texture3D texture");
+        output_line(ctx, "#define texture3DLod textureLod");
+        output_line(ctx, "#define textureCube texture");
+        output_line(ctx, "#define textureCubeLod textureLod");
+        output_line(ctx, "#define texture2DRect texture");
+        output_line(ctx, "#define texture2DRectProj textureProj");
+        output_line(ctx, "#define texture2DRectLod textureLod");
+        if (shader_is_vertex(ctx))
+            output_line(ctx, "precision highp float;");
+        else
+            output_line(ctx, "precision mediump float;");
+        output_line(ctx, "precision mediump int;");
         pop_output(ctx);
     } // else if
     #endif
@@ -855,11 +882,19 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                          int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
+    const char *qualifier_in = "varying";
+    const char *qualifier_out = "varying";
     const char *usage_str = NULL;
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
     char var[64];
+
+    if (support_glsles3(ctx))
+    {
+        qualifier_in = "in";
+        qualifier_out = "out";
+    }
 
     get_GLSL_varname_in_buf(ctx, regtype, regnum, var, sizeof (var));
 
@@ -920,7 +955,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         if (regtype == REG_TYPE_INPUT)
         {
             push_output(ctx, &ctx->globals);
-            output_line(ctx, "attribute vec4 %s;", var);
+            output_line(ctx, "%s vec4 %s;", qualifier_in, var);
             pop_output(ctx);
         } // if
 
@@ -944,7 +979,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                         push_output(ctx, &ctx->globals);
 #if SUPPORT_PROFILE_GLSLES
                         if (support_glsles(ctx))
-                            output_line(ctx, "varying highp float io_%i_%i;", usage, index);
+                            output_line(ctx, "%s highp float io_%i_%i;", qualifier_out, usage, index);
                         else
 #endif
                         output_line(ctx, "varying float io_%i_%i;", usage, index);
@@ -982,7 +1017,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                         push_output(ctx, &ctx->globals);
 #if SUPPORT_PROFILE_GLSLES
                         if (support_glsles(ctx))
-                            output_line(ctx, "varying highp float io_%i_%i;", usage, index);
+                            output_line(ctx, "%s highp float io_%i_%i;", qualifier_out, usage, index);
                         else
 #endif
                         output_line(ctx, "varying float io_%i_%i;", usage, index);
@@ -1016,7 +1051,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
             {
 #if SUPPORT_PROFILE_GLSLES
                 if (support_glsles(ctx))
-                    output_line(ctx, "varying highp vec4 io_%i_%i;", usage, index);
+                    output_line(ctx, "%s highp vec4 io_%i_%i;", qualifier_out, usage, index);
                 else
 #endif
                 output_line(ctx, "varying vec4 io_%i_%i;", usage, index);
@@ -1048,14 +1083,26 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         if (regtype == REG_TYPE_COLOROUT)
         {
-            if (!ctx->have_multi_color_outputs)
-                usage_str = "gl_FragColor";  // maybe faster?
+            if (support_glsles3(ctx))
+            {
+                usage_str = "_gl_FragData";
+                snprintf(index_str, sizeof (index_str), "_%u", (uint) regnum );
+
+                push_output(ctx, &ctx->globals);
+                output_line(ctx, "layout(location = %u) out highp vec4 %s%s;", regnum, usage_str, index_str);
+                pop_output(ctx);
+            }
             else
             {
-                snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
-                usage_str = "gl_FragData";
-                arrayleft = "[";
-                arrayright = "]";
+                if (!ctx->have_multi_color_outputs)
+                    usage_str = "gl_FragColor";  // maybe faster?
+                else
+                {
+                    snprintf(index_str, sizeof (index_str), "%u", (uint) regnum);
+                    usage_str = "gl_FragData";
+                    arrayleft = "[";
+                    arrayright = "]";
+                } // else
             } // else
         } // if
 
@@ -1145,7 +1192,7 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
         {
 #if SUPPORT_PROFILE_GLSLES
             if (support_glsles(ctx))
-                output_line(ctx, "varying highp vec4 io_%i_%i;", usage, index);
+                output_line(ctx, "%s highp vec4 io_%i_%i;", qualifier_in, usage, index);
             else
 #endif
             output_line(ctx, "varying vec4 io_%i_%i;", usage, index);
