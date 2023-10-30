@@ -882,19 +882,13 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                          int flags)
 {
     // !!! FIXME: this function doesn't deal with write masks at all yet!
-    const char *qualifier_in = "varying";
-    const char *qualifier_out = "varying";
+    const char *qualifier_in;
+    const char *qualifier_out;
     const char *usage_str = NULL;
     const char *arrayleft = "";
     const char *arrayright = "";
     char index_str[16] = { '\0' };
     char var[64];
-
-    if (support_glsles3(ctx))
-    {
-        qualifier_in = "in";
-        qualifier_out = "out";
-    }
 
     get_GLSL_varname_in_buf(ctx, regtype, regnum, var, sizeof (var));
 
@@ -905,6 +899,17 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
     if (shader_is_vertex(ctx))
     {
+        if (support_glsles3(ctx))
+        {
+            qualifier_in = "in";
+            qualifier_out = "out";
+        }
+        else
+        {
+            qualifier_in = "attribute";
+            qualifier_out = "varying";
+        }
+
         // pre-vs3 output registers.
         // these don't ever happen in DCL opcodes, I think. Map to vs_3_*
         //  output registers.
@@ -1073,6 +1078,11 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
     else if (shader_is_pixel(ctx))
     {
+        if (support_glsles3(ctx))
+            qualifier_in = "in";
+        else
+            qualifier_in = "varying";
+
         // samplers DCLs get handled in emit_GLSL_sampler().
 
         if (flags & MOD_CENTROID)  // !!! FIXME
@@ -1083,6 +1093,9 @@ void emit_GLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
 
         if (regtype == REG_TYPE_COLOROUT)
         {
+            // gl_FragColor/FragData were deprecated in favor of manually
+            // defining your own output variables, GLSL ES 3.x enforces the new
+            // syntax, so let's use it.
             if (support_glsles3(ctx))
             {
                 usage_str = "_gl_FragData";
