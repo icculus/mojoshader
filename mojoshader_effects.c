@@ -1887,7 +1887,7 @@ void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect)
     // !!! FIXME: We're just running the preshaders every time. Blech. -flibit
     // !!! FIXME: Will the preshader ever want int/bool registers? -flibit
     #define COPY_PARAMETER_DATA(raw, stage) \
-        if (raw != NULL) \
+        if (raw != NULL && raw->shader != NULL) \
         { \
             pd = effect->ctx.getParseData(raw->shader); \
             copy_parameter_data(effect->params, raw->params, \
