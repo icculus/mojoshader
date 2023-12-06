@@ -649,6 +649,22 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
         UNLOAD_D3DCOMPILER(compileDLL);
         return NULL;
     } // if
+#ifdef USING_VKD3D
+    unsigned int major, minor;
+    const char *(*vkd3d_shader_get_version)(unsigned int *, unsigned int *);
+    vkd3d_shader_get_version = dlsym(compileDLL, "vkd3d_shader_get_version");
+    if (vkd3d_shader_get_version == NULL)
+    {
+        UNLOAD_D3DCOMPILER(compileDLL);
+        return NULL;
+    }
+    vkd3d_shader_get_version(&major, &minor);
+    if (!((major > 1) || (major == 1 && minor >= 10)))
+    {
+        UNLOAD_D3DCOMPILER(compileDLL);
+        return NULL;
+    }
+#endif
 #endif
 
     if (m == NULL) m = MOJOSHADER_internal_malloc;
