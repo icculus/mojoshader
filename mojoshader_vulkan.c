@@ -627,6 +627,13 @@ void MOJOSHADER_vkDeleteShader(
     } // if
 } // MOJOSHADER_vkDeleteShader
 
+unsigned int MOJOSHADER_vkGetShaderRefCount(MOJOSHADER_vkShader *shader)
+{
+    if (shader != NULL)
+        return shader->refcount;
+    return 0;
+} // MOJOSHADER_vkGetShaderRefCount
+
 const MOJOSHADER_parseData *MOJOSHADER_vkGetShaderParseData(
     MOJOSHADER_vkShader *shader
 ) {

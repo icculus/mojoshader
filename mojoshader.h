@@ -3741,6 +3741,11 @@ DECLSPEC void MOJOSHADER_vkDeleteShader(MOJOSHADER_vkContext *context,
                                         MOJOSHADER_vkShader *shader);
 
 /*
+ * Returns a shader's internal refcount.
+ */
+DECLSPEC unsigned int MOJOSHADER_vkGetShaderRefCount(MOJOSHADER_vkShader *shader);
+
+/*
  * Get the MOJOSHADER_parseData structure that was produced from the
  *  call to MOJOSHADER_vkCompileShader().
  *
