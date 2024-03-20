@@ -9,9 +9,15 @@
 //  http://msdn.microsoft.com/en-us/library/ff569705.aspx
 
 #ifdef MOJOSHADER_USE_SDL_STDLIB
+#ifdef USE_SDL3 /* Private define, for now */
+#include <SDL3/SDL_assert.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_loadso.h>
+#else
 #include <SDL_assert.h>
 #include <SDL_stdinc.h>
 #include <SDL_loadso.h>
+#endif
 #include <math.h> /* Needed for isinf/isnan :( */
 
 /* FIXME: These includes are needed for alloca :( */
