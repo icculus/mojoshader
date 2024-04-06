@@ -668,7 +668,7 @@ MOJOSHADER_vkProgram *MOJOSHADER_vkLinkProgram(MOJOSHADER_vkContext *ctx,
         return NULL;
     } // if
 
-    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
+    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
     result->vertexModule = compile_shader(ctx, vshader);
     result->pixelModule = compile_shader(ctx, pshader);
     result->vertexShader = vshader;

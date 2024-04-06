@@ -1059,7 +1059,8 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
 #include "spirv/spirv.h"
 #include "spirv/GLSL.std.450.h"
 void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
-                                      const MOJOSHADER_parseData *pixel)
+                                      const MOJOSHADER_parseData *pixel,
+                                      int is_glspirv)
 {
     int i;
     uint32 attr_loc = 0;
@@ -1070,33 +1071,36 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
     SpirvPatchTable *pTable = (SpirvPatchTable *) &pixel->output[pDataLen];
     const uint32 texcoord0Loc = pTable->attrib_offsets[MOJOSHADER_USAGE_TEXCOORD][0];
 
-    // We need locations for color outputs first!
-    for (i = 0; i < pixel->output_count; i++)
+    if (is_glspirv)
     {
-        const MOJOSHADER_attribute *pAttr = &pixel->outputs[i];
-        if (pAttr->usage != MOJOSHADER_USAGE_COLOR)
+        // We need locations for color outputs first!
+        for (i = 0; i < pixel->output_count; i++)
         {
-            // This should be FragDepth, which is builtin
-            assert(pAttr->usage == MOJOSHADER_USAGE_DEPTH);
-            continue;
-        } // if
+            const MOJOSHADER_attribute* pAttr = &pixel->outputs[i];
+            if (pAttr->usage != MOJOSHADER_USAGE_COLOR)
+            {
+                // This should be FragDepth, which is builtin
+                assert(pAttr->usage == MOJOSHADER_USAGE_DEPTH);
+                continue;
+            } // if
 
-        // Set the loc for the output declaration...
-        pOffset = pTable->output_offsets[pAttr->index];
-        assert(pOffset > 0);
-        ((uint32 *) pixel->output)[pOffset] = attr_loc;
+            // Set the loc for the output declaration...
+            pOffset = pTable->output_offsets[pAttr->index];
+            assert(pOffset > 0);
+            ((uint32*)pixel->output)[pOffset] = attr_loc;
 
-        // Set the same value for the vertex output/pixel input...
-        pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
-        if (pOffset)
-            ((uint32 *) pixel->output)[pOffset] = attr_loc;
-        vOffset = vTable->attrib_offsets[pAttr->usage][pAttr->index];
-        if (vOffset)
-            ((uint32 *) vertex->output)[vOffset] = attr_loc;
+            // Set the same value for the vertex output/pixel input...
+            pOffset = pTable->attrib_offsets[pAttr->usage][pAttr->index];
+            if (pOffset)
+                ((uint32*)pixel->output)[pOffset] = attr_loc;
+            vOffset = vTable->attrib_offsets[pAttr->usage][pAttr->index];
+            if (vOffset)
+                ((uint32*)vertex->output)[vOffset] = attr_loc;
 
-        // ... increment location index, finally.
-        attr_loc++;
-    } // for
+            // ... increment location index, finally.
+            attr_loc++;
+        } // for
+    }
 
     // Okay, now we can start linking pixel/vertex attributes
     for (i = 0; i < pixel->attribute_count; i++)
@@ -1106,7 +1110,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
             continue; // Probably something like VPOS, ignore!
         if (pAttr->usage == MOJOSHADER_USAGE_DEPTH)
             continue; // This should be FragDepth, which is builtin
-        if (pAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[pAttr->index])
+        if (is_glspirv && pAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[pAttr->index])
             continue;
 
         // The input may not exist in the output list!
@@ -1127,7 +1131,7 @@ void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
             continue;
         if (vAttr->usage == MOJOSHADER_USAGE_POINTSIZE && vAttr->index == 0)
             continue;
-        if (vAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[vAttr->index])
+        if (is_glspirv && vAttr->usage == MOJOSHADER_USAGE_COLOR && pTable->output_offsets[vAttr->index])
             continue;
 
         if (!pTable->attrib_offsets[vAttr->usage][vAttr->index])
