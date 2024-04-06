@@ -789,7 +789,8 @@ typedef struct SpirvPatchTable
 } SpirvPatchTable;
 
 void MOJOSHADER_spirv_link_attributes(const MOJOSHADER_parseData *vertex,
-                                      const MOJOSHADER_parseData *pixel);
+                                      const MOJOSHADER_parseData *pixel,
+                                      int is_glspirv);
 #endif
 
 #endif  // _INCLUDE_MOJOSHADER_INTERNAL_H_

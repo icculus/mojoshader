@@ -529,7 +529,7 @@ static GLuint impl_SPIRV_LinkProgram(MOJOSHADER_glShader *vshader,
     // other shader stages to assign final uniform/attrib locations before
     // compilation.
 
-    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
+    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 1);
 
     if (vshader)
     {
