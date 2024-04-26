@@ -652,7 +652,7 @@ MOJOSHADER_d3d11Context* MOJOSHADER_d3d11CreateContext(
 #ifdef USING_VKD3D
     unsigned int major, minor;
     const char *(*vkd3d_shader_get_version)(unsigned int *, unsigned int *);
-    vkd3d_shader_get_version = dlsym(compileDLL, "vkd3d_shader_get_version");
+    vkd3d_shader_get_version = (const char *(*)(unsigned int *, unsigned int *)) dlsym(compileDLL, "vkd3d_shader_get_version");
     if (vkd3d_shader_get_version == NULL)
     {
         UNLOAD_D3DCOMPILER(compileDLL);
