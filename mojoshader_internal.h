@@ -111,6 +111,12 @@ typedef Uint64 uint64;
 /* TODO: Move MojoShader away from strcpy! This len is awful! */
 #define strcpy(dst, src) SDL_strlcpy(dst, src, SDL_strlen(src) + 1)
 
+/* ctype.h */
+#ifdef isalnum
+#undef isalnum
+#endif
+#define isalnum SDL_isalnum
+
 /* dlfcn.h */
 #define dlopen(a, b) SDL_LoadObject(a)
 #define dlclose SDL_UnloadObject
