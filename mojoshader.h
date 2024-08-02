@@ -4093,6 +4093,248 @@ DECLSPEC void MOJOSHADER_d3d11DeleteShader(MOJOSHADER_d3d11Context *context,
 DECLSPEC void MOJOSHADER_d3d11DestroyContext(MOJOSHADER_d3d11Context *context);
 
 
+/* SDL_GPU interface... */
+
+typedef struct MOJOSHADER_sdlContext MOJOSHADER_sdlContext;
+typedef struct MOJOSHADER_sdlShaderData MOJOSHADER_sdlShaderData;
+typedef struct MOJOSHADER_sdlProgram MOJOSHADER_sdlProgram;
+
+#ifndef SDL_GPU_H
+typedef struct SDL_GpuDevice SDL_GpuDevice;
+typedef struct SDL_GpuShader SDL_GpuShader;
+typedef struct SDL_GpuCommandBuffer SDL_GpuCommandBuffer;
+#endif /* SDL_GPU_H */
+
+/*
+ * Prepares a context to manage SDL_gpu shaders.
+ *
+ * You do not need to call this if all you want is MOJOSHADER_parse().
+ *
+ * (device) refers to the SDL_GpuDevice.
+ *
+ * You can only have one MOJOSHADER_sdlContext per actual SDL_gpu context, or
+ *  undefined behaviour will result.
+ *
+ * As MojoShader requires some memory to be allocated, you may provide a
+ *  custom allocator to this function, which will be used to allocate/free
+ *  memory. They function just like malloc() and free(). We do not use
+ *  realloc(). If you don't care, pass NULL in for the allocator functions.
+ *  If your allocator needs instance-specific data, you may supply it with the
+ *  (malloc_d) parameter. This pointer is passed as-is to your (m) and (f)
+ *  functions.
+ *
+ * Returns a new context on success, NULL on error.
+ */
+DECLSPEC MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(SDL_GpuDevice *device,
+                                                            MOJOSHADER_malloc m,
+                                                            MOJOSHADER_free f,
+                                                            void *malloc_d);
+
+/*
+ * Get any error state we might have picked up.
+ *
+ * Returns a human-readable string. This string is for debugging purposes, and
+ *  not guaranteed to be localized, coherent, or user-friendly in any way.
+ *  It's for programmers!
+ *
+ * The latest error may remain between calls. New errors replace any existing
+ *  error. Don't check this string for a sign that an error happened, check
+ *  return codes instead and use this for explanation when debugging.
+ *
+ * Do not free the returned string: it's a pointer to a static internal
+ *  buffer. Do not keep the pointer around, either, as it's likely to become
+ *  invalid as soon as you call into MojoShader again.
+ *
+ * This call does NOT require a valid MOJOSHADER_sdlContext to have been made
+ *  current. The error buffer is shared between contexts, so you can get
+ *  error results from a failed MOJOSHADER_sdlCreateContext().
+ */
+DECLSPEC const char *MOJOSHADER_sdlGetError(MOJOSHADER_sdlContext *ctx);
+
+/*
+ * Deinitialize MojoShader's SDL_gpu shader management.
+ *
+ * You must call this once, while your SDL_GpuDevice is still valid. This should
+ * be the last MOJOSHADER_sdl* function you call until you've prepared a context
+ * again.
+ *
+ * This will clean up resources previously allocated, and may call into SDL_gpu.
+ *
+ * This will not clean up shaders and programs you created! Please call
+ *  MOJOSHADER_sdlDeleteShader() and MOJOSHADER_sdlDeleteProgram() to clean
+ *  those up before calling this function!
+ *
+ * This function destroys the MOJOSHADER_sdlContext you pass it.
+ */
+DECLSPEC void MOJOSHADER_sdlDestroyContext(MOJOSHADER_sdlContext *ctx);
+
+/*
+ * Compile a buffer of Direct3D shader bytecode into an SDL_gpu shader module.
+ *
+ *   (tokenbuf) is a buffer of Direct3D shader bytecode.
+ *   (bufsize) is the size, in bytes, of the bytecode buffer.
+ *   (swiz), (swizcount), (smap), and (smapcount) are passed to
+ *   MOJOSHADER_parse() unmolested.
+ *
+ * Returns NULL on error, or a shader handle on success.
+ *
+ * Compiled shaders from this function may not be shared between contexts.
+ */
+DECLSPEC MOJOSHADER_sdlShaderData *MOJOSHADER_sdlCompileShader(MOJOSHADER_sdlContext *ctx,
+                                                           const char *mainfn,
+                                                           const unsigned char *tokenbuf,
+                                                           const unsigned int bufsize,
+                                                           const MOJOSHADER_swizzle *swiz,
+                                                           const unsigned int swizcount,
+                                                           const MOJOSHADER_samplerMap *smap,
+                                                           const unsigned int smapcount);
+
+/*
+ * Increments a shader's internal refcount.
+ *
+ * To decrement the refcount, call MOJOSHADER_sdlDeleteShader().
+ */
+DECLSPEC void MOJOSHADER_sdlShaderAddRef(MOJOSHADER_sdlShaderData *shader);
+
+/*
+ * Decrements a shader's internal refcount, and deletes if the refcount is zero.
+ *
+ * To increment the refcount, call MOJOSHADER_sdlShaderAddRef().
+ */
+DECLSPEC void MOJOSHADER_sdlDeleteShader(MOJOSHADER_sdlContext *ctx,
+                                         MOJOSHADER_sdlShaderData *shader);
+
+/*
+ * Get the MOJOSHADER_parseData structure that was produced from the
+ *  call to MOJOSHADER_sdlCompileShader().
+ *
+ * This data is read-only, and you should NOT attempt to free it. This
+ *  pointer remains valid until the shader is deleted.
+ */
+DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_sdlGetShaderParseData(
+                                                  MOJOSHADER_sdlShaderData *shader);
+
+/*
+ * Link a vertex and pixel shader into a working SDL_gpu shader program.
+ *  (vshader) or (pshader) can NOT be NULL, unlike OpenGL.
+ *
+ * You can reuse shaders in various combinations across
+ *  multiple programs, by relinking different pairs.
+ *
+ * It is illegal to give a vertex shader for (pshader) or a pixel shader
+ *  for (vshader).
+ *
+ * Once you have successfully linked a program, you may render with it.
+ *
+ * Returns NULL on error, or a program handle on success.
+ */
+DECLSPEC MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(MOJOSHADER_sdlContext *context,
+                                                          MOJOSHADER_sdlShaderData *vshader,
+                                                          MOJOSHADER_sdlShaderData *pshader);
+
+/*
+ * This binds the program to the active context, and does nothing particularly
+ * special until you start working with uniform buffers or shader modules.
+ *
+ * After binding a program, you should update any uniforms you care about
+ *  with MOJOSHADER_sdlMapUniformBufferMemory() (etc), set any vertex arrays
+ *  using MOJOSHADER_sdlGetVertexAttribLocation(), and finally call
+ *  MOJOSHADER_sdlGetShaders() to get the final modules. Then you may
+ *  begin building your pipeline state objects.
+ */
+DECLSPEC void MOJOSHADER_sdlBindProgram(MOJOSHADER_sdlContext *context,
+                                        MOJOSHADER_sdlProgram *program);
+
+/*
+ * Free the resources of a linked program. This will delete the shader modules
+ *  and free memory.
+ *
+ * If the program is currently bound by MOJOSHADER_sdlBindProgram(), it will
+ *  be deleted as soon as it becomes unbound.
+ */
+DECLSPEC void MOJOSHADER_sdlDeleteProgram(MOJOSHADER_sdlContext *context,
+                                          MOJOSHADER_sdlProgram *program);
+
+/*
+ * This "binds" individual shaders, which effectively means the context
+ *  will store these shaders for later retrieval. No actual binding or
+ *  pipeline creation is performed.
+ *
+ * This function is only for convenience, specifically for compatibility
+ *  with the effects API.
+ */
+DECLSPEC void MOJOSHADER_sdlBindShaders(MOJOSHADER_sdlContext *ctx,
+                                        MOJOSHADER_sdlShaderData *vshader,
+                                        MOJOSHADER_sdlShaderData *pshader);
+
+/*
+ * This queries for the shaders currently bound to the active context.
+ *
+ * This function is only for convenience, specifically for compatibility
+ *  with the effects API.
+ */
+DECLSPEC void MOJOSHADER_sdlGetBoundShaderData(MOJOSHADER_sdlContext *ctx,
+                                            MOJOSHADER_sdlShaderData **vshader,
+                                            MOJOSHADER_sdlShaderData **pshader);
+
+/*
+ * Fills register pointers with pointers that are directly used to push uniform
+ *  data to the Vulkan shader context.
+ *
+ * This function is really just for the effects API, you should NOT be using
+ *  this unless you know every single line of MojoShader from memory.
+ */
+DECLSPEC void MOJOSHADER_sdlMapUniformBufferMemory(MOJOSHADER_sdlContext *ctx,
+                                                   float **vsf, int **vsi, unsigned char **vsb,
+                                                   float **psf, int **psi, unsigned char **psb);
+
+/*
+ * Tells the context that you are done with the memory mapped by
+ *  MOJOSHADER_sdlMapUniformBufferMemory().
+ */
+DECLSPEC void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx);
+
+/*
+ * Returns the minimum required size of the uniform buffer for this shader.
+ *  You will need this to fill out the SDL_GpuGraphicsPipelineCreateInfo struct.
+ */
+DECLSPEC int MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShaderData *shader);
+
+/*
+ * Pushes the uniform buffer updates for the currently bound program.
+ *
+ * This function will record calls to SDL_GpuPush*ShaderUniforms into the
+ *  passed command buffer.
+ */
+DECLSPEC void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx,
+                                                 SDL_GpuCommandBuffer *cb);
+
+/*
+ * Return the location of a vertex attribute for the given shader.
+ *
+ * (usage) and (index) map to Direct3D vertex declaration values: COLOR1 would
+ *  be MOJOSHADER_USAGE_COLOR and 1.
+ *
+ * The return value is the index of the attribute to be used to create
+ *  an SDL_GpuVertexAttribute, or -1 if the stream is not used.
+ */
+DECLSPEC int MOJOSHADER_sdlGetVertexAttribLocation(MOJOSHADER_sdlShaderData *vert,
+                                                   MOJOSHADER_usage usage,
+                                                   int index);
+
+/*
+ * Get the SDL_GpuShaderModules from the currently bound shader program.
+ */
+DECLSPEC void MOJOSHADER_sdlGetShaders(MOJOSHADER_sdlContext *ctx,
+                                             SDL_GpuShader **vshader,
+                                             SDL_GpuShader **pshader);
+
+/*
+ * Gets the number of sampler slots needed by a given shader module.
+ */
+DECLSPEC unsigned int MOJOSHADER_sdlGetSamplerSlots(MOJOSHADER_sdlShaderData *shader);
+
+
 /* Effects interface... */
 #include "mojoshader_effects.h"
 
