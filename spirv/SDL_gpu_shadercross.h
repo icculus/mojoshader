@@ -187,7 +187,7 @@ void *SDL_CompileFromHLSL(
 #error SDL_GPU_SHADERCROSS_HLSL must be enabled for SDL_GPU_SHADERCROSS_SPIRVCROSS!
 #endif
 
-#include <spirv_cross_c.h>
+#include "spirv_cross_c.h"
 
 #if defined(_WIN32)
 #define SPIRV_CROSS_DLL "spirv-cross-c-shared.dll"
