@@ -14,8 +14,8 @@
 
 #include <SDL3/SDL.h>
 
-#define SDL_GPU_SPIRVCROSS_IMPLEMENTATION
-#include "spirv/SDL_gpu_spirvcross.h"
+#define SDL_GPU_SHADERCROSS_IMPLEMENTATION
+#include "spirv/SDL_gpu_shadercross.h"
 
 /* Max entries for each register file type */
 #define MAX_REG_FILE_F 8192
