@@ -59,7 +59,7 @@ typedef void ID3DInclude;      /* hack, unused */
 #ifdef __stdcall
 #undef __stdcall
 #endif
-#ifdef __x86_64__
+#if defined(__x86_64__) || defined(__arm64__)
 #define __stdcall __attribute__((ms_abi))
 #else
 #if (__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 2)) || defined(__APPLE__)
@@ -152,7 +152,7 @@ void *SDL_CompileFromHLSL(
         SDL_LogError(
             SDL_LOG_CATEGORY_GPU,
             "HLSL compilation failed: %s",
-            errorBlob->lpVtbl->GetBufferPointer(errorBlob));
+            (char*)errorBlob->lpVtbl->GetBufferPointer(errorBlob));
         return NULL;
     }
 
@@ -250,13 +250,13 @@ void *SDL_CompileFromSPIRV(
      */
     createInfo = (SDL_GpuShaderCreateInfo *)originalCreateInfo;
 
-    switch (SDL_GpuGetBackend(device)) {
-    case SDL_GPU_BACKEND_D3D11:
-    case SDL_GPU_BACKEND_D3D12:
+    switch (SDL_GpuGetDriver(device)) {
+    case SDL_GPU_DRIVER_D3D11:
+    case SDL_GPU_DRIVER_D3D12:
         backend = SPVC_BACKEND_HLSL;
         format = SDL_GPU_SHADERFORMAT_DXBC;
         break;
-    case SDL_GPU_BACKEND_METAL:
+    case SDL_GPU_DRIVER_METAL:
         backend = SPVC_BACKEND_MSL;
         format = SDL_GPU_SHADERFORMAT_MSL;
         break;
@@ -325,7 +325,7 @@ void *SDL_CompileFromSPIRV(
     }
 
     if (backend == SPVC_BACKEND_HLSL) {
-        if (SDL_GpuGetBackend(device) == SDL_GPU_BACKEND_D3D11) {
+        if (SDL_GpuGetDriver(device) == SDL_GPU_DRIVER_D3D11) {
             shadermodel = 50;
         } else {
             shadermodel = 51;

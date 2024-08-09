@@ -372,7 +372,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.samplerCount = vshader->samplerSlots;
     createInfo.uniformBufferCount = 1;
 
-    if (SDL_GpuGetBackend(ctx->device) != SDL_GPU_BACKEND_VULKAN)
+    if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
     {
         result->vertexShader = SDL_CompileFromSPIRV(
             ctx->device,
@@ -402,7 +402,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.samplerCount = pshader->samplerSlots;
 
-    if (SDL_GpuGetBackend(ctx->device) != SDL_GPU_BACKEND_VULKAN)
+    if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
     {
         result->pixelShader = SDL_CompileFromSPIRV(
             ctx->device,
