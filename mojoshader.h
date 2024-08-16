@@ -4106,6 +4106,14 @@ typedef struct SDL_GpuCommandBuffer SDL_GpuCommandBuffer;
 #endif /* SDL_GPU_H */
 
 /*
+ * Call this function to get the 'formatFlags' parameter for
+ *  SDL_CreateGpuDevice.
+ *
+ * Returns the SDL_GpuShaderFormatFlagBits for creating the SDL_GpuDevice.
+ */
+DECLSPEC unsigned int MOJOSHADER_sdlGetShaderFormats(void);
+
+/*
  * Prepares a context to manage SDL_gpu shaders.
  *
  * You do not need to call this if all you want is MOJOSHADER_parse().

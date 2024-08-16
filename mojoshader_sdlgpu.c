@@ -230,6 +230,11 @@ static void update_uniform_buffer(
 
 /* Public API */
 
+unsigned int MOJOSHADER_sdlGetShaderFormats(void)
+{
+    return SDL_ShaderCross_GetShaderFormats();
+} // MOJOSHADER_sdlGetShaderFormats
+
 MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     SDL_GpuDevice *device,
     MOJOSHADER_malloc m,
@@ -374,7 +379,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
     {
-        result->vertexShader = SDL_CompileFromSPIRV(
+        result->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
             ctx->device,
             &createInfo,
             SDL_FALSE
@@ -404,7 +409,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
     {
-        result->pixelShader = SDL_CompileFromSPIRV(
+        result->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
             ctx->device,
             &createInfo,
             SDL_FALSE
