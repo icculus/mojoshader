@@ -377,21 +377,11 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.samplerCount = vshader->samplerSlots;
     createInfo.uniformBufferCount = 1;
 
-    if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
-    {
-        result->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
-            ctx->device,
-            &createInfo,
-            SDL_FALSE
-        );
-    } // if
-    else
-    {
-        result->vertexShader = SDL_GpuCreateShader(
-            ctx->device,
-            &createInfo
-        );
-    } // else
+    result->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
+        ctx->device,
+        &createInfo,
+        SDL_FALSE
+    );
 
     if (result->vertexShader == NULL)
     {
@@ -407,21 +397,11 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.samplerCount = pshader->samplerSlots;
 
-    if (SDL_GpuGetDriver(ctx->device) != SDL_GPU_DRIVER_VULKAN)
-    {
-        result->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
-            ctx->device,
-            &createInfo,
-            SDL_FALSE
-        );
-    } // if
-    else
-    {
-        result->pixelShader = SDL_GpuCreateShader(
-            ctx->device,
-            &createInfo
-        );
-    } // else
+    result->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
+        ctx->device,
+        &createInfo,
+        SDL_FALSE
+    );
 
     if (result->pixelShader == NULL)
     {
