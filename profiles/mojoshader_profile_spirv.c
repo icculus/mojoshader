@@ -785,9 +785,36 @@ static uint32 spv_access_uniform(Context *ctx, SpirvTypeIdx sti_ptr, RegisterTyp
     return id_access;
 } // spv_access_uniform
 
+static void spv_add_attrib_fixup(Context *ctx, MOJOSHADER_usage usage, unsigned int index, unsigned int type_offset, unsigned int opcode_offset)
+{
+    uint32* next_types;
+    uint32* next_opcodes;
+
+    #define TYPE_LOAD_OFFSET ctx->spirv.patch_table.attrib_type_load_offsets[usage][index]
+
+    next_types = (uint32*) Malloc(ctx, sizeof(uint32) * (TYPE_LOAD_OFFSET.num_loads + 1));
+    next_opcodes = (uint32*) Malloc(ctx, sizeof(uint32) * (TYPE_LOAD_OFFSET.num_loads + 1));
+
+    memcpy(next_types, TYPE_LOAD_OFFSET.load_types, sizeof(uint32) * TYPE_LOAD_OFFSET.num_loads);
+    memcpy(next_opcodes, TYPE_LOAD_OFFSET.load_opcodes, sizeof(uint32) * TYPE_LOAD_OFFSET.num_loads);
+
+    Free(ctx, TYPE_LOAD_OFFSET.load_types);
+    Free(ctx, TYPE_LOAD_OFFSET.load_opcodes);
+
+    TYPE_LOAD_OFFSET.load_types = next_types;
+    TYPE_LOAD_OFFSET.load_opcodes = next_opcodes;
+
+    TYPE_LOAD_OFFSET.load_types[TYPE_LOAD_OFFSET.num_loads] = type_offset;
+    TYPE_LOAD_OFFSET.load_opcodes[TYPE_LOAD_OFFSET.num_loads] = opcode_offset;
+
+    TYPE_LOAD_OFFSET.num_loads += 1;
+    #undef TYPE_LOAD_OFFSET
+} // spv_add_attrib_fixup
+
 static SpirvResult spv_loadreg(Context *ctx, RegisterList *r)
 {
     const RegisterType regtype = r->regtype;
+    uint32 copy_id;
 
     spv_check_read_reg_id(ctx, r);
 
@@ -839,7 +866,27 @@ static SpirvResult spv_loadreg(Context *ctx, RegisterList *r)
 
     push_output(ctx, &ctx->mainline);
     spv_emit(ctx, 4, SpvOpLoad, result.tid, result.id, id_src);
-    pop_output(ctx);
+    if (shader_is_vertex(ctx) && regtype == REG_TYPE_INPUT)
+    {
+        copy_id = spv_bumpid(ctx);
+        spv_emit(ctx, 4, SpvOpCopyObject, result.tid, copy_id, result.id);
+        result.id = copy_id;
+        pop_output(ctx);
+
+        // Store the offsets of:
+        // - OpLoad's type id, to change the input type
+        // - OpCopyObject's opcode, to change to OpConvert if needed
+        spv_add_attrib_fixup(ctx,
+                             r->usage,
+                             r->index,
+                             (buffer_size(ctx->mainline) >> 2) - 7,
+                             (buffer_size(ctx->mainline) >> 2) - 4);
+    } // if
+    else
+    {
+        // Nothing left to do for this register
+        pop_output(ctx);
+    } // else
 
     return result;
 } // spv_loadreg
@@ -2213,11 +2260,19 @@ void emit_SPIRV_attribute(Context *ctx, RegisterType regtype, int regnum,
         {
             case REG_TYPE_INPUT:
             {
+                ctx->spirv.patch_table.tid_vec4_p = spv_get_type(ctx, STI_PTR_VEC4_I);
+                ctx->spirv.patch_table.tid_ivec4_p = spv_get_type(ctx, STI_PTR_IVEC4_I);
+                ctx->spirv.patch_table.tid_uvec4_p = spv_get_type(ctx, STI_PTR_UVEC4_I);
+                ctx->spirv.patch_table.tid_vec4 = spv_get_type(ctx, STI_VEC4);
+                ctx->spirv.patch_table.tid_ivec4 = spv_get_type(ctx, STI_IVEC4);
+                ctx->spirv.patch_table.tid_uvec4 = spv_get_type(ctx, STI_UVEC4);
+
                 push_output(ctx, &ctx->mainline_intro);
-                SpirvTypeIdx sti = STI_PTR_VEC4_I;
-                tid = spv_get_type(ctx, sti);
+                tid = spv_get_type(ctx, STI_PTR_VEC4_I);
                 spv_emit(ctx, 4, SpvOpVariable, tid, r->spirv.iddecl, SpvStorageClassInput);
                 pop_output(ctx);
+
+                ctx->spirv.patch_table.attrib_type_offsets[usage][index] = (buffer_size(ctx->mainline_intro) >> 2) - 3;
 
                 // hnn: generate location decorators for the input
                 spv_output_location(ctx, r->spirv.iddecl, regnum);
@@ -2379,7 +2434,7 @@ static void spv_emit_uniform_constant_array(Context *ctx,
 
 void emit_SPIRV_finalize(Context *ctx)
 {
-    size_t i, j, max;
+    size_t i, j, k, max;
 
     /* The generator's magic number, this could be registered with Khronos
      * if we wanted to. 0 is fine though, so use that for now. */
@@ -2698,6 +2753,11 @@ void emit_SPIRV_finalize(Context *ctx)
     if (table->pointcoord_var_offset)
         table->pointcoord_var_offset += base_offset;
 
+    for (i = 0; i < MOJOSHADER_USAGE_TOTAL; i++)
+        for (j = 0; j < 16; j++)
+            if (table->attrib_type_offsets[i][j])
+                table->attrib_type_offsets[i][j] += base_offset;
+
     base_offset <<= 2;
     if (ctx->mainline_intro)     base_offset += buffer_size(ctx->mainline_intro);
     if (ctx->mainline_arguments) base_offset += buffer_size(ctx->mainline_arguments);
@@ -2705,6 +2765,19 @@ void emit_SPIRV_finalize(Context *ctx)
 
     if (table->pointcoord_load_offset)
         table->pointcoord_load_offset += base_offset;
+
+    base_offset <<= 2;
+    if (ctx->mainline_top) base_offset += buffer_size(ctx->mainline_top);
+    base_offset >>= 2;
+
+    for (i = 0; i < MOJOSHADER_USAGE_TOTAL; i++)
+        for (j = 0; j < 16; j++)
+            if (table->attrib_type_offsets[i][j])
+                for (k = 0; k < table->attrib_type_load_offsets[i][j].num_loads; k++)
+                {
+                     table->attrib_type_load_offsets[i][j].load_types[k] += base_offset;
+                     table->attrib_type_load_offsets[i][j].load_opcodes[k] += base_offset;
+                } // for
 
     push_output(ctx, &ctx->postflight);
     buffer_append(ctx->output, &ctx->spirv.patch_table, sizeof(ctx->spirv.patch_table));
