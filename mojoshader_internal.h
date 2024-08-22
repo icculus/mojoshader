@@ -787,7 +787,23 @@ typedef struct SpirvPatchTable
     uint32 tid_pvec2i;
     uint32 tid_vec2;
     uint32 tid_pvec4i;
+
+    /// Patches for TEXCOORD0 and vertex attribute types
     uint32 tid_vec4;
+    uint32 tid_ivec4;
+    uint32 tid_uvec4;
+
+    // Patches for vertex attribute types
+    uint32 tid_vec4_p;
+    uint32 tid_ivec4_p;
+    uint32 tid_uvec4_p;
+    uint32 attrib_type_offsets[MOJOSHADER_USAGE_TOTAL][16];
+    struct
+    {
+        uint32 num_loads;
+        uint32 *load_types;
+        uint32 *load_opcodes;
+    } attrib_type_load_offsets[MOJOSHADER_USAGE_TOTAL][16];
 
     // Patches for linking vertex output/pixel input
     uint32 attrib_offsets[MOJOSHADER_USAGE_TOTAL][16];
