@@ -785,12 +785,13 @@ static uint32 spv_access_uniform(Context *ctx, SpirvTypeIdx sti_ptr, RegisterTyp
     return id_access;
 } // spv_access_uniform
 
-static void spv_add_attrib_fixup(Context *ctx, MOJOSHADER_usage usage, unsigned int index, unsigned int type_offset, unsigned int opcode_offset)
+static void spv_add_attrib_fixup(Context *ctx, RegisterList *r, unsigned int type_offset, unsigned int opcode_offset)
 {
     uint32* next_types;
     uint32* next_opcodes;
 
-    #define TYPE_LOAD_OFFSET ctx->spirv.patch_table.attrib_type_load_offsets[usage][index]
+    assert(r != NULL);
+    #define TYPE_LOAD_OFFSET ctx->spirv.patch_table.attrib_type_load_offsets[r->usage][r->index]
 
     next_types = (uint32*) Malloc(ctx, sizeof(uint32) * (TYPE_LOAD_OFFSET.num_loads + 1));
     next_opcodes = (uint32*) Malloc(ctx, sizeof(uint32) * (TYPE_LOAD_OFFSET.num_loads + 1));
@@ -877,8 +878,7 @@ static SpirvResult spv_loadreg(Context *ctx, RegisterList *r)
         // - OpLoad's type id, to change the input type
         // - OpCopyObject's opcode, to change to OpConvert if needed
         spv_add_attrib_fixup(ctx,
-                             r->usage,
-                             r->index,
+                             reglist_find(&ctx->attributes, r->regtype, r->regnum),
                              (buffer_size(ctx->mainline) >> 2) - 7,
                              (buffer_size(ctx->mainline) >> 2) - 4);
     } // if
