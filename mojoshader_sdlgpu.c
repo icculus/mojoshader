@@ -443,18 +443,14 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
             {
                 uint32_t typeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_types[j];
                 uint32_t opcodeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_opcodes[j];
+                uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoad];
                 ((uint32_t*)vshader->parseData->output)[typeLoad] = vTable->tid_uvec4;
-                ((uint32_t*)vshader->parseData->output)[opcodeLoad] = SpvOpConvertUToF;
+                *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | SpvOpConvertUToF;
             }
         }
     }
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
-
-    /* debug dump the spir-v */
-    SDL_IOStream *stream = SDL_IOFromFile("mojoshader.spv", "w");
-    SDL_WriteIO(stream, vshader->parseData->output, vshader->parseData->output_len - sizeof(SpirvPatchTable));
-    SDL_CloseIO(stream);
 
     SDL_zero(createInfo);
     createInfo.code = (const Uint8*) vshader->parseData->output;
