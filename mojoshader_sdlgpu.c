@@ -451,6 +451,11 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
 
+    /* debug dump the spir-v */
+    SDL_IOStream *stream = SDL_IOFromFile("mojoshader.spv", "w");
+    SDL_WriteIO(stream, vshader->parseData->output, vshader->parseData->output_len - sizeof(SpirvPatchTable));
+    SDL_CloseIO(stream);
+
     SDL_zero(createInfo);
     createInfo.code = (const Uint8*) vshader->parseData->output;
     createInfo.codeSize = vshader->parseData->output_len - sizeof(SpirvPatchTable);
