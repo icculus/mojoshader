@@ -429,26 +429,34 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     } // if
 
-    // patch for janky uint blendindices case
-    int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
-    SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
+	// We have to patch the SPIR-V output for non-float inputs. These are:
+	// BYTE4  - 5
+	// SHORT2 - 6
+	// SHORT4 - 7
+	int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+	SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
 
-    for (int i = 0; i < vertexAttributeCount; i += 1) {
-        MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
-        int32_t usageIndex = element->usageIndex;
-        if (element->usage == MOJOSHADER_USAGE_BLENDINDICES) {
-            uint32_t typeDecl = vTable->attrib_type_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex];
-            ((uint32_t*)vshader->parseData->output)[typeDecl] = vTable->tid_uvec4_p;
-            for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].num_loads; j += 1)
-            {
-                uint32_t typeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_types[j];
-                uint32_t opcodeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_opcodes[j];
-                uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoad];
-                ((uint32_t*)vshader->parseData->output)[typeLoad] = vTable->tid_uvec4;
-                *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | SpvOpConvertUToF;
-            }
-        }
-    }
+	for (int i = 0; i < vertexAttributeCount; i += 1)
+	{
+		MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
+		if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
+		{
+			uint32 typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
+			uint32 typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
+			SpvOp opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
+
+			uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
+			((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
+			for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
+			{
+				uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
+				uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
+				uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
+				((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
+				*ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
+			}
+		}
+	}
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
 
