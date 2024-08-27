@@ -439,10 +439,10 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         if (element->usage == MOJOSHADER_USAGE_BLENDINDICES) {
             uint32_t typeDecl = vTable->attrib_type_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex];
             ((uint32_t*)vshader->parseData->output)[typeDecl] = vTable->tid_uvec4_p;
-            for (uint32_t i = 0; i < vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].num_loads; i += 1)
+            for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].num_loads; j += 1)
             {
-                uint32_t typeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_types[i];
-                uint32_t opcodeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_opcodes[i];
+                uint32_t typeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_types[j];
+                uint32_t opcodeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_opcodes[j];
                 ((uint32_t*)vshader->parseData->output)[typeLoad] = vTable->tid_uvec4;
                 ((uint32_t*)vshader->parseData->output)[opcodeLoad] = SpvOpConvertUToF;
             }
