@@ -4098,6 +4098,12 @@ DECLSPEC void MOJOSHADER_d3d11DestroyContext(MOJOSHADER_d3d11Context *context);
 typedef struct MOJOSHADER_sdlContext MOJOSHADER_sdlContext;
 typedef struct MOJOSHADER_sdlShaderData MOJOSHADER_sdlShaderData;
 typedef struct MOJOSHADER_sdlProgram MOJOSHADER_sdlProgram;
+typedef struct MOJOSHADER_sdlVertexAttribute
+{
+    MOJOSHADER_usage usage;
+    int vertexElementFormat; /* FNA3D_VertexElementFormat */
+    int usageIndex;
+} MOJOSHADER_sdlVertexAttribute;
 
 #ifndef SDL_GPU_H
 typedef struct SDL_GpuDevice SDL_GpuDevice;
@@ -4223,11 +4229,13 @@ DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_sdlGetShaderParseData(
                                                   MOJOSHADER_sdlShaderData *shader);
 
 /*
- * Link a vertex and pixel shader into a working SDL_gpu shader program.
+ * Link bound vertex and pixel shader into a working SDL_gpu shader program.
  *  (vshader) or (pshader) can NOT be NULL, unlike OpenGL.
  *
  * You can reuse shaders in various combinations across
  *  multiple programs, by relinking different pairs.
+ *
+ * Requires vertex element data for patches.
  *
  * It is illegal to give a vertex shader for (pshader) or a pixel shader
  *  for (vshader).
@@ -4237,8 +4245,8 @@ DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_sdlGetShaderParseData(
  * Returns NULL on error, or a program handle on success.
  */
 DECLSPEC MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(MOJOSHADER_sdlContext *context,
-                                                          MOJOSHADER_sdlShaderData *vshader,
-                                                          MOJOSHADER_sdlShaderData *pshader);
+                                                          MOJOSHADER_sdlVertexAttribute *vertexAttributes,
+                                                          int vertexAttributeCount);
 
 /*
  * This binds the program to the active context, and does nothing particularly
@@ -4354,4 +4362,3 @@ DECLSPEC unsigned int MOJOSHADER_sdlGetSamplerSlots(MOJOSHADER_sdlShaderData *sh
 #endif  /* include-once blocker. */
 
 /* end of mojoshader.h ... */
-

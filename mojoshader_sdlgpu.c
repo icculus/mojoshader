@@ -80,26 +80,36 @@ static inline void out_of_memory(void)
 
 /* Internals */
 
-typedef struct BoundShaders
+typedef struct LinkedShaderData
 {
     MOJOSHADER_sdlShaderData *vertex;
     MOJOSHADER_sdlShaderData *fragment;
-} BoundShaders;
+    MOJOSHADER_sdlVertexAttribute vertexAttributes[16];
+    uint32_t vertexAttributeCount;
+} LinkedShaderData;
 
 static uint32_t hash_shaders(const void *sym, void *data)
 {
     (void) data;
-    const BoundShaders *s = (const BoundShaders *) sym;
-    const uint16_t v = (s->vertex) ? s->vertex->tag : 0;
-    const uint16_t f = (s->fragment) ? s->fragment->tag : 0;
-    return ((uint32_t) v << 16) | (uint32_t) f;
+    const LinkedShaderData *s = (const LinkedShaderData *) sym;
+    const uint32_t HASH_FACTOR = 31;
+    uint32_t hash = s->vertexAttributeCount;
+    for (uint32_t i = 0; i < s->vertexAttributeCount; i += 1)
+    {
+        hash = hash * HASH_FACTOR + s->vertexAttributes[i].usage;
+        hash = hash * HASH_FACTOR + s->vertexAttributes[i].usageIndex;
+        hash = hash * HASH_FACTOR + s->vertexAttributes[i].vertexElementFormat;
+    }
+    hash = hash * HASH_FACTOR + s->vertex->tag;
+    hash = hash * HASH_FACTOR + s->fragment->tag;
+    return hash;
 } // hash_shaders
 
 static int match_shaders(const void *_a, const void *_b, void *data)
 {
     (void) data;
-    const BoundShaders *a = (const BoundShaders *) _a;
-    const BoundShaders *b = (const BoundShaders *) _b;
+    const LinkedShaderData *a = (const LinkedShaderData *) _a;
+    const LinkedShaderData *b = (const LinkedShaderData *) _b;
 
     const uint16_t av = (a->vertex) ? a->vertex->tag : 0;
     const uint16_t bv = (b->vertex) ? b->vertex->tag : 0;
@@ -110,6 +120,25 @@ static int match_shaders(const void *_a, const void *_b, void *data)
     const uint16_t bf = (b->fragment) ? b->fragment->tag : 0;
     if (af != bf)
         return 0;
+
+    if (a->vertexAttributeCount != b->vertexAttributeCount)
+        return 0;
+
+    for (uint32_t i = 0; i < a->vertexAttributeCount; i += 1)
+    {
+        if (a->vertexAttributes[i].usage != b->vertexAttributes[i].usage)
+        {
+            return 0;
+        }
+        if (a->vertexAttributes[i].usageIndex != b->vertexAttributes[i].usageIndex)
+        {
+            return 0;
+        }
+        if (a->vertexAttributes[i].vertexElementFormat != b->vertexAttributes[i].vertexElementFormat)
+        {
+            return 0;
+        }
+    }
 
     return 1;
 } // match_shaders
@@ -122,7 +151,7 @@ static void nuke_shaders(
 ) {
     MOJOSHADER_sdlContext *ctx = (MOJOSHADER_sdlContext *) _ctx;
     (void) data;
-    ctx->free_fn((void *) key, ctx->malloc_data); // this was a BoundShaders struct.
+    ctx->free_fn((void *) key, ctx->malloc_data); // this was a LinkedShaderData struct.
     MOJOSHADER_sdlDeleteProgram(ctx, (MOJOSHADER_sdlProgram *) value);
 } // nuke_shaders
 
@@ -349,22 +378,76 @@ parse_shader_fail:
 
 MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *vshader,
-    MOJOSHADER_sdlShaderData *pshader
+    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
+    int vertexAttributeCount
 ) {
-    MOJOSHADER_sdlProgram *result;
+    MOJOSHADER_sdlProgram *program = NULL;
     SDL_GpuShaderCreateInfo createInfo;
+
+    MOJOSHADER_sdlShaderData *vshader = ctx->bound_vshader_data;
+    MOJOSHADER_sdlShaderData *pshader = ctx->bound_pshader_data;
 
     if ((vshader == NULL) || (pshader == NULL)) /* Both shaders MUST exist! */
         return NULL;
 
-    result = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram), ctx->malloc_data);
+    if (ctx->linker_cache == NULL)
+    {
+        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
+                                        nuke_shaders, 0, ctx->malloc_fn,
+                                        ctx->free_fn, ctx->malloc_data);
 
-    if (result == NULL)
+        if (ctx->linker_cache == NULL)
+        {
+            out_of_memory();
+            return NULL;
+        } // if
+    } // if
+
+    LinkedShaderData shaders;
+    shaders.vertex = vshader;
+    shaders.fragment = pshader;
+    memset(shaders.vertexAttributes, 0, sizeof(MOJOSHADER_sdlVertexAttribute) * 16);
+    shaders.vertexAttributeCount = vertexAttributeCount;
+    for (int i = 0; i < vertexAttributeCount; i += 1)
+    {
+        shaders.vertexAttributes[i] = vertexAttributes[i];
+    }
+
+    const void *val = NULL;
+
+    if (hash_find(ctx->linker_cache, &shaders, &val))
+    {
+        ctx->bound_program = (MOJOSHADER_sdlProgram *) val;
+        return ctx->bound_program;
+    }
+
+    program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram), ctx->malloc_data);
+
+    if (program == NULL)
     {
         out_of_memory();
         return NULL;
     } // if
+
+    // patch for janky uint blendindices case
+    int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+    SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
+
+    for (int i = 0; i < vertexAttributeCount; i += 1) {
+        MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
+        int32_t usageIndex = element->usageIndex;
+        if (element->usage == MOJOSHADER_USAGE_BLENDINDICES) {
+            uint32_t typeDecl = vTable->attrib_type_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex];
+            ((uint32_t*)vshader->parseData->output)[typeDecl] = vTable->tid_uvec4_p;
+            for (uint32_t i = 0; i < vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].num_loads; i += 1)
+            {
+                uint32_t typeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_types[i];
+                uint32_t opcodeLoad = vTable->attrib_type_load_offsets[MOJOSHADER_USAGE_BLENDINDICES][usageIndex].load_opcodes[i];
+                ((uint32_t*)vshader->parseData->output)[typeLoad] = vTable->tid_uvec4;
+                ((uint32_t*)vshader->parseData->output)[opcodeLoad] = SpvOpConvertUToF;
+            }
+        }
+    }
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
 
@@ -377,16 +460,16 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.samplerCount = vshader->samplerSlots;
     createInfo.uniformBufferCount = 1;
 
-    result->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
+    program->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
         &createInfo,
         SDL_FALSE
     );
 
-    if (result->vertexShader == NULL)
+    if (program->vertexShader == NULL)
     {
         set_error(SDL_GetError());
-        ctx->free_fn(result, ctx->malloc_data);
+        ctx->free_fn(program, ctx->malloc_data);
         return NULL;
     } // if
 
@@ -397,24 +480,42 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.samplerCount = pshader->samplerSlots;
 
-    result->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
+    program->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
         &createInfo,
         SDL_FALSE
     );
 
-    if (result->pixelShader == NULL)
+    if (program->pixelShader == NULL)
     {
         set_error(SDL_GetError());
-        SDL_GpuReleaseShader(ctx->device, result->vertexShader);
-        ctx->free_fn(result, ctx->malloc_data);
+        SDL_GpuReleaseShader(ctx->device, program->vertexShader);
+        ctx->free_fn(program, ctx->malloc_data);
         return NULL;
     } // if
 
-    result->vertexShaderData = vshader;
-    result->pixelShaderData = pshader;
+    program->vertexShaderData = vshader;
+    program->pixelShaderData = pshader;
 
-    return result;
+    LinkedShaderData *item = (LinkedShaderData *) ctx->malloc_fn(sizeof (LinkedShaderData),
+                                                         ctx->malloc_data);
+
+    if (item == NULL)
+    {
+        MOJOSHADER_sdlDeleteProgram(ctx, program);
+    }
+
+    memcpy(item, &shaders, sizeof(LinkedShaderData));
+    if (hash_insert(ctx->linker_cache, item, program) != 1)
+    {
+        ctx->free_fn(item, ctx->malloc_data);
+        MOJOSHADER_sdlDeleteProgram(ctx, program);
+        out_of_memory();
+        return NULL;
+    }
+
+    ctx->bound_program = program;
+    return program;
 } // MOJOSHADER_sdlLinkProgram
 
 void MOJOSHADER_sdlShaderAddRef(MOJOSHADER_sdlShaderData *shader)
@@ -441,7 +542,7 @@ void MOJOSHADER_sdlDeleteShader(
                 int morekeys = hash_iter_keys(ctx->linker_cache, &key, &iter);
                 while (morekeys)
                 {
-                    const BoundShaders *shaders = (const BoundShaders *) key;
+                    const LinkedShaderData *shaders = (const LinkedShaderData *) key;
                     // Do this here so we don't confuse the iteration by removing...
                     morekeys = hash_iter_keys(ctx->linker_cache, &key, &iter);
                     if ((shaders->vertex == shader) || (shaders->fragment == shader))
@@ -489,56 +590,9 @@ void MOJOSHADER_sdlBindShaders(
     MOJOSHADER_sdlShaderData *vshader,
     MOJOSHADER_sdlShaderData *pshader
 ) {
-    if (ctx->linker_cache == NULL)
-    {
-        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
-                                        nuke_shaders, 0, ctx->malloc_fn,
-                                        ctx->free_fn, ctx->malloc_data);
-
-        if (ctx->linker_cache == NULL)
-        {
-            out_of_memory();
-            return;
-        } // if
-    } // if
-
     MOJOSHADER_sdlProgram *program = NULL;
-    BoundShaders shaders;
-    shaders.vertex = vshader;
-    shaders.fragment = pshader;
-
     ctx->bound_vshader_data = vshader;
     ctx->bound_pshader_data = pshader;
-
-    const void *val = NULL;
-    if (hash_find(ctx->linker_cache, &shaders, &val))
-        program = (MOJOSHADER_sdlProgram *) val;
-    else
-    {
-        program = MOJOSHADER_sdlLinkProgram(ctx, vshader, pshader);
-        if (program == NULL)
-            return;
-
-        BoundShaders *item = (BoundShaders *) ctx->malloc_fn(sizeof (BoundShaders),
-                                                             ctx->malloc_data);
-        if (item == NULL)
-        {
-            MOJOSHADER_sdlDeleteProgram(ctx, program);
-            return;
-        } // if
-
-        memcpy(item, &shaders, sizeof (BoundShaders));
-        if (hash_insert(ctx->linker_cache, item, program) != 1)
-        {
-            ctx->free_fn(item, ctx->malloc_data);
-            MOJOSHADER_sdlDeleteProgram(ctx, program);
-            out_of_memory();
-            return;
-        } // if
-    } // else
-
-    SDL_assert(program != NULL);
-    ctx->bound_program = program;
 } // MOJOSHADER_sdlBindShaders
 
 void MOJOSHADER_sdlGetBoundShaderData(
@@ -548,17 +602,11 @@ void MOJOSHADER_sdlGetBoundShaderData(
 ) {
     if (vshaderdata != NULL)
     {
-        if (ctx->bound_program != NULL)
-            *vshaderdata = ctx->bound_program->vertexShaderData;
-        else
-            *vshaderdata = ctx->bound_vshader_data; // In case a pshader isn't set yet
+        *vshaderdata = ctx->bound_vshader_data;
     } // if
     if (pshaderdata != NULL)
     {
-        if (ctx->bound_program != NULL)
-            *pshaderdata = ctx->bound_program->pixelShaderData;
-        else
-            *pshaderdata = ctx->bound_pshader_data; // In case a vshader isn't set yet
+        *pshaderdata = ctx->bound_pshader_data;
     } // if
 } // MOJOSHADER_sdlGetBoundShaderData
 
