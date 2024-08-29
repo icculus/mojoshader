@@ -237,7 +237,7 @@ static void update_uniform_buffer(
 
     if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
     {
-		SDL_GpuPushVertexUniformData(
+		SDL_PushGpuVertexUniformData(
 			cb,
 			0,
 			contents,
@@ -246,7 +246,7 @@ static void update_uniform_buffer(
     } // if
     else
     {
-		SDL_GpuPushFragmentUniformData(
+		SDL_PushGpuFragmentUniformData(
 			cb,
 			0,
 			contents,
@@ -507,7 +507,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     if (program->pixelShader == NULL)
     {
         set_error(SDL_GetError());
-        SDL_GpuReleaseShader(ctx->device, program->vertexShader);
+        SDL_ReleaseGpuShader(ctx->device, program->vertexShader);
         ctx->free_fn(program, ctx->malloc_data);
         return NULL;
     } // if
@@ -590,9 +590,9 @@ void MOJOSHADER_sdlDeleteProgram(
     if (ctx->bound_program == p)
         ctx->bound_program = NULL;
     if (p->vertexShader != NULL)
-        SDL_GpuReleaseShader(ctx->device, p->vertexShader);
+        SDL_ReleaseGpuShader(ctx->device, p->vertexShader);
     if (p->pixelShader != NULL)
-        SDL_GpuReleaseShader(ctx->device, p->pixelShader);
+        SDL_ReleaseGpuShader(ctx->device, p->pixelShader);
     ctx->free_fn(p, ctx->malloc_data);
 } // MOJOSHADER_sdlDeleteProgram
 
