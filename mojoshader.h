@@ -4106,16 +4106,16 @@ typedef struct MOJOSHADER_sdlVertexAttribute
 } MOJOSHADER_sdlVertexAttribute;
 
 #ifndef SDL_GPU_H
-typedef struct SDL_GpuDevice SDL_GpuDevice;
-typedef struct SDL_GpuShader SDL_GpuShader;
-typedef struct SDL_GpuCommandBuffer SDL_GpuCommandBuffer;
+typedef struct SDL_GPUDevice SDL_GPUDevice;
+typedef struct SDL_GPUShader SDL_GPUShader;
+typedef struct SDL_GPUCommandBuffer SDL_GPUCommandBuffer;
 #endif /* SDL_GPU_H */
 
 /*
  * Call this function to get the 'formatFlags' parameter for
- *  SDL_CreateGpuDevice.
+ *  SDL_CreateGPUDevice.
  *
- * Returns the SDL_GpuShaderFormatFlagBits for creating the SDL_GpuDevice.
+ * Returns the SDL_GPUShaderFormatFlagBits for creating the SDL_GPUDevice.
  */
 DECLSPEC unsigned int MOJOSHADER_sdlGetShaderFormats(void);
 
@@ -4124,7 +4124,7 @@ DECLSPEC unsigned int MOJOSHADER_sdlGetShaderFormats(void);
  *
  * You do not need to call this if all you want is MOJOSHADER_parse().
  *
- * (device) refers to the SDL_GpuDevice.
+ * (device) refers to the SDL_GPUDevice.
  *
  * You can only have one MOJOSHADER_sdlContext per actual SDL_gpu context, or
  *  undefined behaviour will result.
@@ -4139,7 +4139,7 @@ DECLSPEC unsigned int MOJOSHADER_sdlGetShaderFormats(void);
  *
  * Returns a new context on success, NULL on error.
  */
-DECLSPEC MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(SDL_GpuDevice *device,
+DECLSPEC MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(SDL_GPUDevice *device,
                                                             MOJOSHADER_malloc m,
                                                             MOJOSHADER_free f,
                                                             void *malloc_d);
@@ -4168,7 +4168,7 @@ DECLSPEC const char *MOJOSHADER_sdlGetError(MOJOSHADER_sdlContext *ctx);
 /*
  * Deinitialize MojoShader's SDL_gpu shader management.
  *
- * You must call this once, while your SDL_GpuDevice is still valid. This should
+ * You must call this once, while your SDL_GPUDevice is still valid. This should
  * be the last MOJOSHADER_sdl* function you call until you've prepared a context
  * again.
  *
@@ -4312,18 +4312,18 @@ DECLSPEC void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx)
 
 /*
  * Returns the minimum required size of the uniform buffer for this shader.
- *  You will need this to fill out the SDL_GpuGraphicsPipelineCreateInfo struct.
+ *  You will need this to fill out the SDL_GPUGraphicsPipelineCreateInfo struct.
  */
 DECLSPEC int MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShaderData *shader);
 
 /*
  * Pushes the uniform buffer updates for the currently bound program.
  *
- * This function will record calls to SDL_GpuPush*ShaderUniforms into the
+ * This function will record calls to SDL_GPUPush*ShaderUniforms into the
  *  passed command buffer.
  */
 DECLSPEC void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx,
-                                                 SDL_GpuCommandBuffer *cb);
+                                                 SDL_GPUCommandBuffer *cb);
 
 /*
  * Return the location of a vertex attribute for the given shader.
@@ -4332,18 +4332,18 @@ DECLSPEC void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx,
  *  be MOJOSHADER_USAGE_COLOR and 1.
  *
  * The return value is the index of the attribute to be used to create
- *  an SDL_GpuVertexAttribute, or -1 if the stream is not used.
+ *  an SDL_GPUVertexAttribute, or -1 if the stream is not used.
  */
 DECLSPEC int MOJOSHADER_sdlGetVertexAttribLocation(MOJOSHADER_sdlShaderData *vert,
                                                    MOJOSHADER_usage usage,
                                                    int index);
 
 /*
- * Get the SDL_GpuShaderModules from the currently bound shader program.
+ * Get the SDL_GPUShaderModules from the currently bound shader program.
  */
 DECLSPEC void MOJOSHADER_sdlGetShaders(MOJOSHADER_sdlContext *ctx,
-                                             SDL_GpuShader **vshader,
-                                             SDL_GpuShader **pshader);
+                                             SDL_GPUShader **vshader,
+                                             SDL_GPUShader **pshader);
 
 /*
  * Gets the number of sampler slots needed by a given shader module.
