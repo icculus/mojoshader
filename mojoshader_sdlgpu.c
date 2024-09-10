@@ -54,6 +54,7 @@ struct MOJOSHADER_sdlShaderData
     uint16_t tag;
     uint32_t refcount;
     uint32_t samplerSlots;
+    int32_t uniformBufferSize;
 };
 
 struct MOJOSHADER_sdlProgram
@@ -261,7 +262,8 @@ static void update_uniform_buffer(
 
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
-    return SDL_ShaderCross_GetShaderFormats();
+    SDL_ShaderCross_Init();
+    return SDL_ShaderCross_GetSPIRVShaderFormats();
 } // MOJOSHADER_sdlGetShaderFormats
 
 MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
@@ -311,6 +313,8 @@ void MOJOSHADER_sdlDestroyContext(
         hash_destroy(ctx->linker_cache, ctx);
 
     ctx->free_fn(ctx, ctx->malloc_data);
+
+    SDL_ShaderCross_Quit();
 } // MOJOSHADER_sdlDestroyContext
 
 static uint16_t shaderTagCounter = 1;
@@ -366,6 +370,13 @@ MOJOSHADER_sdlShaderData *MOJOSHADER_sdlCompileShader(
 	}
 
     shader->samplerSlots = (uint32_t) maxSamplerIndex + 1;
+
+    shader->uniformBufferSize = 0;
+    for (i = 0; i < pd->uniform_count; i++)
+    {
+        shader->uniformBufferSize += SDL_max(pd->uniforms[i].array_count, 1);
+    } // for
+    shader->uniformBufferSize *= 16; // Yes, even the bool registers are this size
 
     return shader;
 
@@ -471,12 +482,12 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     SDL_zero(createInfo);
     createInfo.code = (const Uint8*) vshader->parseData->output;
-    createInfo.codeSize = vshader->parseData->output_len - sizeof(SpirvPatchTable);
-    createInfo.entryPointName = vshader->parseData->mainfn;
+    createInfo.code_size = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+    createInfo.entrypoint = vshader->parseData->mainfn;
     createInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
     createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
-    createInfo.samplerCount = vshader->samplerSlots;
-    createInfo.uniformBufferCount = 1;
+    createInfo.num_samplers = vshader->samplerSlots;
+    createInfo.num_uniform_buffers = 1;
 
     program->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
@@ -492,11 +503,11 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     } // if
 
     createInfo.code = (const Uint8*) pshader->parseData->output;
-    createInfo.codeSize = pshader->parseData->output_len - sizeof(SpirvPatchTable);
-    createInfo.entryPointName = pshader->parseData->mainfn;
+    createInfo.code_size = pshader->parseData->output_len - sizeof(SpirvPatchTable);
+    createInfo.entrypoint = pshader->parseData->mainfn;
     createInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    createInfo.samplerCount = pshader->samplerSlots;
+    createInfo.num_samplers = pshader->samplerSlots;
 
     program->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
@@ -648,16 +659,7 @@ void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx)
 
 int MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShaderData *shader)
 {
-    int32_t i;
-    int32_t buflen = 0;
-    const int32_t uniformSize = 16; // Yes, even the bool registers
-    for (i = 0; i < shader->parseData->uniform_count; i++)
-    {
-        const int32_t arrayCount = shader->parseData->uniforms[i].array_count;
-        buflen += (arrayCount ? arrayCount : 1) * uniformSize;
-    } // for
-
-    return buflen;
+    return shader->uniformBufferSize;
 } // MOJOSHADER_sdlGetUniformBufferSize
 
 void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx,
