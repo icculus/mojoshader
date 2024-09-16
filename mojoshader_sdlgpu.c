@@ -42,6 +42,9 @@ struct MOJOSHADER_sdlContext
     int32_t ps_reg_file_i[MAX_REG_FILE_I * 4];
     uint8_t ps_reg_file_b[MAX_REG_FILE_B * 4];
 
+    uint8_t *uniform_staging;
+    uint32_t uniform_staging_length;
+
     MOJOSHADER_sdlShaderData *bound_vshader_data;
     MOJOSHADER_sdlShaderData *bound_pshader_data;
     MOJOSHADER_sdlProgram *bound_program;
@@ -156,43 +159,24 @@ static void nuke_shaders(
     MOJOSHADER_sdlDeleteProgram(ctx, (MOJOSHADER_sdlProgram *) value);
 } // nuke_shaders
 
-static void update_uniform_buffer(
+static uint8_t update_uniform_buffer(
     MOJOSHADER_sdlContext *ctx,
     SDL_GPUCommandBuffer *cb,
-    MOJOSHADER_sdlShaderData *shader
+    MOJOSHADER_sdlShaderData *shader,
+    float *regF,
+    int *regI,
+    uint8_t *regB
 ) {
     int32_t i, j;
     int32_t offset;
-    uint8_t *contents;
-    uint32_t content_size;
     uint32_t *contentsI;
-    float *regF; int *regI; uint8_t *regB;
 
-    if (shader == NULL || shader->parseData->uniform_count == 0)
-        return;
-
-    if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
+    if (shader->uniformBufferSize > ctx->uniform_staging_length)
     {
-        regF = ctx->vs_reg_file_f;
-        regI = ctx->vs_reg_file_i;
-        regB = ctx->vs_reg_file_b;
+        ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
+        ctx->uniform_staging = ctx->malloc_fn(shader->uniformBufferSize, ctx->malloc_data);
+        ctx->uniform_staging_length = shader->uniformBufferSize;
     } // if
-    else
-    {
-        regF = ctx->ps_reg_file_f;
-        regI = ctx->ps_reg_file_i;
-        regB = ctx->ps_reg_file_b;
-    } // else
-    content_size = 0;
-
-    for (i = 0; i < shader->parseData->uniform_count; i++)
-    {
-        const int32_t arrayCount = shader->parseData->uniforms[i].array_count;
-        const int32_t size = arrayCount ? arrayCount : 1;
-        content_size += size * 16;
-    } // for
-
-    contents = (uint8_t*) ctx->malloc_fn(content_size, ctx->malloc_data);
 
     offset = 0;
     for (i = 0; i < shader->parseData->uniform_count; i++)
@@ -205,7 +189,7 @@ static void update_uniform_buffer(
         {
             case MOJOSHADER_UNIFORM_FLOAT:
                 memcpy(
-                    contents + offset,
+                    ctx->uniform_staging + offset,
                     &regF[4 * index],
                     size * 16
                 );
@@ -213,14 +197,14 @@ static void update_uniform_buffer(
 
             case MOJOSHADER_UNIFORM_INT:
                 memcpy(
-                    contents + offset,
+                    ctx->uniform_staging + offset,
                     &regI[4 * index],
                     size * 16
                 );
                 break;
 
             case MOJOSHADER_UNIFORM_BOOL:
-                contentsI = (uint32_t *) (contents + offset);
+                contentsI = (uint32_t *) (ctx->uniform_staging + offset);
                 for (j = 0; j < size; j++)
                     contentsI[j * 4] = regB[index + j];
                 break;
@@ -236,26 +220,7 @@ static void update_uniform_buffer(
         offset += size * 16;
     } // for
 
-    if (shader->parseData->shader_type == MOJOSHADER_TYPE_VERTEX)
-    {
-		SDL_PushGPUVertexUniformData(
-			cb,
-			0,
-			contents,
-			content_size
-		);
-    } // if
-    else
-    {
-		SDL_PushGPUFragmentUniformData(
-			cb,
-			0,
-			contents,
-			content_size
-		);
-    } // else
-
-    ctx->free_fn(contents, ctx->malloc_data);
+    return 1; // FIXME: Return 0 when uniform data is unchanged
 } // update_uniform_buffer
 
 /* Public API */
@@ -311,6 +276,8 @@ void MOJOSHADER_sdlDestroyContext(
 ) {
     if (ctx->linker_cache)
         hash_destroy(ctx->linker_cache, ctx);
+
+    ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
 
     ctx->free_fn(ctx, ctx->malloc_data);
 
@@ -659,6 +626,8 @@ void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx)
 
 int MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShaderData *shader)
 {
+    if (shader == NULL)
+        return 0;
     return shader->uniformBufferSize;
 } // MOJOSHADER_sdlGetUniformBufferSize
 
@@ -666,9 +635,35 @@ void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx,
                                         SDL_GPUCommandBuffer *cb)
 {
     if (MOJOSHADER_sdlGetUniformBufferSize(ctx->bound_program->vertexShaderData) > 0)
-        update_uniform_buffer(ctx, cb, ctx->bound_program->vertexShaderData);
+    {
+        if (update_uniform_buffer(ctx, cb, ctx->bound_program->vertexShaderData,
+                                  ctx->vs_reg_file_f,
+                                  ctx->vs_reg_file_i,
+                                  ctx->vs_reg_file_b))
+        {
+            SDL_PushGPUVertexUniformData(
+                cb,
+                0,
+                ctx->uniform_staging,
+                ctx->bound_program->vertexShaderData->uniformBufferSize
+            );
+        } // if
+    } // if
     if (MOJOSHADER_sdlGetUniformBufferSize(ctx->bound_program->pixelShaderData) > 0)
-        update_uniform_buffer(ctx, cb, ctx->bound_program->pixelShaderData);
+    {
+        if (update_uniform_buffer(ctx, cb, ctx->bound_program->pixelShaderData,
+                                  ctx->ps_reg_file_f,
+                                  ctx->ps_reg_file_i,
+                                  ctx->ps_reg_file_b))
+        {
+            SDL_PushGPUFragmentUniformData(
+                cb,
+                0,
+                ctx->uniform_staging,
+                ctx->bound_program->pixelShaderData->uniformBufferSize
+            );
+        } // if
+    } // if
 } // MOJOSHADER_sdlUpdateUniformBuffers
 
 int MOJOSHADER_sdlGetVertexAttribLocation(
