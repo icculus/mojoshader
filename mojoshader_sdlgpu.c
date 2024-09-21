@@ -459,7 +459,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     program->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
         &createInfo,
-        SDL_FALSE
+        false
     );
 
     if (program->vertexShader == NULL)
@@ -479,7 +479,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     program->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
         ctx->device,
         &createInfo,
-        SDL_FALSE
+        false
     );
 
     if (program->pixelShader == NULL)
