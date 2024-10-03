@@ -1753,7 +1753,7 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
                     uint32 tid_pvec4p = spv_get_type(ctx, STI_PTR_VEC4_P);
 
                     uint32 id_1_0 = spv_getscalarf(ctx, 1.0f);
-                    uint32 id_0_0 = spv_getscalarf(ctx, 0.0f);
+                    uint32 id_n1_0 = spv_getscalarf(ctx, -1.0f);
 
                     uint32 id_var_frontfacing = spv_bumpid(ctx);
                     uint32 id_var_vface = id;
@@ -1771,7 +1771,7 @@ static void spv_link_ps_attributes(Context *ctx, uint32 id, RegisterType regtype
 
                     push_output(ctx, &ctx->mainline_top);
                     spv_emit(ctx, 4, SpvOpLoad, tid_bool, id_frontfacing, id_var_frontfacing);
-                    spv_emit(ctx, 6, SpvOpSelect, tid_float, id_tmp, id_frontfacing, id_1_0, id_0_0);
+                    spv_emit(ctx, 6, SpvOpSelect, tid_float, id_tmp, id_frontfacing, id_1_0, id_n1_0);
                     spv_emit(ctx, 3 + 4, SpvOpCompositeConstruct, tid_vec4, id_vface, id_tmp, id_tmp, id_tmp, id_tmp);
                     spv_emit(ctx, 3, SpvOpStore, id_var_vface, id_vface);
                     pop_output(ctx);
