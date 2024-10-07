@@ -433,10 +433,9 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     createInfo.num_samplers = vshader->samplerSlots;
     createInfo.num_uniform_buffers = 1;
 
-    program->vertexShader = SDL_ShaderCross_CompileFromSPIRV(
+    program->vertexShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
         ctx->device,
-        &createInfo,
-        false
+        &createInfo
     );
 
     if (program->vertexShader == NULL)
@@ -453,10 +452,9 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.num_samplers = pshader->samplerSlots;
 
-    program->pixelShader = SDL_ShaderCross_CompileFromSPIRV(
+    program->pixelShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
         ctx->device,
-        &createInfo,
-        false
+        &createInfo
     );
 
     if (program->pixelShader == NULL)
