@@ -49,6 +49,9 @@ struct MOJOSHADER_sdlContext
     MOJOSHADER_sdlShaderData *bound_pshader_data;
     MOJOSHADER_sdlProgram *bound_program;
     HashTable *linker_cache;
+
+    void *blobCache;
+    size_t blobCacheSize;
 };
 
 struct MOJOSHADER_sdlShaderData
@@ -251,7 +254,18 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
 
     SDL_memset(resultCtx, '\0', sizeof(MOJOSHADER_sdlContext));
     resultCtx->device = device;
-    resultCtx->profile = "spirv"; /* always use spirv and interop with SDL_gpu_spirvcross */
+
+    resultCtx->blobCache = SDL_LoadFile("MojoShaderPrecompiled.bin", &resultCtx->blobCacheSize);
+    if (resultCtx->blobCache != NULL)
+    {
+        /* Just validate the bytecode, calculate a hash to find in blobCache */
+        resultCtx->profile = "bytecode";
+    }
+    else
+    {
+        /* Always use spirv and interop with SDL_gpu_spirvcross */
+        resultCtx->profile = "spirv";
+    }
 
     resultCtx->malloc_fn = m;
     resultCtx->free_fn = f;
@@ -354,53 +368,16 @@ parse_shader_fail:
     return NULL;
 } // MOJOSHADER_sdlCompileShader
 
-MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
+static MOJOSHADER_sdlProgram *compile_spirv_program(
     MOJOSHADER_sdlContext *ctx,
+    MOJOSHADER_sdlShaderData *vshader,
+    MOJOSHADER_sdlShaderData *pshader,
     MOJOSHADER_sdlVertexAttribute *vertexAttributes,
-    int vertexAttributeCount
-) {
-    MOJOSHADER_sdlProgram *program = NULL;
+    int vertexAttributeCount)
+{
     SDL_GPUShaderCreateInfo createInfo;
-
-    MOJOSHADER_sdlShaderData *vshader = ctx->bound_vshader_data;
-    MOJOSHADER_sdlShaderData *pshader = ctx->bound_pshader_data;
-
-    if ((vshader == NULL) || (pshader == NULL)) /* Both shaders MUST exist! */
-        return NULL;
-
-    if (ctx->linker_cache == NULL)
-    {
-        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
-                                        nuke_shaders, 0, ctx->malloc_fn,
-                                        ctx->free_fn, ctx->malloc_data);
-
-        if (ctx->linker_cache == NULL)
-        {
-            out_of_memory();
-            return NULL;
-        } // if
-    } // if
-
-    LinkedShaderData shaders;
-    shaders.vertex = vshader;
-    shaders.fragment = pshader;
-    memset(shaders.vertexAttributes, 0, sizeof(MOJOSHADER_sdlVertexAttribute) * 16);
-    shaders.vertexAttributeCount = vertexAttributeCount;
-    for (int i = 0; i < vertexAttributeCount; i += 1)
-    {
-        shaders.vertexAttributes[i] = vertexAttributes[i];
-    }
-
-    const void *val = NULL;
-
-    if (hash_find(ctx->linker_cache, &shaders, &val))
-    {
-        ctx->bound_program = (MOJOSHADER_sdlProgram *) val;
-        return ctx->bound_program;
-    }
-
-    program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram), ctx->malloc_data);
-
+    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
+                                                                             ctx->malloc_data);
     if (program == NULL)
     {
         out_of_memory();
@@ -489,6 +466,68 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         ctx->free_fn(program, ctx->malloc_data);
         return NULL;
     } // if
+
+    return program;
+} // compile_spirv_program
+
+MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
+    MOJOSHADER_sdlContext *ctx,
+    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
+    int vertexAttributeCount
+) {
+    MOJOSHADER_sdlProgram *program = NULL;
+
+    MOJOSHADER_sdlShaderData *vshader = ctx->bound_vshader_data;
+    MOJOSHADER_sdlShaderData *pshader = ctx->bound_pshader_data;
+
+    if ((vshader == NULL) || (pshader == NULL)) /* Both shaders MUST exist! */
+        return NULL;
+
+    if (ctx->linker_cache == NULL)
+    {
+        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
+                                        nuke_shaders, 0, ctx->malloc_fn,
+                                        ctx->free_fn, ctx->malloc_data);
+
+        if (ctx->linker_cache == NULL)
+        {
+            out_of_memory();
+            return NULL;
+        } // if
+    } // if
+
+    LinkedShaderData shaders;
+    shaders.vertex = vshader;
+    shaders.fragment = pshader;
+    memset(shaders.vertexAttributes, 0, sizeof(MOJOSHADER_sdlVertexAttribute) * 16);
+    shaders.vertexAttributeCount = vertexAttributeCount;
+    for (int i = 0; i < vertexAttributeCount; i += 1)
+    {
+        shaders.vertexAttributes[i] = vertexAttributes[i];
+    }
+
+    const void *val = NULL;
+
+    if (hash_find(ctx->linker_cache, &shaders, &val))
+    {
+        ctx->bound_program = (MOJOSHADER_sdlProgram *) val;
+        return ctx->bound_program;
+    }
+
+    if (ctx->blobCache)
+    {
+        // TODO: Combine bytecode hash with vertex attribute hash, search the
+        // result in blobCache. If found, send to CompileShader directly,
+        // otherwise do a really loud error saying the blob cache is incomplete
+    } // if
+    else
+    {
+        program = compile_spirv_program(ctx, vshader, pshader,
+                                        vertexAttributes, vertexAttributeCount);
+    } // else
+
+    if (program == NULL)
+        return NULL;
 
     program->vertexShaderData = vshader;
     program->pixelShaderData = pshader;
