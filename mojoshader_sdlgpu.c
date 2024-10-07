@@ -293,6 +293,9 @@ void MOJOSHADER_sdlDestroyContext(
 
     ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
 
+    if (ctx->blobCache != NULL)
+        SDL_free(ctx->blobCache);
+
     ctx->free_fn(ctx, ctx->malloc_data);
 
     SDL_ShaderCross_Quit();
