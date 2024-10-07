@@ -22,6 +22,19 @@
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
 
+typedef struct ShaderEntry
+{
+    uint64_t hash;
+    uint32_t offset;
+    uint32_t size;
+} ShaderEntry;
+
+typedef struct ShaderBlob
+{
+    uint64_t hash;
+    void* binary;
+} ShaderBlob;
+
 struct MOJOSHADER_sdlContext
 {
     SDL_GPUDevice *device;
@@ -50,8 +63,12 @@ struct MOJOSHADER_sdlContext
     MOJOSHADER_sdlProgram *bound_program;
     HashTable *linker_cache;
 
-    void *blobCache;
-    size_t blobCacheSize;
+    struct
+    {
+        uint32_t numShaders;
+        ShaderEntry *hashes;
+        ShaderBlob *shaders;
+    } blob;
 };
 
 struct MOJOSHADER_sdlShaderData
@@ -234,6 +251,74 @@ unsigned int MOJOSHADER_sdlGetShaderFormats(void)
     return SDL_ShaderCross_GetSPIRVShaderFormats();
 } // MOJOSHADER_sdlGetShaderFormats
 
+static bool load_precompiled_blob(MOJOSHADER_sdlContext *ctx)
+{
+    int32_t i, hashIndex, probes;
+    uint8_t *usedEntries;
+    uint64_t hash;
+    ShaderEntry *entry;
+    ShaderBlob *shader;
+
+    SDL_IOStream *blob = SDL_IOFromFile("MojoShaderPrecompiled.bin", "rb");
+    if (blob == NULL)
+        return false;
+
+    /* First, read the number of shaders */
+    SDL_ReadIO(blob, &ctx->blob.numShaders, sizeof(uint32_t));
+
+    /* Allocate storage for the shader data */
+    ctx->blob.hashes = (ShaderEntry*) SDL_malloc(
+        ctx->blob.numShaders * sizeof(ShaderEntry)
+    );
+    ctx->blob.shaders = (ShaderBlob*) SDL_malloc(
+        ctx->blob.numShaders * sizeof(ShaderBlob)
+    );
+
+    /* Keep track of the hash table entries we've used */
+    usedEntries = (uint8_t*) SDL_calloc(ctx->blob.numShaders, sizeof(uint8_t));
+
+    /* Read and store the shader hashes */
+    for (i = 0; i < ctx->blob.numShaders; i += 1)
+    {
+        SDL_ReadIO(blob, &hash, sizeof(uint64_t));
+        hashIndex = hash % ctx->blob.numShaders;
+
+        /* Find the first usable index */
+        for (probes = 0; probes < ctx->blob.numShaders; probes += 1)
+        {
+            hashIndex = (hashIndex + 1) % ctx->blob.numShaders;
+            if (usedEntries[hashIndex] == 0)
+            {
+                usedEntries[hashIndex] = 1;
+                break;
+            }
+        }
+
+        ctx->blob.hashes[hashIndex].hash = hash;
+        SDL_ReadIO(blob, &ctx->blob.hashes[hashIndex].offset, sizeof(uint32_t));
+        SDL_ReadIO(blob, &ctx->blob.hashes[hashIndex].size, sizeof(uint32_t));
+    }
+
+    SDL_free(usedEntries);
+
+    /* Read the shader blobs */
+    for (i = 0; i < ctx->blob.numShaders; i += 1)
+    {
+        entry = &ctx->blob.hashes[i];
+        shader = &ctx->blob.shaders[i];
+
+        SDL_SeekIO(blob, entry->offset, SDL_IO_SEEK_SET);
+        shader->binary = SDL_malloc(entry->size);
+        SDL_ReadIO(blob, shader->binary, entry->size);
+
+        /* Assign the hash value to the shader */
+        shader->hash = entry->hash;
+    }
+
+    SDL_CloseIO(blob);
+    return true;
+} // load_precompiled_blob
+
 MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     SDL_GPUDevice *device,
     MOJOSHADER_malloc m,
@@ -255,8 +340,7 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     SDL_memset(resultCtx, '\0', sizeof(MOJOSHADER_sdlContext));
     resultCtx->device = device;
 
-    resultCtx->blobCache = SDL_LoadFile("MojoShaderPrecompiled.bin", &resultCtx->blobCacheSize);
-    if (resultCtx->blobCache != NULL)
+    if (load_precompiled_blob(resultCtx))
     {
         /* Just validate the bytecode, calculate a hash to find in blobCache */
         resultCtx->profile = "bytecode";
@@ -288,13 +372,20 @@ const char *MOJOSHADER_sdlGetError(
 void MOJOSHADER_sdlDestroyContext(
     MOJOSHADER_sdlContext *ctx
 ) {
+    uint32_t i;
+
     if (ctx->linker_cache)
         hash_destroy(ctx->linker_cache, ctx);
 
     ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
 
-    if (ctx->blobCache != NULL)
-        SDL_free(ctx->blobCache);
+    if (ctx->blob.numShaders > 0)
+    {
+        for (i = 0; i < ctx->blob.numShaders; i += 1)
+            SDL_free(ctx->blob.shaders[i].binary);
+        SDL_free(ctx->blob.hashes);
+        SDL_free(ctx->blob.shaders);
+    } // if
 
     ctx->free_fn(ctx, ctx->malloc_data);
 
@@ -515,10 +606,10 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return ctx->bound_program;
     }
 
-    if (ctx->blobCache)
+    if (ctx->blob.numShaders > 0)
     {
         // TODO: Combine bytecode hash with vertex attribute hash, search the
-        // result in blobCache. If found, send to CompileShader directly,
+        // result in ctx->blob. If found, send to CompileShader directly,
         // otherwise do a really loud error saying the blob cache is incomplete
     } // if
     else
