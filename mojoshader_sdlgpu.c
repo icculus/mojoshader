@@ -301,7 +301,7 @@ MOJOSHADER_sdlShaderData *MOJOSHADER_sdlCompileShader(
     int i;
 
     const MOJOSHADER_parseData *pd = MOJOSHADER_parse(
-        "spirv", mainfn,
+        ctx->profile, mainfn,
         tokenbuf, bufsize,
         swiz, swizcount,
         smap, smapcount,
