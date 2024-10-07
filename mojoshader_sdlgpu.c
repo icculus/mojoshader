@@ -327,14 +327,14 @@ MOJOSHADER_sdlShaderData *MOJOSHADER_sdlCompileShader(
     shader->refcount = 1;
     shader->tag = shaderTagCounter++;
 
-	/* XNA allows empty shader slots in the middle, so we have to find the actual max binding index */
-	for (i = 0; i < pd->sampler_count; i += 1)
-	{
-		if (pd->samplers[i].index > maxSamplerIndex)
-		{
-			maxSamplerIndex = pd->samplers[i].index;
-		}
-	}
+    /* XNA allows empty shader slots in the middle, so we have to find the actual max binding index */
+    for (i = 0; i < pd->sampler_count; i += 1)
+    {
+        if (pd->samplers[i].index > maxSamplerIndex)
+        {
+            maxSamplerIndex = pd->samplers[i].index;
+        }
+    }
 
     shader->samplerSlots = (uint32_t) maxSamplerIndex + 1;
 
@@ -407,43 +407,43 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     } // if
 
-	// We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
-	// BYTE4  - 5
-	// SHORT2 - 6
-	// SHORT4 - 7
-	int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
-	SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
+    // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
+    // BYTE4  - 5
+    // SHORT2 - 6
+    // SHORT4 - 7
+    int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+    SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
 
-	for (int i = 0; i < vertexAttributeCount; i += 1)
-	{
-		MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
-		uint32 typeDecl, typeLoad;
-		SpvOp opcodeLoad;
+    for (int i = 0; i < vertexAttributeCount; i += 1)
+    {
+        MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
+        uint32 typeDecl, typeLoad;
+        SpvOp opcodeLoad;
 
-		if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
-		{
-			typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
-			typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
-			opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
-		}
-		else
-		{
-			typeDecl = vTable->tid_vec4_p;
-			typeLoad = vTable->tid_vec4;
-			opcodeLoad = SpvOpCopyObject;
-		}
+        if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
+        {
+            typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
+            typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
+            opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
+        }
+        else
+        {
+            typeDecl = vTable->tid_vec4_p;
+            typeLoad = vTable->tid_vec4;
+            opcodeLoad = SpvOpCopyObject;
+        }
 
-		uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
-		((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
-		for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
-		{
-			uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
-			uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
-			uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
-			((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
-			*ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
-		}
-	}
+        uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
+        ((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
+        for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
+        {
+            uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
+            uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
+            uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
+            ((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
+            *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
+        }
+    }
 
     MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
 
