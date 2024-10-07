@@ -471,6 +471,7 @@ static inline uint64_t hash_vertex_shader(
     int vertexAttributeCount)
 {
     // TODO: Combine d3dbc hash with vertex attribute hash
+    return 0;
 }
 
 static inline uint64_t hash_pixel_shader(
@@ -478,6 +479,7 @@ static inline uint64_t hash_pixel_shader(
     MOJOSHADER_sdlShaderData *pshader)
 {
     // TODO: Calculate hash of pshader d3dbc
+    return 0;
 }
 
 static inline ShaderBlob *fetch_blob_shader(
