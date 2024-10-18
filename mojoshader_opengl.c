@@ -311,7 +311,7 @@ struct MOJOSHADER_glContext
 
 #ifdef MOJOSHADER_NO_THREAD_LOCAL
 #define MOJOSHADER_THREADLOCAL
-#elif defined(_MSC_VER)
+#elif defined(_WIN32)
 #define MOJOSHADER_THREADLOCAL __declspec(thread)
 #elif defined(__GNUC__) || defined(__clang__)
 #define MOJOSHADER_THREADLOCAL __thread
