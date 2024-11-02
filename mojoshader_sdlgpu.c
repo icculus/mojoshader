@@ -13,14 +13,14 @@
 #ifdef USE_SDL3 /* Private define, for now */
 
 #include <SDL3/SDL.h>
-
-#define SDL_GPU_SHADERCROSS_IMPLEMENTATION
-#include "spirv/SDL_gpu_shadercross.h"
+#include <spirv/spirv.h>
 
 /* Max entries for each register file type */
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
+
+static const char *profile_name;
 
 typedef struct ShaderEntry
 {
@@ -248,8 +248,18 @@ static uint8_t update_uniform_buffer(
 
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
-    SDL_ShaderCross_Init();
-    return SDL_ShaderCross_GetSPIRVShaderFormats();
+    const char *platform_name = SDL_GetPlatform();
+    if (strcmp(platform_name, "macOS") == 0)
+    {
+        profile_name = "metal";
+        return SDL_GPU_SHADERFORMAT_MSL;
+    }
+    else
+    {
+        // FIXME: D3D12 needs ShaderCross!
+        profile_name = "spirv";
+        return SDL_GPU_SHADERFORMAT_SPIRV;
+    }
 } // MOJOSHADER_sdlGetShaderFormats
 
 static bool load_precompiled_blob(MOJOSHADER_sdlContext *ctx)
@@ -349,8 +359,7 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     }
     else
     {
-        /* Always use spirv and interop with SDL_gpu_spirvcross */
-        resultCtx->profile = "spirv";
+        resultCtx->profile = profile_name;
     }
 
     resultCtx->malloc_fn = m;
@@ -390,8 +399,6 @@ void MOJOSHADER_sdlDestroyContext(
     } // if
 
     ctx->free_fn(ctx, ctx->malloc_data);
-
-    SDL_ShaderCross_Quit();
 } // MOJOSHADER_sdlDestroyContext
 
 static uint16_t shaderTagCounter = 1;
@@ -579,6 +586,64 @@ static MOJOSHADER_sdlProgram *compile_blob_program(
     return program;
 } // compile_blob_program
 
+static MOJOSHADER_sdlProgram *compile_metal_program(
+    MOJOSHADER_sdlContext *ctx,
+    MOJOSHADER_sdlShaderData *vshader,
+    MOJOSHADER_sdlShaderData *pshader
+) {
+    SDL_GPUShaderCreateInfo createInfo;
+    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
+                                                                             ctx->malloc_data);
+    if (program == NULL)
+    {
+        out_of_memory();
+        return NULL;
+    } // if
+
+    SDL_zero(createInfo);
+    createInfo.code = (const Uint8*) vshader->parseData->output;
+    createInfo.code_size = vshader->parseData->output_len;
+    createInfo.entrypoint = vshader->parseData->mainfn;
+    createInfo.format = SDL_GPU_SHADERFORMAT_MSL;
+    createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    createInfo.num_samplers = vshader->samplerSlots;
+    createInfo.num_uniform_buffers = 1;
+
+    program->vertexShader = SDL_CreateGPUShader(
+        ctx->device,
+        &createInfo
+    );
+
+    if (program->vertexShader == NULL)
+    {
+        set_error(SDL_GetError());
+        ctx->free_fn(program, ctx->malloc_data);
+        return NULL;
+    } // if
+
+    createInfo.code = (const Uint8*) pshader->parseData->output;
+    createInfo.code_size = pshader->parseData->output_len;
+    createInfo.entrypoint = pshader->parseData->mainfn;
+    createInfo.format = SDL_GPU_SHADERFORMAT_MSL;
+    createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    createInfo.num_samplers = pshader->samplerSlots;
+
+    program->pixelShader = SDL_CreateGPUShader(
+        ctx->device,
+        &createInfo
+    );
+
+    if (program->pixelShader == NULL)
+    {
+        set_error(SDL_GetError());
+        SDL_ReleaseGPUShader(ctx->device, program->vertexShader);
+        ctx->free_fn(program, ctx->malloc_data);
+        return NULL;
+    } // if
+
+    return program;
+}
+
 static MOJOSHADER_sdlProgram *compile_spirv_program(
     MOJOSHADER_sdlContext *ctx,
     MOJOSHADER_sdlShaderData *vshader,
@@ -644,7 +709,7 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     createInfo.num_samplers = vshader->samplerSlots;
     createInfo.num_uniform_buffers = 1;
 
-    program->vertexShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+    program->vertexShader = SDL_CreateGPUShader(
         ctx->device,
         &createInfo
     );
@@ -663,7 +728,7 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.num_samplers = pshader->samplerSlots;
 
-    program->pixelShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+    program->pixelShader = SDL_CreateGPUShader(
         ctx->device,
         &createInfo
     );
@@ -730,8 +795,15 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     } // if
     else
     {
-        program = compile_spirv_program(ctx, vshader, pshader,
-                                        vertexAttributes, vertexAttributeCount);
+        if (SDL_strcmp(profile_name, "metal") == 0)
+        {
+            program = compile_metal_program(ctx, vshader, pshader);
+        }
+        else
+        {
+            program = compile_spirv_program(ctx, vshader, pshader,
+                                            vertexAttributes, vertexAttributeCount);
+        }
     } // else
 
     if (program == NULL)
