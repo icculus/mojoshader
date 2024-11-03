@@ -25,7 +25,7 @@ static SDL_GPUShaderFormat shader_format =
 #ifdef __APPLE__
     SDL_GPU_SHADERFORMAT_MSL;
 #else
-    SDL_GPU_SHADERFORMAT_SPIRV:
+    SDL_GPU_SHADERFORMAT_SPIRV;
 #endif
 
 typedef struct ShaderEntry
@@ -580,64 +580,6 @@ static MOJOSHADER_sdlProgram *compile_blob_program(
 
     return program;
 } // compile_blob_program
-
-static MOJOSHADER_sdlProgram *compile_metal_program(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *vshader,
-    MOJOSHADER_sdlShaderData *pshader
-) {
-    SDL_GPUShaderCreateInfo createInfo;
-    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
-                                                                             ctx->malloc_data);
-    if (program == NULL)
-    {
-        out_of_memory();
-        return NULL;
-    } // if
-
-    SDL_zero(createInfo);
-    createInfo.code = (const Uint8*) vshader->parseData->output;
-    createInfo.code_size = vshader->parseData->output_len;
-    createInfo.entrypoint = vshader->parseData->mainfn;
-    createInfo.format = SDL_GPU_SHADERFORMAT_MSL;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
-    createInfo.num_samplers = vshader->samplerSlots;
-    createInfo.num_uniform_buffers = 1;
-
-    program->vertexShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
-
-    if (program->vertexShader == NULL)
-    {
-        set_error(SDL_GetError());
-        ctx->free_fn(program, ctx->malloc_data);
-        return NULL;
-    } // if
-
-    createInfo.code = (const Uint8*) pshader->parseData->output;
-    createInfo.code_size = pshader->parseData->output_len;
-    createInfo.entrypoint = pshader->parseData->mainfn;
-    createInfo.format = SDL_GPU_SHADERFORMAT_MSL;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    createInfo.num_samplers = pshader->samplerSlots;
-
-    program->pixelShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
-
-    if (program->pixelShader == NULL)
-    {
-        set_error(SDL_GetError());
-        SDL_ReleaseGPUShader(ctx->device, program->vertexShader);
-        ctx->free_fn(program, ctx->malloc_data);
-        return NULL;
-    } // if
-
-    return program;
-}
 
 static MOJOSHADER_sdlProgram *compile_program(
     MOJOSHADER_sdlContext *ctx,
