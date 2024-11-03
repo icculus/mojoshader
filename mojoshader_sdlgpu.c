@@ -20,8 +20,13 @@
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
 
-/* The shader format to use. Initialized by MOJOSHADER_sdlGetShaderFormats. */
-static SDL_GPUShaderFormat shader_format;
+/* The destination shader format to use */
+static SDL_GPUShaderFormat shader_format =
+#ifdef __APPLE__
+    SDL_GPU_SHADERFORMAT_MSL;
+#else
+    SDL_GPU_SHADERFORMAT_SPIRV:
+#endif
 
 typedef struct ShaderEntry
 {
@@ -249,17 +254,6 @@ static uint8_t update_uniform_buffer(
 
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
-    const char *platform = SDL_GetPlatform();
-    if (SDL_strcmp(platform, "macOS") == 0 ||
-        SDL_strcmp(platform, "iOS") == 0 ||
-        SDL_strcmp(platform, "tvOS") == 0)
-    {
-        shader_format = SDL_GPU_SHADERFORMAT_MSL;
-    }
-    else
-    {
-        shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
-    }
     return shader_format;
 } // MOJOSHADER_sdlGetShaderFormats
 
