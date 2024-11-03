@@ -20,7 +20,8 @@
 #define MAX_REG_FILE_I 2047
 #define MAX_REG_FILE_B 2047
 
-static const char *profile_name;
+/* The shader format to use. Initialized by MOJOSHADER_sdlGetShaderFormats. */
+static SDL_GPUShaderFormat shader_format;
 
 typedef struct ShaderEntry
 {
@@ -248,18 +249,18 @@ static uint8_t update_uniform_buffer(
 
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
-    const char *platform_name = SDL_GetPlatform();
-    if (strcmp(platform_name, "macOS") == 0)
+    const char *platform = SDL_GetPlatform();
+    if (SDL_strcmp(platform, "macOS") == 0 ||
+        SDL_strcmp(platform, "iOS") == 0 ||
+        SDL_strcmp(platform, "tvOS") == 0)
     {
-        profile_name = "metal";
-        return SDL_GPU_SHADERFORMAT_MSL;
+        shader_format = SDL_GPU_SHADERFORMAT_MSL;
     }
     else
     {
-        // FIXME: D3D12 needs ShaderCross!
-        profile_name = "spirv";
-        return SDL_GPU_SHADERFORMAT_SPIRV;
+        shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
     }
+    return shader_format;
 } // MOJOSHADER_sdlGetShaderFormats
 
 static bool load_precompiled_blob(MOJOSHADER_sdlContext *ctx)
@@ -359,7 +360,7 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     }
     else
     {
-        resultCtx->profile = profile_name;
+        resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
     }
 
     resultCtx->malloc_fn = m;
@@ -644,7 +645,7 @@ static MOJOSHADER_sdlProgram *compile_metal_program(
     return program;
 }
 
-static MOJOSHADER_sdlProgram *compile_spirv_program(
+static MOJOSHADER_sdlProgram *compile_program(
     MOJOSHADER_sdlContext *ctx,
     MOJOSHADER_sdlShaderData *vshader,
     MOJOSHADER_sdlShaderData *pshader,
@@ -660,51 +661,60 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
         return NULL;
     } // if
 
-    // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
-    // BYTE4  - 5
-    // SHORT2 - 6
-    // SHORT4 - 7
-    int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
-    SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
+    size_t vshaderCodeSize = vshader->parseData->output_len;
+    size_t pshaderCodeSize = pshader->parseData->output_len;
 
-    for (int i = 0; i < vertexAttributeCount; i += 1)
+    if (shader_format == SDL_GPU_SHADERFORMAT_SPIRV)
     {
-        MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
-        uint32 typeDecl, typeLoad;
-        SpvOp opcodeLoad;
+        // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
+        // BYTE4  - 5
+        // SHORT2 - 6
+        // SHORT4 - 7
+        int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+        SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
 
-        if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
+        for (int i = 0; i < vertexAttributeCount; i += 1)
         {
-            typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
-            typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
-            opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
-        }
-        else
-        {
-            typeDecl = vTable->tid_vec4_p;
-            typeLoad = vTable->tid_vec4;
-            opcodeLoad = SpvOpCopyObject;
+            MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
+            uint32 typeDecl, typeLoad;
+            SpvOp opcodeLoad;
+
+            if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
+            {
+                typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
+                typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
+                opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
+            }
+            else
+            {
+                typeDecl = vTable->tid_vec4_p;
+                typeLoad = vTable->tid_vec4;
+                opcodeLoad = SpvOpCopyObject;
+            }
+
+            uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
+            ((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
+            for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
+            {
+                uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
+                uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
+                uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
+                ((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
+                *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
+            }
         }
 
-        uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
-        ((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
-        for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
-        {
-            uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
-            uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
-            uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
-            ((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
-            *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
-        }
+        MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
+
+        vshaderCodeSize -= sizeof(SpirvPatchTable);
+        pshaderCodeSize -= sizeof(SpirvPatchTable);
     }
-
-    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
 
     SDL_zero(createInfo);
     createInfo.code = (const Uint8*) vshader->parseData->output;
-    createInfo.code_size = vshader->parseData->output_len - sizeof(SpirvPatchTable);
+    createInfo.code_size = vshaderCodeSize;
     createInfo.entrypoint = vshader->parseData->mainfn;
-    createInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    createInfo.format = shader_format;
     createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     createInfo.num_samplers = vshader->samplerSlots;
     createInfo.num_uniform_buffers = 1;
@@ -722,9 +732,9 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     } // if
 
     createInfo.code = (const Uint8*) pshader->parseData->output;
-    createInfo.code_size = pshader->parseData->output_len - sizeof(SpirvPatchTable);
+    createInfo.code_size = pshaderCodeSize;
     createInfo.entrypoint = pshader->parseData->mainfn;
-    createInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    createInfo.format = shader_format;
     createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     createInfo.num_samplers = pshader->samplerSlots;
 
@@ -742,7 +752,7 @@ static MOJOSHADER_sdlProgram *compile_spirv_program(
     } // if
 
     return program;
-} // compile_spirv_program
+} // compile_program
 
 MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     MOJOSHADER_sdlContext *ctx,
@@ -795,15 +805,8 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     } // if
     else
     {
-        if (SDL_strcmp(profile_name, "metal") == 0)
-        {
-            program = compile_metal_program(ctx, vshader, pshader);
-        }
-        else
-        {
-            program = compile_spirv_program(ctx, vshader, pshader,
-                                            vertexAttributes, vertexAttributeCount);
-        }
+        program = compile_program(ctx, vshader, pshader,
+                                  vertexAttributes, vertexAttributeCount);
     } // else
 
     if (program == NULL)
