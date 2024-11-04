@@ -652,7 +652,13 @@ static MOJOSHADER_sdlProgram *compile_program(
         // Handle texcoord0 -> point_coord conversion
         if (strstr(vshaderSource, "[[point_size]]"))
         {
-            pshaderSource = strdup(pshader->parseData->output);
+            pshaderSource = (char *) ctx->malloc_fn(strlen(pshader->parseData->output) + 1, ctx->malloc_data);
+            if (!pshaderSource)
+            {
+                out_of_memory();
+                return NULL;
+            }
+            strcpy(pshaderSource, pshader->parseData->output);
 
             // !!! FIXME: This assumes all texcoord0 attributes in the effect are
             // !!! FIXME:  actually point coords! It ain't necessarily so! -caleb
@@ -667,7 +673,7 @@ static MOJOSHADER_sdlProgram *compile_program(
                 while (spaces < 2)
                     if (*(ptr--) == ' ')
                         spaces++;
-                memcpy(ptr, "2", sizeof(char));
+                *ptr = '2';
             } // while
         } // if
     }
@@ -712,6 +718,9 @@ static MOJOSHADER_sdlProgram *compile_program(
         ctx->free_fn(program, ctx->malloc_data);
         return NULL;
     } // if
+
+    if (pshaderSource != pshader->parseData->output)
+        ctx->free_fn(ctx, pshaderSource);
 
     return program;
 } // compile_program
