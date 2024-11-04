@@ -597,6 +597,8 @@ static MOJOSHADER_sdlProgram *compile_program(
         return NULL;
     } // if
 
+    const char *vshaderSource = vshader->parseData->output;
+    const char *pshaderSource = pshader->parseData->output;
     size_t vshaderCodeSize = vshader->parseData->output_len;
     size_t pshaderCodeSize = pshader->parseData->output_len;
 
@@ -645,9 +647,33 @@ static MOJOSHADER_sdlProgram *compile_program(
         vshaderCodeSize -= sizeof(SpirvPatchTable);
         pshaderCodeSize -= sizeof(SpirvPatchTable);
     }
+    else if (shader_format == SDL_GPU_SHADERFORMAT_MSL)
+    {
+        // Handle texcoord0 -> point_coord conversion
+        if (strstr(vshaderSource, "[[point_size]]"))
+        {
+            pshaderSource = strdup(pshader->parseData->output);
+
+            // !!! FIXME: This assumes all texcoord0 attributes in the effect are
+            // !!! FIXME:  actually point coords! It ain't necessarily so! -caleb
+            const char *repl = "[[  point_coord  ]]";
+            char *ptr;
+            while ((ptr = strstr(pshaderSource, "[[user(texcoord0)]]")))
+            {
+                memcpy(ptr, repl, strlen(repl));
+
+                // "float4" -> "float2"
+                int spaces = 0;
+                while (spaces < 2)
+                    if (*(ptr--) == ' ')
+                        spaces++;
+                memcpy(ptr, "2", sizeof(char));
+            } // while
+        } // if
+    }
 
     SDL_zero(createInfo);
-    createInfo.code = (const Uint8*) vshader->parseData->output;
+    createInfo.code = (const Uint8*) vshaderSource;
     createInfo.code_size = vshaderCodeSize;
     createInfo.entrypoint = vshader->parseData->mainfn;
     createInfo.format = shader_format;
@@ -667,7 +693,7 @@ static MOJOSHADER_sdlProgram *compile_program(
         return NULL;
     } // if
 
-    createInfo.code = (const Uint8*) pshader->parseData->output;
+    createInfo.code = (const Uint8*) pshaderSource;
     createInfo.code_size = pshaderCodeSize;
     createInfo.entrypoint = pshader->parseData->mainfn;
     createInfo.format = shader_format;
