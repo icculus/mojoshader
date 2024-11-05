@@ -720,7 +720,7 @@ static MOJOSHADER_sdlProgram *compile_program(
     } // if
 
     if (pshaderSource != pshader->parseData->output)
-        ctx->free_fn(ctx, pshaderSource);
+        ctx->free_fn(pshaderSource, ctx->malloc_data);
 
     return program;
 } // compile_program
