@@ -239,6 +239,18 @@ static void push_errors(ErrorList *list, MOJOSHADER_error *errors, int len)
         errorlist_add(list, errors[i].filename, errors[i].error_position, errors[i].error);
 } // push_errors
 
+static void read_version_token(const uint8 **_ptr, uint32 *_len, uint16 *magic, uint8 *version_major, uint8 *version_minor)
+{
+    const uint32 *ptr = (const uint32 *) *_ptr;
+    const uint32 token = SWAP32(*ptr);
+    *_ptr += sizeof (token);
+    *_len -= sizeof (token);
+
+    *magic = ((token >> 16) & 0xFFFF);
+    *version_major = (uint8) ((token >> 8) & 0xFF);
+    *version_minor = (uint8) (token & 0xFF);
+} // read_version_token
+
 static uint32 readui32(const uint8 **_ptr, uint32 *_len)
 {
     uint32 retval = 0;
@@ -253,21 +265,6 @@ static uint32 readui32(const uint8 **_ptr, uint32 *_len)
     } // else
     return retval;
 } // readui32
-
-static uint16 readui16(const uint8 **_ptr, uint32 *_len)
-{
-    uint16 retval = 0;
-    if (*_len < sizeof (retval))
-        *_len = 0;
-    else
-    {
-        const uint16 *ptr = (const uint16 *) *_ptr;
-        retval = SWAP16(*ptr);
-        *_ptr += sizeof (retval);
-        *_len -= sizeof (retval);
-    } // else
-    return retval;
-} // readui16
 
 static char *readstring(const uint8 *base,
                         const uint32 offset,
@@ -975,9 +972,11 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
 
     /* Read in header magic, seek to initial offset */
     const uint8 *base = NULL;
-    uint16 version = readui16(&ptr, &len);
-    uint16 header = readui16(&ptr, &len);
-    if ((header == 0xBCF0) && (version == 0x0BCF))
+    uint16 magic;
+    uint8 version_major;
+    uint8 version_minor;
+    read_version_token(&ptr, &len, &magic, &version_major, &version_minor);
+    if ((magic == 0xBCF0) && (version_major == 0x0B) && (version_minor == 0xCF))
     {
         /* The Effect compiler provided with XNA4 adds some extra mess at the
          * beginning of the file. It's useless though, so just skip it.
@@ -986,10 +985,9 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
         const uint32 skip = readui32(&ptr, &len) - 8;
         ptr += skip;
         len += skip;
-        version = readui16(&ptr, &len);
-        header = readui16(&ptr, &len);
+        read_version_token(&ptr, &len, &magic, &version_major, &version_minor);
     } // if
-    if ((header != 0xFEFF) && (version != 0x0901))
+    if (!((magic == 0xFEFF) && (version_major == 0x09) && (version_minor == 0x01)))
     {
         MOJOSHADER_deleteEffect(retval);
         return &MOJOSHADER_not_an_effect_effect;
