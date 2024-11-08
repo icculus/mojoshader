@@ -986,8 +986,8 @@ MOJOSHADER_effect *MOJOSHADER_compileEffect(const unsigned char *buf,
         const uint32 skip = readui32(&ptr, &len) - 8;
         ptr += skip;
         len += skip;
-        header = readui16(&ptr, &len);
         version = readui16(&ptr, &len);
+        header = readui16(&ptr, &len);
     } // if
     if ((header != 0xFEFF) && (version != 0x0901))
     {
