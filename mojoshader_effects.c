@@ -1965,4 +1965,3 @@ void MOJOSHADER_effectEnd(MOJOSHADER_effect *effect)
 
 // end of mojoshader_effects.c ...
 
-
