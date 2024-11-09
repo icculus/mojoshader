@@ -137,7 +137,7 @@ typedef Uint64 uint64;
 #include <endian.h>
 #define MOJOSHADER_BIG_ENDIAN (__BYTE_ORDER == __BIG_ENDIAN)
 #else
-#define MOJOSHADER_BIG_ENDIAN (defined(__POWERPC__))
+#define MOJOSHADER_BIG_ENDIAN (defined(__POWERPC__) || defined(__powerpc__))
 #endif
 #endif /* MOJOSHADER_USE_SDL_STDLIB */
 
@@ -308,7 +308,7 @@ typedef uint64_t uint64;
 
 // Byteswap magic...
 
-#if ((defined __GNUC__) && (defined __POWERPC__))
+#if ((defined __GNUC__) && ((defined __POWERPC__) || defined __powerpc__))
     static inline uint32 SWAP32(uint32 x)
     {
         __asm__ __volatile__("lwbrx %0,0,%1" : "=r" (x) : "r" (&x));
