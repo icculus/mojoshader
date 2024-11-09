@@ -403,6 +403,7 @@ static void readvalue(const uint8 *base,
             for (valI=0;valI < (value->value_count);valI++) {
                 value->valuesI[valI] = SWAP32(value->valuesI[valI]);
             }
+            #endif
             for (i = 0; i < value->value_count; i++)
                 objects[value->valuesI[i]].type = (MOJOSHADER_symbolType) type;
         } // else
