@@ -398,7 +398,7 @@ static void readvalue(const uint8 *base,
             const uint32 siz = 4 * numobjects;
             value->values = m(siz, d);
             memcpy(value->values, valptr, siz);
-            #if ((defined(__powerpc__) || defined(__POWERPC__))) // TODO: Check Endian for PPC64LE 
+            #if ((defined(__powerpc__) || defined(__POWERPC__)) && defined(MOJOSHADER_BIG_ENDIAN)) // TODO: Check Endian for PPC64LE 
             int valI;
             for (valI=0;valI < (value->value_count);valI++) {
                 value->valuesI[valI] = SWAP32(value->valuesI[valI]);
