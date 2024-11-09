@@ -11,10 +11,12 @@
 #ifdef MOJOSHADER_USE_SDL_STDLIB
 #ifdef USE_SDL3 /* Private define, for now */
 #include <SDL3/SDL_assert.h>
+#include <SDL3/SDL_endian.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_loadso.h>
 #else
 #include <SDL_assert.h>
+#include <SDL_endian.h>
 #include <SDL_stdinc.h>
 #include <SDL_loadso.h>
 #endif
@@ -117,6 +119,9 @@ typedef Uint64 uint64;
 #endif
 #define isalnum SDL_isalnum
 
+/* endian.h */
+#define MOJOSHADER_BIG_ENDIAN (SDL_BYTEORDER == SDL_BIG_ENDIAN)
+
 /* dlfcn.h */
 #define dlopen(a, b) SDL_LoadObject(a)
 #define dlclose SDL_UnloadObject
@@ -127,6 +132,13 @@ typedef Uint64 uint64;
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
+
+#ifdef __linux__
+#include <endian.h>
+#define MOJOSHADER_BIG_ENDIAN (__BYTE_ORDER == __BIG_ENDIAN)
+#else
+#define MOJOSHADER_BIG_ENDIAN (defined(__POWERPC__))
+#endif
 #endif /* MOJOSHADER_USE_SDL_STDLIB */
 
 #include "mojoshader.h"
@@ -307,7 +319,7 @@ typedef uint64_t uint64;
         __asm__ __volatile__("lhbrx %0,0,%1" : "=r" (x) : "r" (&x));
         return x;
     } // SWAP16
-#elif defined(__POWERPC__) | defined(__powerpc__)
+#elif (defined(__POWERPC__) || defined(__powerpc__)) && MOJOSHADER_BIG_ENDIAN
     static inline uint32 SWAP32(uint32 x)
     {
         return ( (((x) >> 24) & 0x000000FF) | (((x) >>  8) & 0x0000FF00) |
