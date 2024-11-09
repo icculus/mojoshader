@@ -308,7 +308,7 @@ typedef uint64_t uint64;
 
 // Byteswap magic...
 
-#if ((defined __GNUC__) && ((defined __POWERPC__) || defined __powerpc__))
+#if (defined(__GNUC__) && MOJOSHADER_BIG_ENDIAN && (defined(__POWERPC__) || defined(__powerpc__)))
     static inline uint32 SWAP32(uint32 x)
     {
         __asm__ __volatile__("lwbrx %0,0,%1" : "=r" (x) : "r" (&x));
