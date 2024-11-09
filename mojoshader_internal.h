@@ -305,6 +305,7 @@ typedef uint64_t uint64;
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
+
 // Byteswap magic...
 
 #if ((defined __GNUC__) && ((defined __POWERPC__) || defined __powerpc__))
