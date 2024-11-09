@@ -293,10 +293,10 @@ typedef uint64_t uint64;
 
 #define STATICARRAYLEN(x) ( (sizeof ((x))) / (sizeof ((x)[0])) )
 
-
+// TODO: Check Endian for PPC64LE
 // Byteswap magic...
 
-#if ((defined __GNUC__) && (defined __POWERPC__))
+#if ((defined __GNUC__) && ((defined __POWERPC__) || defined __powerpc__))
     static inline uint32 SWAP32(uint32 x)
     {
         __asm__ __volatile__("lwbrx %0,0,%1" : "=r" (x) : "r" (&x));
@@ -307,7 +307,7 @@ typedef uint64_t uint64;
         __asm__ __volatile__("lhbrx %0,0,%1" : "=r" (x) : "r" (&x));
         return x;
     } // SWAP16
-#elif defined(__POWERPC__)
+#elif defined(__POWERPC__) | defined(__powerpc__)
     static inline uint32 SWAP32(uint32 x)
     {
         return ( (((x) >> 24) & 0x000000FF) | (((x) >>  8) & 0x0000FF00) |
