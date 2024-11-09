@@ -319,7 +319,7 @@ typedef uint64_t uint64;
         __asm__ __volatile__("lhbrx %0,0,%1" : "=r" (x) : "r" (&x));
         return x;
     } // SWAP16
-#elif defined(MOJOSHADER_BIG_ENDIAN)
+#elif MOJOSHADER_BIG_ENDIAN
     static inline uint32 SWAP32(uint32 x)
     {
         return ( (((x) >> 24) & 0x000000FF) | (((x) >>  8) & 0x0000FF00) |
