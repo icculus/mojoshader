@@ -201,7 +201,7 @@ static uint8_t update_uniform_buffer(
     if (shader->uniformBufferSize > ctx->uniform_staging_length)
     {
         ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
-        ctx->uniform_staging = ctx->malloc_fn(shader->uniformBufferSize, ctx->malloc_data);
+        ctx->uniform_staging = (uint8_t*) ctx->malloc_fn(shader->uniformBufferSize, ctx->malloc_data);
         ctx->uniform_staging_length = shader->uniformBufferSize;
     } // if
 
@@ -597,8 +597,8 @@ static MOJOSHADER_sdlProgram *compile_program(
         return NULL;
     } // if
 
-    const char *vshaderSource = vshader->parseData->output;
-    const char *pshaderSource = pshader->parseData->output;
+    char *vshaderSource = (char*) vshader->parseData->output;
+    char *pshaderSource = (char*) pshader->parseData->output;
     size_t vshaderCodeSize = vshader->parseData->output_len;
     size_t pshaderCodeSize = pshader->parseData->output_len;
 
