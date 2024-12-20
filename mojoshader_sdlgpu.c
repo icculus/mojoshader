@@ -15,6 +15,53 @@
 #include <SDL3/SDL.h>
 #include <spirv/spirv.h>
 
+/* SDL_shadercross API */
+
+typedef enum SDL_ShaderCross_ShaderStage
+{
+   SDL_SHADERCROSS_SHADERSTAGE_VERTEX,
+   SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT,
+   SDL_SHADERCROSS_SHADERSTAGE_COMPUTE
+} SDL_ShaderCross_ShaderStage;
+
+typedef struct SDL_ShaderCross_GraphicsShaderMetadata
+{
+    Uint32 num_samplers;          /**< The number of samplers defined in the shader. */
+    Uint32 num_storage_textures;  /**< The number of storage textures defined in the shader. */
+    Uint32 num_storage_buffers;   /**< The number of storage buffers defined in the shader. */
+    Uint32 num_uniform_buffers;   /**< The number of uniform buffers defined in the shader. */
+} SDL_ShaderCross_GraphicsShaderMetadata;
+
+typedef struct SDL_ShaderCross_SPIRV_Info
+{
+    const Uint8 *bytecode;                     /**< The SPIRV bytecode. */
+    size_t bytecode_size;                      /**< The length of the SPIRV bytecode. */
+    const char *entrypoint;                    /**< The entry point function name for the shader in UTF-8. */
+    SDL_ShaderCross_ShaderStage shader_stage;  /**< The shader stage to transpile the shader with. */
+    bool enable_debug;                         /**< Allows debug info to be emitted when relevant. Can be useful for graphics debuggers like RenderDoc. */
+    const char *name;                          /**< A UTF-8 name to associate with the shader. Optional, can be NULL. */
+
+    SDL_PropertiesID props;                    /**< A properties ID for extensions. Should be 0 if no extensions are needed. */
+} SDL_ShaderCross_SPIRV_Info;
+
+typedef SDL_GPUShaderFormat (SDLCALL *PFN_SDL_ShaderCross_GetSPIRVShaderFormats)(void);
+typedef SDL_GPUShader *(SDLCALL *PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV)(
+    SDL_GPUDevice *device,
+    const SDL_ShaderCross_SPIRV_Info *info,
+    SDL_ShaderCross_GraphicsShaderMetadata *metadata);
+
+static SDL_SharedObject *SDL_shadercross_lib = NULL;
+static PFN_SDL_ShaderCross_GetSPIRVShaderFormats SDL_ShaderCross_GetSPIRVShaderFormats = NULL;
+static PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = NULL;
+
+#ifdef _WIN32
+#define SDL_SHADERCROSS_LIB_NAME "SDL3_shadercross.dll"
+#elif defined(__APPLE__)
+#define SDL_SHADERCROSS_LIB_NAME "libSDL3_shadercross.0.dylib"
+#else
+#define SDL_SHADERCROSS_LIB_NAME "libSDL3_shadercross.so.0"
+#endif
+
 /* Max entries for each register file type */
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
@@ -254,7 +301,26 @@ static uint8_t update_uniform_buffer(
 
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
-    return shader_format;
+    int ret = shader_format;
+    if (SDL_ShaderCross_GetSPIRVShaderFormats != NULL)
+        ret |= SDL_ShaderCross_GetSPIRVShaderFormats();
+    else
+    {
+        // We only care about this on Windows, hardcode the DLL name :shrug:
+        SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
+        if (SDL_shadercross_lib != NULL)
+        {
+            SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
+                SDL_shadercross_lib,
+                "SDL_ShaderCross_GetSPIRVShaderFormats"
+            );
+            ret |= SDL_ShaderCross_GetSPIRVShaderFormats();
+            SDL_ShaderCross_GetSPIRVShaderFormats = NULL;
+            SDL_UnloadObject(SDL_shadercross_lib);
+            SDL_shadercross_lib = NULL;
+        } // if
+    } // else
+    return ret;
 } // MOJOSHADER_sdlGetShaderFormats
 
 static bool load_precompiled_blob(MOJOSHADER_sdlContext *ctx)
@@ -361,6 +427,20 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     resultCtx->free_fn = f;
     resultCtx->malloc_data = malloc_d;
 
+    // We only care about this on Windows, hardcode the DLL name :shrug:
+    SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
+    if (SDL_shadercross_lib != NULL)
+    {
+        SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
+            SDL_shadercross_lib,
+            "SDL_ShaderCross_GetSPIRVShaderFormats"
+        );
+        SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = (PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV) SDL_LoadFunction(
+            SDL_shadercross_lib,
+            "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
+        );
+    } // if
+
     return resultCtx;
 
 init_fail:
@@ -379,6 +459,14 @@ void MOJOSHADER_sdlDestroyContext(
     MOJOSHADER_sdlContext *ctx
 ) {
     uint32_t i;
+
+    if (SDL_shadercross_lib != NULL)
+    {
+        SDL_ShaderCross_GetSPIRVShaderFormats = NULL;
+        SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = NULL;
+        SDL_UnloadObject(SDL_shadercross_lib);
+        SDL_shadercross_lib = NULL;
+    } // if
 
     if (ctx->linker_cache)
         hash_destroy(ctx->linker_cache, ctx);
@@ -514,6 +602,7 @@ static MOJOSHADER_sdlProgram *compile_blob_program(
     ShaderBlob *vblob, *pblob;
     uint32_t vlen, plen;
     SDL_GPUShaderCreateInfo createInfo;
+
     MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
                                                                              ctx->malloc_data);
     if (program == NULL)
@@ -589,6 +678,8 @@ static MOJOSHADER_sdlProgram *compile_program(
     int vertexAttributeCount)
 {
     SDL_GPUShaderCreateInfo createInfo;
+    SDL_ShaderCross_SPIRV_Info crossCreateInfo;
+    SDL_ShaderCross_GraphicsShaderMetadata whoCares;
     MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
                                                                              ctx->malloc_data);
     if (program == NULL)
@@ -678,19 +769,38 @@ static MOJOSHADER_sdlProgram *compile_program(
         } // if
     }
 
-    SDL_zero(createInfo);
-    createInfo.code = (const Uint8*) vshaderSource;
-    createInfo.code_size = vshaderCodeSize;
-    createInfo.entrypoint = vshader->parseData->mainfn;
-    createInfo.format = shader_format;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
-    createInfo.num_samplers = vshader->samplerSlots;
-    createInfo.num_uniform_buffers = 1;
+    if (SDL_ShaderCross_CompileGraphicsShaderFromSPIRV != NULL)
+    {
+        crossCreateInfo.bytecode = (const Uint8*) vshaderSource;
+        crossCreateInfo.bytecode_size = vshaderCodeSize;
+        crossCreateInfo.entrypoint = vshader->parseData->mainfn;
+        crossCreateInfo.shader_stage = SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
+        crossCreateInfo.enable_debug = 0;
+        crossCreateInfo.name = NULL;
+        crossCreateInfo.props = 0;
 
-    program->vertexShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
+        program->vertexShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+            ctx->device,
+            &crossCreateInfo,
+            &whoCares
+        );
+    } // if
+    else
+    {
+        SDL_zero(createInfo);
+        createInfo.code = (const Uint8*) vshaderSource;
+        createInfo.code_size = vshaderCodeSize;
+        createInfo.entrypoint = vshader->parseData->mainfn;
+        createInfo.format = shader_format;
+        createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+        createInfo.num_samplers = vshader->samplerSlots;
+        createInfo.num_uniform_buffers = 1;
+
+        program->vertexShader = SDL_CreateGPUShader(
+            ctx->device,
+            &createInfo
+        );
+    } // else
 
     if (program->vertexShader == NULL)
     {
@@ -699,17 +809,36 @@ static MOJOSHADER_sdlProgram *compile_program(
         return NULL;
     } // if
 
-    createInfo.code = (const Uint8*) pshaderSource;
-    createInfo.code_size = pshaderCodeSize;
-    createInfo.entrypoint = pshader->parseData->mainfn;
-    createInfo.format = shader_format;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    createInfo.num_samplers = pshader->samplerSlots;
+    if (SDL_ShaderCross_CompileGraphicsShaderFromSPIRV != NULL)
+    {
+        crossCreateInfo.bytecode = (const Uint8*) pshaderSource;
+        crossCreateInfo.bytecode_size = pshaderCodeSize;
+        crossCreateInfo.entrypoint = pshader->parseData->mainfn;
+        crossCreateInfo.shader_stage = SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
+        crossCreateInfo.enable_debug = 0;
+        crossCreateInfo.name = NULL;
+        crossCreateInfo.props = 0;
 
-    program->pixelShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
+        program->pixelShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
+            ctx->device,
+            &crossCreateInfo,
+            &whoCares
+        );
+    } // if
+    else
+    {
+        createInfo.code = (const Uint8*) pshaderSource;
+        createInfo.code_size = pshaderCodeSize;
+        createInfo.entrypoint = pshader->parseData->mainfn;
+        createInfo.format = shader_format;
+        createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+        createInfo.num_samplers = pshader->samplerSlots;
+
+        program->pixelShader = SDL_CreateGPUShader(
+            ctx->device,
+            &createInfo
+        );
+    } // else
 
     if (program->pixelShader == NULL)
     {
