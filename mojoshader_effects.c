@@ -1529,7 +1529,9 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
                       m, d);
     } // for
 
-    /* Copy the current technique/pass */
+    /* Copy the current technique, but do NOT copy the pass, pass >= 0 just
+     * means that the effect we're cloning is currently active
+     */
     for (i = 0; i < effect->technique_count; i++)
         if (&effect->techniques[i] == effect->current_technique)
         {
@@ -1537,8 +1539,7 @@ MOJOSHADER_effect *MOJOSHADER_cloneEffect(const MOJOSHADER_effect *effect)
             break;
         } // if
     assert(clone->current_technique != NULL);
-    clone->current_pass = effect->current_pass;
-    assert(clone->current_pass == -1);
+    clone->current_pass = -1;
 
     /* Copy object table */
     siz = sizeof (MOJOSHADER_effectObject) * effect->object_count;
