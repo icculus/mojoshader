@@ -411,35 +411,37 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
 
     SDL_memset(resultCtx, '\0', sizeof(MOJOSHADER_sdlContext));
     resultCtx->device = device;
+    resultCtx->malloc_fn = m;
+    resultCtx->free_fn = f;
+    resultCtx->malloc_data = malloc_d;
 
     if (load_precompiled_blob(resultCtx))
     {
         /* Just validate the bytecode, calculate a hash to find in blobCache */
         resultCtx->profile = "bytecode";
         resultCtx->blob.format = SDL_GetGPUShaderFormats(device);
-    }
+    } // if
     else
     {
         resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
-    }
 
-    resultCtx->malloc_fn = m;
-    resultCtx->free_fn = f;
-    resultCtx->malloc_data = malloc_d;
-
-    // We only care about this on Windows, hardcode the DLL name :shrug:
-    SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
-    if (SDL_shadercross_lib != NULL)
-    {
-        SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
-            SDL_shadercross_lib,
-            "SDL_ShaderCross_GetSPIRVShaderFormats"
-        );
-        SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = (PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV) SDL_LoadFunction(
-            SDL_shadercross_lib,
-            "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
-        );
-    } // if
+        // We only care about ShaderCross if the device doesn't natively support SPIR-V
+        if (!(SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV))
+        {
+            SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
+            if (SDL_shadercross_lib != NULL)
+            {
+                SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
+                    SDL_shadercross_lib,
+                    "SDL_ShaderCross_GetSPIRVShaderFormats"
+                );
+                SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = (PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV) SDL_LoadFunction(
+                    SDL_shadercross_lib,
+                    "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
+                );
+            } // if
+        } // if
+    } // else
 
     return resultCtx;
 
