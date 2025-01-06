@@ -425,8 +425,8 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     {
         resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
 
-        // We only care about ShaderCross if the device doesn't natively support SPIR-V
-        if (!(SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV))
+        // We only care about ShaderCross if the device doesn't natively support the profile
+        if (!(SDL_GetGPUShaderFormats(device) & shader_format))
         {
             SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
             if (SDL_shadercross_lib != NULL)
