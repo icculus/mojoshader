@@ -115,14 +115,6 @@ struct MOJOSHADER_sdlContext
     MOJOSHADER_sdlShaderData *bound_pshader_data;
     MOJOSHADER_sdlProgram *bound_program;
     HashTable *linker_cache;
-
-    struct
-    {
-        SDL_GPUShaderFormat format;
-        uint32_t numShaders;
-        ShaderEntry *hashes;
-        ShaderBlob *shaders;
-    } blob;
 };
 
 struct MOJOSHADER_sdlShaderData
@@ -323,74 +315,6 @@ unsigned int MOJOSHADER_sdlGetShaderFormats(void)
     return ret;
 } // MOJOSHADER_sdlGetShaderFormats
 
-static bool load_precompiled_blob(MOJOSHADER_sdlContext *ctx)
-{
-    int32_t i, hashIndex, probes;
-    uint8_t *usedEntries;
-    uint64_t hash;
-    ShaderEntry *entry;
-    ShaderBlob *shader;
-
-    SDL_IOStream *blob = SDL_IOFromFile("MojoShaderPrecompiled.bin", "rb");
-    if (blob == NULL)
-        return false;
-
-    /* First, read the number of shaders */
-    SDL_ReadIO(blob, &ctx->blob.numShaders, sizeof(uint32_t));
-
-    /* Allocate storage for the shader data */
-    ctx->blob.hashes = (ShaderEntry*) SDL_malloc(
-        ctx->blob.numShaders * sizeof(ShaderEntry)
-    );
-    ctx->blob.shaders = (ShaderBlob*) SDL_malloc(
-        ctx->blob.numShaders * sizeof(ShaderBlob)
-    );
-
-    /* Keep track of the hash table entries we've used */
-    usedEntries = (uint8_t*) SDL_calloc(ctx->blob.numShaders, sizeof(uint8_t));
-
-    /* Read and store the shader hashes */
-    for (i = 0; i < ctx->blob.numShaders; i += 1)
-    {
-        SDL_ReadIO(blob, &hash, sizeof(uint64_t));
-        hashIndex = hash % ctx->blob.numShaders;
-
-        /* Find the first usable index */
-        for (probes = 0; probes < ctx->blob.numShaders; probes += 1)
-        {
-            hashIndex = (hashIndex + 1) % ctx->blob.numShaders;
-            if (usedEntries[hashIndex] == 0)
-            {
-                usedEntries[hashIndex] = 1;
-                break;
-            }
-        }
-
-        ctx->blob.hashes[hashIndex].hash = hash;
-        SDL_ReadIO(blob, &ctx->blob.hashes[hashIndex].offset, sizeof(uint32_t));
-        SDL_ReadIO(blob, &ctx->blob.hashes[hashIndex].size, sizeof(uint32_t));
-    }
-
-    SDL_free(usedEntries);
-
-    /* Read the shader blobs */
-    for (i = 0; i < ctx->blob.numShaders; i += 1)
-    {
-        entry = &ctx->blob.hashes[i];
-        shader = &ctx->blob.shaders[i];
-
-        SDL_SeekIO(blob, entry->offset, SDL_IO_SEEK_SET);
-        shader->binary = SDL_malloc(entry->size);
-        SDL_ReadIO(blob, shader->binary, entry->size);
-
-        /* Assign the hash value to the shader */
-        shader->hash = entry->hash;
-    }
-
-    SDL_CloseIO(blob);
-    return true;
-} // load_precompiled_blob
-
 MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     SDL_GPUDevice *device,
     MOJOSHADER_malloc m,
@@ -415,33 +339,24 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     resultCtx->free_fn = f;
     resultCtx->malloc_data = malloc_d;
 
-    if (load_precompiled_blob(resultCtx))
-    {
-        /* Just validate the bytecode, calculate a hash to find in blobCache */
-        resultCtx->profile = "bytecode";
-        resultCtx->blob.format = SDL_GetGPUShaderFormats(device);
-    } // if
-    else
-    {
         resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
 
-        // We only care about ShaderCross if the device doesn't natively support the profile
-        if (!(SDL_GetGPUShaderFormats(device) & shader_format))
+    // We only care about ShaderCross if the device doesn't natively support the profile
+    if (!(SDL_GetGPUShaderFormats(device) & shader_format))
+    {
+        SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
+        if (SDL_shadercross_lib != NULL)
         {
-            SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
-            if (SDL_shadercross_lib != NULL)
-            {
-                SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
-                    SDL_shadercross_lib,
-                    "SDL_ShaderCross_GetSPIRVShaderFormats"
-                );
-                SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = (PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV) SDL_LoadFunction(
-                    SDL_shadercross_lib,
-                    "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
-                );
-            } // if
+            SDL_ShaderCross_GetSPIRVShaderFormats = (PFN_SDL_ShaderCross_GetSPIRVShaderFormats) SDL_LoadFunction(
+                SDL_shadercross_lib,
+                "SDL_ShaderCross_GetSPIRVShaderFormats"
+            );
+            SDL_ShaderCross_CompileGraphicsShaderFromSPIRV = (PFN_SDL_ShaderCross_CompileGraphicsShaderFromSPIRV) SDL_LoadFunction(
+                SDL_shadercross_lib,
+                "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
+            );
         } // if
-    } // else
+    } // if
 
     return resultCtx;
 
@@ -474,14 +389,6 @@ void MOJOSHADER_sdlDestroyContext(
         hash_destroy(ctx->linker_cache, ctx);
 
     ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
-
-    if (ctx->blob.numShaders > 0)
-    {
-        for (i = 0; i < ctx->blob.numShaders; i += 1)
-            SDL_free(ctx->blob.shaders[i].binary);
-        SDL_free(ctx->blob.hashes);
-        SDL_free(ctx->blob.shaders);
-    } // if
 
     ctx->free_fn(ctx, ctx->malloc_data);
 } // MOJOSHADER_sdlDestroyContext
@@ -573,104 +480,6 @@ static inline uint64_t hash_pixel_shader(
     // TODO: Calculate hash of pshader d3dbc
     return 0;
 }
-
-static inline ShaderBlob *fetch_blob_shader(
-    MOJOSHADER_sdlContext *ctx,
-    uint64_t hash,
-    uint32_t *size)
-{
-    int32_t probes, searchIndex;
-    for (probes = 0; probes < ctx->blob.numShaders; probes += 1)
-    {
-        searchIndex = (hash + probes) % ctx->blob.numShaders;
-        if (ctx->blob.hashes[searchIndex].hash == hash)
-        {
-            *size = ctx->blob.hashes[searchIndex].size;
-            return &ctx->blob.shaders[searchIndex];
-        }
-    }
-    set_error("MojoShaderPrecompiled.bin is incomplete!!!");
-    return NULL;
-} // fetch_blob_shader
-
-static MOJOSHADER_sdlProgram *compile_blob_program(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *vshader,
-    MOJOSHADER_sdlShaderData *pshader,
-    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
-    int vertexAttributeCount)
-{
-    uint64_t hash;
-    ShaderBlob *vblob, *pblob;
-    uint32_t vlen, plen;
-    SDL_GPUShaderCreateInfo createInfo;
-
-    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
-                                                                             ctx->malloc_data);
-    if (program == NULL)
-    {
-        out_of_memory();
-        return NULL;
-    } // if
-
-    // TODO: Maybe add the format to the blob header?
-    SDL_assert(ctx->blob.format & SDL_GPU_SHADERFORMAT_PRIVATE);
-
-    hash = hash_vertex_shader(ctx, vshader, vertexAttributes, vertexAttributeCount);
-    vblob = fetch_blob_shader(ctx, hash, &vlen);
-
-    hash = hash_pixel_shader(ctx, pshader);
-    pblob = fetch_blob_shader(ctx, hash, &plen);
-
-    if ((vblob == NULL) || (pblob == NULL))
-    {
-        ctx->free_fn(program, ctx->malloc_data);
-        return NULL;
-    } // if
-
-    SDL_zero(createInfo);
-    createInfo.code = (const Uint8*) vblob->binary;
-    createInfo.code_size = vlen;
-    createInfo.entrypoint = vshader->parseData->mainfn;
-    createInfo.format = SDL_GPU_SHADERFORMAT_PRIVATE;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
-    createInfo.num_samplers = vshader->samplerSlots;
-    createInfo.num_uniform_buffers = 1;
-
-    program->vertexShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
-
-    if (program->vertexShader == NULL)
-    {
-        set_error(SDL_GetError());
-        ctx->free_fn(program, ctx->malloc_data);
-        return NULL;
-    } // if
-
-    createInfo.code = (const Uint8*) pblob->binary;
-    createInfo.code_size = plen;
-    createInfo.entrypoint = pshader->parseData->mainfn;
-    createInfo.format = ctx->blob.format;
-    createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    createInfo.num_samplers = pshader->samplerSlots;
-
-    program->pixelShader = SDL_CreateGPUShader(
-        ctx->device,
-        &createInfo
-    );
-
-    if (program->pixelShader == NULL)
-    {
-        set_error(SDL_GetError());
-        SDL_ReleaseGPUShader(ctx->device, program->vertexShader);
-        ctx->free_fn(program, ctx->malloc_data);
-        return NULL;
-    } // if
-
-    return program;
-} // compile_blob_program
 
 static MOJOSHADER_sdlProgram *compile_program(
     MOJOSHADER_sdlContext *ctx,
@@ -900,16 +709,8 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return ctx->bound_program;
     }
 
-    if (ctx->blob.numShaders > 0)
-    {
-        program = compile_blob_program(ctx, vshader, pshader,
-                                       vertexAttributes, vertexAttributeCount);
-    } // if
-    else
-    {
-        program = compile_program(ctx, vshader, pshader,
-                                  vertexAttributes, vertexAttributeCount);
-    } // else
+    program = compile_program(ctx, vshader, pshader,
+                              vertexAttributes, vertexAttributeCount);
 
     if (program == NULL)
         return NULL;
