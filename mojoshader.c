@@ -4002,5 +4002,61 @@ void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader)
     } // if
 } // MOJOSHADER_freePreshader
 
+#if SUPPORT_PROFILE_SPIRV
+#include <spirv/spirv.h> /* SpvOp, SpvOpConvertUToF, SpvOpConvertSToF, SpvOpCopyObject */
+#endif
+
+int MOJOSHADER_linkSPIRVShaders(const MOJOSHADER_parseData *vertex_spirv,
+                                const MOJOSHADER_parseData *pixel_spirv,
+                                const MOJOSHADER_vertexAttribute *vertexAttributes,
+                                const int vertexAttributeCount)
+{
+#if SUPPORT_PROFILE_SPIRV
+    // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
+    // BYTE4  - 5
+    // SHORT2 - 6
+    // SHORT4 - 7
+    int vDataLen = vertex_spirv->output_len - sizeof(SpirvPatchTable);
+    SpirvPatchTable *vTable = (SpirvPatchTable *) &vertex_spirv->output[vDataLen];
+
+    for (int i = 0; i < vertexAttributeCount; i += 1)
+    {
+        const MOJOSHADER_vertexAttribute *element = &vertexAttributes[i];
+        uint32 typeDecl, typeLoad;
+        SpvOp opcodeLoad;
+
+        if (element->vertexElementFormat >= MOJOSHADER_VERTEXELEMENTFORMAT_BYTE4 && element->vertexElementFormat <= MOJOSHADER_VERTEXELEMENTFORMAT_SHORT4)
+        {
+            const int isByte = (element->vertexElementFormat == MOJOSHADER_VERTEXELEMENTFORMAT_BYTE4);
+            typeDecl = isByte ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
+            typeLoad = isByte ? vTable->tid_uvec4 : vTable->tid_ivec4;
+            opcodeLoad = isByte ? SpvOpConvertUToF : SpvOpConvertSToF;
+        }
+        else
+        {
+            typeDecl = vTable->tid_vec4_p;
+            typeLoad = vTable->tid_vec4;
+            opcodeLoad = SpvOpCopyObject;
+        }
+
+        uint32 typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
+        ((uint32*)vertex_spirv->output)[typeDeclOffset] = typeDecl;
+        for (uint32 j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
+        {
+            uint32 typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
+            uint32 opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
+            uint32 *ptr_to_opcode_u32 = &((uint32*)vertex_spirv->output)[opcodeLoadOffset];
+            ((uint32*)vertex_spirv->output)[typeLoadOffset] = typeLoad;
+            *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
+        }
+    }
+
+    MOJOSHADER_spirv_link_attributes(vertex_spirv, pixel_spirv, 0);
+    return sizeof(SpirvPatchTable);
+#else
+    return 0;
+#endif
+}
+
 // end of mojoshader.c ...
 

@@ -13,7 +13,6 @@
 #ifdef USE_SDL3 /* Private define, for now */
 
 #include <SDL3/SDL.h>
-#include <spirv/spirv.h>
 
 /* SDL_shadercross API */
 
@@ -154,7 +153,7 @@ typedef struct LinkedShaderData
 {
     MOJOSHADER_sdlShaderData *vertex;
     MOJOSHADER_sdlShaderData *fragment;
-    MOJOSHADER_sdlVertexAttribute vertexAttributes[16];
+    MOJOSHADER_vertexAttribute vertexAttributes[16];
     uint32_t vertexAttributeCount;
 } LinkedShaderData;
 
@@ -463,75 +462,6 @@ parse_shader_fail:
     return NULL;
 } // MOJOSHADER_sdlCompileShader
 
-static inline uint64_t hash_vertex_shader(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *vshader,
-    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
-    int vertexAttributeCount)
-{
-    // TODO: Combine d3dbc hash with vertex attribute hash
-    return 0;
-}
-
-static inline uint64_t hash_pixel_shader(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *pshader)
-{
-    // TODO: Calculate hash of pshader d3dbc
-    return 0;
-}
-
-static void *run_linker(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShaderData *vshader,
-    MOJOSHADER_sdlShaderData *pshader,
-    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
-    int vertexAttributeCount)
-{
-    if (shader_format == SDL_GPU_SHADERFORMAT_SPIRV)
-    {
-        // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
-        // BYTE4  - 5
-        // SHORT2 - 6
-        // SHORT4 - 7
-        int vDataLen = vshader->parseData->output_len - sizeof(SpirvPatchTable);
-        SpirvPatchTable *vTable = (SpirvPatchTable *) &vshader->parseData->output[vDataLen];
-
-        for (int i = 0; i < vertexAttributeCount; i += 1)
-        {
-            MOJOSHADER_sdlVertexAttribute *element = &vertexAttributes[i];
-            uint32 typeDecl, typeLoad;
-            SpvOp opcodeLoad;
-
-            if (element->vertexElementFormat >= 5 && element->vertexElementFormat <= 7)
-            {
-                typeDecl = element->vertexElementFormat == 5 ? vTable->tid_uvec4_p : vTable->tid_ivec4_p;
-                typeLoad = element->vertexElementFormat == 5 ? vTable->tid_uvec4 : vTable->tid_ivec4;
-                opcodeLoad = element->vertexElementFormat == 5 ? SpvOpConvertUToF : SpvOpConvertSToF;
-            }
-            else
-            {
-                typeDecl = vTable->tid_vec4_p;
-                typeLoad = vTable->tid_vec4;
-                opcodeLoad = SpvOpCopyObject;
-            }
-
-            uint32_t typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
-            ((uint32_t*)vshader->parseData->output)[typeDeclOffset] = typeDecl;
-            for (uint32_t j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
-            {
-                uint32_t typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
-                uint32_t opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
-                uint32_t *ptr_to_opcode_u32 = &((uint32_t*)vshader->parseData->output)[opcodeLoadOffset];
-                ((uint32_t*)vshader->parseData->output)[typeLoadOffset] = typeLoad;
-                *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
-            }
-        }
-
-        MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
-    } // if
-} // run_linker
-
 static MOJOSHADER_sdlProgram *compile_program(
     MOJOSHADER_sdlContext *ctx,
     MOJOSHADER_sdlShaderData *vshader,
@@ -677,7 +607,7 @@ static MOJOSHADER_sdlProgram *compile_program(
 
 MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlVertexAttribute *vertexAttributes,
+    MOJOSHADER_vertexAttribute *vertexAttributes,
     int vertexAttributeCount
 ) {
     MOJOSHADER_sdlProgram *program = NULL;
@@ -704,7 +634,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     LinkedShaderData shaders;
     shaders.vertex = vshader;
     shaders.fragment = pshader;
-    memset(shaders.vertexAttributes, 0, sizeof(MOJOSHADER_sdlVertexAttribute) * 16);
+    memset(shaders.vertexAttributes, 0, sizeof(MOJOSHADER_vertexAttribute) * 16);
     shaders.vertexAttributeCount = vertexAttributeCount;
     for (int i = 0; i < vertexAttributeCount; i += 1)
     {
@@ -719,7 +649,9 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return ctx->bound_program;
     }
 
-    run_linker(ctx, vshader, pshader, vertexAttributes, vertexAttributeCount);
+    if (shader_format == SDL_GPU_SHADERFORMAT_SPIRV)
+        MOJOSHADER_linkSPIRVShaders(vshader->parseData, pshader->parseData,
+                                    vertexAttributes, vertexAttributeCount);
     program = compile_program(ctx, vshader, pshader);
 
     if (program == NULL)

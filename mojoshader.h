@@ -892,6 +892,48 @@ DECLSPEC const MOJOSHADER_preshader *MOJOSHADER_parsePreshader(const unsigned ch
 DECLSPEC void MOJOSHADER_freePreshader(const MOJOSHADER_preshader *preshader);
 
 
+/* SPIR-V interface... */
+
+typedef enum
+{
+    MOJOSHADER_VERTEXELEMENTFORMAT_SINGLE,
+    MOJOSHADER_VERTEXELEMENTFORMAT_VECTOR2,
+    MOJOSHADER_VERTEXELEMENTFORMAT_VECTOR3,
+    MOJOSHADER_VERTEXELEMENTFORMAT_VECTOR4,
+    MOJOSHADER_VERTEXELEMENTFORMAT_COLOR,
+    MOJOSHADER_VERTEXELEMENTFORMAT_BYTE4,
+    MOJOSHADER_VERTEXELEMENTFORMAT_SHORT2,
+    MOJOSHADER_VERTEXELEMENTFORMAT_SHORT4,
+    MOJOSHADER_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2,
+    MOJOSHADER_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4,
+    MOJOSHADER_VERTEXELEMENTFORMAT_HALFVECTOR2,
+    MOJOSHADER_VERTEXELEMENTFORMAT_HALFVECTOR4
+} MOJOSHADER_vertexElementFormat;
+
+typedef struct MOJOSHADER_vertexAttribute
+{
+    MOJOSHADER_usage usage;
+    MOJOSHADER_vertexElementFormat vertexElementFormat;
+    int usageIndex;
+} MOJOSHADER_vertexAttribute;
+
+/*
+ * You almost certainly don't need this function, unless you absolutely know
+ *  why you need it without hesitation. This is useful if you're doing
+ *  extremely low-level shader work or building specialized tools.
+ *
+ * Call this to patch SPIR-V output returned from MOJOSHADER_parse to correctly
+ *  interpret vertex input and link vertex shader output to pixel shader input.
+ *
+ * On success, this returns the size of the shaders' internal "patch table",
+ *  which should be subtracted from the parseData's output_len when passing the
+ *  final SPIR-V to your shader compiler.
+ */
+DECLSPEC int MOJOSHADER_linkSPIRVShaders(const MOJOSHADER_parseData *vertex_spirv,
+                                         const MOJOSHADER_parseData *pixel_spirv,
+                                         const MOJOSHADER_vertexAttribute *vertexAttributes,
+                                         const int vertexAttributeCount);
+
 /* Preprocessor interface... */
 
 /*
@@ -3559,12 +3601,6 @@ DECLSPEC void MOJOSHADER_d3d11DestroyContext(MOJOSHADER_d3d11Context *context);
 typedef struct MOJOSHADER_sdlContext MOJOSHADER_sdlContext;
 typedef struct MOJOSHADER_sdlShaderData MOJOSHADER_sdlShaderData;
 typedef struct MOJOSHADER_sdlProgram MOJOSHADER_sdlProgram;
-typedef struct MOJOSHADER_sdlVertexAttribute
-{
-    MOJOSHADER_usage usage;
-    int vertexElementFormat; /* FNA3D_VertexElementFormat */
-    int usageIndex;
-} MOJOSHADER_sdlVertexAttribute;
 
 #ifndef SDL_GPU_H
 typedef struct SDL_GPUDevice SDL_GPUDevice;
@@ -3706,7 +3742,7 @@ DECLSPEC const MOJOSHADER_parseData *MOJOSHADER_sdlGetShaderParseData(
  * Returns NULL on error, or a program handle on success.
  */
 DECLSPEC MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(MOJOSHADER_sdlContext *context,
-                                                          MOJOSHADER_sdlVertexAttribute *vertexAttributes,
+                                                          MOJOSHADER_vertexAttribute *vertexAttributes,
                                                           int vertexAttributeCount);
 
 /*
