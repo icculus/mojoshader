@@ -481,29 +481,13 @@ static inline uint64_t hash_pixel_shader(
     return 0;
 }
 
-static MOJOSHADER_sdlProgram *compile_program(
+static void *run_linker(
     MOJOSHADER_sdlContext *ctx,
     MOJOSHADER_sdlShaderData *vshader,
     MOJOSHADER_sdlShaderData *pshader,
     MOJOSHADER_sdlVertexAttribute *vertexAttributes,
     int vertexAttributeCount)
 {
-    SDL_GPUShaderCreateInfo createInfo;
-    SDL_ShaderCross_SPIRV_Info crossCreateInfo;
-    SDL_ShaderCross_GraphicsShaderMetadata whoCares;
-    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
-                                                                             ctx->malloc_data);
-    if (program == NULL)
-    {
-        out_of_memory();
-        return NULL;
-    } // if
-
-    char *vshaderSource = (char*) vshader->parseData->output;
-    char *pshaderSource = (char*) pshader->parseData->output;
-    size_t vshaderCodeSize = vshader->parseData->output_len;
-    size_t pshaderCodeSize = pshader->parseData->output_len;
-
     if (shader_format == SDL_GPU_SHADERFORMAT_SPIRV)
     {
         // We have to patch the SPIR-V output to ensure type consistency. The non-float types are:
@@ -545,14 +529,40 @@ static MOJOSHADER_sdlProgram *compile_program(
         }
 
         MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
+    } // if
+} // run_linker
 
+static MOJOSHADER_sdlProgram *compile_program(
+    MOJOSHADER_sdlContext *ctx,
+    MOJOSHADER_sdlShaderData *vshader,
+    MOJOSHADER_sdlShaderData *pshader)
+{
+    SDL_GPUShaderCreateInfo createInfo;
+    SDL_ShaderCross_SPIRV_Info crossCreateInfo;
+    SDL_ShaderCross_GraphicsShaderMetadata whoCares;
+    MOJOSHADER_sdlProgram *program = (MOJOSHADER_sdlProgram*) ctx->malloc_fn(sizeof(MOJOSHADER_sdlProgram),
+                                                                             ctx->malloc_data);
+    if (program == NULL)
+    {
+        out_of_memory();
+        return NULL;
+    } // if
+
+    char *vshaderSource = (char*) vshader->parseData->output;
+    char *pshaderSource = (char*) pshader->parseData->output;
+    size_t vshaderCodeSize = vshader->parseData->output_len;
+    size_t pshaderCodeSize = pshader->parseData->output_len;
+
+    // Last-minute fixups before we actually invoke the compiler
+    if (shader_format == SDL_GPU_SHADERFORMAT_SPIRV)
+    {
         vshaderCodeSize -= sizeof(SpirvPatchTable);
         pshaderCodeSize -= sizeof(SpirvPatchTable);
-    }
+    } // if
     else if (shader_format == SDL_GPU_SHADERFORMAT_MSL)
     {
         // Handle texcoord0 -> point_coord conversion
-        if (strstr(vshaderSource, "[[point_size]]"))
+        if (strstr((char*) vshader->parseData->output, "[[point_size]]"))
         {
             pshaderSource = (char *) ctx->malloc_fn(strlen(pshader->parseData->output) + 1, ctx->malloc_data);
             if (!pshaderSource)
@@ -578,7 +588,7 @@ static MOJOSHADER_sdlProgram *compile_program(
                 *ptr = '2';
             } // while
         } // if
-    }
+    } // else if
 
     if (SDL_ShaderCross_CompileGraphicsShaderFromSPIRV != NULL)
     {
@@ -709,8 +719,8 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return ctx->bound_program;
     }
 
-    program = compile_program(ctx, vshader, pshader,
-                              vertexAttributes, vertexAttributeCount);
+    run_linker(ctx, vshader, pshader, vertexAttributes, vertexAttributeCount);
+    program = compile_program(ctx, vshader, pshader);
 
     if (program == NULL)
         return NULL;
