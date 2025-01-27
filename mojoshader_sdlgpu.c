@@ -29,6 +29,8 @@ typedef struct SDL_ShaderCross_GraphicsShaderMetadata
     Uint32 num_storage_textures;  /**< The number of storage textures defined in the shader. */
     Uint32 num_storage_buffers;   /**< The number of storage buffers defined in the shader. */
     Uint32 num_uniform_buffers;   /**< The number of uniform buffers defined in the shader. */
+
+    SDL_PropertiesID props;       /**< A properties ID for extensions. This is allocated and freed by the caller, and should be 0 if no extensions are needed. */
 } SDL_ShaderCross_GraphicsShaderMetadata;
 
 typedef struct SDL_ShaderCross_SPIRV_Info
@@ -529,6 +531,7 @@ static MOJOSHADER_sdlProgram *compile_program(
         crossCreateInfo.enable_debug = 0;
         crossCreateInfo.name = NULL;
         crossCreateInfo.props = 0;
+        whoCares.props = 0;
 
         program->vertexShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
             ctx->device,
@@ -569,6 +572,7 @@ static MOJOSHADER_sdlProgram *compile_program(
         crossCreateInfo.enable_debug = 0;
         crossCreateInfo.name = NULL;
         crossCreateInfo.props = 0;
+        whoCares.props = 0;
 
         program->pixelShader = SDL_ShaderCross_CompileGraphicsShaderFromSPIRV(
             ctx->device,
