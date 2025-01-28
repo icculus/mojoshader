@@ -5,7 +5,6 @@ PROJECT(MojoShader)
 
 INCLUDE(CheckIncludeFile)
 CHECK_INCLUDE_FILE(d3d11.h HAS_D3D11_H)
-CHECK_INCLUDE_FILE(vulkan/vulkan.h HAS_VULKAN_H)
 
 OPTION(BUILD_SHARED_LIBS "Build MojoShader as a shared library" OFF)
 OPTION(PROFILE_D3D "Build MojoShader with support for the D3D profile" ON)
@@ -17,8 +16,8 @@ OPTION(PROFILE_GLSL "Build MojoShader with support for the GLSL profile" ON)
 OPTION(PROFILE_ARB1 "Build MojoShader with support for the ARB1 profile" ON)
 OPTION(PROFILE_ARB1_NV "Build MojoShader with support for the ARB1_NV profile" ON)
 OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" APPLE)
-OPTION(PROFILE_SPIRV "Build MojoShader with support for the SPIR-V profile" HAS_VULKAN_H)
-OPTION(PROFILE_GLSPIRV "Build MojoShader with support for the ARB_gl_spirv profile" HAS_VULKAN_H)
+OPTION(PROFILE_SPIRV "Build MojoShader with support for the SPIR-V profile" ON)
+OPTION(PROFILE_GLSPIRV "Build MojoShader with support for the ARB_gl_spirv profile" ON)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
 OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" !WIN32) # TODO: Fix lemon on Windows
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
@@ -200,9 +199,8 @@ IF(BUILD_SHARED_LIBS)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(BUILD_SHARED_LIBS)
 
-# These are fallback paths for Vulkan/D3D11, try to have this on the system instead!
+# These are fallback paths for D3D11, try to have this on the system instead!
 TARGET_INCLUDE_DIRECTORIES(mojoshader PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../Vulkan-Headers/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/directx>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/windows>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/wsi>

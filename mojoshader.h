@@ -3792,7 +3792,7 @@ DECLSPEC void MOJOSHADER_sdlGetBoundShaderData(MOJOSHADER_sdlContext *ctx,
 
 /*
  * Fills register pointers with pointers that are directly used to push uniform
- *  data to the Vulkan shader context.
+ *  data to the SDL3 shader context.
  *
  * This function is really just for the effects API, you should NOT be using
  *  this unless you know every single line of MojoShader from memory.
