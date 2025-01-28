@@ -133,11 +133,18 @@ typedef Uint64 uint64;
 #include <stdarg.h>
 #include <assert.h>
 
-#ifdef __linux__
+#ifdef __BYTE_ORDER__
+#define MOJOSHADER_BIG_ENDIAN (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#elif defined(__linux__)
 #include <endian.h>
 #define MOJOSHADER_BIG_ENDIAN (__BYTE_ORDER == __BIG_ENDIAN)
 #else
-#define MOJOSHADER_BIG_ENDIAN (defined(__POWERPC__) || defined(__powerpc__))
+/* TODO: Detect little endian PowerPC? */
+#if defined(__POWERPC__) || defined(__powerpc__)
+#define MOJOSHADER_BIG_ENDIAN 1
+#else
+#define MOJOSHADER_BIG_ENDIAN 0
+#endif
 #endif
 #endif /* MOJOSHADER_USE_SDL_STDLIB */
 
