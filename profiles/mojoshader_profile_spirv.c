@@ -1253,11 +1253,17 @@ static void spv_assign_destarg(Context *ctx, SpirvResult value)
 
     if (arg->result_mod & MOD_SATURATE)
     {
-        uint32 new_value = spv_bumpid(ctx);
+        uint32 ext, zero, one, new_value;
+
+        // Don't inline these, compilers will run the varargs in different orders
+        new_value = spv_bumpid(ctx);
+        one = spv_get_one(ctx, value.tid);
+        zero = spv_get_zero(ctx, value.tid);
+        ext = spv_getext(ctx);
+
         push_output(ctx, &ctx->mainline);
         spv_emit(ctx, 5 + 3, SpvOpExtInst,
-            value.tid, new_value, spv_getext(ctx), GLSLstd450FClamp,
-            value.id, spv_get_zero(ctx, value.tid), spv_get_one(ctx, value.tid)
+            value.tid, new_value, ext, GLSLstd450FClamp, value.id, zero, one
         );
         pop_output(ctx);
         value.id = new_value;
