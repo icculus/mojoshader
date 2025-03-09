@@ -4042,16 +4042,22 @@ int MOJOSHADER_linkSPIRVShaders(const MOJOSHADER_parseData *vertex_spirv,
         uint32 typeDeclOffset = vTable->attrib_type_offsets[element->usage][element->usageIndex];
         if (typeDeclOffset > 0) // Vertex attribs passed may not exist in the vertex shader
         {
+            ((uint32*)vertex_spirv->output)[typeDeclOffset] = typeDecl;
             for (uint32 j = 0; j < vTable->attrib_type_load_offsets[element->usage][element->usageIndex].num_loads; j += 1)
             {
+
                 uint32 typeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_types[j];
                 uint32 opcodeLoadOffset = vTable->attrib_type_load_offsets[element->usage][element->usageIndex].load_opcodes[j];
-                uint32 *ptr_to_opcode_u32 = &((uint32*)vertex_spirv->output)[opcodeLoadOffset];
-                ((uint32*)vertex_spirv->output)[typeLoadOffset] = typeLoad;
-                *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
-            }
-        }
-    }
+                if (typeLoadOffset > 0)
+                    ((uint32*)vertex_spirv->output)[typeLoadOffset] = typeLoad;
+                if (opcodeLoadOffset > 0)
+                {
+                    uint32* ptr_to_opcode_u32 = &((uint32*)vertex_spirv->output)[opcodeLoadOffset];
+                    *ptr_to_opcode_u32 = (*ptr_to_opcode_u32 & 0xFFFF0000) | opcodeLoad;
+                } // if
+            } // for
+        } // if
+    } // if
 
     MOJOSHADER_spirv_link_attributes(vertex_spirv, pixel_spirv, 0);
     return sizeof(SpirvPatchTable);
