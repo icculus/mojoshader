@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         platform:
-        - { name: Linux,   os: ubuntu-20.04, flags: -GNinja }
+        - { name: Linux,   os: ubuntu-latest, flags: -GNinja }
         - { name: Windows, os: windows-latest }
         - { name: MacOS,   os: macos-latest }
     steps:
