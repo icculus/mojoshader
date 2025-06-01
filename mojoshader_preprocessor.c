@@ -451,12 +451,13 @@ static const Define *find_define(Context *ctx, const char *sym)
         const IncludeState *state = ctx->include_stack;
         const char *fname = state ? state->filename : "";
         const size_t len = strlen(fname) + 2;
-        char *str = (char *) Malloc(ctx, len);
+        char *str = (char *) Malloc(ctx, len + 1);
         if (!str)
             return NULL;
         str[0] = '\"';
         memcpy(str + 1, fname, len - 2);
         str[len - 1] = '\"';
+        str[len] = '\0';
         ctx->file_macro->definition = str;
         return ctx->file_macro;
     } // if
