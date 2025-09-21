@@ -29,8 +29,6 @@ typedef struct SDL_ShaderCross_SPIRV_Info
     size_t bytecode_size;                      /**< The length of the SPIRV bytecode. */
     const char *entrypoint;                    /**< The entry point function name for the shader in UTF-8. */
     SDL_ShaderCross_ShaderStage shader_stage;  /**< The shader stage to transpile the shader with. */
-    bool enable_debug;                         /**< Allows debug info to be emitted when relevant. Can be useful for graphics debuggers like RenderDoc. */
-    const char *name;                          /**< A UTF-8 name to associate with the shader. Optional, can be NULL. */
 
     SDL_PropertiesID props;                    /**< A properties ID for extensions. Should be 0 if no extensions are needed. */
 } SDL_ShaderCross_SPIRV_Info;
