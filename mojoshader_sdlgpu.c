@@ -529,8 +529,6 @@ static MOJOSHADER_sdlProgram *compile_program(
         crossCreateInfo.bytecode_size = vshaderCodeSize;
         crossCreateInfo.entrypoint = vshader->parseData->mainfn;
         crossCreateInfo.shader_stage = SDL_SHADERCROSS_SHADERSTAGE_VERTEX;
-        crossCreateInfo.enable_debug = 0;
-        crossCreateInfo.name = NULL;
         crossCreateInfo.props = 0;
 
         whoCares = SDL_ShaderCross_ReflectGraphicsSPIRV(
@@ -578,8 +576,6 @@ static MOJOSHADER_sdlProgram *compile_program(
         crossCreateInfo.bytecode_size = pshaderCodeSize;
         crossCreateInfo.entrypoint = pshader->parseData->mainfn;
         crossCreateInfo.shader_stage = SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT;
-        crossCreateInfo.enable_debug = 0;
-        crossCreateInfo.name = NULL;
         crossCreateInfo.props = 0;
 
         whoCares = SDL_ShaderCross_ReflectGraphicsSPIRV(
