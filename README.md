@@ -18,11 +18,6 @@ MojoShader provides both a simple API to convert bytecode to various
 profiles, and (optionally) basic glue to rendering APIs to abstract the
 management of the shaders at runtime.
 
-Work is in progress to allow MojoShader to work as a replacement stack for
-the D3DX shader tools. The library already provides a preprocessor and an
-assembler to generate bytecode from low-level source, and construction of
-a full HLSL compiler is in progress.
-
 The library is meant to be statically linked to an application (just add a
 few .c files and headers to your build), allows the app to optionally
 specify an allocator, and is thread safe (although OpenGL itself is not).
