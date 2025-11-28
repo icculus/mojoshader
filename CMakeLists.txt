@@ -185,19 +185,6 @@ TARGET_INCLUDE_DIRECTORIES(mojoshader PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/wsi>
 )
 
-FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
-IF(NOT RE2C)
-    MESSAGE(STATUS "re2c missing. You can go on, but can't rebuild the lexer.")
-ELSE(NOT RE2C)
-    MARK_AS_ADVANCED(RE2C)
-    ADD_CUSTOM_COMMAND(
-        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c"
-        DEPENDS mojoshader_lexer.re
-        COMMAND "${RE2C}"
-        ARGS -is --no-generation-date -o "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_lexer.re"
-    )
-ENDIF(NOT RE2C)
-
 find_package(SDL2)
 IF(SDL2_FOUND)
     INCLUDE_DIRECTORIES(${SDL2_INCLUDE_DIRS})
