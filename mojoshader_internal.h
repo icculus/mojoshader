@@ -150,13 +150,6 @@ typedef Uint64 uint64;
 
 #include "mojoshader.h"
 
-#define DEBUG_LEXER 0
-#define DEBUG_PREPROCESSOR 0
-#define DEBUG_ASSEMBLER_PARSER 0
-#define DEBUG_COMPILER_PARSER 0
-#define DEBUG_TOKENIZER \
-    (DEBUG_PREPROCESSOR || DEBUG_ASSEMBLER_PARSER || DEBUG_LEXER)
-
 // This is the highest shader version we currently support.
 
 #define MAX_SHADER_MAJOR 3
@@ -482,21 +475,6 @@ void * MOJOSHADERCALL MOJOSHADER_internal_malloc(int bytes, void *d);
 void MOJOSHADERCALL MOJOSHADER_internal_free(void *ptr, void *d);
 #endif
 
-#if MOJOSHADER_FORCE_INCLUDE_CALLBACKS
-#define MOJOSHADER_internal_include_open NULL
-#define MOJOSHADER_internal_include_close NULL
-#else
-int MOJOSHADER_internal_include_open(MOJOSHADER_includeType inctype,
-                                     const char *fname, const char *parent,
-                                     const char **outdata,
-                                     unsigned int *outbytes,
-                                     MOJOSHADER_malloc m, MOJOSHADER_free f,
-                                     void *d);
-
-void MOJOSHADER_internal_include_close(const char *data, MOJOSHADER_malloc m,
-                                       MOJOSHADER_free f, void *d);
-#endif
-
 
 // result modifiers.
 // !!! FIXME: why isn't this an enum?
@@ -626,152 +604,6 @@ static inline int scalar_register(const MOJOSHADER_shaderType shader_type,
 
 extern MOJOSHADER_error MOJOSHADER_out_of_mem_error;
 extern MOJOSHADER_parseData MOJOSHADER_out_of_mem_data;
-
-
-// preprocessor stuff.
-
-typedef enum
-{
-    TOKEN_UNKNOWN = 256,  // start past ASCII character values.
-
-    // These are all C-like constructs. Tokens < 256 may be single
-    //  chars (like '+' or whatever). These are just multi-char sequences
-    //  (like "+=" or whatever).
-    TOKEN_IDENTIFIER,
-    TOKEN_INT_LITERAL,
-    TOKEN_FLOAT_LITERAL,
-    TOKEN_STRING_LITERAL,
-    TOKEN_RSHIFTASSIGN,
-    TOKEN_LSHIFTASSIGN,
-    TOKEN_ADDASSIGN,
-    TOKEN_SUBASSIGN,
-    TOKEN_MULTASSIGN,
-    TOKEN_DIVASSIGN,
-    TOKEN_MODASSIGN,
-    TOKEN_XORASSIGN,
-    TOKEN_ANDASSIGN,
-    TOKEN_ORASSIGN,
-    TOKEN_INCREMENT,
-    TOKEN_DECREMENT,
-    TOKEN_RSHIFT,
-    TOKEN_LSHIFT,
-    TOKEN_ANDAND,
-    TOKEN_OROR,
-    TOKEN_LEQ,
-    TOKEN_GEQ,
-    TOKEN_EQL,
-    TOKEN_NEQ,
-    TOKEN_HASH,
-    TOKEN_HASHHASH,
-
-    // This is returned if the preprocessor isn't stripping comments. Note
-    //  that in asm files, the ';' counts as a single-line comment, same as
-    //  "//". Note that both eat newline tokens: all of the ones inside a
-    //  multiline comment, and the ending newline on a single-line comment.
-    TOKEN_MULTI_COMMENT,
-    TOKEN_SINGLE_COMMENT,
-
-    // This is returned at the end of input...no more to process.
-    TOKEN_EOI,
-
-    // This is returned for char sequences we think are bogus. You'll have
-    //  to judge for yourself. In most cases, you'll probably just fail with
-    //  bogus syntax without explicitly checking for this token.
-    TOKEN_BAD_CHARS,
-
-    // This is returned if there's an error condition (the error is returned
-    //  as a NULL-terminated string from preprocessor_nexttoken(), instead
-    //  of actual token data). You can continue getting tokens after this
-    //  is reported. It happens for things like missing #includes, etc.
-    TOKEN_PREPROCESSING_ERROR,
-
-    // These are all caught by the preprocessor. Caller won't ever see them,
-    //  except TOKEN_PP_PRAGMA.
-    //  They control the preprocessor (#includes new files, etc).
-    TOKEN_PP_INCLUDE,
-    TOKEN_PP_LINE,
-    TOKEN_PP_DEFINE,
-    TOKEN_PP_UNDEF,
-    TOKEN_PP_IF,
-    TOKEN_PP_IFDEF,
-    TOKEN_PP_IFNDEF,
-    TOKEN_PP_ELSE,
-    TOKEN_PP_ELIF,
-    TOKEN_PP_ENDIF,
-    TOKEN_PP_ERROR,  // caught, becomes TOKEN_PREPROCESSING_ERROR
-    TOKEN_PP_PRAGMA,
-    TOKEN_INCOMPLETE_COMMENT,  // caught, becomes TOKEN_PREPROCESSING_ERROR
-    TOKEN_PP_UNARY_MINUS,  // used internally, never returned.
-    TOKEN_PP_UNARY_PLUS,   // used internally, never returned.
-} Token;
-
-
-// This is opaque.
-struct Preprocessor;
-typedef struct Preprocessor Preprocessor;
-
-typedef struct Conditional
-{
-    Token type;
-    int linenum;
-    int skipping;
-    int chosen;
-    struct Conditional *next;
-} Conditional;
-
-typedef struct Define
-{
-    const char *identifier;
-    const char *definition;
-    const char *original;
-    const char **parameters;
-    int paramcount;
-    struct Define *next;
-} Define;
-
-typedef struct IncludeState
-{
-    const char *filename;
-    const char *source_base;
-    const char *source;
-    const char *token;
-    unsigned int tokenlen;
-    Token tokenval;
-    int pushedback;
-    const unsigned char *lexer_marker;
-    int report_whitespace;
-    int report_comments;
-    int asm_comments;
-    unsigned int orig_length;
-    unsigned int bytes_left;
-    unsigned int line;
-    Conditional *conditional_stack;
-    MOJOSHADER_includeClose close_callback;
-    struct IncludeState *next;
-} IncludeState;
-
-Token preprocessor_lexer(IncludeState *s);
-
-// This will only fail if the allocator fails, so it doesn't return any
-//  error code...NULL on failure.
-Preprocessor *preprocessor_start(const char *fname, const char *source,
-                            unsigned int sourcelen,
-                            MOJOSHADER_includeOpen open_callback,
-                            MOJOSHADER_includeClose close_callback,
-                            const MOJOSHADER_preprocessorDefine *defines,
-                            unsigned int define_count, int asm_comments,
-                            MOJOSHADER_malloc m, MOJOSHADER_free f, void *d);
-
-void preprocessor_end(Preprocessor *pp);
-int preprocessor_outofmemory(Preprocessor *pp);
-const char *preprocessor_nexttoken(Preprocessor *_ctx,
-                                   unsigned int *_len, Token *_token);
-const char *preprocessor_sourcepos(Preprocessor *pp, unsigned int *pos);
-
-
-void MOJOSHADER_print_debug_token(const char *subsystem, const char *token,
-                                  const unsigned int tokenlen,
-                                  const Token tokenval);
 
 
 #if SUPPORT_PROFILE_SPIRV

@@ -19,7 +19,6 @@ OPTION(PROFILE_METAL "Build MojoShader with support for the Metal profile" APPLE
 OPTION(PROFILE_SPIRV "Build MojoShader with support for the SPIR-V profile" ON)
 OPTION(PROFILE_GLSPIRV "Build MojoShader with support for the ARB_gl_spirv profile" ON)
 OPTION(EFFECT_SUPPORT "Build MojoShader with support for Effect framework files" ON)
-OPTION(COMPILER_SUPPORT "Build MojoShader with support for HLSL source files" !WIN32) # TODO: Fix lemon on Windows
 OPTION(FLIP_VIEWPORT "Build MojoShader with the ability to flip the GL viewport" OFF)
 OPTION(DEPTH_CLIPPING "Build MojoShader with the ability to simulate [0, 1] depth clipping" OFF)
 OPTION(XNA4_VERTEXTEXTURE "Build MojoShader with XNA4 vertex texturing behavior" OFF)
@@ -90,18 +89,6 @@ IF(MSVC)
     ADD_DEFINITIONS(-D_CRT_SECURE_NO_WARNINGS=1)
     ADD_DEFINITIONS(-TP)  # force .c files to compile as C++.
 ENDIF(MSVC)
-
-# We build lemon, then use it to generate parser C code.
-IF(COMPILER_SUPPORT)
-    ADD_EXECUTABLE(lemon "misc/lemon.c")
-    ADD_CUSTOM_COMMAND(
-        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
-        MAIN_DEPENDENCY "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
-        DEPENDS lemon "${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c"
-        COMMAND lemon
-        ARGS -q "-T${CMAKE_CURRENT_SOURCE_DIR}/misc/lempar.c" "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.lemon"
-    )
-ENDIF(COMPILER_SUPPORT)
 
 IF(APPLE)
     IF(NOT IOS)
@@ -187,14 +174,6 @@ IF(EFFECT_SUPPORT)
         mojoshader_effects.c
     )
 ENDIF(EFFECT_SUPPORT)
-IF(COMPILER_SUPPORT)
-    TARGET_SOURCES(mojoshader PRIVATE
-        mojoshader_compiler.c
-        mojoshader_preprocessor.c
-        mojoshader_lexer.c
-        mojoshader_assembler.c
-    )
-ENDIF(COMPILER_SUPPORT)
 IF(BUILD_SHARED_LIBS)
     TARGET_LINK_LIBRARIES(mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(BUILD_SHARED_LIBS)
@@ -204,11 +183,6 @@ TARGET_INCLUDE_DIRECTORIES(mojoshader PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/directx>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/windows>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/wsi>
-)
-
-SET_SOURCE_FILES_PROPERTIES(
-    mojoshader_compiler.c
-    PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mojoshader_parser_hlsl.h"
 )
 
 FIND_PROGRAM(RE2C re2c DOC "Path to re2c command line app: http://re2c.org/")
@@ -237,19 +211,6 @@ IF(SDL2_FOUND)
     TARGET_LINK_LIBRARIES(testglcompile mojoshader ${SDL2_LIBRARIES} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
 ENDIF(SDL2_FOUND)
 
-IF(COMPILER_SUPPORT)
-    ADD_EXECUTABLE(finderrors utils/finderrors.c)
-    IF(SDL2_FOUND)
-        TARGET_LINK_LIBRARIES(finderrors mojoshader ${SDL2_LIBRARIES} ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
-        SET_SOURCE_FILES_PROPERTIES(
-            utils/finderrors.c
-            PROPERTIES COMPILE_FLAGS "-DFINDERRORS_COMPILE_SHADERS=1"
-        )
-    ELSE(SDL2_FOUND)
-        TARGET_LINK_LIBRARIES(finderrors mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
-    ENDIF(SDL2_FOUND)
-ENDIF(COMPILER_SUPPORT)
-
 FIND_PATH(SPIRV_TOOLS_INCLUDE_DIR "spirv-tools/libspirv.h" PATH_SUFFIXES "include")
 FIND_LIBRARY(SPIRV_TOOLS_LIBRARY NAMES SPIRV-Tools-shared)
 IF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
@@ -264,22 +225,6 @@ IF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
 ENDIF(SPIRV_TOOLS_INCLUDE_DIR AND SPIRV_TOOLS_LIBRARY)
 ADD_EXECUTABLE(testoutput utils/testoutput.c)
 TARGET_LINK_LIBRARIES(testoutput mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
-IF(COMPILER_SUPPORT)
-    ADD_EXECUTABLE(mojoshader-compiler utils/mojoshader-compiler.c)
-    TARGET_LINK_LIBRARIES(mojoshader-compiler mojoshader ${LIBM} ${LOBJC} ${CARBON_FRAMEWORK})
-ENDIF(COMPILER_SUPPORT)
-
-# Unit tests...
-IF(COMPILER_SUPPORT)
-    ADD_CUSTOM_TARGET(
-        test
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/run_tests.pl"
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        DEPENDS mojoshader-compiler
-        COMMENT "Running unit tests..."
-        VERBATIM
-    )
-ENDIF(COMPILER_SUPPORT)
 
 # End of CMakeLists.txt ...
 

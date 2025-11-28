@@ -18,11 +18,6 @@ jobs:
       uses: libsdl-org/setup-sdl@main
       with:
         version: sdl2-latest
-    - name: Setup Linux dependencies
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install cmake ninja-build lemon re2c
     - name: Get MojoShader sources
       uses: actions/checkout@v3
     - name: Configure CMake
