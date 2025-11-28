@@ -16,8 +16,8 @@
 #include <math.h>
 #endif /* MOJOSHADER_USE_SDL_STDLIB */
 
-void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
-                             float *outregs)
+static void run_preshader(const MOJOSHADER_preshader *preshader,
+                          float *outregs)
 {
     const float *inregs = preshader->registers;
 
@@ -208,7 +208,7 @@ void MOJOSHADER_runPreshader(const MOJOSHADER_preshader *preshader,
                 outregs[operand->index + i] = (float) dst[i];
         } // else
     } // for
-} // MOJOSHADER_runPreshader
+} // run_preshader
 
 static MOJOSHADER_effect MOJOSHADER_out_of_mem_effect = {
     1, &MOJOSHADER_out_of_mem_error, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -1878,7 +1878,7 @@ void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect)
                            param->valuesI + (j << 2), \
                            param->type.columns << 2); \
             } while (++i < raw->preshader->symbol_count); \
-            MOJOSHADER_runPreshader(raw->preshader, &selector); \
+            run_preshader(raw->preshader, &selector); \
             shader_object = effect->params[raw->params[0]].value.valuesI[(int) selector]; \
             raw = &effect->objects[shader_object].shader; \
             gls = raw->shader; \
@@ -1906,7 +1906,7 @@ void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect)
 
     /* This is where parameters are copied into the constant buffers.
      * If you're looking for where things slow down immensely, look at
-     * the copy_parameter_data() and MOJOSHADER_runPreshader() functions.
+     * the copy_parameter_data() and run_preshader() functions.
      * -flibit
      */
     // !!! FIXME: We're just copying everything every time. Blech. -flibit
@@ -1930,7 +1930,7 @@ void MOJOSHADER_effectCommitChanges(MOJOSHADER_effect *effect)
                                     pd->preshader->registers, \
                                     NULL, \
                                     NULL); \
-                MOJOSHADER_runPreshader(pd->preshader, stage##_reg_file_f); \
+                run_preshader(pd->preshader, stage##_reg_file_f); \
             } \
         }
     effect->ctx.mapUniformBufferMemory(effect->ctx.shaderContext,

@@ -234,12 +234,6 @@ typedef Uint64 uint64;
 #define MATCH_MICROSOFT_PREPROCESSOR 1
 #endif
 
-// Other stuff you can disable...
-
-#ifdef MOJOSHADER_EFFECT_SUPPORT
-void MOJOSHADER_runPreshader(const MOJOSHADER_preshader*, float*);
-#endif
-
 
 // Get basic wankery out of the way here...
 
