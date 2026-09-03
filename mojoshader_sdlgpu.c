@@ -112,6 +112,9 @@ struct MOJOSHADER_sdlContext
     MOJOSHADER_sdlShaderData *bound_pshader_data;
     MOJOSHADER_sdlProgram *bound_program;
     HashTable *linker_cache;
+
+    HashTable *wgsl_cache;
+    HashTable *wgsl_size_cache;
 };
 
 struct MOJOSHADER_sdlShaderData
@@ -222,6 +225,30 @@ static void nuke_shaders(
     MOJOSHADER_sdlDeleteProgram(ctx, (MOJOSHADER_sdlProgram *) value);
 } // nuke_shaders
 
+static uint32 hash_wgsl(const void *key, void *data)
+{
+    return (Uint32) (((size_t) key) & 0xFFFFFFFF);
+} // hash_wgsl
+
+static int match_wgsl(const void *a, const void *b, void *data)
+{
+    return a == b;
+} // match_wgsl
+
+static void nuke_wgsl(const void *ctx, const void *key, const void *value, void *data)
+{
+    SDL_free((void*) value);
+} // nuke_wgsl
+
+static void nuke_nothing(
+    const void *_ctx,
+    const void *key,
+    const void *value,
+    void *data
+) {
+    // Are you surprised?
+} // nuke_nothing
+
 static uint8_t update_uniform_buffer(
     MOJOSHADER_sdlContext *ctx,
     SDL_GPUCommandBuffer *cb,
@@ -291,7 +318,9 @@ static uint8_t update_uniform_buffer(
 unsigned int MOJOSHADER_sdlGetShaderFormats(void)
 {
     int ret = shader_format;
-    if (SDL_ShaderCross_GetSPIRVShaderFormats != NULL)
+    if (SDL_GetPathInfo("shaders.wgsl.bin", NULL))
+        ret = (1u << 6); // SDL_GPU_SHADERFORMAT_WGSL
+    else if (SDL_ShaderCross_GetSPIRVShaderFormats != NULL)
         ret |= SDL_ShaderCross_GetSPIRVShaderFormats();
     else
     {
@@ -336,10 +365,40 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     resultCtx->free_fn = f;
     resultCtx->malloc_data = malloc_d;
 
-        resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
+    resultCtx->profile = (shader_format == SDL_GPU_SHADERFORMAT_SPIRV) ? "spirv" : "metal";
 
     // We only care about ShaderCross if the device doesn't natively support the profile
-    if (!(SDL_GetGPUShaderFormats(device) & shader_format))
+    if (SDL_GetGPUShaderFormats(device) == (1u << 6)) // SDL_GPU_SHADERFORMAT_WGSL)
+    {
+        SDL_IOStream *wgsl = SDL_IOFromFile("shaders.wgsl.bin", "rb");
+        if (wgsl == NULL)
+        {
+            goto init_fail;
+        }
+
+        resultCtx->wgsl_cache = hash_create(NULL, hash_wgsl, match_wgsl, nuke_wgsl, 0,
+                                            resultCtx->malloc_fn, resultCtx->free_fn, resultCtx->malloc_data);
+        resultCtx->wgsl_size_cache = hash_create(NULL, hash_wgsl, match_wgsl, nuke_nothing, 0,
+                                                 resultCtx->malloc_fn, resultCtx->free_fn, resultCtx->malloc_data);
+
+        Uint32 numEntries;
+        SDL_ReadIO(wgsl, &numEntries, sizeof(Uint32));
+        for (Uint32 i = 0; i < numEntries; i += 1) {
+            Uint32 crc;
+            SDL_ReadIO(wgsl, &crc, sizeof(Uint32));
+
+            Uint32 shaderLen;
+            SDL_ReadIO(wgsl, &shaderLen, sizeof(Uint32));
+
+            void *shader = SDL_malloc(shaderLen);
+            SDL_ReadIO(wgsl, shader, shaderLen);
+
+            hash_insert(resultCtx->wgsl_cache, (void*) (size_t) crc, shader);
+            hash_insert(resultCtx->wgsl_size_cache, (void*) (size_t) crc, (void*) (size_t) shaderLen);
+        }
+        SDL_CloseIO(wgsl);
+    } // if
+    else if (!(SDL_GetGPUShaderFormats(device) & shader_format))
     {
         SDL_shadercross_lib = SDL_LoadObject(SDL_SHADERCROSS_LIB_NAME);
         if (SDL_shadercross_lib != NULL)
@@ -357,7 +416,7 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
                 "SDL_ShaderCross_CompileGraphicsShaderFromSPIRV"
             );
         } // if
-    } // if
+    } // else if
 
     return resultCtx;
 
@@ -389,6 +448,12 @@ void MOJOSHADER_sdlDestroyContext(
 
     if (ctx->linker_cache)
         hash_destroy(ctx->linker_cache, ctx);
+
+    if (ctx->wgsl_cache)
+        hash_destroy(ctx->wgsl_cache, ctx);
+
+    if (ctx->wgsl_size_cache)
+        hash_destroy(ctx->wgsl_cache, ctx);
 
     ctx->free_fn(ctx->uniform_staging, ctx->malloc_data);
 
@@ -557,6 +622,36 @@ static MOJOSHADER_sdlProgram *compile_program(
         createInfo.num_samplers = vshader->samplerSlots;
         createInfo.num_uniform_buffers = 1;
 
+        if (ctx->wgsl_cache)
+        {
+            const void *code;
+            Uint32 crc = SDL_crc32(0, createInfo.code, createInfo.code_size);
+            if (hash_find(ctx->wgsl_cache, (void*) (size_t) crc, &code))
+            {
+                createInfo.code = code;
+                hash_find(ctx->wgsl_size_cache, (void*) (size_t) crc, (const void**) &createInfo.code_size);
+
+                createInfo.format = (1u << 6); // SDL_GPU_SHADERFORMAT_WGSL
+            } // if
+            else
+            {
+                char* path;
+                SDL_asprintf(&path, "%sbroken_%x.vert.spv", SDL_GetPrefPath("mojoshader", "SDL_gpu"), crc);
+                if (path != NULL)
+                {
+                    SDL_IOStream* io = SDL_IOFromFile(path, "wb");
+                    if (io != NULL)
+                    {
+                        SDL_WriteIO(io, vshaderSource, vshaderCodeSize);
+                        SDL_CloseIO(io);
+                        SDL_Log("Missing SPIR-V dumped to %s", path);
+                    } // if
+                    SDL_free(path);
+                } // if
+                SDL_assert(!"SPIR-V was not found in the WGSL cache!");
+            } // else
+        } // if
+
         program->vertexShader = SDL_CreateGPUShader(
             ctx->device,
             &createInfo
@@ -601,6 +696,36 @@ static MOJOSHADER_sdlProgram *compile_program(
         createInfo.format = shader_format;
         createInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
         createInfo.num_samplers = pshader->samplerSlots;
+
+        if (ctx->wgsl_cache)
+        {
+            const void *code;
+            Uint32 crc = SDL_crc32(0, createInfo.code, createInfo.code_size);
+            if (hash_find(ctx->wgsl_cache, (void*) (size_t) crc, &code))
+            {
+                createInfo.code = code;
+                hash_find(ctx->wgsl_size_cache, (void*) (size_t) crc, (const void**) &createInfo.code_size);
+
+                createInfo.format = (1u << 6); // SDL_GPU_SHADERFORMAT_WGSL
+            } // if
+            else
+            {
+                char* path;
+                SDL_asprintf(&path, "%sbroken_%x.frag.spv", SDL_GetPrefPath("mojoshader", "SDL_gpu"), crc);
+                if (path != NULL)
+                {
+                    SDL_IOStream* io = SDL_IOFromFile(path, "wb");
+                    if (io != NULL)
+                    {
+                        SDL_WriteIO(io, pshaderSource, pshaderCodeSize);
+                        SDL_CloseIO(io);
+                        SDL_Log("Missing SPIR-V dumped to %s", path);
+                    } // if
+                    SDL_free(path);
+                } // if
+                SDL_assert(!"SPIR-V was not found in the WGSL cache!");
+            } // else
+        } // if
 
         program->pixelShader = SDL_CreateGPUShader(
             ctx->device,
