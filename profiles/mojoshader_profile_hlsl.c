@@ -1069,6 +1069,9 @@ void emit_HLSL_attribute(Context *ctx, RegisterType regtype, int regnum,
                     case MOJOSHADER_USAGE_POSITION:
                         output_line(ctx, "float4 m_%s : POSITION%d;", var, index);
                         break;
+                    case MOJOSHADER_USAGE_BLENDWEIGHT:
+                        output_line(ctx, "float4 m_%s : BLENDWEIGHT%d;", var, index);
+                        break;
                     default:
                         fail(ctx, "BUG: unhandled pixel shader input");
                         break;
