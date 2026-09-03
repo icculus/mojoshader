@@ -1000,7 +1000,7 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
     else if (arg)
     {
         /* This isn't especially accurate, but hey, it's easy. :) */
-        unsigned long value;
+        unsigned long long value;
 
         if (arg < 0)
         {
@@ -1012,8 +1012,8 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
             ++text;
             arg = -arg;
         } // if
-        value = (unsigned long) arg;
-        len = snprintf(text, left, "%lu", value);
+        value = (unsigned long long) arg;
+        len = snprintf(text, left, "%llu", value);
         text += len;
         if (len >= left)
             left = (left < 1) ? left : 1;
@@ -1021,7 +1021,7 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
             left -= len;
         arg -= value;
 
-        int mult = 10;
+        long long mult = 10;
         if (left > 1)
         {
             *text = '.';
@@ -1030,8 +1030,8 @@ size_t MOJOSHADER_printFloat(char *text, size_t maxlen, float arg)
         ++text;
         while (precision-- > 0)
         {
-            value = (unsigned long) (arg * mult);
-            len = snprintf(text, left, "%lu", value);
+            value = (unsigned long long) (arg * mult);
+            len = snprintf(text, left, "%llu", value);
             text += len;
             if (len >= left)
                 left = (left < 1) ? left : 1;
